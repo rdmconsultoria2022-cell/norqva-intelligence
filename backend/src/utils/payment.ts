@@ -1,0 +1,174 @@
+import https from 'https';
+
+export interface PixPaymentResponse {
+  providerPaymentId: string;
+  pixCopyPaste: string;
+  expiresAt: string;
+  status: string;
+}
+
+export interface PaymentDetailsResponse {
+  status: string;
+  amount: number;
+}
+
+export class AsaasPaymentProvider {
+  private apiKey: string;
+  private baseUrl: string;
+  private env: string;
+
+  constructor(apiKey: string, baseUrl: string, env: string) {
+    // Sandbox only guard:
+    const parsedUrl = new URL(baseUrl);
+    if (parsedUrl.hostname !== 'api-sandbox.asaas.com') {
+      throw new Error('[SECURITY EXCEPTION]: AsaasPaymentProvider is strictly locked to Sandbox/Homologation environment in this Gate.');
+    }
+    if (env !== 'sandbox') {
+      throw new Error('[SECURITY EXCEPTION]: AsaasPaymentProvider environment must be set to sandbox.');
+    }
+
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+    this.env = env;
+  }
+
+  private request<T>(path: string, method: string, payload?: any): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const urlObj = new URL(url);
+    const body = payload ? JSON.stringify(payload) : '';
+
+    const headers: Record<string, any> = {
+      'access_token': this.apiKey,
+      'Content-Type': 'application/json',
+      'User-Agent': 'NORQVA-Core-V1'
+    };
+
+    if (body) {
+      headers['Content-Length'] = Buffer.byteLength(body);
+    }
+
+    const options: https.RequestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: `${urlObj.pathname}${urlObj.search}`,
+      method: method,
+      headers: headers
+    };
+
+    return new Promise((resolve, reject) => {
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 400) {
+            const err: any = new Error(`Asaas API error status ${res.statusCode}: ${data}`);
+            err.statusCode = res.statusCode;
+            err.responseBody = data;
+            return reject(err);
+          }
+          try {
+            resolve(JSON.parse(data) as T);
+          } catch (e) {
+            reject(new Error(`Failed to parse Asaas response: ${data}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => reject(err));
+      if (body) {
+        req.write(body);
+      }
+      req.end();
+    });
+  }
+
+  async createCustomer(params: {
+    name: string;
+    email: string;
+    phone?: string;
+    cpfCnpj?: string;
+    externalReference: string;
+  }): Promise<string> {
+    const payload: any = {
+      name: params.name,
+      email: params.email,
+      phone: params.phone || undefined,
+      externalReference: params.externalReference
+    };
+    if (params.cpfCnpj) {
+      payload.cpfCnpj = params.cpfCnpj;
+    }
+
+    const res = await this.request<{ id: string }>('/customers', 'POST', payload);
+    return res.id;
+  }
+
+  async searchCustomerByExternalReference(externalReference: string): Promise<string | null> {
+    const res = await this.request<{ data: { id: string }[] }>(`/customers?externalReference=${encodeURIComponent(externalReference)}`, 'GET');
+    if (res.data && res.data.length > 0) {
+      return res.data[0].id;
+    }
+    return null;
+  }
+
+  async searchCustomerByEmail(email: string): Promise<{ id: string; cpfCnpj?: string; name: string }[]> {
+    const res = await this.request<{ data: { id: string; cpfCnpj?: string; name: string }[] }>(`/customers?email=${encodeURIComponent(email)}`, 'GET');
+    return res.data || [];
+  }
+
+  async createPixPayment(params: {
+    amount: number;
+    description: string;
+    idempotencyKey: string;
+    providerCustomerId: string;
+  }): Promise<PixPaymentResponse> {
+    // Set dueDate to tomorrow to allow prompt payment
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dueDateStr = tomorrow.toISOString().split('T')[0];
+
+    const payload = {
+      customer: params.providerCustomerId,
+      billingType: 'PIX',
+      value: params.amount,
+      dueDate: dueDateStr,
+      description: params.description,
+      externalReference: params.idempotencyKey
+    };
+
+    const paymentRes = await this.request<{ id: string; status: string; value: number }>('/payments', 'POST', payload);
+    
+    // Fetch QR Code dynamic details (body must be empty for GET)
+    const qrCodeRes = await this.request<{ payload: string; expirationDate: string }>(`/payments/${paymentRes.id}/pixQrCode`, 'GET');
+
+    return {
+      providerPaymentId: paymentRes.id,
+      pixCopyPaste: qrCodeRes.payload,
+      expiresAt: qrCodeRes.expirationDate || tomorrow.toISOString(),
+      status: paymentRes.status
+    };
+  }
+
+  async searchPaymentByExternalReference(externalReference: string): Promise<PixPaymentResponse | null> {
+    const res = await this.request<{ data: { id: string; status: string; value: number }[] }>(`/payments?externalReference=${encodeURIComponent(externalReference)}`, 'GET');
+    if (res.data && res.data.length > 0) {
+      const p = res.data[0];
+      const qrCodeRes = await this.request<{ payload: string; expirationDate: string }>(`/payments/${p.id}/pixQrCode`, 'GET');
+      return {
+        providerPaymentId: p.id,
+        pixCopyPaste: qrCodeRes.payload,
+        expiresAt: qrCodeRes.expirationDate,
+        status: p.status
+      };
+    }
+    return null;
+  }
+
+  async getPayment(providerPaymentId: string): Promise<PaymentDetailsResponse> {
+    const res = await this.request<{ status: string; value: number }>(`/payments/${providerPaymentId}`, 'GET');
+    return {
+      status: res.status,
+      amount: res.value
+    };
+  }
+}

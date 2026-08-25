@@ -1,0 +1,104 @@
+﻿name: NORQVA CI/CD Staging Pipeline
+
+on:
+  push:
+    branches: [ main, staging ]
+  pull_request:
+    branches: [ main, staging ]
+  workflow_dispatch:
+
+jobs:
+  validate_and_build:
+    name: Test, Security Scan & Production Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: norqva_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Workspace Dependencies
+        run: npm ci
+
+      - name: Run Backend Regression Tests
+        env:
+          NODE_ENV: test
+          DATABASE_URL_TEST: postgresql://postgres:test_password@localhost:5432/norqva_test
+          ALLOW_DESTRUCTIVE_TESTS: 'true'
+          AUTH_MODE: real
+          SUPABASE_URL: https://mock.supabase.co
+          SUPABASE_JWKS_URL: https://mock.supabase.co/auth/v1/.well-known/jwks.json
+          SUPABASE_PUBLISHABLE_KEY: sb_pub_mock
+          ASAAS_API_KEY: MOCK
+          ASAAS_BASE_URL: https://api-sandbox.asaas.com/v3
+          ASAAS_ENV: sandbox
+          ASAAS_WEBHOOK_AUTH_TOKEN: test_token
+        run: npm test --workspace=backend
+
+      - name: Run Frontend Regression Tests
+        run: npm test --workspace=frontend
+
+      - name: Build Backend Production Artifact
+        run: npm run build --workspace=backend
+
+      - name: Build Frontend Production Artifact
+        env:
+          VITE_SUPABASE_URL: https://ikekbotxngcgqyojtwjb.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_2Hj91wCQhD5efqcgWa-NSw_73DW5Pe9
+        run: npm run build --workspace=frontend
+
+      - name: Scan Frontend Bundle for Secret Leaks
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const distDir = path.join('frontend', 'dist');
+            const patterns = [
+              /sb_service_role_[a-zA-Z0-9_\-]+/g,
+              /\\\$aact_[a-zA-Z0-9_\-]+/g,
+              /RicardoAndradeLucas/g
+            ];
+            let leaks = 0;
+            function scan(dir) {
+              for (const f of fs.readdirSync(dir)) {
+                const fp = path.join(dir, f);
+                if (fs.statSync(fp).isDirectory()) scan(fp);
+                else if (f.endsWith('.js') || f.endsWith('.html')) {
+                  const c = fs.readFileSync(fp, 'utf8');
+                  for (const p of patterns) {
+                    if (p.test(c)) { console.error('LEAK FOUND:', fp, p); leaks++; }
+                  }
+                }
+              }
+            }
+            scan(distDir);
+            if (leaks > 0) process.exit(1);
+            console.log('Zero leaks found.');
+          "
+
+      - name: Trigger Staging Deploy Webhook (Render)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.RENDER_DEPLOY_HOOK_URL != ''
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          curl -X POST "$RENDER_DEPLOY_HOOK_URL"
