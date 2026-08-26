@@ -40,8 +40,9 @@ export async function runMigrations(pool: Pool) {
       const sqlPath = path.join(migrationsDir, file);
       let sqlContent = fs.readFileSync(sqlPath, 'utf8');
       
-      // pg-mem parser fallback: strip RLS / Policies statements which pg-mem cannot parse
+      // pg-mem parser fallback: strip RLS / Policies / DO blocks which pg-mem cannot parse
       if (isDbInMemory()) {
+        sqlContent = sqlContent.replace(/DO\s*\$\$[\s\S]*?\$\$;/gi, '');
         sqlContent = sqlContent
           .split(';')
           .filter(statement => {
@@ -49,7 +50,9 @@ export async function runMigrations(pool: Pool) {
             if (!clean) return false;
             return !clean.includes('ROW LEVEL SECURITY') && 
                    !clean.includes('CREATE POLICY') &&
-                   !clean.includes('DROP POLICY');
+                   !clean.includes('DROP POLICY') &&
+                   !clean.includes('DO $$') &&
+                   !clean.includes('END $$');
           })
           .join(';\n') + ';';
       }
