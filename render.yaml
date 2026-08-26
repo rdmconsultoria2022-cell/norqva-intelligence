@@ -1,10 +1,10 @@
-﻿services:
+services:
   - type: web
     name: norqva-staging-backend
     runtime: node
     plan: starter
     rootDir: backend
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     preDeployCommand: npm run migrate
     startCommand: npm start
     healthCheckPath: /ready
