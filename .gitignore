@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 package-lock.json.bak
 
@@ -26,5 +26,11 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Temporary files
+# Temporary & Scratch Utilities
 *.tmp
+*.cjs
+backend/restore_admin.js
+backend/verify_admin_mapping.js
+backend/run_real_*
+backend/test_run.log
+

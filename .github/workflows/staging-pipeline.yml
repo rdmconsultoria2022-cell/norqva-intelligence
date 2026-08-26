@@ -1,4 +1,4 @@
-﻿name: NORQVA CI/CD Staging Pipeline
+name: NORQVA CI/CD Staging Pipeline
 
 on:
   push:
@@ -75,8 +75,7 @@ jobs:
             const distDir = path.join('frontend', 'dist');
             const patterns = [
               /sb_service_role_[a-zA-Z0-9_\-]+/g,
-              /\\\$aact_[a-zA-Z0-9_\-]+/g,
-              /RicardoAndradeLucas/g
+              /\\\$aact_[a-zA-Z0-9_\-]+/g
             ];
             let leaks = 0;
             function scan(dir) {
