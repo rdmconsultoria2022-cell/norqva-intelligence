@@ -2901,19 +2901,34 @@ export async function getDeliveryTokens(req: any, res: Response) {
 
     // Connect client to manage atomic token generation transaction
     const client = await pool.connect();
-    const generatedTokens: Array<{ assetId: string, rawToken: string }> = [];
+    const responseDeliveries: Array<{
+      assetId: string;
+      assetTitle: string;
+      rawToken?: string;
+      expiresAt?: string;
+      downloadCount: number;
+      maxDownloads: number;
+      status: string;
+    }> = [];
 
     try {
       await client.query('BEGIN');
 
       const deliveriesRes = await client.query(
-        'SELECT * FROM order_deliveries WHERE order_id = $1 FOR UPDATE',
+        `SELECT od.*, da.name as asset_name
+         FROM order_deliveries od
+         JOIN digital_assets da ON da.id = od.asset_id
+         WHERE od.order_id = $1
+         FOR UPDATE OF od`,
         [order.id]
       );
 
       for (const delivery of deliveriesRes.rows) {
-        if (!delivery.delivery_token_hash) {
-          // Generate raw token once
+        const isExhausted = delivery.download_count >= delivery.max_downloads;
+        const isActive = delivery.status === 'ACTIVE' && !isExhausted;
+
+        if (isActive) {
+          // Generate fresh ephemeral raw token and rotate hash atomically
           const rawToken = crypto.randomBytes(32).toString('hex');
           const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
           const ttlHours = parseInt(process.env.DELIVERY_TOKEN_TTL_HOURS || '24', 10);
@@ -2926,9 +2941,23 @@ export async function getDeliveryTokens(req: any, res: Response) {
             [tokenHash, expiresAt, delivery.id]
           );
 
-          generatedTokens.push({
+          responseDeliveries.push({
             assetId: delivery.asset_id,
-            rawToken
+            assetTitle: delivery.asset_name || `Ativo Digital #${delivery.asset_id.substring(0, 8)}`,
+            rawToken,
+            expiresAt: expiresAt.toISOString(),
+            downloadCount: delivery.download_count,
+            maxDownloads: delivery.max_downloads,
+            status: 'ACTIVE'
+          });
+        } else {
+          // Non-issuable delivery (exhausted downloads or inactive/expired)
+          responseDeliveries.push({
+            assetId: delivery.asset_id,
+            assetTitle: delivery.asset_name || `Ativo Digital #${delivery.asset_id.substring(0, 8)}`,
+            downloadCount: delivery.download_count,
+            maxDownloads: delivery.max_downloads,
+            status: isExhausted ? 'EXHAUSTED' : delivery.status
           });
         }
       }
@@ -2941,7 +2970,7 @@ export async function getDeliveryTokens(req: any, res: Response) {
       client.release();
     }
 
-    return res.status(200).json({ orderId: order.id, deliveries: generatedTokens });
+    return res.status(200).json({ orderId: order.id, deliveries: responseDeliveries });
   } catch (err: any) {
     console.error('Get delivery tokens error:', err);
     return res.status(500).json({ error: 'Failed to issue delivery tokens.' });
@@ -3092,7 +3121,13 @@ export async function downloadDelivery(req: any, res: Response) {
       await writeAuditLog(pool, null, 'DELIVERY_LIMIT_REACHED', `Maximum download limit reached for delivery ${delivery.id}.`, null, null, delivery.order_demo);
     }
 
-    return res.status(200).json({ url: signedUrl });
+    const downloadsRemaining = Math.max(0, delivery.max_downloads - newCount);
+    return res.status(200).json({
+      success: true,
+      download_url: signedUrl,
+      url: signedUrl,
+      downloads_remaining: downloadsRemaining
+    });
   } catch (err: any) {
     await client.query('ROLLBACK');
     console.error('Download delivery error:', err);

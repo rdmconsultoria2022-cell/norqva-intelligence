@@ -909,4 +909,137 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       expect(screen.getByRole('button', { name: /Copiar Código Pix/i })).toBeInTheDocument();
     });
   });
+
+  describe('Secure Digital Delivery Token Reissuance & UI Resilience (D24 - D25)', () => {
+    it('D24: DigitalDelivery remount does not show false "no asset" state', async () => {
+      const fetchSpy = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/delivery-tokens')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              orderId: 'ord-remount-001',
+              deliveries: [
+                {
+                  assetId: 'ast-remount-001',
+                  assetTitle: 'NORQVA E2E Digital Delivery Test',
+                  rawToken: 'reissued_raw_token_xyz',
+                  status: 'ACTIVE',
+                  downloadCount: 0,
+                  maxDownloads: 5
+                }
+              ]
+            })
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+      global.fetch = fetchSpy;
+
+      const { unmount } = render(
+        <DigitalDelivery
+          orderId="ord-remount-001"
+          checkoutToken="valid-chk-token"
+          isDemo={false}
+          showError={vi.fn()}
+        />
+      );
+
+      // 1st render shows active delivery
+      expect(await screen.findByText('NORQVA E2E Digital Delivery Test')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Baixar Arquivo/i })).toBeInTheDocument();
+      expect(screen.queryByText(/Nenhum ativo digital/i)).not.toBeInTheDocument();
+
+      unmount();
+
+      // Remount
+      render(
+        <DigitalDelivery
+          orderId="ord-remount-001"
+          checkoutToken="valid-chk-token"
+          isDemo={false}
+          showError={vi.fn()}
+        />
+      );
+
+      // 2nd render also shows active delivery
+      expect(await screen.findByText('NORQVA E2E Digital Delivery Test')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Baixar Arquivo/i })).toBeInTheDocument();
+      expect(screen.queryByText(/Nenhum ativo digital/i)).not.toBeInTheDocument();
+    });
+
+    it('D25: no entitlement vs exhausted vs issuance-error states render distinctly', async () => {
+      // 1. Empty entitlement
+      let mockDeliveries: any[] = [];
+      const fetchSpy = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/delivery-tokens')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ orderId: 'ord-distinct-001', deliveries: mockDeliveries })
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+      global.fetch = fetchSpy;
+
+      const { unmount: unmount1 } = render(
+        <DigitalDelivery
+          orderId="ord-distinct-001"
+          checkoutToken="valid-chk-token"
+          isDemo={false}
+          showError={vi.fn()}
+        />
+      );
+
+      expect(await screen.findByText('Nenhum ativo digital disponível para este pedido.')).toBeInTheDocument();
+      unmount1();
+
+      // 2. Exhausted entitlement
+      mockDeliveries = [
+        {
+          assetId: 'ast-exh-001',
+          assetTitle: 'E-Book E2E Exhausted',
+          status: 'EXHAUSTED',
+          downloadCount: 5,
+          maxDownloads: 5
+        }
+      ];
+
+      const { unmount: unmount2 } = render(
+        <DigitalDelivery
+          orderId="ord-distinct-001"
+          checkoutToken="valid-chk-token"
+          isDemo={false}
+          showError={vi.fn()}
+        />
+      );
+
+      expect(await screen.findByText('E-Book E2E Exhausted')).toBeInTheDocument();
+      expect(screen.getByText('Limite de downloads atingido.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Limite Atingido/i })).toBeDisabled();
+      unmount2();
+
+      // 3. Issuance Error
+      fetchSpy.mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Database connection failed' })
+        })
+      );
+
+      render(
+        <DigitalDelivery
+          orderId="ord-distinct-001"
+          checkoutToken="valid-chk-token"
+          isDemo={false}
+          showError={vi.fn()}
+        />
+      );
+
+      expect(await screen.findByText('Não foi possível preparar o download.')).toBeInTheDocument();
+      expect(screen.getByText('Database connection failed')).toBeInTheDocument();
+    });
+  });
 });

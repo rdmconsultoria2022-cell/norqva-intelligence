@@ -13,6 +13,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 }) => {
   const [tokens, setTokens] = useState<DeliveryTokenItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<Record<string, string>>({});
 
@@ -31,6 +32,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
     const fetchTokens = async () => {
       try {
         setLoading(true);
+        setFetchError(null);
         const res = await fetch(`${API_BASE}/checkout/orders/${orderId}/delivery-tokens`, {
           headers: {
             'Content-Type': 'application/json',
@@ -52,6 +54,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
         if (err.name === 'AbortError') return;
         console.error('Fetch delivery tokens error:', err);
         if (isMountedRef.current) {
+          setFetchError(err.message || 'Não foi possível preparar o download.');
           showError(err.message || 'Erro ao carregar arquivos para entrega.');
         }
       } finally {
@@ -69,7 +72,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   }, [orderId, checkoutToken]);
 
   const handleDownload = async (item: DeliveryTokenItem) => {
-    if (downloadingId) return;
+    if (downloadingId || !item.rawToken) return;
 
     setDownloadingId(item.assetId);
 
@@ -150,13 +153,23 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
             <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
             Validando direitos de acesso e gerando tokens...
           </div>
+        ) : fetchError ? (
+          <div className="py-8 text-center space-y-3">
+            <div className="h-12 w-12 mx-auto rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center text-red-400">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <p className="text-xs text-red-400 font-mono">
+              Não foi possível preparar o download.
+            </p>
+            <p className="text-[11px] text-slate-500 font-mono">{fetchError}</p>
+          </div>
         ) : tokens.length === 0 ? (
           <div className="py-8 text-center space-y-3">
             <div className="h-12 w-12 mx-auto rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
               <AlertTriangle className="h-6 w-6" />
             </div>
             <p className="text-xs text-slate-400 font-mono">
-              Nenhum ativo digital pendente para entrega neste pedido.
+              Nenhum ativo digital disponível para este pedido.
             </p>
           </div>
         ) : (
@@ -166,44 +179,62 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
             </div>
 
             <div className="space-y-3">
-              {tokens.map((item) => (
-                <div
-                  key={item.assetId}
-                  className="p-4 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2 rounded bg-slate-900 border border-slate-800 text-emerald-400 shrink-0">
-                      <FileCode className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-200 truncate">
-                        {item.assetTitle || `Ativo Digital #${item.assetId.substring(0, 8)}`}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        {downloadStatus[item.assetId] || 'Assinatura criptográfica válida'}
-                      </div>
-                    </div>
-                  </div>
+              {tokens.map((item) => {
+                const isExhausted = item.status === 'EXHAUSTED' || (item.downloadCount !== undefined && item.maxDownloads !== undefined && item.downloadCount >= item.maxDownloads);
+                const isInactive = item.status === 'INACTIVE' || item.status === 'EXPIRED';
+                const isUsable = (!item.status || item.status === 'ACTIVE') && Boolean(item.rawToken) && !isExhausted && !isInactive;
 
-                  <button
-                    onClick={() => handleDownload(item)}
-                    disabled={downloadingId === item.assetId}
-                    className="px-3.5 py-2 rounded-md bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5 shrink-0 disabled:opacity-50 transition"
+                return (
+                  <div
+                    key={item.assetId}
+                    className="p-4 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-4"
                   >
-                    {downloadingId === item.assetId ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Baixando...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-3.5 w-3.5" />
-                        Baixar Arquivo
-                      </>
-                    )}
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 text-emerald-400 shrink-0">
+                        <FileCode className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-200 truncate">
+                          {item.assetTitle || `Ativo Digital #${item.assetId.substring(0, 8)}`}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          {isExhausted
+                            ? 'Limite de downloads atingido.'
+                            : isInactive
+                            ? 'Este ativo não está mais disponível.'
+                            : downloadStatus[item.assetId] || 'Assinatura criptográfica válida'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDownload(item)}
+                      disabled={!isUsable || downloadingId === item.assetId}
+                      className={`px-3.5 py-2 rounded-md font-mono text-xs font-bold flex items-center gap-1.5 shrink-0 transition ${
+                        isUsable
+                          ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                          : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                      }`}
+                    >
+                      {downloadingId === item.assetId ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Baixando...
+                        </>
+                      ) : isExhausted ? (
+                        'Limite Atingido'
+                      ) : isInactive ? (
+                        'Indisponível'
+                      ) : (
+                        <>
+                          <Download className="h-3.5 w-3.5" />
+                          Baixar Arquivo
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-850 text-[11px] text-slate-500 font-mono flex items-center gap-2">

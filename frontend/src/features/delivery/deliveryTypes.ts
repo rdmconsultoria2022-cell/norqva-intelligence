@@ -1,7 +1,11 @@
-﻿export interface DeliveryTokenItem {
+export interface DeliveryTokenItem {
   assetId: string;
-  rawToken: string;
+  rawToken?: string;
   assetTitle?: string;
+  status?: string;
+  downloadCount?: number;
+  maxDownloads?: number;
+  expiresAt?: string;
 }
 
 export interface DeliveryTokenResponse {

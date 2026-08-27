@@ -619,24 +619,34 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
     let customOffer: any;
 
     async function createCustomOrderAndPayment(off: any) {
-      const orderRes = await request(app)
-        .post('/api/checkout')
-        .set('x-user-role', adminToken)
-        .send({
-          offer_id: off.id,
-          quantity: 1,
-          customer_id: demoCustomer.id,
-          idempotency_key: crypto.randomUUID()
-        });
-      const order = orderRes.body;
+      const orderId = crypto.randomUUID();
+      const rawCheckoutToken = crypto.randomBytes(32).toString('hex');
+      const checkoutTokenHash = crypto.createHash('sha256').update(rawCheckoutToken).digest('hex');
+
+      await pool.query(
+        `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, is_demo, checkout_token_hash, checkout_token_expires_at)
+         VALUES ($1, $2, 40.00, 'PENDING', $3, $4, $5, NOW() + INTERVAL '24 hours')`,
+        [orderId, demoCustomer.id, crypto.randomUUID(), off.is_demo, checkoutTokenHash]
+      );
+
+      const itemId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO order_items (id, order_id, offer_id, product_id, product_name_snapshot, offer_name_snapshot, offer_description_snapshot, unit_price, quantity, total_price)
+         VALUES ($1, $2, $3, $4, 'Snap Prod', 'Snap Off', 'Snap Desc', 40.00, 1, 40.00)`,
+        [itemId, orderId, off.id, demoProduct.id]
+      );
 
       const provPayId = `pay_${crypto.randomUUID().slice(0, 8)}`;
       const paymentRes = await pool.query(
         `INSERT INTO payments (human_id, order_id, provider, status, amount, idempotency_key, is_demo, external_reference, provider_payment_id)
          VALUES ($1, $2, 'ASAAS', 'PENDING', 40.00, $3, $4, $5, $6) RETURNING *`,
-        [`PMT-${crypto.randomUUID().slice(0, 8)}`, order.id, crypto.randomUUID(), off.is_demo, order.id, provPayId]
+        [`PMT-${crypto.randomUUID().slice(0, 8)}`, orderId, crypto.randomUUID(), off.is_demo, orderId, provPayId]
       );
-      return { order, payment: paymentRes.rows[0] };
+
+      return {
+        order: { id: orderId, checkout_token: rawCheckoutToken, status: 'PENDING' },
+        payment: paymentRes.rows[0]
+      };
     }
 
     test('D01: ADMIN can create digital asset', async () => {
@@ -853,6 +863,315 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
       const dl3 = await request(app).get(`/api/delivery/${rawToken}`);
       expect(dl3.status).toBe(403);
       expect(dl3.body.error).toContain('Maximum download limit reached');
+    });
+
+    test('D11: first delivery-token request returns asset + raw token', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveries.length).toBe(1);
+      expect(res.body.deliveries[0].assetId).toBe(adminAsset.id);
+      expect(res.body.deliveries[0].assetTitle).toBe('NORQVA E2E Digital Delivery Test');
+      expect(res.body.deliveries[0].rawToken).toBeDefined();
+      expect(res.body.deliveries[0].status).toBe('ACTIVE');
+    });
+
+    test('D12: second authorized request still returns a usable delivery', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // 1st request
+      const res1 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      expect(res1.body.deliveries.length).toBe(1);
+
+      // 2nd request (simulating page refresh / remount)
+      const res2 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      expect(res2.status).toBe(200);
+      expect(res2.body.deliveries.length).toBe(1);
+      expect(res2.body.deliveries[0].rawToken).toBeDefined();
+      expect(res2.body.deliveries[0].status).toBe('ACTIVE');
+    });
+
+    test('D13: reissued token replaces previous hash', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res1 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      const token1 = res1.body.deliveries[0].rawToken;
+      const hash1 = (await pool.query('SELECT delivery_token_hash FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0].delivery_token_hash;
+
+      const res2 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      const token2 = res2.body.deliveries[0].rawToken;
+      const hash2 = (await pool.query('SELECT delivery_token_hash FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0].delivery_token_hash;
+
+      expect(token1).not.toBe(token2);
+      expect(hash1).not.toBe(hash2);
+      expect(hash2).toBe(crypto.createHash('sha256').update(token2).digest('hex'));
+    });
+
+    test('D14: superseded token is rejected', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res1 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      const oldToken = res1.body.deliveries[0].rawToken;
+
+      // Reissue (generates new token)
+      await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      // Attempt to download with superseded oldToken
+      const dlOld = await request(app).get(`/api/delivery/${oldToken}`);
+      expect(dlOld.status).toBe(404);
+      expect(dlOld.body.error).toContain('Delivery token not found or invalid');
+    });
+
+    test('D15: latest token downloads successfully', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      const res2 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      const latestToken = res2.body.deliveries[0].rawToken;
+
+      const dlLatest = await request(app).get(`/api/delivery/${latestToken}`);
+      expect(dlLatest.status).toBe(200);
+      expect(dlLatest.body.success).toBe(true);
+      expect(dlLatest.body.download_url).toBeDefined();
+    });
+
+    test('D16: download_count survives token reissuance', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res1 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      const token1 = res1.body.deliveries[0].rawToken;
+
+      // 1st download
+      await request(app).get(`/api/delivery/${token1}`);
+
+      const delBefore = (await pool.query('SELECT download_count FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(delBefore.download_count).toBe(1);
+
+      // Reissue token
+      const res2 = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(res2.body.deliveries[0].downloadCount).toBe(1);
+      const delAfter = (await pool.query('SELECT download_count FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(delAfter.download_count).toBe(1);
+    });
+
+    test('D17: max_downloads survives token reissuance', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await pool.query('UPDATE order_deliveries SET max_downloads = 7 WHERE order_id = $1', [order.id]);
+
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // Explicitly set max_downloads
+      await pool.query('UPDATE order_deliveries SET max_downloads = 7 WHERE order_id = $1', [order.id]);
+
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(res.body.deliveries[0].maxDownloads).toBe(7);
+      const row = (await pool.query('SELECT max_downloads FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(row.max_downloads).toBe(7);
+    });
+
+    test('D18: exhausted entitlement does not issue usable token', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // Set download_count = max_downloads
+      await pool.query('UPDATE order_deliveries SET download_count = 5, max_downloads = 5 WHERE order_id = $1', [order.id]);
+
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveries[0].rawToken).toBeUndefined();
+      expect(res.body.deliveries[0].status).toBe('EXHAUSTED');
+    });
+
+    test('D19: invalid checkout token cannot reissue delivery token', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', 'invalid_fake_token_12345');
+
+      expect(res.status).toBe(403);
+    });
+
+    test('D20: token/order cross-use rejected', async () => {
+      const { order: order1, payment: payment1 } = await createCustomOrderAndPayment(customOffer);
+      const { order: order2, payment: payment2 } = await createCustomOrderAndPayment(customOffer);
+
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment1.provider_payment_id, externalReference: payment1.id, value: 40.00 }
+        });
+
+      // Using order1 token to request order2 delivery tokens
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order2.id}/delivery-tokens`)
+        .set('x-checkout-token', order1.checkout_token);
+
+      expect(res.status).toBe(403);
+    });
+
+    test('D21: Demo/Real isolation preserved', async () => {
+      // Order created in demo mode
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(res.status).toBe(200);
+      const dbOrder = (await pool.query('SELECT is_demo FROM orders WHERE id = $1', [order.id])).rows[0];
+      const dbAsset = (await pool.query('SELECT is_demo FROM digital_assets WHERE id = $1', [res.body.deliveries[0].assetId])).rows[0];
+      expect(dbOrder.is_demo).toBe(true);
+      expect(dbAsset.is_demo).toBe(true);
+    });
+
+    test('D22: concurrent issuance leaves only one persisted valid hash', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // 5 concurrent requests
+      const reqs = Array.from({ length: 5 }, () =>
+        request(app)
+          .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+          .set('x-checkout-token', order.checkout_token)
+      );
+
+      const results = await Promise.all(reqs);
+      for (const r of results) {
+        expect(r.status).toBe(200);
+        expect(r.body.deliveries.length).toBe(1);
+      }
+
+      // Exactly 1 row in DB with 1 hash
+      const rows = (await pool.query('SELECT delivery_token_hash FROM order_deliveries WHERE order_id = $1', [order.id])).rows;
+      expect(rows.length).toBe(1);
+      expect(rows[0].delivery_token_hash).toBeDefined();
+    });
+
+    test('D23: API never exposes delivery_token_hash', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const res = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(JSON.stringify(res.body)).not.toContain('delivery_token_hash');
+      expect(JSON.stringify(res.body)).not.toContain('hash');
     });
   });
 });
