@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -643,5 +643,186 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
     // Initializing intro renders when user is set
     expect(await screen.findByText(/Initializing/i)).toBeInTheDocument();
+  });
+
+  describe('Offer Pricing UI and Safe Test Status Regression', () => {
+    it('P01 & P02: price display formats promotional price in highlight and full price struck-through', async () => {
+      const realUser = { id: 'usr-real-1', name: 'Real Admin User', role: 'ADMIN', email: 'admin@norqva.com' };
+      const offerWithPromo = {
+        id: 'off-1',
+        human_id: 'OFF-000001',
+        name: 'Oferta Promocional',
+        price: 19.90,
+        promotional_price: 17.90,
+        product_id: 'prd-1',
+        product_name: 'Produto E2E',
+        description: 'Desc',
+        status: 'RASCUNHO',
+        is_demo: false
+      };
+      const offerNoPromo = {
+        id: 'off-2',
+        human_id: 'OFF-000002',
+        name: 'Oferta Preço Cheio',
+        price: 49.90,
+        promotional_price: null,
+        product_id: 'prd-1',
+        product_name: 'Produto E2E',
+        description: 'Desc',
+        status: 'TESTE',
+        is_demo: false
+      };
+
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: { access_token: 'token', user: { email: 'admin@norqva.com' } }
+        } as any,
+        error: null
+      });
+
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/me')) return Promise.resolve({ ok: true, json: async () => ({ user: realUser }) });
+        if (url.includes('/offers')) return Promise.resolve({ ok: true, json: async () => ({ offers: [offerWithPromo, offerNoPromo] }) });
+        return Promise.resolve({ ok: true, json: async () => ({ products: [], opportunities: [], creatives: [], experiments: [], decisions: [], audit_logs: [] }) });
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      );
+
+      const offersTab = await screen.findByRole('button', { name: /Ofertas/i }, { timeout: 8000 });
+      fireEvent.click(offersTab);
+
+      // P01: Promotional price rendered as main highlighted price (17,90), full price struck through (19,90)
+      expect(await screen.findByText('R$17,90')).toBeInTheDocument();
+      expect(screen.getByText('R$19,90')).toHaveClass('line-through');
+
+      // P02: Regular offer without promo shows full price (49,90) without line-through
+      expect(screen.getByText('R$49,90')).not.toHaveClass('line-through');
+    }, 20000);
+
+    it('P03, P04 & P05: checkout eligibility strictly governed by offer status (RASCUNHO vs TESTE vs ATIVA)', async () => {
+      const realUser = { id: 'usr-real-1', name: 'Real Admin User', role: 'ADMIN', email: 'admin@norqva.com' };
+      const draftOffer = {
+        id: 'off-draft',
+        human_id: 'OFF-DRAFT',
+        name: 'Oferta Rascunho',
+        price: 19.90,
+        promotional_price: 17.90,
+        product_id: 'prd-1',
+        product_name: 'Produto E2E',
+        description: 'Desc',
+        status: 'RASCUNHO',
+        is_demo: false
+      };
+      const testOffer = {
+        id: 'off-test',
+        human_id: 'OFF-TEST',
+        name: 'Oferta Teste',
+        price: 19.90,
+        promotional_price: 17.90,
+        product_id: 'prd-1',
+        product_name: 'Produto E2E',
+        description: 'Desc',
+        status: 'TESTE',
+        is_demo: false
+      };
+      const activeOffer = {
+        id: 'off-active',
+        human_id: 'OFF-ACTIVE',
+        name: 'Oferta Ativa',
+        price: 19.90,
+        promotional_price: 17.90,
+        product_id: 'prd-1',
+        product_name: 'Produto E2E',
+        description: 'Desc',
+        status: 'ATIVA',
+        is_demo: false
+      };
+
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: { access_token: 'token', user: { email: 'admin@norqva.com' } }
+        } as any,
+        error: null
+      });
+
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/me')) return Promise.resolve({ ok: true, json: async () => ({ user: realUser }) });
+        if (url.includes('/offers')) return Promise.resolve({ ok: true, json: async () => ({ offers: [draftOffer, testOffer, activeOffer] }) });
+        return Promise.resolve({ ok: true, json: async () => ({ products: [], opportunities: [], creatives: [], experiments: [], decisions: [], audit_logs: [] }) });
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      );
+
+      const offersTab = await screen.findByRole('button', { name: /Ofertas/i }, { timeout: 8000 });
+      fireEvent.click(offersTab);
+
+      // P03: Draft offer shows Checkout indisponível (RASCUNHO) and no checkout button for it
+      expect(await screen.findByText('Checkout indisponível (RASCUNHO)')).toBeInTheDocument();
+
+      // P04 & P05: TESTE and ATIVA offers render active Checkout buttons
+      const checkoutButtons = screen.getAllByRole('button', { name: /Checkout Oferta/i });
+      expect(checkoutButtons.length).toBe(2);
+    }, 20000);
+
+    it('P06: safe UI flow allows transition from RASCUNHO to TESTE', async () => {
+      const realUser = { id: 'usr-real-1', name: 'Real Admin User', role: 'ADMIN', email: 'admin@norqva.com' };
+      const draftOffer = {
+        id: 'off-1',
+        human_id: 'OFF-000001',
+        name: 'Oferta Rascunho',
+        price: 19.90,
+        promotional_price: 17.90,
+        product_id: 'prd-1',
+        product_name: 'Produto E2E',
+        description: 'Desc',
+        status: 'RASCUNHO',
+        is_demo: false
+      };
+
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: { access_token: 'token', user: { email: 'admin@norqva.com' } }
+        } as any,
+        error: null
+      });
+
+      const fetchSpy = vi.fn().mockImplementation((url: string, options?: any) => {
+        if (url.includes('/me')) return Promise.resolve({ ok: true, json: async () => ({ user: realUser }) });
+        if (url.includes('/offers/off-1') && options?.method === 'PUT') {
+          return Promise.resolve({ ok: true, json: async () => ({ offer: { ...draftOffer, status: 'TESTE' } }) });
+        }
+        if (url.includes('/offers')) return Promise.resolve({ ok: true, json: async () => ({ offers: [draftOffer] }) });
+        return Promise.resolve({ ok: true, json: async () => ({ products: [], opportunities: [], creatives: [], experiments: [], decisions: [], audit_logs: [] }) });
+      });
+      global.fetch = fetchSpy;
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      );
+
+      const offersTab = await screen.findByRole('button', { name: /Ofertas/i }, { timeout: 8000 });
+      fireEvent.click(offersTab);
+
+      // Transition button present
+      const activateTestBtn = await screen.findByRole('button', { name: /Ativar para Teste/i });
+      fireEvent.click(activateTestBtn);
+
+      await waitFor(() => {
+        const putCall = fetchSpy.mock.calls.find(c => String(c[0]).includes('/offers/off-1') && c[1]?.method === 'PUT');
+        expect(putCall).toBeDefined();
+        const body = JSON.parse(putCall![1].body);
+        expect(body.status).toBe('TESTE');
+      });
+    }, 20000);
   });
 });

@@ -307,4 +307,44 @@ describe('NORQVA Core Business Logic Validation', () => {
     expect(parseInt(afterRealCount.rows[0].count, 10)).toBe(1);
   });
 
+  it('should enforce state machine transitions on PUT /api/offers/:id', async () => {
+    const prdUuid = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO products (id, human_id, name, category, description, status, is_demo)
+       VALUES ($1, 'PRD-OFFTST01', 'Test Product for Offer', 'DIGITAL', 'Desc', 'PLANEJADO', TRUE)`,
+      [prdUuid]
+    );
+
+    const offUuid = crypto.randomUUID();
+
+    await pool.query(
+      `INSERT INTO offers (id, human_id, product_id, name, price, promotional_price, description, status, is_demo)
+       VALUES ($1, 'OFF-TST001', $2, 'Offer Transition Test', 19.90, 17.90, 'Desc', 'RASCUNHO', TRUE)`,
+      [offUuid, prdUuid]
+    );
+
+    // Invalid transition: RASCUNHO -> PAUSADA (should fail 409)
+    const invalidRes = await request(app)
+      .put(`/api/offers/${offUuid}?mode=demo`)
+      .set('x-user-role', 'ADMIN')
+      .send({ status: 'PAUSADA' });
+    expect(invalidRes.status).toBe(409);
+
+    // Valid transition: RASCUNHO -> TESTE (should succeed 200)
+    const validRes1 = await request(app)
+      .put(`/api/offers/${offUuid}?mode=demo`)
+      .set('x-user-role', 'ADMIN')
+      .send({ status: 'TESTE' });
+    expect(validRes1.status).toBe(200);
+    expect(validRes1.body.offer.status).toBe('TESTE');
+
+    // Valid transition: TESTE -> ATIVA (should succeed 200)
+    const validRes2 = await request(app)
+      .put(`/api/offers/${offUuid}?mode=demo`)
+      .set('x-user-role', 'ADMIN')
+      .send({ status: 'ATIVA' });
+    expect(validRes2.status).toBe(200);
+    expect(validRes2.body.offer.status).toBe('ATIVA');
+  });
+
 });

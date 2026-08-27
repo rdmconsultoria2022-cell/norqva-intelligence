@@ -367,6 +367,20 @@ export default function App() {
     }
   };
 
+  // Update Offer Status
+  const handleUpdateOfferStatus = async (offerId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/offers/${offerId}?mode=${isDemoView ? 'demo' : 'real'}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus })
+      });
+      showSuccess(`Status da oferta atualizado para ${newStatus}!`);
+      refreshOffers();
+    } catch (err: any) {
+      showError(err.message);
+    }
+  };
+
 
 
 
@@ -580,6 +594,7 @@ export default function App() {
               products={products}
               onAddOffer={() => setShowAddOffer(true)}
               onCheckout={(off: any) => setCheckoutOffer(off)}
+              onUpdateOfferStatus={handleUpdateOfferStatus}
             />
           )}
 
@@ -1411,7 +1426,7 @@ function ProductsView({ products, users, opportunities, currentUser, onAddProduc
 }
 
 // 4. Offers (Ofertas) Subcomponent
-function OffersView({ offers, products, onAddOffer, onCheckout }: any) {
+function OffersView({ offers, products, onAddOffer, onCheckout, onUpdateOfferStatus }: any) {
   return (
     <div className="space-y-6 text-sm">
       <div className="flex items-center justify-between">
@@ -1434,47 +1449,124 @@ function OffersView({ offers, products, onAddOffer, onCheckout }: any) {
             Nenhuma oferta cadastrada.
           </div>
         ) : (
-          offers.map((off: any) => (
-            <div key={off.id} className="p-4 border border-slate-800 bg-slate-900/30 rounded flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-emerald-400 font-bold text-xs">{off.human_id}</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400">
-                    {off.status}
-                  </span>
+          offers.map((off: any) => {
+            const hasPromo = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '';
+            const isCheckoutEligible = off.status === 'TESTE' || off.status === 'ATIVA';
+
+            return (
+              <div key={off.id} className="p-4 border border-slate-800 bg-slate-900/30 rounded flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-emerald-400 font-bold text-xs">{off.human_id}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                      off.status === 'ATIVA' ? 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-400' :
+                      off.status === 'TESTE' ? 'bg-cyan-950/60 border border-cyan-500/30 text-cyan-400' :
+                      off.status === 'PAUSADA' ? 'bg-amber-950/60 border border-amber-500/30 text-amber-400' :
+                      'bg-slate-800 text-slate-400'
+                    }`}>
+                      {off.status}
+                    </span>
+                  </div>
+                  <h3 className="text-md font-bold text-slate-200 mt-2">{off.name}</h3>
+                  <div className="text-[10px] text-slate-400 font-mono uppercase mt-0.5">Prod: {off.product_name}</div>
+                  
+                  <div className="mt-3 flex items-baseline gap-2">
+                    {hasPromo ? (
+                      <>
+                        <span className="text-xl font-bold font-mono text-emerald-400">
+                          R${parseFloat(off.promotional_price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-xs line-through text-slate-500 font-mono">
+                          R${parseFloat(off.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-xl font-bold font-mono text-emerald-400">
+                        R${parseFloat(off.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <p className="text-xs text-slate-300 mt-2 line-clamp-2">{off.description}</p>
                 </div>
-                <h3 className="text-md font-bold text-slate-200 mt-2">{off.name}</h3>
-                <div className="text-[10px] text-slate-400 font-mono uppercase mt-0.5">Prod: {off.product_name}</div>
-                
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-xl font-bold font-mono text-emerald-400">R${parseFloat(off.price).toLocaleString('pt-BR')}</span>
-                  {off.promotional_price && (
-                    <span className="text-xs line-through text-slate-500 font-mono">R${parseFloat(off.promotional_price).toLocaleString('pt-BR')}</span>
+
+                <div className="space-y-3">
+                  <div className="text-xs bg-slate-950/40 p-2.5 rounded font-mono space-y-1 text-slate-400">
+                    <div><span className="text-slate-500">Bônus:</span> {off.bonus || 'Nenhum'}</div>
+                    {off.upsell && <div><span className="text-slate-500">Upsell:</span> {off.upsell}</div>}
+                    {off.cross_sell && <div><span className="text-slate-500">Cross:</span> {off.cross_sell}</div>}
+                  </div>
+
+                  {/* Status transition controls */}
+                  {onUpdateOfferStatus && (
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60">
+                      {off.status === 'RASCUNHO' && (
+                        <button
+                          onClick={() => onUpdateOfferStatus(off.id, 'TESTE')}
+                          className="flex-1 py-1 px-2 rounded bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-900/40 text-[11px] font-mono font-semibold transition text-center"
+                        >
+                          Ativar para Teste (TESTE)
+                        </button>
+                      )}
+                      {off.status === 'TESTE' && (
+                        <>
+                          <button
+                            onClick={() => onUpdateOfferStatus(off.id, 'ATIVA')}
+                            className="flex-1 py-1 px-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40 text-[11px] font-mono font-semibold transition text-center"
+                          >
+                            Ativar Oferta (ATIVA)
+                          </button>
+                          <button
+                            onClick={() => onUpdateOfferStatus(off.id, 'PAUSADA')}
+                            className="py-1 px-2 rounded bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700 text-[11px] font-mono transition"
+                          >
+                            Pausar
+                          </button>
+                        </>
+                      )}
+                      {off.status === 'ATIVA' && (
+                        <button
+                          onClick={() => onUpdateOfferStatus(off.id, 'PAUSADA')}
+                          className="flex-1 py-1 px-2 rounded bg-amber-950/40 border border-amber-500/30 text-amber-400 hover:bg-amber-900/40 text-[11px] font-mono font-semibold transition text-center"
+                        >
+                          Pausar Oferta (PAUSADA)
+                        </button>
+                      )}
+                      {off.status === 'PAUSADA' && (
+                        <button
+                          onClick={() => onUpdateOfferStatus(off.id, 'ATIVA')}
+                          className="flex-1 py-1 px-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40 text-[11px] font-mono font-semibold transition text-center"
+                        >
+                          Reativar (ATIVA)
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Checkout button or blocker notice */}
+                  {isCheckoutEligible ? (
+                    onCheckout && (
+                      <button
+                        onClick={() => onCheckout(off)}
+                        className="w-full py-1.5 px-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5"
+                      >
+                        <ShoppingCart className="h-3.5 w-3.5" />
+                        Checkout Oferta
+                      </button>
+                    )
+                  ) : (
+                    <div
+                      className="w-full py-1.5 px-3 rounded bg-slate-950/60 border border-slate-850 text-slate-500 text-[11px] font-mono text-center flex items-center justify-center gap-1.5 select-none"
+                      title="Checkout bloqueado: status da oferta deve ser TESTE ou ATIVA"
+                    >
+                      <AlertTriangle className="h-3 w-3 text-slate-500" />
+                      Checkout indisponível ({off.status})
+                    </div>
                   )}
                 </div>
-                
-                <p className="text-xs text-slate-300 mt-2 line-clamp-2">{off.description}</p>
               </div>
-
-              <div className="space-y-3">
-                <div className="text-xs bg-slate-950/40 p-2.5 rounded font-mono space-y-1 text-slate-400">
-                  <div><span className="text-slate-500">Bônus:</span> {off.bonus || 'Nenhum'}</div>
-                  {off.upsell && <div><span className="text-slate-500">Upsell:</span> {off.upsell}</div>}
-                  {off.cross_sell && <div><span className="text-slate-500">Cross:</span> {off.cross_sell}</div>}
-                </div>
-
-                {onCheckout && (
-                  <button
-                    onClick={() => onCheckout(off)}
-                    className="w-full py-1.5 px-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5"
-                  >
-                    <ShoppingCart className="h-3.5 w-3.5" />
-                    Checkout Oferta
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

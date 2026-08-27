@@ -18,6 +18,7 @@ import {
   updateProduct,
   getOffers,
   createOffer,
+  updateOffer,
   getCreatives,
   createCreative,
   getExperiments,
@@ -200,6 +201,7 @@ app.put('/api/products/:id', requireRole(['PRODUCT', 'ADMIN']), updateProduct);
 
 app.get('/api/offers', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOffers);
 app.post('/api/offers', requireRole(['PRODUCT', 'ADMIN']), createOffer);
+app.put('/api/offers/:id', requireRole(['PRODUCT', 'ADMIN']), updateOffer);
 
 app.get('/api/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreatives);
 app.post('/api/creatives', requireRole(['CREATIVE', 'ADMIN']), createCreative);

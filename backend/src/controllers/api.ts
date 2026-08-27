@@ -653,6 +653,87 @@ export async function createOffer(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+const VALID_OFFER_TRANSITIONS: Record<string, string[]> = {
+  'RASCUNHO': ['TESTE', 'ATIVA', 'ARQUIVADA'],
+  'TESTE': ['ATIVA', 'PAUSADA', 'ARQUIVADA', 'RASCUNHO'],
+  'ATIVA': ['PAUSADA', 'ARQUIVADA'],
+  'PAUSADA': ['ATIVA', 'TESTE', 'ARQUIVADA'],
+  'ARQUIVADA': []
+};
+
+export async function updateOffer(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const client = await pool.connect();
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const { id } = req.params;
+    const { name, price, promotional_price, bonus, description, upsell, cross_sell, status } = req.body;
+
+    await client.query('BEGIN');
+
+    const offQuery = await client.query('SELECT * FROM offers WHERE id = $1 AND is_deleted = FALSE FOR UPDATE', [id]);
+    if (offQuery.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Offer not found.' });
+    }
+
+    const existingOffer = offQuery.rows[0];
+
+    if (existingOffer.is_demo !== isDemo) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Conflito de escopo: A oferta pertence a um escopo diferente.' });
+    }
+
+    if (status && status !== existingOffer.status) {
+      const allowed = VALID_OFFER_TRANSITIONS[existingOffer.status] || [];
+      if (!allowed.includes(status)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Transição de status inválida de ${existingOffer.status} para ${status}.` });
+      }
+    }
+
+    const updatedName = name !== undefined ? name : existingOffer.name;
+    const updatedPrice = price !== undefined ? price : existingOffer.price;
+    const updatedPromo = promotional_price !== undefined ? promotional_price : existingOffer.promotional_price;
+    const updatedBonus = bonus !== undefined ? bonus : existingOffer.bonus;
+    const updatedDesc = description !== undefined ? description : existingOffer.description;
+    const updatedUpsell = upsell !== undefined ? upsell : existingOffer.upsell;
+    const updatedCross = cross_sell !== undefined ? cross_sell : existingOffer.cross_sell;
+    const updatedStatus = status !== undefined ? status : existingOffer.status;
+
+    const updateRes = await client.query(
+      `UPDATE offers
+       SET name = $1, price = $2, promotional_price = $3, bonus = $4, description = $5, upsell = $6, cross_sell = $7, status = $8
+       WHERE id = $9
+       RETURNING *`,
+      [updatedName, updatedPrice, updatedPromo, updatedBonus, updatedDesc, updatedUpsell, updatedCross, updatedStatus, id]
+    );
+
+    const offer = updateRes.rows[0];
+
+    await client.query('COMMIT');
+
+    writeAuditLog(
+      pool,
+      req.user?.id || null,
+      'OFFER_STATUS_UPDATE',
+      `Updated offer ${existingOffer.human_id} status to ${updatedStatus}`,
+      JSON.stringify(existingOffer),
+      JSON.stringify(offer),
+      isDemo,
+      false
+    );
+
+    return res.status(200).json({ offer });
+  } catch (err: any) {
+    await client.query('ROLLBACK');
+    console.error('Update offer error:', err);
+    return res.status(500).json({ error: 'Failed to update offer.' });
+  } finally {
+    client.release();
+  }
+}
+
 // 6. Creatives
 export async function getCreatives(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');

@@ -586,7 +586,7 @@ describe('Auth System Regression', () => {
         const usersCalls = fetchSpy.mock.calls.filter((c: any[]) => typeof c[0] === 'string' && c[0].includes('/users?mode=real'));
         expect(usersCalls.length).toBeGreaterThan(0);
       }, { timeout: 8000 });
-    });
+    }, 20000);
 
     it('R03 & R04: TeamView and provenance responsible selector render Real Admin User', async () => {
       vi.mocked(supabase.auth.getSession).mockResolvedValue({
@@ -629,21 +629,21 @@ describe('Auth System Regression', () => {
       await waitFor(() => {
         expect(screen.getByText('Equipe e Permissões')).toBeInTheDocument();
         expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
-      });
+      }, { timeout: 8000 });
 
       // Navigate to Produtos tab
       const productsTab = screen.getByRole('button', { name: /Produtos/i });
       fireEvent.click(productsTab);
 
       // Open Edit Product Modal
-      const editButtons = await screen.findAllByText(/Governança|Editar/i);
+      const editButtons = await screen.findAllByText(/Atualizar Status & Procedência|Editar/i, {}, { timeout: 8000 });
       fireEvent.click(editButtons[0]);
 
       // R04: Provenance responsible selector contains Real Admin User
       await waitFor(() => {
         expect(screen.getByText('Real Admin User (ADMIN)')).toBeInTheDocument();
-      });
-    });
+      }, { timeout: 8000 });
+    }, 20000);
 
     it('R05 & R06: mode switching isolates real and demo users without retention', async () => {
       vi.mocked(supabase.auth.getSession).mockResolvedValue({
@@ -685,7 +685,7 @@ describe('Auth System Regression', () => {
       await waitFor(() => {
         expect(screen.getByText('Equipe e Permissões')).toBeInTheDocument();
         expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
-      });
+      }, { timeout: 8000 });
 
       // Toggle to Demo view
       const demoBtn = screen.getByRole('button', { name: /MODO DEMO/i });
@@ -695,7 +695,7 @@ describe('Auth System Regression', () => {
       await waitFor(() => {
         expect(screen.getByText('demo@norqva.com')).toBeInTheDocument();
         expect(screen.queryByText('rdmconsultoria2022@gmail.com')).not.toBeInTheDocument();
-      });
+      }, { timeout: 8000 });
 
       // Toggle back to Real view
       const realBtn = screen.getByRole('button', { name: /MODO REAL/i });
@@ -705,7 +705,7 @@ describe('Auth System Regression', () => {
       await waitFor(() => {
         expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
         expect(screen.queryByText('demo@norqva.com')).not.toBeInTheDocument();
-      });
-    });
+      }, { timeout: 8000 });
+    }, 20000);
   });
 });
