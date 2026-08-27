@@ -37,6 +37,7 @@ import { CheckoutView } from './features/checkout/CheckoutView';
 import { PaymentStatus } from './features/payment/PaymentStatus';
 import { DigitalDelivery } from './features/delivery/DigitalDelivery';
 import { DigitalAssetAdminModal } from './features/delivery/DigitalAssetAdminModal';
+import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { AppShell } from './components/layout/AppShell';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -632,6 +633,16 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'meta-ads' && (
+            <MetaAdsView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+            />
+          )}
+
           {activeTab === 'decisions' && (
             <DecisionsView decisions={decisions} />
           )}
@@ -645,6 +656,9 @@ export default function App() {
               isDemoView={isDemoView}
               currentUser={currentUser}
               auditLogs={auditLogs}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
               onClearDemo={handleClearDemoData}
             />
           )}
@@ -1680,8 +1694,58 @@ function TeamView({ users }: any) {
 }
 
 // 9. Config (Configurações) Subcomponent
-function ConfigView({ isDemoView, currentUser, auditLogs, onClearDemo }: any) {
+function ConfigView({ isDemoView, currentUser, auditLogs, apiFetch, showError, showSuccess, onClearDemo }: any) {
   const isAdmin = currentUser.role === 'ADMIN';
+  const [metaStatus, setMetaStatus] = useState<any>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const fetchMetaStatus = async () => {
+    if (!isAdmin) return;
+    try {
+      const mode = isDemoView ? 'demo' : 'real';
+      const res = await apiFetch(`/meta/connection/status?mode=${mode}`, {}, mode, currentUser);
+      setMetaStatus(res);
+    } catch (e) {
+      console.error('Meta status fetch error:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchMetaStatus();
+  }, [isDemoView]);
+
+  const handleValidateConnection = async () => {
+    setIsValidating(true);
+    try {
+      const mode = isDemoView ? 'demo' : 'real';
+      const res = await apiFetch(`/meta/connection/validate?mode=${mode}`, { method: 'POST' }, mode, currentUser);
+      if (res.success) {
+        showSuccess('Conexão com a Meta validada com sucesso!');
+      } else {
+        showError(res.error || 'Falha ao validar conexão com a Meta.');
+      }
+      await fetchMetaStatus();
+    } catch (err: any) {
+      showError(err.message || 'Erro ao validar conexão com a Meta.');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleSyncMeta = async () => {
+    setIsSyncing(true);
+    try {
+      const mode = isDemoView ? 'demo' : 'real';
+      const res = await apiFetch(`/meta/sync?mode=${mode}`, { method: 'POST' }, mode, currentUser);
+      showSuccess(res.message || 'Sincronização de aquisição concluída!');
+      await fetchMetaStatus();
+    } catch (err: any) {
+      showError(err.message || 'Erro durante a sincronização Meta.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <div className="space-y-6 text-sm">
@@ -1701,13 +1765,68 @@ function ConfigView({ isDemoView, currentUser, auditLogs, onClearDemo }: any) {
             </div>
             <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
               <span className="text-slate-500">DATABASE_PROVIDER</span>
-              <span className="text-slate-300">pg-mem (In-Memory Fallback)</span>
+              <span className="text-slate-300">PostgreSQL</span>
             </div>
             <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
               <span className="text-slate-500">NODE_ENV</span>
               <span className="text-slate-350">development</span>
             </div>
           </div>
+
+          {/* Meta Integration (ADMIN only) */}
+          {isAdmin && (
+            <div className="pt-4 border-t border-slate-850 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-350 flex items-center gap-1.5 font-mono">
+                  <TrendingUp className="h-3.5 w-3.5 text-blue-400" />
+                  Meta Ads Integration (Graph API {metaStatus?.apiVersion || 'v20.0'})
+                </h4>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                  metaStatus?.connected
+                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {metaStatus?.connected ? 'CONECTADO' : 'NÃO CONECTADO'}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs font-mono">
+                <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
+                  <span className="text-slate-500">Conta de Anúncios</span>
+                  <span className="text-slate-200">{metaStatus?.adAccountIdMasked || 'Não configurada'}</span>
+                </div>
+                <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
+                  <span className="text-slate-500">Moeda / Timezone</span>
+                  <span className="text-slate-200">{metaStatus?.currency || 'BRL'} ({metaStatus?.timezone || 'America/Sao_Paulo'})</span>
+                </div>
+                <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
+                  <span className="text-slate-500">Última Validação</span>
+                  <span className="text-slate-400 text-[10px]">
+                    {metaStatus?.lastValidatedAt ? new Date(metaStatus.lastValidatedAt).toLocaleString('pt-BR') : 'Nunca'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleValidateConnection}
+                  disabled={isValidating}
+                  className="flex-1 py-2 px-3 rounded border border-blue-600/40 bg-blue-950/20 text-blue-400 hover:bg-blue-950/40 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isValidating ? 'animate-spin' : ''}`} />
+                  {isValidating ? 'Validando...' : 'Validar Conexão'}
+                </button>
+                <button
+                  onClick={handleSyncMeta}
+                  disabled={isSyncing}
+                  className="flex-1 py-2 px-3 rounded bg-emerald-500 text-slate-950 hover:bg-emerald-400 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {isAdmin && (
             <div className="pt-4 border-t border-slate-850 space-y-3">

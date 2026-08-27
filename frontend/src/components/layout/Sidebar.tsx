@@ -11,6 +11,7 @@ import {
   Settings,
   User,
   LogOut,
+  TrendingUp,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -35,6 +36,7 @@ const navigationItems: NavigationItem[] = [
   { id: 'offers', label: 'Ofertas', icon: Tag },
   { id: 'creatives', label: 'Creative Lab', icon: Film },
   { id: 'experiments', label: 'Experimentos', icon: FlaskConical },
+  { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
   { id: 'decisions', label: 'Decisões', icon: Scale },
   { id: 'team', label: 'Equipe', icon: Users },
   { id: 'config', label: 'Configurações', icon: Settings }

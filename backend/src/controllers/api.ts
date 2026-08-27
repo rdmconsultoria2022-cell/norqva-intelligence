@@ -3313,3 +3313,281 @@ export async function unlinkOfferDigitalAsset(req: AuthenticatedRequest, res: Re
     return res.status(500).json({ error: 'Failed to unlink asset from offer.' });
   }
 }
+
+// =============================================================================
+// META ACQUISITION CORE (PHASE A - READ-ONLY INGESTION)
+// =============================================================================
+
+import { MetaClient } from '../services/meta/metaClient';
+import { MetaSyncService } from '../services/meta/metaSyncService';
+
+export async function getMetaConnectionStatus(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to view Meta connection status.' });
+  }
+
+  const isDemo = req.query.mode === 'demo';
+
+  try {
+    const client = new MetaClient();
+    const liveStatus = await client.validateConnection(isDemo);
+
+    // Read last recorded DB connection info
+    const dbConnRes = await pool.query(
+      'SELECT status, meta_user_id, meta_user_name, token_reference, token_expires_at, last_validated_at FROM meta_connections WHERE is_demo = $1',
+      [isDemo]
+    );
+    const dbConn = dbConnRes.rows[0];
+
+    return res.status(200).json({
+      connected: liveStatus.connected,
+      environment: liveStatus.environment,
+      isConfigured: liveStatus.isConfigured,
+      adAccountIdMasked: liveStatus.adAccountIdMasked,
+      metaUserId: liveStatus.metaUserId || dbConn?.meta_user_id,
+      metaUserName: liveStatus.metaUserName || dbConn?.meta_user_name,
+      adAccountName: liveStatus.adAccountName,
+      currency: liveStatus.currency,
+      timezone: liveStatus.timezone,
+      accountStatus: liveStatus.accountStatus,
+      lastValidatedAt: liveStatus.lastValidatedAt || dbConn?.last_validated_at,
+      tokenExpirationStatus: liveStatus.tokenExpirationStatus,
+      apiVersion: client.getApiVersion(),
+      error: liveStatus.error
+    });
+  } catch (err: any) {
+    console.error('Get Meta connection status error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to retrieve Meta connection status.' });
+  }
+}
+
+export async function validateMetaConnection(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to validate Meta connection.' });
+  }
+
+  const isDemo = req.query.mode === 'demo';
+
+  try {
+    const client = new MetaClient();
+    const status = await client.validateConnection(isDemo);
+
+    if (status.connected) {
+      // Update meta_connections table without storing raw token
+      await pool.query(
+        `INSERT INTO meta_connections (is_demo, status, meta_user_id, meta_user_name, token_reference, last_validated_at, updated_at)
+         VALUES ($1, 'CONNECTED', $2, $3, $4, NOW(), NOW())
+         ON CONFLICT (is_demo)
+         DO UPDATE SET status = 'CONNECTED', meta_user_id = EXCLUDED.meta_user_id, meta_user_name = EXCLUDED.meta_user_name,
+                       token_reference = EXCLUDED.token_reference, last_validated_at = NOW(), updated_at = NOW()`,
+        [isDemo, status.metaUserId || null, status.metaUserName || null, isDemo ? 'env:DEMO_MOCK' : 'env:META_ACCESS_TOKEN']
+      );
+
+      await writeAuditLog(
+        pool,
+        req.user?.id || null,
+        'META_CONNECTION_VALIDATED',
+        `Meta Graph API (${client.getApiVersion()}) connection validated successfully for user ${status.metaUserName || 'Operator'}.`,
+        null,
+        `Account: ${status.adAccountIdMasked || 'All'}`,
+        isDemo,
+        false
+      );
+
+      return res.status(200).json({ success: true, status });
+    } else {
+      await pool.query(
+        `INSERT INTO meta_connections (is_demo, status, last_validated_at, updated_at)
+         VALUES ($1, 'ERROR', NOW(), NOW())
+         ON CONFLICT (is_demo)
+         DO UPDATE SET status = 'ERROR', last_validated_at = NOW(), updated_at = NOW()`,
+        [isDemo]
+      );
+
+      await writeAuditLog(
+        pool,
+        req.user?.id || null,
+        'META_CONNECTION_FAILED',
+        `Meta connection validation failed: ${status.error || 'Invalid credentials'}`,
+        null,
+        null,
+        isDemo,
+        false
+      );
+
+      return res.status(400).json({ success: false, error: status.error || 'Meta connection validation failed.' });
+    }
+  } catch (err: any) {
+    console.error('Validate Meta connection error:', err);
+    await writeAuditLog(pool, req.user?.id || null, 'META_CONNECTION_FAILED', `Exception: ${err.message}`, null, null, isDemo, false);
+    return res.status(500).json({ error: err.message || 'Internal error validating Meta connection.' });
+  }
+}
+
+export async function getMetaAdAccounts(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required.' });
+  }
+
+  const isDemo = req.query.mode === 'demo';
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM meta_ad_accounts WHERE is_demo = $1 ORDER BY created_at DESC',
+      [isDemo]
+    );
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get Meta Ad Accounts error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve Meta Ad Accounts.' });
+  }
+}
+
+export async function getMetaCampaigns(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const isDemo = req.query.mode === 'demo';
+  const { ad_account_id } = req.query;
+
+  try {
+    let query = 'SELECT mc.*, ma.name as account_name FROM meta_campaigns mc JOIN meta_ad_accounts ma ON ma.id = mc.ad_account_id WHERE mc.is_demo = $1';
+    const params: any[] = [isDemo];
+
+    if (ad_account_id) {
+      params.push(ad_account_id);
+      query += ` AND mc.ad_account_id = $${params.length}`;
+    }
+
+    query += ' ORDER BY mc.created_at DESC';
+
+    const result = await pool.query(query, params);
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get Meta Campaigns error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve Meta Campaigns.' });
+  }
+}
+
+export async function getMetaAdSets(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const isDemo = req.query.mode === 'demo';
+  const { campaign_id } = req.query;
+
+  try {
+    let query = 'SELECT mas.*, mc.name as campaign_name FROM meta_ad_sets mas JOIN meta_campaigns mc ON mc.id = mas.campaign_id WHERE mas.is_demo = $1';
+    const params: any[] = [isDemo];
+
+    if (campaign_id) {
+      params.push(campaign_id);
+      query += ` AND mas.campaign_id = $${params.length}`;
+    }
+
+    query += ' ORDER BY mas.created_at DESC';
+
+    const result = await pool.query(query, params);
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get Meta Ad Sets error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve Meta Ad Sets.' });
+  }
+}
+
+export async function getMetaAds(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const isDemo = req.query.mode === 'demo';
+  const { adset_id } = req.query;
+
+  try {
+    let query = 'SELECT ma.*, mas.name as adset_name FROM meta_ads ma JOIN meta_ad_sets mas ON mas.id = ma.adset_id WHERE ma.is_demo = $1';
+    const params: any[] = [isDemo];
+
+    if (adset_id) {
+      params.push(adset_id);
+      query += ` AND ma.adset_id = $${params.length}`;
+    }
+
+    query += ' ORDER BY ma.created_at DESC';
+
+    const result = await pool.query(query, params);
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get Meta Ads error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve Meta Ads.' });
+  }
+}
+
+export async function getMetaInsights(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const isDemo = req.query.mode === 'demo';
+  const { level, campaign_id, date_start, date_stop } = req.query;
+
+  try {
+    let query = `
+      SELECT mi.*, 
+             mc.name as campaign_name,
+             mas.name as adset_name,
+             ma.name as ad_name
+      FROM meta_insights mi
+      LEFT JOIN meta_campaigns mc ON mc.id = mi.campaign_id
+      LEFT JOIN meta_ad_sets mas ON mas.id = mi.adset_id
+      LEFT JOIN meta_ads ma ON ma.id = mi.ad_id
+      WHERE mi.is_demo = $1
+    `;
+    const params: any[] = [isDemo];
+
+    if (level) {
+      params.push(String(level).toUpperCase());
+      query += ` AND mi.entity_level = $${params.length}`;
+    }
+
+    if (campaign_id) {
+      params.push(campaign_id);
+      query += ` AND mi.campaign_id = $${params.length}`;
+    }
+
+    if (date_start) {
+      params.push(date_start);
+      query += ` AND mi.date_start >= $${params.length}`;
+    }
+
+    if (date_stop) {
+      params.push(date_stop);
+      query += ` AND mi.date_stop <= $${params.length}`;
+    }
+
+    query += ' ORDER BY mi.date_start DESC, mi.spend DESC';
+
+    const result = await pool.query(query, params);
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get Meta Insights error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve Meta Insights.' });
+  }
+}
+
+export async function syncMetaData(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to perform Meta synchronization.' });
+  }
+
+  const isDemo = req.query.mode === 'demo';
+
+  try {
+    const syncService = new MetaSyncService();
+    const result = await syncService.syncAll(pool, req.user?.id || null, isDemo);
+    return res.status(200).json({
+      message: 'Meta acquisition data synchronized successfully.',
+      result
+    });
+  } catch (err: any) {
+    console.error('Sync Meta data error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to synchronize Meta acquisition data.' });
+  }
+}

@@ -143,6 +143,7 @@ export function useAuth() {
       // C. If a valid Supabase session exists:
       if (session) {
         setAuthMode('real');
+        setIsDemoView(false);
         authModeRef.current = 'real';
         try {
           const meRes = await fetch(`${API_BASE}/me`, {

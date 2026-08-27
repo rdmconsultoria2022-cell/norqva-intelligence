@@ -54,7 +54,15 @@ import {
   linkOfferDigitalAsset,
   getOfferDigitalAssets,
   unlinkOfferDigitalAsset,
-  getMe
+  getMe,
+  getMetaConnectionStatus,
+  validateMetaConnection,
+  getMetaAdAccounts,
+  getMetaCampaigns,
+  getMetaAdSets,
+  getMetaAds,
+  getMetaInsights,
+  syncMetaData
 } from './controllers/api';
 
 import { securityHeaders } from './middleware/securityHeaders';
@@ -246,6 +254,16 @@ app.get('/api/digital-assets', requireRole(['ADMIN', 'OPERATIONS']), getDigitalA
 app.post('/api/offers/:id/digital-assets', requireRole(['ADMIN']), linkOfferDigitalAsset);
 app.get('/api/offers/:id/digital-assets', requireRole(['ADMIN', 'OPERATIONS', 'PRODUCT', 'INTELLIGENCE']), getOfferDigitalAssets);
 app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), unlinkOfferDigitalAsset);
+
+// Meta Acquisition Core (Phase A - Read-Only Ingestion)
+app.get('/api/meta/connection/status', requireRole(['ADMIN']), getMetaConnectionStatus);
+app.post('/api/meta/connection/validate', requireRole(['ADMIN']), validateMetaConnection);
+app.get('/api/meta/ad-accounts', requireRole(['ADMIN']), getMetaAdAccounts);
+app.get('/api/meta/campaigns', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaCampaigns);
+app.get('/api/meta/adsets', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAdSets);
+app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAds);
+app.get('/api/meta/insights', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaInsights);
+app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
 
 // 5. Centralized Error Handler (Must be registered last)
 app.use(errorHandler());
