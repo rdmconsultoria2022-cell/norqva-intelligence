@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
+import express from 'express';
 import { Pool } from 'pg';
 import http from 'http';
 import app from '../index';
@@ -9,6 +10,7 @@ import { seedDemoData } from '../db/seed';
 import { resetAllRateLimits, createRateLimiter } from '../middleware/rateLimiter';
 import { sanitizePayload } from '../middleware/logging';
 import { gracefulShutdown } from '../utils/shutdown';
+import { configureCors } from '../middleware/cors';
 
 let pool: Pool;
 
@@ -336,5 +338,91 @@ describe('GATE 2.5F Phase 2 — Backend Security & Reliability Hardening (H01 - 
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeGreaterThanOrEqual(250);
+  });
+
+  // H21: CORS normalization and preflight regression
+  describe('CORS Normalization and Preflight Regression', () => {
+    it('accepts exact allowed origin', async () => {
+      const corsApp = express();
+      const orig = process.env.CORS_ALLOWED_ORIGINS;
+      process.env.CORS_ALLOWED_ORIGINS = 'https://norqva-intelligence-frontend.vercel.app';
+      corsApp.use(configureCors());
+      corsApp.get('/test', (_req, res) => res.json({ ok: true }));
+
+      const res = await request(corsApp)
+        .get('/test')
+        .set('Origin', 'https://norqva-intelligence-frontend.vercel.app');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe('https://norqva-intelligence-frontend.vercel.app');
+      process.env.CORS_ALLOWED_ORIGINS = orig;
+    });
+
+    it('accepts incoming origin when env contains trailing slash', async () => {
+      const corsApp = express();
+      const orig = process.env.CORS_ALLOWED_ORIGINS;
+      process.env.CORS_ALLOWED_ORIGINS = 'https://norqva-intelligence-frontend.vercel.app/';
+      corsApp.use(configureCors());
+      corsApp.get('/test', (_req, res) => res.json({ ok: true }));
+
+      const res = await request(corsApp)
+        .get('/test')
+        .set('Origin', 'https://norqva-intelligence-frontend.vercel.app');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe('https://norqva-intelligence-frontend.vercel.app');
+      process.env.CORS_ALLOWED_ORIGINS = orig;
+    });
+
+    it('accepts incoming origin when env contains whitespace', async () => {
+      const corsApp = express();
+      const orig = process.env.CORS_ALLOWED_ORIGINS;
+      process.env.CORS_ALLOWED_ORIGINS = '  https://norqva-intelligence-frontend.vercel.app  , https://other-app.com  ';
+      corsApp.use(configureCors());
+      corsApp.get('/test', (_req, res) => res.json({ ok: true }));
+
+      const res = await request(corsApp)
+        .get('/test')
+        .set('Origin', 'https://norqva-intelligence-frontend.vercel.app');
+
+      expect(res.status).toBe(200);
+      process.env.CORS_ALLOWED_ORIGINS = orig;
+    });
+
+    it('rejects disallowed origin with 403', async () => {
+      const corsApp = express();
+      const orig = process.env.CORS_ALLOWED_ORIGINS;
+      const origNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      process.env.CORS_ALLOWED_ORIGINS = 'https://norqva-intelligence-frontend.vercel.app';
+      corsApp.use(configureCors());
+      corsApp.get('/test', (_req, res) => res.json({ ok: true }));
+
+      const res = await request(corsApp)
+        .get('/test')
+        .set('Origin', 'https://evil-attacker.com');
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('CORS origin not allowed.');
+      process.env.CORS_ALLOWED_ORIGINS = orig;
+      process.env.NODE_ENV = origNodeEnv;
+    });
+
+    it('returns 204 with preflight headers for valid OPTIONS /api/me request', async () => {
+      const orig = process.env.CORS_ALLOWED_ORIGINS;
+      process.env.CORS_ALLOWED_ORIGINS = 'https://norqva-intelligence-frontend.vercel.app';
+
+      const res = await request(app)
+        .options('/api/me')
+        .set('Origin', 'https://norqva-intelligence-frontend.vercel.app')
+        .set('Access-Control-Request-Method', 'GET')
+        .set('Access-Control-Request-Headers', 'authorization,content-type');
+
+      expect(res.status).toBe(204);
+      expect(res.headers['access-control-allow-origin']).toBe('https://norqva-intelligence-frontend.vercel.app');
+      expect(res.headers['access-control-allow-methods']).toContain('GET');
+      expect(res.headers['access-control-allow-headers']).toContain('Authorization');
+      process.env.CORS_ALLOWED_ORIGINS = orig;
+    });
   });
 });

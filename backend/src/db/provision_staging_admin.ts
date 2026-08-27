@@ -1,4 +1,4 @@
-﻿import { Pool } from 'pg';
+import { Pool } from 'pg';
 
 async function main() {
   const isTest = process.env.NODE_ENV === 'test';
@@ -38,15 +38,15 @@ async function main() {
     console.log('[Staging Admin Provisioning]: Initiating transaction...');
     await client.query('BEGIN');
 
-    const adminAuthUserId = 'c13c7068-ca1e-4509-87a1-c27658514d4e';
-    const adminEmail = 'admin@norqva.com';
-    const adminName = 'Admin User';
+    const adminAuthUserId = process.env.ADMIN_AUTH_USER_ID || '486d6688-3c33-41f1-8f86-8cee0311c733';
+    const adminEmail = process.env.ADMIN_EMAIL || 'rdmconsultoria2022@gmail.com';
+    const adminName = process.env.ADMIN_NAME || 'Admin User';
     const adminRole = 'ADMIN';
     const adminStatus = 'ACTIVE';
 
-    // 1. Remove any stale conflicting records with same auth_user_id but different email if any
+    // 1. Remove obsolete or conflicting records with same auth_user_id or email
     await client.query(
-      'DELETE FROM users WHERE auth_user_id = $1 AND email != $2',
+      'DELETE FROM users WHERE (auth_user_id = $1 AND email != $2) OR (email = $2 AND auth_user_id != $1)',
       [adminAuthUserId, adminEmail]
     );
 

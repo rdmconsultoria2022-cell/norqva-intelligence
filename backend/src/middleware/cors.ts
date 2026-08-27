@@ -1,4 +1,8 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
+
+export function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, '').toLowerCase();
+}
 
 export function configureCors() {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -10,7 +14,10 @@ export function configureCors() {
     }
 
     const envOrigins = process.env.CORS_ALLOWED_ORIGINS
-      ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim().toLowerCase())
+      ? process.env.CORS_ALLOWED_ORIGINS
+          .split(',')
+          .map(o => normalizeOrigin(o))
+          .filter(Boolean)
       : [];
 
     const defaultDevOrigins = [
@@ -18,13 +25,13 @@ export function configureCors() {
       'http://127.0.0.1:3000',
       'http://localhost:5173',
       'http://127.0.0.1:5173'
-    ];
+    ].map(o => normalizeOrigin(o));
 
     const allowedOrigins = process.env.NODE_ENV === 'production'
       ? envOrigins
       : Array.from(new Set([...envOrigins, ...defaultDevOrigins]));
 
-    const normalizedOrigin = origin.toLowerCase();
+    const normalizedOrigin = normalizeOrigin(origin);
     const isAllowed = allowedOrigins.includes(normalizedOrigin);
 
     if (isAllowed) {
