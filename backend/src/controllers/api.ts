@@ -1819,6 +1819,7 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
   }
 
   const isDemo = is_demo === true || is_demo === 'true';
+  const normalizedEmail = email.trim().toLowerCase();
 
   let encryptedCpf: string | null = null;
   let cpfHash: string | null = null;
@@ -1840,25 +1841,32 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
     const query = `
       INSERT INTO customers (id, name, email, phone, is_demo, cpf_cnpj_encrypted, cpf_cnpj_hash, cpf_cnpj_encryption_key_version)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, name, email, phone, is_demo, created_at
+      ON CONFLICT (email, is_demo) DO UPDATE
+      SET 
+        name = EXCLUDED.name,
+        phone = COALESCE(EXCLUDED.phone, customers.phone),
+        cpf_cnpj_encrypted = COALESCE(EXCLUDED.cpf_cnpj_encrypted, customers.cpf_cnpj_encrypted),
+        cpf_cnpj_hash = COALESCE(EXCLUDED.cpf_cnpj_hash, customers.cpf_cnpj_hash),
+        cpf_cnpj_encryption_key_version = COALESCE(EXCLUDED.cpf_cnpj_encryption_key_version, customers.cpf_cnpj_encryption_key_version)
+      RETURNING id, name, email, phone, is_demo, created_at, (xmax = 0) AS is_new
     `;
     const result = await pool.query(query, [
       crypto.randomUUID(),
-      name,
-      email,
-      phone || null,
+      name.trim(),
+      normalizedEmail,
+      phone ? phone.trim() : null,
       isDemo,
       encryptedCpf,
       cpfHash,
       keyVersion
     ]);
-    return res.status(201).json(result.rows[0]);
+    const row = result.rows[0];
+    const isNew = row.is_new;
+    delete row.is_new;
+    return res.status(isNew ? 201 : 200).json(row);
   } catch (err: any) {
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'Customer already exists with this email in this scope.' });
-    }
     console.error('Create customer error:', err);
-    return res.status(500).json({ error: 'Failed to create customer.' });
+    return res.status(500).json({ error: 'Failed to process customer.' });
   }
 }
 

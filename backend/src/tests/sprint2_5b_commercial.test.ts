@@ -64,44 +64,139 @@ afterAll(async () => {
 
 describe('NORQVA Commercial Integration - Gate 2.5B', () => {
 
-  it('should enforce customer email uniqueness compatible with DEMO/REAL', async () => {
-    // Create customer 1 (DEMO)
-    const res1 = await request(app)
-      .post('/api/customers')
-      .set('x-user-role', 'ADMIN')
-      .send({
-        name: 'John Demo',
-        email: 'john@example.com',
-        phone: '123456789',
-        is_demo: true
-      });
-    expect(res1.status).toBe(201);
-    expect(res1.body.is_demo).toBe(true);
+  describe('Customer Safe Reuse and Upsert Regression (C01 - C07)', () => {
+    it('C01, C02, C03, C04, C05: handles first creation, safe idempotent reuse, profile updates, and strict demo/real isolation', async () => {
+      // C01: first customer creation succeeds (DEMO)
+      const res1 = await request(app)
+        .post('/api/customers')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          name: 'John Initial',
+          email: 'john.reuse@example.com',
+          phone: '111111111',
+          is_demo: true
+        });
+      expect(res1.status).toBe(201);
+      expect(res1.body.is_demo).toBe(true);
+      expect(res1.body.name).toBe('John Initial');
+      const firstCustomerId = res1.body.id;
+      expect(firstCustomerId).toBeDefined();
 
-    // Create customer 2 (REAL) - same email allowed in different scope
-    const res2 = await request(app)
-      .post('/api/customers')
-      .set('x-user-role', 'ADMIN')
-      .send({
-        name: 'John Real',
-        email: 'john@example.com',
-        phone: '987654321',
-        is_demo: false
-      });
-    expect(res2.status).toBe(201);
-    expect(res2.body.is_demo).toBe(false);
+      // C02 & C04: same email same scope reuses same customer id and updates mutable profile fields safely
+      const res2 = await request(app)
+        .post('/api/customers')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          name: 'John Updated',
+          email: 'john.reuse@example.com',
+          phone: '999999999',
+          is_demo: true
+        });
+      expect([200, 201]).toContain(res2.status);
+      expect(res2.body.id).toBe(firstCustomerId); // Exact same ID preserved
+      expect(res2.body.name).toBe('John Updated');
+      expect(res2.body.phone).toBe('999999999');
 
-    // Create duplicate customer (DEMO) - should block
-    const res3 = await request(app)
-      .post('/api/customers')
-      .set('x-user-role', 'ADMIN')
-      .send({
-        name: 'John Demo 2',
-        email: 'john@example.com',
-        phone: '123123123',
-        is_demo: true
-      });
-    expect(res3.status).toBe(409);
+      // C03: no duplicate row created in customers table
+      const countRes = await pool.query(
+        'SELECT count(*) FROM customers WHERE email = $1 AND is_demo = TRUE',
+        ['john.reuse@example.com']
+      );
+      expect(parseInt(countRes.rows[0].count, 10)).toBe(1);
+
+      // C05: same email in different Demo/Real scope remains strictly isolated
+      const resReal = await request(app)
+        .post('/api/customers')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          name: 'John Real Scope',
+          email: 'john.reuse@example.com',
+          phone: '888888888',
+          is_demo: false
+        });
+      expect(resReal.status).toBe(201);
+      expect(resReal.body.is_demo).toBe(false);
+      expect(resReal.body.id).not.toBe(firstCustomerId); // Distinct ID in real scope
+
+      const realCountRes = await pool.query(
+        'SELECT count(*) FROM customers WHERE email = $1',
+        ['john.reuse@example.com']
+      );
+      expect(parseInt(realCountRes.rows[0].count, 10)).toBe(2); // 1 demo, 1 real
+    });
+
+    it('C06 & C07: repeat customer can create new independent orders while idempotency protection remains intact', async () => {
+      // Seed product and offer for test
+      const productId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO products (id, human_id, name, category, description, status, origin_provenance, origin_responsible_id, origin_evidence, is_demo)
+         VALUES ($1, 'PRD-C06-TEST', 'Repeat Order Product', 'EBOOK', 'Desc', 'ATIVO', 'ORIGINAL', $2, 'Evidence', FALSE)`,
+        [productId, testUserId]
+      );
+
+      const offerId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO offers (id, human_id, product_id, name, price, promotional_price, description, status, is_demo)
+         VALUES ($1, 'OFR-C06-TEST', $2, 'Repeat Order Offer', 17.90, NULL, 'Offer Desc', 'ATIVA', FALSE)`,
+        [offerId, productId]
+      );
+
+      // Create returning customer
+      const custRes = await request(app)
+        .post('/api/customers')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          name: 'Repeat Buyer',
+          email: 'repeat.buyer@example.com',
+          phone: '12345',
+          is_demo: false
+        });
+      const customerId = custRes.body.id;
+
+      // First independent order
+      const order1Key = `idemp-ord-1-${Date.now()}`;
+      const order1Res = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: offerId,
+          customer_id: customerId,
+          quantity: 1,
+          idempotency_key: order1Key
+        });
+      expect(order1Res.status).toBe(201);
+      const order1Id = order1Res.body.id;
+      expect(order1Id).toBeDefined();
+
+      // C06: Repeat customer creates a second independent order with new idempotency key
+      const order2Key = `idemp-ord-2-${Date.now()}`;
+      const order2Res = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: offerId,
+          customer_id: customerId,
+          quantity: 2,
+          idempotency_key: order2Key
+        });
+      expect(order2Res.status).toBe(201);
+      const order2Id = order2Res.body.id;
+      expect(order2Id).toBeDefined();
+      expect(order2Id).not.toBe(order1Id); // Distinct independent orders for same customer
+
+      // C07: Re-submitting with order1Key returns original order1Id (idempotency preserved)
+      const order1DuplicateRes = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: offerId,
+          customer_id: customerId,
+          quantity: 1,
+          idempotency_key: order1Key
+        });
+      expect(order1DuplicateRes.status).toBe(200);
+      expect(order1DuplicateRes.body.id).toBe(order1Id);
+    });
   });
 
   it('should implement server-side pricing and anti-tamper validation', async () => {
