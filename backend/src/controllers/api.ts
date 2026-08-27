@@ -3117,3 +3117,164 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
     }
   });
 }
+
+export async function createDigitalAsset(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to create digital assets.' });
+  }
+
+  const { name, storage_provider, storage_bucket, storage_path, is_demo } = req.body;
+
+  if (!name || typeof name !== 'string' || name.trim() === '') {
+    return res.status(400).json({ error: 'Field "name" is required.' });
+  }
+  if (!storage_bucket || typeof storage_bucket !== 'string' || storage_bucket.trim() === '') {
+    return res.status(400).json({ error: 'Field "storage_bucket" is required.' });
+  }
+  if (!storage_path || typeof storage_path !== 'string' || storage_path.trim() === '') {
+    return res.status(400).json({ error: 'Field "storage_path" is required.' });
+  }
+
+  const provider = (storage_provider && typeof storage_provider === 'string') ? storage_provider.trim().toUpperCase() : 'SUPABASE';
+  const assetIsDemo = is_demo !== undefined ? Boolean(is_demo) : (req.user?.is_demo ?? false);
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO digital_assets (name, storage_provider, storage_bucket, storage_path, is_demo)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, storage_provider, storage_bucket, storage_path, is_demo, created_at`,
+      [name.trim(), provider, storage_bucket.trim(), storage_path.trim(), assetIsDemo]
+    );
+
+    const createdAsset = result.rows[0];
+    await writeAuditLog(pool, req.user?.id || null, 'DIGITAL_ASSET_CREATED', `Digital asset '${createdAsset.name}' (${createdAsset.id}) created.`, null, null, assetIsDemo);
+
+    return res.status(201).json(createdAsset);
+  } catch (err: any) {
+    console.error('Create digital asset error:', err);
+    return res.status(500).json({ error: 'Failed to create digital asset.' });
+  }
+}
+
+export async function getDigitalAssets(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const { mode } = req.query;
+  const isDemo = mode === 'demo' ? true : (mode === 'real' ? false : (req.user?.is_demo ?? false));
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name, storage_provider, storage_bucket, storage_path, is_demo, created_at FROM digital_assets WHERE is_demo = $1 ORDER BY created_at DESC',
+      [isDemo]
+    );
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get digital assets error:', err);
+    return res.status(500).json({ error: 'Failed to query digital assets.' });
+  }
+}
+
+export async function linkOfferDigitalAsset(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to link digital assets.' });
+  }
+
+  const { id: offerId } = req.params;
+  const { asset_id } = req.body;
+
+  if (!asset_id || typeof asset_id !== 'string') {
+    return res.status(400).json({ error: 'Field "asset_id" is required.' });
+  }
+
+  try {
+    // 1. Verify offer exists
+    const offerRes = await pool.query('SELECT id, is_demo, name, human_id FROM offers WHERE id = $1', [offerId]);
+    if (offerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Offer not found.' });
+    }
+    const offer = offerRes.rows[0];
+
+    // 2. Verify asset exists
+    const assetRes = await pool.query('SELECT id, is_demo, name FROM digital_assets WHERE id = $1', [asset_id]);
+    if (assetRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Digital asset not found.' });
+    }
+    const asset = assetRes.rows[0];
+
+    // 3. Enforce Demo/Real scope match
+    if (offer.is_demo !== asset.is_demo) {
+      return res.status(400).json({
+        error: `Cross-scope link rejected: Offer is ${offer.is_demo ? 'DEMO' : 'REAL'} but Asset is ${asset.is_demo ? 'DEMO' : 'REAL'}.`
+      });
+    }
+
+    // 4. Insert mapping
+    await pool.query(
+      `INSERT INTO offer_digital_assets (offer_id, asset_id)
+       VALUES ($1, $2)
+       ON CONFLICT (offer_id, asset_id) DO NOTHING`,
+      [offer.id, asset.id]
+    );
+
+    await writeAuditLog(pool, req.user?.id || null, 'OFFER_ASSET_LINKED', `Linked asset '${asset.name}' (${asset.id}) to offer '${offer.name}' (${offer.human_id || offer.id}).`, null, null, offer.is_demo);
+
+    return res.status(201).json({
+      message: 'Asset linked to offer successfully.',
+      offer_id: offer.id,
+      asset_id: asset.id
+    });
+  } catch (err: any) {
+    console.error('Link offer digital asset error:', err);
+    return res.status(500).json({ error: 'Failed to link asset to offer.' });
+  }
+}
+
+export async function getOfferDigitalAssets(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const { id: offerId } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT a.id, a.name, a.storage_provider, a.storage_bucket, a.storage_path, a.is_demo, a.created_at, oda.created_at as linked_at
+       FROM offer_digital_assets oda
+       JOIN digital_assets a ON oda.asset_id = a.id
+       WHERE oda.offer_id = $1
+       ORDER BY oda.created_at DESC`,
+      [offerId]
+    );
+    return res.status(200).json(result.rows);
+  } catch (err: any) {
+    console.error('Get offer digital assets error:', err);
+    return res.status(500).json({ error: 'Failed to query offer digital assets.' });
+  }
+}
+
+export async function unlinkOfferDigitalAsset(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to unlink digital assets.' });
+  }
+
+  const { id: offerId, assetId } = req.params;
+
+  try {
+    const deleteRes = await pool.query(
+      'DELETE FROM offer_digital_assets WHERE offer_id = $1 AND asset_id = $2 RETURNING *',
+      [offerId, assetId]
+    );
+
+    if (deleteRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Asset mapping not found for this offer.' });
+    }
+
+    await writeAuditLog(pool, req.user?.id || null, 'OFFER_ASSET_UNLINKED', `Unlinked asset ${assetId} from offer ${offerId}.`, null, null, false);
+    return res.status(200).json({ message: 'Asset unlinked successfully.', offer_id: offerId, asset_id: assetId });
+  } catch (err: any) {
+    console.error('Unlink offer digital asset error:', err);
+    return res.status(500).json({ error: 'Failed to unlink asset from offer.' });
+  }
+}

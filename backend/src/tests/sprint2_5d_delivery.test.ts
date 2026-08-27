@@ -613,4 +613,246 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
 
     await expect(pool.query('DELETE FROM payments WHERE id = $1', [payment.id])).rejects.toThrow();
   });
+
+  describe('Digital Asset Administration & E2E Delivery Flow (D01 - D10)', () => {
+    let adminAsset: any;
+    let customOffer: any;
+
+    async function createCustomOrderAndPayment(off: any) {
+      const orderRes = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', adminToken)
+        .send({
+          offer_id: off.id,
+          quantity: 1,
+          customer_id: demoCustomer.id,
+          idempotency_key: crypto.randomUUID()
+        });
+      const order = orderRes.body;
+
+      const provPayId = `pay_${crypto.randomUUID().slice(0, 8)}`;
+      const paymentRes = await pool.query(
+        `INSERT INTO payments (human_id, order_id, provider, status, amount, idempotency_key, is_demo, external_reference, provider_payment_id)
+         VALUES ($1, $2, 'ASAAS', 'PENDING', 40.00, $3, $4, $5, $6) RETURNING *`,
+        [`PMT-${crypto.randomUUID().slice(0, 8)}`, order.id, crypto.randomUUID(), off.is_demo, order.id, provPayId]
+      );
+      return { order, payment: paymentRes.rows[0] };
+    }
+
+    test('D01: ADMIN can create digital asset', async () => {
+      const res = await request(app)
+        .post('/api/digital-assets')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          name: 'NORQVA E2E Digital Delivery Test',
+          storage_provider: 'SUPABASE',
+          storage_bucket: 'digital-products',
+          storage_path: 'staging/NORQVA-E2E-Teste.pdf',
+          is_demo: true
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.id).toBeDefined();
+      expect(res.body.name).toBe('NORQVA E2E Digital Delivery Test');
+      expect(res.body.storage_bucket).toBe('digital-products');
+      adminAsset = res.body;
+    });
+
+    test('D02: non-ADMIN cannot create digital asset', async () => {
+      const res = await request(app)
+        .post('/api/digital-assets')
+        .set('x-user-role', 'CREATIVE')
+        .send({
+          name: 'Unauthorized Asset',
+          storage_bucket: 'digital-products',
+          storage_path: 'unauth.pdf'
+        });
+
+      expect(res.status).toBe(403);
+    });
+
+    test('D03: ADMIN can link asset to offer', async () => {
+      // Create a dedicated offer matching the default 40.00 price
+      const offerId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo) 
+         VALUES ($1, 'OFF-LINK-01', 'Link Test Offer', $2, 50.00, 40.00, 'ATIVA', 'Desc', true)`,
+        [offerId, demoProduct.id]
+      );
+      customOffer = (await pool.query('SELECT * FROM offers WHERE id = $1', [offerId])).rows[0];
+
+      const res = await request(app)
+        .post(`/api/offers/${customOffer.id}/digital-assets`)
+        .set('x-user-role', 'ADMIN')
+        .send({ asset_id: adminAsset.id });
+
+      expect(res.status).toBe(201);
+      expect(res.body.message).toContain('Asset linked to offer successfully');
+    });
+
+    test('D04: duplicate offer/asset link prevented', async () => {
+      const res = await request(app)
+        .post(`/api/offers/${customOffer.id}/digital-assets`)
+        .set('x-user-role', 'ADMIN')
+        .send({ asset_id: adminAsset.id });
+
+      expect(res.status).toBe(201);
+      const rows = (await pool.query('SELECT * FROM offer_digital_assets WHERE offer_id = $1 AND asset_id = $2', [customOffer.id, adminAsset.id])).rows;
+      expect(rows.length).toBe(1);
+    });
+
+    test('D05: Demo/Real cross-scope link rejected', async () => {
+      // Create a REAL asset
+      const realAssetRes = await pool.query(
+        `INSERT INTO digital_assets (name, storage_provider, storage_bucket, storage_path, is_demo)
+         VALUES ('Real Asset', 'SUPABASE', 'bucket', 'real.pdf', false)
+         RETURNING id`
+      );
+      const realAssetId = realAssetRes.rows[0].id;
+
+      // Try to link real asset to demo offer
+      const res = await request(app)
+        .post(`/api/offers/${customOffer.id}/digital-assets`)
+        .set('x-user-role', 'ADMIN')
+        .send({ asset_id: realAssetId });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Cross-scope link rejected');
+    });
+
+    test('D06: paid future order creates delivery', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+
+      // Confirm payment via webhook
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: {
+            id: payment.provider_payment_id,
+            externalReference: payment.id,
+            value: 40.00
+          }
+        });
+
+      const delivs = (await pool.query('SELECT * FROM order_deliveries WHERE order_id = $1', [order.id])).rows;
+      expect(delivs.length).toBe(1);
+      expect(delivs[0].asset_id).toBe(adminAsset.id);
+      expect(delivs[0].status).toBe('ACTIVE');
+    });
+
+    test('D07: duplicate webhook does not duplicate delivery', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+
+      // 1st webhook
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // 2nd duplicate webhook
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_CONFIRMED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const delivs = (await pool.query('SELECT * FROM order_deliveries WHERE order_id = $1', [order.id])).rows;
+      expect(delivs.length).toBe(1);
+    });
+
+    test('D08: old paid order is not backfilled', async () => {
+      // Create an old order paid prior to asset linking
+      const unlinkedOfferId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo) 
+         VALUES ($1, 'OFF-UNLINK-01', 'Unlinked Old Offer', $2, 50.00, 40.00, 'ATIVA', 'Desc', true)`,
+        [unlinkedOfferId, demoProduct.id]
+      );
+      const unlinkedOffer = (await pool.query('SELECT * FROM offers WHERE id = $1', [unlinkedOfferId])).rows[0];
+
+      const { order: oldOrder, payment: payRecord } = await createCustomOrderAndPayment(unlinkedOffer);
+
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payRecord.provider_payment_id, externalReference: payRecord.id, value: 40.00 }
+        });
+
+      // Verify deliveries count is 0
+      const oldDelivs = (await pool.query('SELECT * FROM order_deliveries WHERE order_id = $1', [oldOrder.id])).rows;
+      expect(oldDelivs.length).toBe(0);
+
+      // Now link an asset to that offer
+      await request(app)
+        .post(`/api/offers/${unlinkedOfferId}/digital-assets`)
+        .set('x-user-role', 'ADMIN')
+        .send({ asset_id: adminAsset.id });
+
+      // Old order must STILL have 0 deliveries (no retroactive backfill)
+      const afterDelivs = (await pool.query('SELECT * FROM order_deliveries WHERE order_id = $1', [oldOrder.id])).rows;
+      expect(afterDelivs.length).toBe(0);
+    });
+
+    test('D09: delivery token scoped to correct order/asset', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      expect(tokenRes.status).toBe(200);
+      expect(tokenRes.body.deliveries[0].assetId).toBe(adminAsset.id);
+      expect(tokenRes.body.deliveries[0].rawToken).toBeDefined();
+    });
+
+    test('D10: max-download limit enforced', async () => {
+      const { order, payment } = await createCustomOrderAndPayment(customOffer);
+
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      const rawToken = tokenRes.body.deliveries[0].rawToken;
+
+      // Set max_downloads = 2 for quick limit test
+      await pool.query('UPDATE order_deliveries SET max_downloads = 2 WHERE order_id = $1', [order.id]);
+
+      // 1st download
+      const dl1 = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(dl1.status).toBe(200);
+
+      // 2nd download
+      const dl2 = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(dl2.status).toBe(200);
+
+      // 3rd download (must be rejected)
+      const dl3 = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(dl3.status).toBe(403);
+      expect(dl3.body.error).toContain('Maximum download limit reached');
+    });
+  });
 });

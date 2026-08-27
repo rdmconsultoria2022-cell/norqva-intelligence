@@ -49,6 +49,11 @@ import {
   webhookAsaas,
   getDeliveryTokens,
   downloadDelivery,
+  createDigitalAsset,
+  getDigitalAssets,
+  linkOfferDigitalAsset,
+  getOfferDigitalAssets,
+  unlinkOfferDigitalAsset,
   getMe
 } from './controllers/api';
 
@@ -234,6 +239,13 @@ app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentByI
 app.post('/api/webhooks/asaas', webhookRateLimiter, webhookAsaas);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
+
+// Digital Assets Administration endpoints
+app.post('/api/digital-assets', requireRole(['ADMIN']), createDigitalAsset);
+app.get('/api/digital-assets', requireRole(['ADMIN', 'OPERATIONS']), getDigitalAssets);
+app.post('/api/offers/:id/digital-assets', requireRole(['ADMIN']), linkOfferDigitalAsset);
+app.get('/api/offers/:id/digital-assets', requireRole(['ADMIN', 'OPERATIONS', 'PRODUCT', 'INTELLIGENCE']), getOfferDigitalAssets);
+app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), unlinkOfferDigitalAsset);
 
 // 5. Centralized Error Handler (Must be registered last)
 app.use(errorHandler());

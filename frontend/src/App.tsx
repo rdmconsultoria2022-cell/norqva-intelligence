@@ -36,6 +36,7 @@ import { ExperimentsView } from './features/experiments/ExperimentsView';
 import { CheckoutView } from './features/checkout/CheckoutView';
 import { PaymentStatus } from './features/payment/PaymentStatus';
 import { DigitalDelivery } from './features/delivery/DigitalDelivery';
+import { DigitalAssetAdminModal } from './features/delivery/DigitalAssetAdminModal';
 import { AppShell } from './components/layout/AppShell';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -595,6 +596,9 @@ export default function App() {
               onAddOffer={() => setShowAddOffer(true)}
               onCheckout={(off: any) => setCheckoutOffer(off)}
               onUpdateOfferStatus={handleUpdateOfferStatus}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
             />
           )}
 
@@ -1426,7 +1430,9 @@ function ProductsView({ products, users, opportunities, currentUser, onAddProduc
 }
 
 // 4. Offers (Ofertas) Subcomponent
-function OffersView({ offers, products, onAddOffer, onCheckout, onUpdateOfferStatus }: any) {
+function OffersView({ offers, products, onAddOffer, onCheckout, onUpdateOfferStatus, apiFetch, showError, showSuccess }: any) {
+  const [managingAssetOffer, setManagingAssetOffer] = React.useState<any>(null);
+
   return (
     <div className="space-y-6 text-sm">
       <div className="flex items-center justify-between">
@@ -1496,6 +1502,15 @@ function OffersView({ offers, products, onAddOffer, onCheckout, onUpdateOfferSta
                     {off.upsell && <div><span className="text-slate-500">Upsell:</span> {off.upsell}</div>}
                     {off.cross_sell && <div><span className="text-slate-500">Cross:</span> {off.cross_sell}</div>}
                   </div>
+
+                  {/* Digital Assets Admin Link Button */}
+                  <button
+                    onClick={() => setManagingAssetOffer(off)}
+                    className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition flex items-center justify-center gap-1.5"
+                  >
+                    <Package className="h-3.5 w-3.5 text-emerald-400" />
+                    Ativos Digitais
+                  </button>
 
                   {/* Status transition controls */}
                   {onUpdateOfferStatus && (
@@ -1569,6 +1584,16 @@ function OffersView({ offers, products, onAddOffer, onCheckout, onUpdateOfferSta
           })
         )}
       </div>
+
+      {managingAssetOffer && (
+        <DigitalAssetAdminModal
+          offer={managingAssetOffer}
+          apiFetch={apiFetch}
+          onClose={() => setManagingAssetOffer(null)}
+          showError={showError || console.error}
+          showSuccess={showSuccess || console.log}
+        />
+      )}
     </div>
   );
 }
