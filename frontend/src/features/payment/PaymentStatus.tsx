@@ -1,6 +1,7 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, Copy, Check, Clock, AlertCircle, CheckCircle2, Loader2, X, RefreshCw } from 'lucide-react';
 import { PaymentStatusProps, PaymentInfo, PaymentStatusEnum } from './paymentTypes';
+import { API_BASE } from '../../lib/api';
 
 export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   orderId,
@@ -41,7 +42,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           ? crypto.randomUUID()
           : `pix-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-        const res = await fetch(`/api/checkout/orders/${orderId}/pix`, {
+        const res = await fetch(`${API_BASE}/checkout/orders/${orderId}/pix`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -94,7 +95,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
       if (!isMountedRef.current) return;
 
       try {
-        const res = await fetch(`/api/orders/${orderId}`, {
+        const res = await fetch(`${API_BASE}/orders/${orderId}`, {
           headers: {
             'Content-Type': 'application/json',
             'x-checkout-token': checkoutToken

@@ -491,5 +491,44 @@ describe('Auth System Regression', () => {
       expect(supabase.auth.signOut).toHaveBeenCalled();
       expect(result.current.currentUser).toBeNull();
     });
+
+    it('A08 STAGING VITE_API_BASE_URL is honored by auth /api/me request', async () => {
+      const { API_BASE } = await import('../lib/api');
+      const { supabase } = await import('../supabase');
+
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'staging-jwt-token',
+            user: { email: 'admin@norqva.com' }
+          }
+        } as any,
+        error: null
+      });
+
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user: mockUsers[0] })
+      });
+      global.fetch = fetchSpy;
+
+      const { renderHook } = await import('@testing-library/react');
+      const { useAuth } = await import('../features/auth/useAuth');
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.authMode).toBe('real');
+        expect(result.current.currentUser).toEqual(mockUsers[0]);
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `${API_BASE}/me`,
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer staging-jwt-token'
+          })
+        })
+      );
+    });
   });
 });

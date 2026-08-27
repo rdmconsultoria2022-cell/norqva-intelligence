@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabase';
 import { UserObj } from '../../types';
 
-const API_BASE = '/api';
+import { API_BASE } from '../../lib/api';
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserObj | null>(null);

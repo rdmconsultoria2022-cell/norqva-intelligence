@@ -1,6 +1,7 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Download, PackageCheck, FileCode, CheckCircle, AlertTriangle, Loader2, X } from 'lucide-react';
 import { DigitalDeliveryProps, DeliveryTokenItem, DownloadResult } from './deliveryTypes';
+import { API_BASE } from '../../lib/api';
 
 export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   orderId,
@@ -30,7 +31,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
     const fetchTokens = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/checkout/orders/${orderId}/delivery-tokens`, {
+        const res = await fetch(`${API_BASE}/checkout/orders/${orderId}/delivery-tokens`, {
           headers: {
             'Content-Type': 'application/json',
             'x-checkout-token': checkoutToken
@@ -74,7 +75,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
     try {
       // Request on-demand signed URL via secure backend token exchange
-      const res = await fetch(`/api/delivery/${item.rawToken}`);
+      const res = await fetch(`${API_BASE}/delivery/${item.rawToken}`);
       const data: DownloadResult = await res.json();
 
       if (!res.ok || !data.success || !data.download_url) {

@@ -44,8 +44,6 @@ import { apiFetch as apiFetchLib } from './lib/api';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './features/auth/useAuth';
 
-const API_BASE = '/api';
-
 
 
 

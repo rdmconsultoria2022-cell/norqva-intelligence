@@ -1,7 +1,7 @@
 import { supabase } from '../supabase';
 import { UserObj } from '../types';
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
+export const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
 
 export async function apiFetch(
   url: string,
