@@ -81,15 +81,24 @@ export class MetaClient {
   private appId?: string;
   private appSecret?: string;
 
-  constructor() {
+  constructor(explicitVersion?: string) {
     const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
     const isProdOrStaging = appEnv === 'production' || appEnv === 'staging';
 
-    if (isProdOrStaging && !process.env.META_API_VERSION) {
+    const rawVersion = explicitVersion || process.env.META_API_VERSION;
+
+    if (isProdOrStaging && !rawVersion) {
       throw new Error('[META INTEGRATION ERROR]: META_API_VERSION is strictly required in staging/production environment.');
     }
 
-    this.apiVersion = process.env.META_API_VERSION || 'v20.0';
+    const versionToUse = rawVersion || 'v26.0';
+    const versionRegex = /^v\d+\.\d+$/;
+
+    if (!versionRegex.test(versionToUse)) {
+      throw new Error(`[META CONFIG ERROR]: Invalid META_API_VERSION format "${versionToUse}". Expected format like "v26.0".`);
+    }
+
+    this.apiVersion = versionToUse;
     this.accessToken = process.env.META_ACCESS_TOKEN;
     this.adAccountId = process.env.META_AD_ACCOUNT_ID;
     this.appId = process.env.META_APP_ID;

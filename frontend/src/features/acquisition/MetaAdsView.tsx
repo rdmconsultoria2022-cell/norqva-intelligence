@@ -115,9 +115,11 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
             <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono uppercase">
               Aquisição — Meta Ads
             </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950 text-blue-400 border border-blue-500/30">
-              Graph API {status?.apiVersion || 'v20.0'}
-            </span>
+            {status?.apiVersion && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950 text-blue-400 border border-blue-500/30">
+                Graph API {status.apiVersion}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400">
             Ingestão e leitura em tempo real de campanhas, conjuntos de anúncios e métricas de mídia

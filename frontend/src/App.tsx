@@ -1779,7 +1779,7 @@ function ConfigView({ isDemoView, currentUser, auditLogs, apiFetch, showError, s
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-xs uppercase tracking-wider text-slate-350 flex items-center gap-1.5 font-mono">
                   <TrendingUp className="h-3.5 w-3.5 text-blue-400" />
-                  Meta Ads Integration (Graph API {metaStatus?.apiVersion || 'v20.0'})
+                  Meta Ads Integration {metaStatus?.apiVersion ? `(Graph API ${metaStatus.apiVersion})` : ''}
                 </h4>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
                   metaStatus?.connected

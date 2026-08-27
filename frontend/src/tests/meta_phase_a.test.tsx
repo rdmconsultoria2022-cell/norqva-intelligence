@@ -18,7 +18,7 @@ describe('Meta Acquisition Core Frontend (Phase A - Read-Only Ingestion)', () =>
     adAccountIdMasked: 'act_...DEMO',
     currency: 'BRL',
     timezone: 'America/Sao_Paulo',
-    apiVersion: 'v20.0'
+    apiVersion: 'v26.0'
   };
 
   const mockCampaigns = [

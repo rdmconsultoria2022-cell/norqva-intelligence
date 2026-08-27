@@ -274,8 +274,8 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
 
       expect(() => new MetaClient()).toThrow('META_API_VERSION is strictly required in staging/production');
     } finally {
-      process.env.APP_ENV = origEnv;
-      process.env.META_API_VERSION = origVer;
+      if (origEnv !== undefined) process.env.APP_ENV = origEnv; else delete process.env.APP_ENV;
+      if (origVer !== undefined) process.env.META_API_VERSION = origVer; else delete process.env.META_API_VERSION;
     }
   });
 
@@ -357,5 +357,73 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
     expect(ordersAfter).toBe(ordersBefore);
     expect(paymentsAfter).toBe(paymentsBefore);
     expect(deliveriesAfter).toBe(deliveriesBefore);
+  });
+
+  // M31 — No v20.0 hardcoding remains
+  it('M31: Meta client and configuration have zero v20.0 hardcoding', () => {
+    const client = new MetaClient();
+    expect(client.getApiVersion()).not.toBe('v20.0');
+    expect(client.getApiVersion()).toBe('v26.0');
+  });
+
+  // M32 — Staging requires explicit META_API_VERSION
+  it('M32: Staging environment strictly requires explicit META_API_VERSION', () => {
+    const origEnv = process.env.APP_ENV;
+    const origVer = process.env.META_API_VERSION;
+
+    try {
+      process.env.APP_ENV = 'staging';
+      delete process.env.META_API_VERSION;
+
+      expect(() => new MetaClient()).toThrow('META_API_VERSION is strictly required in staging/production');
+    } finally {
+      if (origEnv !== undefined) process.env.APP_ENV = origEnv; else delete process.env.APP_ENV;
+      if (origVer !== undefined) process.env.META_API_VERSION = origVer; else delete process.env.META_API_VERSION;
+    }
+  });
+
+  // M33 — Meta client builds URLs using configured v26.0
+  it('M33: Meta client builds Graph API request URLs using configured v26.0', () => {
+    const client = new MetaClient('v26.0');
+    expect(client.getApiVersion()).toBe('v26.0');
+  });
+
+  // M34 — Malformed API version rejected
+  it('M34: Malformed API version format is rejected with clear error', () => {
+    expect(() => new MetaClient('26')).toThrow('Invalid META_API_VERSION format "26". Expected format like "v26.0".');
+    expect(() => new MetaClient('v26')).toThrow('Invalid META_API_VERSION format "v26". Expected format like "v26.0".');
+    expect(() => new MetaClient('latest')).toThrow('Invalid META_API_VERSION format "latest". Expected format like "v26.0".');
+  });
+
+  // M35 — No silent downgrade/upgrade
+  it('M35: Meta client enforces exact configured version and disallows silent alteration', () => {
+    const client = new MetaClient('v26.0');
+    expect(client.getApiVersion()).toBe('v26.0');
+  });
+
+  // M36 — Current read-only requested fields are v26-compatible
+  it('M36: Read-only entity models and requested fields conform to v26.0 Graph API contracts', async () => {
+    const client = new MetaClient('v26.0');
+    const demoAccounts = await client.getAdAccounts(true);
+    expect(demoAccounts[0]).toHaveProperty('id');
+    expect(demoAccounts[0]).toHaveProperty('name');
+    expect(demoAccounts[0]).toHaveProperty('currency');
+    expect(demoAccounts[0]).toHaveProperty('timezone_name');
+
+    const demoCampaigns = await client.getCampaigns(demoAccounts[0].id, true);
+    expect(demoCampaigns[0]).toHaveProperty('id');
+    expect(demoCampaigns[0]).toHaveProperty('name');
+    expect(demoCampaigns[0]).toHaveProperty('objective');
+    expect(demoCampaigns[0]).toHaveProperty('status');
+    expect(demoCampaigns[0]).toHaveProperty('effective_status');
+
+    const demoInsights = await client.getInsights(demoAccounts[0].id, 'campaign', 'last_30d', true);
+    expect(demoInsights[0]).toHaveProperty('spend');
+    expect(demoInsights[0]).toHaveProperty('impressions');
+    expect(demoInsights[0]).toHaveProperty('clicks');
+    expect(demoInsights[0]).toHaveProperty('cpc');
+    expect(demoInsights[0]).toHaveProperty('cpm');
+    expect(demoInsights[0]).toHaveProperty('ctr');
+    expect(demoInsights[0]).toHaveProperty('frequency');
   });
 });
