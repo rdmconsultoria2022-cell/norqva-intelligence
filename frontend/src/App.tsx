@@ -239,11 +239,30 @@ export default function App() {
     }
   };
 
+  const refreshUsers = async () => {
+    if (!currentUser) return;
+    const modeParam = `?mode=${isDemoView ? 'demo' : 'real'}`;
+    try {
+      const res = await apiFetch(`/users${modeParam}`);
+      if (res && res.users) {
+        setUsersList(res.users);
+      }
+    } catch (err: any) {
+      showError(err.message);
+    }
+  };
+
   // Fetch all operational data
   const loadData = async () => {
     if (!currentUser) return;
     const modeParam = `?mode=${isDemoView ? 'demo' : 'real'}`;
     try {
+      // 0. Users
+      const usersRes = await apiFetch(`/users${modeParam}`);
+      if (usersRes && usersRes.users) {
+        setUsersList(usersRes.users);
+      }
+
       // 1. Opportunities
       const opps = await apiFetch(`/opportunities${modeParam}`);
       setOpportunities(opps.opportunities);

@@ -531,4 +531,181 @@ describe('Auth System Regression', () => {
       );
     });
   });
+
+  describe('Real Mode Users Loading Regression (R01 - R06)', () => {
+    const realAdminUser = { id: 'real-1', name: 'Real Admin User', role: 'ADMIN', email: 'rdmconsultoria2022@gmail.com', is_demo: false };
+    const demoAdminUser = { id: 'demo-1', name: 'Demo Admin User', role: 'ADMIN', email: 'demo@norqva.com', is_demo: true };
+    const mockProduct = {
+      id: 'prd-1',
+      human_id: 'PRD-000001',
+      name: 'Test Product',
+      category: 'DIGITAL',
+      description: 'Desc',
+      status: 'CRIADO',
+      estimated_cost: 100,
+      observations: '',
+      opportunity_id: null,
+      origin_provenance: null,
+      origin_responsible_id: null,
+      origin_evidence: null,
+      origin_notes: null
+    };
+
+    it('R01 & R02: real mode loadData fetches /users?mode=real and populates usersList', async () => {
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'staging-jwt-token',
+            user: { email: 'rdmconsultoria2022@gmail.com' }
+          }
+        } as any,
+        error: null
+      });
+
+      const fetchSpy = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/me')) {
+          return Promise.resolve({ ok: true, json: async () => ({ user: realAdminUser }) });
+        }
+        if (url.includes('/users')) {
+          return Promise.resolve({ ok: true, json: async () => ({ users: [realAdminUser] }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ opportunities: [], products: [], offers: [], creatives: [], experiments: [], decisions: [], audit_logs: [] })
+        });
+      });
+      global.fetch = fetchSpy;
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        const usersCalls = fetchSpy.mock.calls.filter((c: any[]) => typeof c[0] === 'string' && c[0].includes('/users?mode=real'));
+        expect(usersCalls.length).toBeGreaterThan(0);
+      }, { timeout: 8000 });
+    });
+
+    it('R03 & R04: TeamView and provenance responsible selector render Real Admin User', async () => {
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'staging-jwt-token',
+            user: { email: 'rdmconsultoria2022@gmail.com' }
+          }
+        } as any,
+        error: null
+      });
+
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/me')) {
+          return Promise.resolve({ ok: true, json: async () => ({ user: realAdminUser }) });
+        }
+        if (url.includes('/users')) {
+          return Promise.resolve({ ok: true, json: async () => ({ users: [realAdminUser] }) });
+        }
+        if (url.includes('/products')) {
+          return Promise.resolve({ ok: true, json: async () => ({ products: [mockProduct] }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ opportunities: [], products: [mockProduct], offers: [], creatives: [], experiments: [], decisions: [], audit_logs: [] })
+        });
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      );
+
+      // Wait for Intro to complete and navigate to Equipe tab
+      const teamTab = await screen.findByRole('button', { name: /Equipe/i }, { timeout: 8000 });
+      fireEvent.click(teamTab);
+
+      // R03: TeamView renders Real Admin User email and title
+      await waitFor(() => {
+        expect(screen.getByText('Equipe e Permissões')).toBeInTheDocument();
+        expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
+      });
+
+      // Navigate to Produtos tab
+      const productsTab = screen.getByRole('button', { name: /Produtos/i });
+      fireEvent.click(productsTab);
+
+      // Open Edit Product Modal
+      const editButtons = await screen.findAllByText(/Governança|Editar/i);
+      fireEvent.click(editButtons[0]);
+
+      // R04: Provenance responsible selector contains Real Admin User
+      await waitFor(() => {
+        expect(screen.getByText('Real Admin User (ADMIN)')).toBeInTheDocument();
+      });
+    });
+
+    it('R05 & R06: mode switching isolates real and demo users without retention', async () => {
+      vi.mocked(supabase.auth.getSession).mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'staging-jwt-token',
+            user: { email: 'rdmconsultoria2022@gmail.com' }
+          }
+        } as any,
+        error: null
+      });
+
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/me')) {
+          return Promise.resolve({ ok: true, json: async () => ({ user: realAdminUser }) });
+        }
+        if (url.includes('/users?mode=real') || (url.includes('/users') && !url.includes('mode=demo'))) {
+          return Promise.resolve({ ok: true, json: async () => ({ users: [realAdminUser] }) });
+        }
+        if (url.includes('/users?mode=demo')) {
+          return Promise.resolve({ ok: true, json: async () => ({ users: [demoAdminUser] }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ opportunities: [], products: [], offers: [], creatives: [], experiments: [], decisions: [], audit_logs: [] })
+        });
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      );
+
+      const teamTab = await screen.findByRole('button', { name: /Equipe/i }, { timeout: 8000 });
+      fireEvent.click(teamTab);
+
+      // Initially in real view
+      await waitFor(() => {
+        expect(screen.getByText('Equipe e Permissões')).toBeInTheDocument();
+        expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
+      });
+
+      // Toggle to Demo view
+      const demoBtn = screen.getByRole('button', { name: /MODO DEMO/i });
+      fireEvent.click(demoBtn);
+
+      // R05: Switching to demo mode displays demo user and removes real user
+      await waitFor(() => {
+        expect(screen.getByText('demo@norqva.com')).toBeInTheDocument();
+        expect(screen.queryByText('rdmconsultoria2022@gmail.com')).not.toBeInTheDocument();
+      });
+
+      // Toggle back to Real view
+      const realBtn = screen.getByRole('button', { name: /MODO REAL/i });
+      fireEvent.click(realBtn);
+
+      // R06: Switching back to real mode displays real user and removes demo user
+      await waitFor(() => {
+        expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
+        expect(screen.queryByText('demo@norqva.com')).not.toBeInTheDocument();
+      });
+    });
+  });
 });
