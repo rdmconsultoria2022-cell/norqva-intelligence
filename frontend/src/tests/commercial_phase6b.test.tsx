@@ -825,4 +825,88 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       });
     }, 20000);
   });
+
+  describe('Pix Creation Failure State and Error Presentation Regression (F01 - F05)', () => {
+    it('F01, F02, F03 & F04: createPix HTTP failure transitions to FAILED, disables awaiting-payment UI, prevents polling, and shows no Pix QR/copy UI', async () => {
+      const showError = vi.fn();
+      const fetchSpy = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/pix')) {
+          return Promise.resolve({
+            ok: false,
+            status: 400,
+            json: async () => ({ error: 'Provider validation failed: CPF/CNPJ inválido' })
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ status: 'PENDING' })
+        });
+      });
+      global.fetch = fetchSpy;
+
+      render(
+        <PaymentStatus
+          orderId="ord-failed-001"
+          checkoutToken="token-failed"
+          amount={17.90}
+          isDemo={false}
+          showError={showError}
+        />
+      );
+
+      // F01: createPix HTTP failure transitions to FAILED and shows safe error message
+      expect(await screen.findByText('Não foi possível gerar o pagamento Pix')).toBeInTheDocument();
+      expect(screen.getByText('Falha no Pagamento')).toBeInTheDocument();
+      expect(screen.getByText('Provider validation failed: CPF/CNPJ inválido')).toBeInTheDocument();
+      expect(showError).toHaveBeenCalledWith('Provider validation failed: CPF/CNPJ inválido');
+
+      // F02: FAILED state does NOT render awaiting-payment UI
+      expect(screen.queryByText('Aguardando Pagamento Pix')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Status: PENDENTE/i)).not.toBeInTheDocument();
+
+      // F04: No Pix payload => no QR / copy button
+      expect(screen.queryByText('Código Pix Copia e Cola')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Copiar Código Pix/i })).not.toBeInTheDocument();
+
+      // F03: Polling is stopped and does not poll /orders/
+      const orderPollCalls = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/orders/ord-failed-001') && !String(c[0]).includes('/pix'));
+      expect(orderPollCalls.length).toBe(0);
+    });
+
+    it('F05: successful Pix creation preserves standard awaiting-payment UI and QR/copy details', async () => {
+      const fetchSpy = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/pix')) {
+          return Promise.resolve({
+            ok: true,
+            status: 201,
+            json: async () => ({
+              human_id: 'PG-SUCCESS-001',
+              status: 'PENDING',
+              amount: 17.90,
+              pix_copy_paste: '00020126580014br.gov.bcb.pix0136test-pix-key520400005303986540517.905802BR5913NORQVA6009Sao Paulo62070503***6304ABCD'
+            })
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+      global.fetch = fetchSpy;
+
+      render(
+        <PaymentStatus
+          orderId="ord-success-001"
+          checkoutToken="token-success"
+          amount={17.90}
+          isDemo={false}
+          showError={vi.fn()}
+        />
+      );
+
+      // F05: Renders standard awaiting payment UI with Pix Copy Paste code
+      expect(await screen.findByText('Aguardando Pagamento Pix')).toBeInTheDocument();
+      expect(screen.getByText(/Status: PENDENTE/i)).toBeInTheDocument();
+      expect(screen.getByText('R$17,90')).toBeInTheDocument();
+      expect(screen.getByText('Código Pix Copia e Cola')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Copiar Código Pix/i })).toBeInTheDocument();
+    });
+  });
 });

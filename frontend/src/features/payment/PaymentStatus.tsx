@@ -18,7 +18,8 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(!initialPayment);
   const [status, setStatus] = useState<PaymentStatusEnum>(initialPayment?.status || 'PENDING');
-  const [pollingActive, setPollingActive] = useState(true);
+  const [pollingActive, setPollingActive] = useState(!initialPayment || (initialPayment.status !== 'FAILED' && initialPayment.status !== 'EXPIRED' && initialPayment.status !== 'CONFIRMED' && initialPayment.status !== 'PAID'));
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
 
@@ -55,7 +56,10 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         const data = await res.json();
 
         if (!res.ok) {
-          throw new Error(data.error || 'Falha ao inicializar cobrança Pix.');
+          const safeMsg = data.error && typeof data.error === 'string'
+            ? data.error
+            : 'Não foi possível gerar o pagamento Pix.';
+          throw new Error(safeMsg);
         }
 
         if (isMountedRef.current) {
@@ -63,13 +67,21 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           setStatus(data.status || 'PENDING');
           if (data.status === 'CONFIRMED' || data.status === 'PAID') {
             if (onPaymentConfirmed) onPaymentConfirmed();
+          } else if (data.status === 'FAILED' || data.status === 'EXPIRED') {
+            setPollingActive(false);
           }
         }
       } catch (err: any) {
         if (err.name === 'AbortError') return;
         console.error('Create Pix error:', err);
         if (isMountedRef.current) {
-          showError(err.message || 'Erro ao gerar QR Code Pix.');
+          setStatus('FAILED');
+          setPollingActive(false);
+          const safeErr = err.message || 'Não foi possível gerar o pagamento Pix.';
+          setErrorMessage(safeErr);
+          if (showError) {
+            showError(safeErr);
+          }
         }
       } finally {
         if (isMountedRef.current) {
@@ -166,7 +178,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold font-mono text-slate-100 uppercase tracking-wider">
-                {isConfirmed ? 'Pagamento Aprovado' : isFailed ? 'Pagamento Expirado' : 'Aguardando Pagamento Pix'}
+                {isConfirmed ? 'Pagamento Aprovado' : isFailed ? 'Falha no Pagamento' : 'Aguardando Pagamento Pix'}
               </h3>
               <p className="text-[11px] text-slate-400 font-mono">
                 Pedido #{orderId.substring(0, 8)}
@@ -212,11 +224,19 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               <AlertCircle className="h-8 w-8 text-red-400" />
             </div>
             <div>
-              <h4 className="text-base font-bold text-slate-100">Cobrança Não Concluída</h4>
+              <h4 className="text-base font-bold text-slate-100">Não foi possível gerar o pagamento Pix</h4>
               <p className="text-xs text-slate-400 mt-1">
-                O tempo limite para pagamento expirou ou a transação falhou.
+                {errorMessage || 'O tempo limite para pagamento expirou ou a transação falhou pelo gateway financeiro.'}
               </p>
             </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="mt-2 px-4 py-2 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 font-mono text-xs font-semibold transition"
+              >
+                Fechar
+              </button>
+            )}
           </div>
         ) : (
           /* Pending / Pix Presentation State */

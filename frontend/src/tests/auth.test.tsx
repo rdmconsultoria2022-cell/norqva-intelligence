@@ -623,6 +623,9 @@ describe('Auth System Regression', () => {
 
       // Wait for Intro to complete and navigate to Equipe tab
       const teamTab = await screen.findByRole('button', { name: /Equipe/i }, { timeout: 8000 });
+      await waitFor(() => {
+        expect(teamTab).not.toBeDisabled();
+      }, { timeout: 8000 });
       fireEvent.click(teamTab);
 
       // R03: TeamView renders Real Admin User email and title
@@ -678,7 +681,11 @@ describe('Auth System Regression', () => {
         </MemoryRouter>
       );
 
+      // Wait for auth bootstrap to settle
       const teamTab = await screen.findByRole('button', { name: /Equipe/i }, { timeout: 8000 });
+      await waitFor(() => {
+        expect(teamTab).not.toBeDisabled();
+      }, { timeout: 8000 });
       fireEvent.click(teamTab);
 
       // Initially in real view
@@ -691,6 +698,9 @@ describe('Auth System Regression', () => {
       const demoBtn = screen.getByRole('button', { name: /MODO DEMO/i });
       fireEvent.click(demoBtn);
 
+      // Re-navigate to Team tab (mode toggle resets activeTab to dashboard for isolation)
+      fireEvent.click(teamTab);
+
       // R05: Switching to demo mode displays demo user and removes real user
       await waitFor(() => {
         expect(screen.getByText('demo@norqva.com')).toBeInTheDocument();
@@ -700,6 +710,9 @@ describe('Auth System Regression', () => {
       // Toggle back to Real view
       const realBtn = screen.getByRole('button', { name: /MODO REAL/i });
       fireEvent.click(realBtn);
+
+      // Re-navigate to Team tab
+      fireEvent.click(teamTab);
 
       // R06: Switching back to real mode displays real user and removes demo user
       await waitFor(() => {
