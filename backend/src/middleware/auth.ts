@@ -142,3 +142,20 @@ export function requireRole(allowedRoles: string[]) {
     }
   };
 }
+
+export function requireRoleOrCheckoutToken(allowedRoles: string[]) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const authHeader = req.headers['authorization'];
+    const userIdHeader = req.headers['x-user-id'];
+    const userRoleHeader = req.headers['x-user-role'];
+    const checkoutToken = req.headers['x-checkout-token'];
+
+    // If checkout token is provided and no direct RBAC auth headers are supplied, delegate authorization to token verification in handler
+    if (checkoutToken && !authHeader && !userIdHeader && !userRoleHeader) {
+      return next();
+    }
+
+    return requireRole(allowedRoles)(req, res, next);
+  };
+}
+

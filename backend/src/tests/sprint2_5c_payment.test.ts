@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, test, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { Pool } from 'pg';
 import crypto from 'crypto';
@@ -715,4 +715,89 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
     expect(realRes.body.pix_copy_paste).toBeDefined();
     expect(realRes.body.expires_at).toBeDefined();
   }, 30000);
+
+  describe('Order Polling Dual Authorization Strategy (POLL01 - POLL07)', () => {
+    it('POLL01, POLL02, POLL03, POLL04, POLL05, POLL06, POLL07: verifies dual RBAC / checkout-token authorization, security invariants, cross-order blocking, and minimized payload', async () => {
+      // 1. Create Order 1 (Demo)
+      const order1Res = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: demoOffer.id,
+          quantity: 1,
+          customer_id: demoCustomer.id,
+          idempotency_key: `poll-idemp-1-${Date.now()}`
+        });
+      expect(order1Res.status).toBe(201);
+      const order1 = order1Res.body;
+      const order1Id = order1.id;
+      const order1Token = order1.checkout_token;
+
+      // 2. Create Order 2 (Demo)
+      const order2Res = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: demoOffer.id,
+          quantity: 2,
+          customer_id: demoCustomer.id,
+          idempotency_key: `poll-idemp-2-${Date.now()}`
+        });
+      expect(order2Res.status).toBe(201);
+      const order2 = order2Res.body;
+      const order2Id = order2.id;
+      const order2Token = order2.checkout_token;
+
+      // POLL01: valid RBAC user can read order with full role-based data
+      const rbacRes = await request(app)
+        .get(`/api/orders/${order1Id}`)
+        .set('x-user-role', 'ADMIN');
+      expect(rbacRes.status).toBe(200);
+      expect(rbacRes.body.id).toBe(order1Id);
+      expect(rbacRes.body.customer).toBeDefined();
+      expect(rbacRes.body.items).toBeDefined();
+
+      // POLL02: valid checkout token can read matching order status
+      const tokenRes = await request(app)
+        .get(`/api/orders/${order1Id}`)
+        .set('x-checkout-token', order1Token);
+      expect(tokenRes.status).toBe(200);
+      expect(tokenRes.body.id).toBe(order1Id);
+      expect(tokenRes.body.status).toBe('PENDING');
+      expect(tokenRes.body.total_amount).toBe(parseFloat(order1.total_amount));
+
+      // POLL03: invalid checkout token rejected with 403
+      const invalidTokenRes = await request(app)
+        .get(`/api/orders/${order1Id}`)
+        .set('x-checkout-token', 'completely-bogus-token-xyz');
+      expect(invalidTokenRes.status).toBe(403);
+      expect(invalidTokenRes.body.error).toContain('Invalid checkout token');
+
+      // POLL04: token from order 2 used for order 1 is rejected with 403
+      const crossOrderRes = await request(app)
+        .get(`/api/orders/${order1Id}`)
+        .set('x-checkout-token', order2Token);
+      expect(crossOrderRes.status).toBe(403);
+      expect(crossOrderRes.body.error).toContain('Invalid checkout token');
+
+      // POLL05: missing auth and missing token rejected with 401
+      const noAuthRes = await request(app)
+        .get(`/api/orders/${order1Id}`);
+      expect(noAuthRes.status).toBe(401);
+
+      // POLL06: checkout-token response exposes only allowed status fields (minimized, no PII/tokens)
+      expect(tokenRes.body.customer).toBeUndefined();
+      expect(tokenRes.body.items).toBeUndefined();
+      expect(tokenRes.body.checkout_token_hash).toBeUndefined();
+      expect(tokenRes.body.id).toBeDefined();
+      expect(tokenRes.body.status).toBeDefined();
+      expect(tokenRes.body.total_amount).toBeDefined();
+      expect(tokenRes.body.is_demo).toBeDefined();
+      expect(tokenRes.body.created_at).toBeDefined();
+      expect(tokenRes.body.updated_at).toBeDefined();
+
+      // POLL07: demo/real isolation preserved
+      expect(tokenRes.body.is_demo).toBe(true);
+    });
+  });
 });

@@ -2150,53 +2150,101 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const role = req.user?.role;
   const { id } = req.params;
+  const checkoutToken = req.headers['x-checkout-token'] as string;
 
-  const canSeeFullPII = role === 'ADMIN' || role === 'OPERATIONS';
-  const canSeePartialPII = role === 'PERFORMANCE' || role === 'INTELLIGENCE';
-  const canSeeAggregatedOnly = role === 'CREATIVE';
+  // Dual authorization strategy:
+  // 1. RBAC Session
+  if (role) {
+    const canSeeFullPII = role === 'ADMIN' || role === 'OPERATIONS';
+    const canSeePartialPII = role === 'PERFORMANCE' || role === 'INTELLIGENCE';
 
-  if (!role) {
-    return res.status(403).json({ error: 'Access denied: role not verified.' });
-  }
-
-  try {
-    const query = `
-      SELECT o.id, o.total_amount, o.status, o.idempotency_key, o.is_demo, o.created_at,
-             json_build_object(
-               'id', c.id,
-               'name', ${canSeeFullPII || canSeePartialPII ? 'c.name' : "'[REDACTED]'"},
-               'email', ${canSeeFullPII ? 'c.email' : "'[REDACTED]'"},
-               'phone', ${canSeeFullPII ? 'c.phone' : "'[REDACTED]'"}
-             ) as customer,
-             json_agg(
+    try {
+      const query = `
+        SELECT o.id, o.total_amount, o.status, o.idempotency_key, o.is_demo, o.created_at, o.updated_at,
                json_build_object(
-                 'id', oi.id,
-                 'offer_id', oi.offer_id,
-                 'product_id', oi.product_id,
-                 'product_name_snapshot', oi.product_name_snapshot,
-                 'offer_name_snapshot', oi.offer_name_snapshot,
-                 'offer_description_snapshot', oi.offer_description_snapshot,
-                 'unit_price', oi.unit_price,
-                 'quantity', oi.quantity,
-                 'total_price', oi.total_price
-               )
-             ) as items
-      FROM orders o
-      JOIN customers c ON o.customer_id = c.id
-      LEFT JOIN order_items oi ON o.id = oi.order_id
-      WHERE o.id = $1
-      GROUP BY o.id, c.id
-    `;
+                 'id', c.id,
+                 'name', ${canSeeFullPII || canSeePartialPII ? 'c.name' : "'[REDACTED]'"},
+                 'email', ${canSeeFullPII ? 'c.email' : "'[REDACTED]'"},
+                 'phone', ${canSeeFullPII ? 'c.phone' : "'[REDACTED]'"}
+               ) as customer,
+               json_agg(
+                 json_build_object(
+                   'id', oi.id,
+                   'offer_id', oi.offer_id,
+                   'product_id', oi.product_id,
+                   'product_name_snapshot', oi.product_name_snapshot,
+                   'offer_name_snapshot', oi.offer_name_snapshot,
+                   'offer_description_snapshot', oi.offer_description_snapshot,
+                   'unit_price', oi.unit_price,
+                   'quantity', oi.quantity,
+                   'total_price', oi.total_price
+                 )
+               ) as items
+        FROM orders o
+        JOIN customers c ON o.customer_id = c.id
+        LEFT JOIN order_items oi ON o.id = oi.order_id
+        WHERE o.id = $1
+        GROUP BY o.id, c.id
+      `;
 
-    const result = await pool.query(query, [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Order not found.' });
+      const result = await pool.query(query, [id]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Order not found.' });
+      }
+      return res.status(200).json(result.rows[0]);
+    } catch (err) {
+      console.error('Get order by id error:', err);
+      return res.status(500).json({ error: 'Failed to query order details.' });
     }
-    return res.status(200).json(result.rows[0]);
-  } catch (err) {
-    console.error('Get order by id error:', err);
-    return res.status(500).json({ error: 'Failed to query order details.' });
   }
+
+  // 2. Checkout Token Authorization
+  if (checkoutToken) {
+    try {
+      const computedHash = crypto.createHash('sha256').update(String(checkoutToken)).digest('hex');
+
+      const orderRes = await pool.query(
+        `SELECT id, status, total_amount, is_demo, created_at, updated_at, 
+                checkout_token_hash, checkout_token_expires_at, checkout_token_revoked_at
+         FROM orders 
+         WHERE id = $1`,
+        [id]
+      );
+
+      if (orderRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Order not found.' });
+      }
+
+      const order = orderRes.rows[0];
+
+      if (order.checkout_token_hash !== computedHash) {
+        return res.status(403).json({ error: 'Invalid checkout token.' });
+      }
+
+      if (order.checkout_token_expires_at && new Date() > new Date(order.checkout_token_expires_at)) {
+        return res.status(403).json({ error: 'Checkout token has expired.' });
+      }
+
+      if (order.checkout_token_revoked_at) {
+        return res.status(403).json({ error: 'Checkout token has been revoked.' });
+      }
+
+      // Minimized response for status polling (Zero PII / Token exposure)
+      return res.status(200).json({
+        id: order.id,
+        status: order.status,
+        total_amount: parseFloat(order.total_amount),
+        is_demo: order.is_demo,
+        created_at: order.created_at,
+        updated_at: order.updated_at
+      });
+    } catch (err) {
+      console.error('Get order by checkout token error:', err);
+      return res.status(500).json({ error: 'Failed to verify checkout token.' });
+    }
+  }
+
+  return res.status(401).json({ error: 'Authentication required. Active session or valid checkout token is missing.' });
 }
 
 // Global rate limit map for checkout
