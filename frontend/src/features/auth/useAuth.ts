@@ -15,6 +15,7 @@ export function useAuth() {
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const [recoveryState, setRecoveryState] = useState<'NONE' | 'RECOVERY_INITIALIZING' | 'RECOVERY_READY' | 'RECOVERY_INVALID' | 'PASSWORD_UPDATING' | 'PASSWORD_UPDATED'>('NONE');
   const [isForgotPasswordView, setIsForgotPasswordView] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const showError = (msg: string) => {
     setGlobalError(msg);
@@ -68,128 +69,144 @@ export function useAuth() {
     let timeoutId: any = null;
 
     const bootstrapAuth = async () => {
-      const url = new URL(window.location.href);
-      const code = url.searchParams.get('code');
-      const hasError = url.searchParams.has('error') || url.searchParams.has('error_code');
-      const hasRecoveryHash = window.location.hash.includes('type=recovery');
-      const isRecovery = window.location.pathname === '/reset-password' || hasRecoveryHash || !!code;
-      
-      // A. If route is password recovery: preserve recovery flow
-      if (isRecovery) {
-        setRecoveryState('RECOVERY_INITIALIZING');
-        setAuthMode('real');
-        authModeRef.current = 'real';
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+        const hasError = url.searchParams.has('error') || url.searchParams.has('error_code');
+        const hasRecoveryHash = window.location.hash.includes('type=recovery');
+        const isRecovery = window.location.pathname === '/reset-password' || hasRecoveryHash || !!code;
         
-        if (hasError) {
-          setRecoveryState('RECOVERY_INVALID');
+        // A. If route is password recovery: preserve recovery flow
+        if (isRecovery) {
+          setRecoveryState('RECOVERY_INITIALIZING');
+          setAuthMode('real');
+          authModeRef.current = 'real';
+          
+          if (hasError) {
+            setRecoveryState('RECOVERY_INVALID');
+            setIsAuthReady(true);
+            return;
+          }
+
+          if (code) {
+            try {
+              const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+              if (error || !data.session) {
+                setRecoveryState('RECOVERY_INVALID');
+                return;
+              }
+              window.history.replaceState({}, document.title, window.location.pathname);
+              setRecoveryState('RECOVERY_READY');
+            } catch (err) {
+              console.error('PKCE exchange error:', err);
+              setRecoveryState('RECOVERY_INVALID');
+            } finally {
+              setIsAuthReady(true);
+            }
+          } else if (hasRecoveryHash) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              setRecoveryState('RECOVERY_READY');
+              setIsAuthReady(true);
+            } else {
+              timeoutId = setTimeout(async () => {
+                const { data: { session: s } } = await supabase.auth.getSession();
+                if (s) {
+                  setRecoveryState('RECOVERY_READY');
+                } else {
+                  setRecoveryState('RECOVERY_INVALID');
+                }
+                setIsAuthReady(true);
+              }, 1000);
+            }
+          } else {
+            // Direct route without code/hash - check session with a brief safety timeout
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              setRecoveryState('RECOVERY_READY');
+              setIsAuthReady(true);
+            } else {
+              timeoutId = setTimeout(async () => {
+                const { data: { session: s } } = await supabase.auth.getSession();
+                if (s) {
+                  setRecoveryState('RECOVERY_READY');
+                } else {
+                  setRecoveryState('RECOVERY_INVALID');
+                }
+                setIsAuthReady(true);
+              }, 500);
+            }
+          }
           return;
         }
 
-        if (code) {
-          try {
-            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-            if (error || !data.session) {
-              setRecoveryState('RECOVERY_INVALID');
-              return;
-            }
-            window.history.replaceState({}, document.title, window.location.pathname);
-            setRecoveryState('RECOVERY_READY');
-          } catch (err) {
-            console.error('PKCE exchange error:', err);
-            setRecoveryState('RECOVERY_INVALID');
-          }
-        } else if (hasRecoveryHash) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            setRecoveryState('RECOVERY_READY');
-          } else {
-            timeoutId = setTimeout(async () => {
-              const { data: { session: s } } = await supabase.auth.getSession();
-              if (s) {
-                setRecoveryState('RECOVERY_READY');
-              } else {
-                setRecoveryState('RECOVERY_INVALID');
-              }
-            }, 1000);
-          }
-        } else {
-          // Direct route without code/hash - check session with a brief safety timeout
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            setRecoveryState('RECOVERY_READY');
-          } else {
-            timeoutId = setTimeout(async () => {
-              const { data: { session: s } } = await supabase.auth.getSession();
-              if (s) {
-                setRecoveryState('RECOVERY_READY');
-              } else {
-                setRecoveryState('RECOVERY_INVALID');
-              }
-            }, 500);
-          }
-        }
-        return;
-      }
-
-      // B. Else check Supabase session
-      let session: any = null;
-      try {
-        const sessionRes = await supabase.auth.getSession();
-        session = sessionRes.data?.session;
-      } catch (err) {
-        console.error('Error checking initial session:', err);
-      }
-
-      // C. If a valid Supabase session exists:
-      if (session) {
-        setAuthMode('real');
-        setIsDemoView(false);
-        authModeRef.current = 'real';
+        // B. Else check Supabase session
+        let session: any = null;
         try {
-          const meRes = await fetch(`${API_BASE}/me`, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
+          const sessionRes = await supabase.auth.getSession();
+          session = sessionRes.data?.session;
+        } catch (err) {
+          console.error('Error checking initial session:', err);
+        }
+
+        // C. If a valid Supabase session exists:
+        if (session) {
+          setAuthMode('real');
+          setIsDemoView(false);
+          authModeRef.current = 'real';
+          try {
+            const meRes = await fetch(`${API_BASE}/me`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              }
+            });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              setCurrentUser(meData.user);
+            } else {
+              setCurrentUser(null);
+              await supabase.auth.signOut();
             }
-          });
-          if (meRes.ok) {
-            const meData = await meRes.json();
-            setCurrentUser(meData.user);
-          } else {
+          } catch (err) {
+            console.error('Failed to get me profile on mount:', err);
             setCurrentUser(null);
-            await supabase.auth.signOut();
+          } finally {
+            setIsAuthReady(true);
+          }
+          // Do NOT auto-login demo persona or send x-user-role simulation headers
+          return;
+        }
+
+        // D. If no real Supabase session exists:
+        // Normal Demo/Real selection behavior may continue.
+        try {
+          const isProduction = (import.meta as any).env.PROD;
+          const res = await fetch(`${API_BASE}/users?mode=demo`, {
+            headers: { 'x-user-role': 'ADMIN' }
+          });
+          const data = await res.json();
+          if (data.users) {
+            setUsersList(data.users);
+            const isForgot = window.location.pathname === '/forgot-password';
+            const isLogin = window.location.pathname === '/login';
+            const isAuthRoute = isRecovery || isForgot || isLogin;
+
+            if (!isProduction && authModeRef.current === 'demo' && !isAuthRoute) {
+              const adminUser = data.users.find((u: any) => u.role === 'ADMIN');
+              if (adminUser) {
+                setCurrentUser(adminUser);
+              }
+            }
           }
         } catch (err) {
-          console.error('Failed to get me profile on mount:', err);
-          setCurrentUser(null);
-        }
-        // Do NOT auto-login demo persona or send x-user-role simulation headers
-        return;
-      }
-
-      // D. If no real Supabase session exists:
-      // Normal Demo/Real selection behavior may continue.
-      try {
-        const isProduction = (import.meta as any).env.PROD;
-        const res = await fetch(`${API_BASE}/users?mode=demo`, {
-          headers: { 'x-user-role': 'ADMIN' }
-        });
-        const data = await res.json();
-        if (data.users) {
-          setUsersList(data.users);
-          const isForgot = window.location.pathname === '/forgot-password';
-          const isLogin = window.location.pathname === '/login';
-          const isAuthRoute = isRecovery || isForgot || isLogin;
-
-          if (!isProduction && authModeRef.current === 'demo' && !isAuthRoute) {
-            const adminUser = data.users.find((u: any) => u.role === 'ADMIN');
-            if (adminUser) {
-              setCurrentUser(adminUser);
-            }
-          }
+          console.error('Failed to init demo users:', err);
+        } finally {
+          setIsAuthReady(true);
         }
       } catch (err) {
-        console.error('Failed to init demo users:', err);
+        console.error('Unexpected auth bootstrap error:', err);
+        setIsAuthReady(true);
       }
     };
     
@@ -274,6 +291,7 @@ export function useAuth() {
     setRecoveryState,
     isForgotPasswordView,
     setIsForgotPasswordView,
+    isAuthReady,
     showError,
     showSuccess,
     handleLogin,

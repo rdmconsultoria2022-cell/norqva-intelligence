@@ -77,6 +77,7 @@ export default function App() {
     setRecoveryState,
     isForgotPasswordView,
     setIsForgotPasswordView,
+    isAuthReady,
     showError,
     showSuccess,
     handleLogin,
@@ -90,7 +91,7 @@ export default function App() {
     const url = new URL(window.location.href);
     const hasCode = url.searchParams.get('code');
     const isRecoveryHash = window.location.hash.includes('type=recovery');
-    const isRecovery = location.pathname === '/reset-password' || isRecoveryHash || hasCode;
+    const isRecovery = location.pathname === '/reset-password' || isRecoveryHash || !!hasCode;
     const isForgot = location.pathname === '/forgot-password';
     const isLogin = location.pathname === '/login';
 
@@ -105,13 +106,13 @@ export default function App() {
     }
   }, [currentUser, location.pathname]);
 
-  // Meta Pixel Initialization & PageView Tracking (REAL Mode Only)
+  // Meta Pixel Initialization & PageView Tracking (REAL Mode Only, after Auth Bootstrap settles)
   useEffect(() => {
-    if (!isDemoView && authMode !== 'demo') {
+    if (isAuthReady && !isDemoView && authMode !== 'demo') {
       initMetaPixel();
       trackPageView(location.pathname + location.search);
     }
-  }, [location.pathname, location.search, isDemoView, authMode]);
+  }, [location.pathname, location.search, isDemoView, authMode, isAuthReady]);
 
 
   // States for lists
