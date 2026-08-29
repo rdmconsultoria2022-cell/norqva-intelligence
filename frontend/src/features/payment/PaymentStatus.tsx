@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, Copy, Check, Clock, AlertCircle, CheckCircle2, Loader2, X, RefreshCw } from 'lucide-react';
 import { PaymentStatusProps, PaymentInfo, PaymentStatusEnum } from './paymentTypes';
 import { API_BASE } from '../../lib/api';
+import { trackPurchase } from '../../services/metaPixel';
 
 export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   orderId,
@@ -66,6 +67,17 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           setPayment(data);
           setStatus(data.status || 'PENDING');
           if (data.status === 'CONFIRMED' || data.status === 'PAID') {
+            if (!isDemo) {
+              try {
+                trackPurchase({
+                  orderId: orderId,
+                  value: Number(parseFloat(String(data.amount || amount)) || Number(amount) || 0),
+                  currency: 'BRL',
+                  contentIds: [orderId],
+                  numItems: 1
+                });
+              } catch (_) {}
+            }
             if (onPaymentConfirmed) onPaymentConfirmed();
           } else if (data.status === 'FAILED' || data.status === 'EXPIRED') {
             setPollingActive(false);
@@ -120,6 +132,23 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             if (orderData.status === 'PAID' || orderData.status === 'CONFIRMED') {
               setStatus(orderData.status);
               setPollingActive(false);
+
+              if (!isDemo) {
+                try {
+                  trackPurchase({
+                    orderId: orderData.id || orderId,
+                    value: Number(parseFloat(String(orderData.total_amount || amount)) || Number(amount) || 0),
+                    currency: 'BRL',
+                    contentIds: orderData.items && orderData.items.length > 0
+                      ? orderData.items.map((i: any) => i.offer_id || i.product_id || orderId)
+                      : [orderId],
+                    numItems: orderData.items && orderData.items.length > 0
+                      ? orderData.items.reduce((acc: number, curr: any) => acc + (curr.quantity || 1), 0)
+                      : 1
+                  });
+                } catch (_) {}
+              }
+
               if (showSuccess) {
                 showSuccess('Pagamento confirmado com sucesso!');
               }

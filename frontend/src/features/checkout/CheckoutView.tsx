@@ -1,7 +1,8 @@
-﻿import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { ShoppingCart, ShieldCheck, User, Mail, Phone, FileText, Loader2, X } from 'lucide-react';
 import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
 import { apiFetch } from '../../lib/api';
+import { trackInitiateCheckout } from '../../services/metaPixel';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
@@ -79,6 +80,21 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
       if (showSuccess) {
         showSuccess('Pedido gerado com sucesso!');
+      }
+
+      // Track InitiateCheckout on real order generation
+      if (!isDemo && orderResult?.id) {
+        try {
+          trackInitiateCheckout({
+            orderId: orderResult.id,
+            value: parseFloat(String(orderResult.total_amount)) || displayPrice * quantity,
+            currency: 'BRL',
+            contentIds: [offer.human_id || offer.id],
+            numItems: quantity
+          });
+        } catch (_) {
+          // Fail-safe: pixel tracking must never interrupt checkout
+        }
       }
 
       onOrderCreated(orderResult);
