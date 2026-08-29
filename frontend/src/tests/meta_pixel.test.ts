@@ -244,8 +244,8 @@ describe('Meta Pixel Integration & Conversion Events (InitiateCheckout & Purchas
     expect(purchaseCalls.length).toBe(1);
   });
 
-  // C08: Refresh da tela de sucesso da ordem já contabilizada -> nenhum Purchase adicional
-  it('C08: page refresh with sessionStorage flag present prevents duplicate Purchase emission', () => {
+  // C08: Refresh da tela de sucesso e reabertura em nova sessão (localStorage) -> nenhum Purchase adicional
+  it('C08: page refresh and cross-session reopen with localStorage flag present prevents duplicate Purchase emission', () => {
     setPixelEnvironmentAllowedForTesting(true);
     const fbqSpy = vi.fn();
     window.fbq = fbqSpy;
@@ -266,8 +266,11 @@ describe('Meta Pixel Integration & Conversion Events (InitiateCheckout & Purchas
     let purchaseCalls = fbqSpy.mock.calls.filter(c => c[0] === 'track' && c[1] === 'Purchase');
     expect(purchaseCalls.length).toBe(1);
 
-    // Simulate page refresh (in-memory sets cleared, but sessionStorage remains intact):
+    // Simulate new browser session (in-memory cleared, sessionStorage cleared, localStorage intact):
     clearInMemoryDeduplicationForTesting();
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.clear();
+    }
 
     trackPurchase({
       orderId,
@@ -277,7 +280,7 @@ describe('Meta Pixel Integration & Conversion Events (InitiateCheckout & Purchas
       numItems: 1
     });
 
-    // Still exactly 1 Purchase call
+    // Still exactly 1 Purchase call (cross-session deduplication prevented duplicate)
     purchaseCalls = fbqSpy.mock.calls.filter(c => c[0] === 'track' && c[1] === 'Purchase');
     expect(purchaseCalls.length).toBe(1);
   });

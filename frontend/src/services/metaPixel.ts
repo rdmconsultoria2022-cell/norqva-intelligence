@@ -7,7 +7,8 @@
  * - Idempotent initialization: fbq('init', pixelId)
  * - Single source of truth for PageView tracking via trackPageView(path)
  * - Authoritative Purchase event emission triggered strictly upon confirmed PAID backend status
- * - Deduplicated InitiateCheckout & Purchase tracking with deterministic eventIDs for Conversions API
+ * - Cross-session persistent deduplication via localStorage, sessionStorage, and memory
+ * - Deterministic eventIDs for Meta Conversions API (CAPI) deduplication
  * - Zero PII transmission
  * - Fail-safe (never interrupts payment, checkout, digital delivery, or app navigation)
  */
@@ -39,7 +40,7 @@ let isInitialized = false;
 let lastTrackedPath: string | null = null;
 let environmentOverrideForTesting: boolean | null = null;
 
-// In-memory deduplication sets for current browser session
+// In-memory deduplication sets for current browser tab session
 const sentInitiateCheckouts = new Set<string>();
 const sentPurchases = new Set<string>();
 
@@ -220,7 +221,7 @@ export function trackInitiateCheckout(params: MetaInitiateCheckoutParams): boole
 
 /**
  * Tracks a Purchase event strictly upon authoritative backend confirmation (order.status === 'PAID').
- * Deduplicated in memory and across page refreshes via sessionStorage with deterministic eventID.
+ * Persistently deduplicated across memory, sessionStorage, and localStorage with deterministic eventID.
  * 
  * @param params MetaPurchaseParams
  */
@@ -245,10 +246,14 @@ export function trackPurchase(params: MetaPurchaseParams): boolean {
     return false;
   }
 
-  // 2. Storage-based deduplication check (survives page refresh)
+  // 2. Persistent storage deduplication check (survives page refresh and cross-session revisit)
   try {
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      if (window.sessionStorage.getItem(`meta_purchase_sent_${orderId}`)) {
+    if (typeof window !== 'undefined') {
+      if (window.localStorage && window.localStorage.getItem(`meta_purchase_sent_${orderId}`)) {
+        sentPurchases.add(orderId);
+        return false;
+      }
+      if (window.sessionStorage && window.sessionStorage.getItem(`meta_purchase_sent_${orderId}`)) {
         sentPurchases.add(orderId);
         return false;
       }
@@ -283,8 +288,13 @@ export function trackPurchase(params: MetaPurchaseParams): boolean {
     if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
       window.fbq('track', 'Purchase', payload, options);
       
-      // Mark as sent in memory and sessionStorage
+      // Mark as sent in memory, localStorage, and sessionStorage
       sentPurchases.add(orderId);
+      try {
+        if (window.localStorage) {
+          window.localStorage.setItem(`meta_purchase_sent_${orderId}`, 'true');
+        }
+      } catch (_) {}
       try {
         if (window.sessionStorage) {
           window.sessionStorage.setItem(`meta_purchase_sent_${orderId}`, 'true');
@@ -308,7 +318,7 @@ export function isMetaPixelInitialized(): boolean {
 }
 
 /**
- * Resets the in-memory sets while preserving sessionStorage (simulating page reload).
+ * Resets the in-memory sets while preserving persistent storage (simulating new browser session).
  */
 export function clearInMemoryDeduplicationForTesting(): void {
   sentInitiateCheckouts.clear();
@@ -328,6 +338,9 @@ export function resetMetaPixelForTesting(): void {
     delete window.fbq;
     delete window._fbq;
     try {
+      if (window.localStorage) {
+        window.localStorage.clear();
+      }
       if (window.sessionStorage) {
         window.sessionStorage.clear();
       }

@@ -67,17 +67,6 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           setPayment(data);
           setStatus(data.status || 'PENDING');
           if (data.status === 'CONFIRMED' || data.status === 'PAID') {
-            if (!isDemo) {
-              try {
-                trackPurchase({
-                  orderId: orderId,
-                  value: Number(parseFloat(String(data.amount || amount)) || Number(amount) || 0),
-                  currency: 'BRL',
-                  contentIds: [orderId],
-                  numItems: 1
-                });
-              } catch (_) {}
-            }
             if (onPaymentConfirmed) onPaymentConfirmed();
           } else if (data.status === 'FAILED' || data.status === 'EXPIRED') {
             setPollingActive(false);
@@ -129,7 +118,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         if (res.ok) {
           const orderData = await res.json();
           if (isMountedRef.current && orderData) {
-            if (orderData.status === 'PAID' || orderData.status === 'CONFIRMED') {
+            if (orderData.status === 'PAID') {
               setStatus(orderData.status);
               setPollingActive(false);
 
