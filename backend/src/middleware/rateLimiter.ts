@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
 interface RateLimitRecord {
   timestamps: number[];
@@ -86,6 +86,13 @@ export const checkoutRateLimiter = createRateLimiter({
   max: 40,
   message: 'Too many checkout requests. Please try again later.',
   name: 'checkout'
+});
+
+export const orderStatusRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: 'Too many order status requests. Please try again later.',
+  name: 'order-status'
 });
 
 export const deliveryRateLimiter = createRateLimiter({

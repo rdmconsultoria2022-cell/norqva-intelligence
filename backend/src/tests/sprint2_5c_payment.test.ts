@@ -799,5 +799,45 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
       // POLL07: demo/real isolation preserved
       expect(tokenRes.body.is_demo).toBe(true);
     });
+
+    test('R01: GET /api/orders/:id repeated 50 times does not hit checkoutRateLimiter (isolated under orderStatusRateLimiter)', async () => {
+      // 1. Create Order
+      const orderRes = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: demoOffer.id,
+          quantity: 1,
+          customer_id: demoCustomer.id,
+          idempotency_key: `poll-rate-r01-${Date.now()}`
+        });
+      expect(orderRes.status).toBe(201);
+      const orderId = orderRes.body.id;
+      const checkoutToken = orderRes.body.checkout_token;
+
+      // 2. Poll 50 times consecutively
+      for (let i = 0; i < 50; i++) {
+        const res = await request(app)
+          .get(`/api/orders/${orderId}`)
+          .set('x-checkout-token', checkoutToken);
+        expect(res.status).toBe(200);
+        expect(res.body.id).toBe(orderId);
+      }
+    });
+
+    test('R02: Creation endpoints remain protected by checkoutRateLimiter while read endpoint uses orderStatusRateLimiter', async () => {
+      // Creation endpoint checkoutRateLimiter is active
+      const createRes = await request(app)
+        .post('/api/checkout')
+        .set('x-user-role', 'ADMIN')
+        .send({
+          offer_id: demoOffer.id,
+          quantity: 1,
+          customer_id: demoCustomer.id,
+          idempotency_key: `poll-rate-r02-${Date.now()}`
+        });
+      expect(createRes.status).toBe(201);
+      expect(createRes.headers['x-ratelimit-limit']).toBeDefined();
+    });
   });
 });

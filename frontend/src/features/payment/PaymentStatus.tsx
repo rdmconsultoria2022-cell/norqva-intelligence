@@ -21,13 +21,19 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   const [status, setStatus] = useState<PaymentStatusEnum>(initialPayment?.status || 'PENDING');
   const [pollingActive, setPollingActive] = useState(!initialPayment || (initialPayment.status !== 'FAILED' && initialPayment.status !== 'EXPIRED' && initialPayment.status !== 'CONFIRMED' && initialPayment.status !== 'PAID'));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const timerRef = useRef<any>(null);
+  const pollingStartTimeRef = useRef<number>(Date.now());
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
     };
   }, []);
 
@@ -59,7 +65,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         if (!res.ok) {
           const safeMsg = data.error && typeof data.error === 'string'
             ? data.error
-            : 'Não foi possível gerar o pagamento Pix.';
+            : 'Não foi possível gerar a cobrança Pix.';
           throw new Error(safeMsg);
         }
 
@@ -98,13 +104,39 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
     };
   }, [orderId, checkoutToken]);
 
-  // 2. Status Polling strictly relying on backend authority
+  // 2. Status Polling strictly relying on backend authority with adaptive backoff and 429 resilience
   useEffect(() => {
     if (!pollingActive || status === 'CONFIRMED' || status === 'PAID' || status === 'FAILED' || status === 'EXPIRED') {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
       return;
     }
 
-    const interval = setInterval(async () => {
+    pollingStartTimeRef.current = Date.now();
+
+    const getNextInterval = () => {
+      const elapsed = Date.now() - pollingStartTimeRef.current;
+      if (elapsed < 60000) {
+        return 5000; // 0–60s: 5s
+      } else if (elapsed < 180000) {
+        return 10000; // 60–180s: 10s
+      } else {
+        return 15000; // >180s: 15s
+      }
+    };
+
+    const scheduleNextPoll = (customDelay?: number) => {
+      if (!isMountedRef.current || !pollingActive) return;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      const delay = customDelay || getNextInterval();
+      timerRef.current = setTimeout(pollStatus, delay);
+    };
+
+    const pollStatus = async () => {
       if (!isMountedRef.current) return;
 
       try {
@@ -115,9 +147,19 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           }
         });
 
+        if (res.status === 429) {
+          // Non-destructive 429 handling: pause and apply backoff without marking payment as failed
+          if (isMountedRef.current) {
+            setRateLimitNotice('Atualização temporariamente limitada. Continuaremos verificando o pagamento.');
+          }
+          scheduleNextPoll(15000);
+          return;
+        }
+
         if (res.ok) {
           const orderData = await res.json();
           if (isMountedRef.current && orderData) {
+            setRateLimitNotice(null);
             if (orderData.status === 'PAID') {
               setStatus(orderData.status);
               setPollingActive(false);
@@ -144,19 +186,30 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               if (onPaymentConfirmed) {
                 onPaymentConfirmed();
               }
+              return;
             } else if (orderData.status === 'FAILED' || orderData.status === 'EXPIRED') {
               setStatus(orderData.status);
               setPollingActive(false);
+              return;
             }
           }
         }
       } catch (pollErr) {
         console.warn('Payment polling network anomaly (retry will continue):', pollErr);
       }
-    }, 3000);
+
+      // Schedule next poll if still active
+      scheduleNextPoll();
+    };
+
+    // Start first poll cycle after initial delay (3s), subsequent polls follow adaptive backoff (5s, 10s, 15s)
+    scheduleNextPoll(3000);
 
     return () => {
-      clearInterval(interval);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
   }, [orderId, checkoutToken, status, pollingActive]);
 
@@ -279,6 +332,12 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                   Verificando em tempo real...
                 </span>
               </div>
+
+              {rateLimitNotice && (
+                <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300">
+                  {rateLimitNotice}
+                </div>
+              )}
 
               {payment?.pix_copy_paste && (
                 <div>

@@ -73,6 +73,7 @@ import {
   generalRateLimiter,
   authRateLimiter,
   checkoutRateLimiter,
+  orderStatusRateLimiter,
   deliveryRateLimiter,
   webhookRateLimiter
 } from './middleware/rateLimiter';
@@ -236,7 +237,7 @@ app.post('/api/customers', requireRole(['ADMIN', 'OPERATIONS']), createCustomer)
 app.get('/api/customers', requireRole(['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE']), getCustomers);
 app.post('/api/checkout', checkoutRateLimiter, requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), createOrder);
 app.get('/api/orders', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOrders);
-app.get('/api/orders/:id', checkoutRateLimiter, requireRoleOrCheckoutToken(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOrderById);
+app.get('/api/orders/:id', orderStatusRateLimiter, requireRoleOrCheckoutToken(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOrderById);
 
 // Sprint 2.5C Payment & Pix endpoints
 app.post('/api/checkout/orders/:orderId/pix', checkoutRateLimiter, checkoutPix);
