@@ -45,6 +45,7 @@ import { apiFetch as apiFetchLib } from './lib/api';
 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './features/auth/useAuth';
+import { initMetaPixel, trackPageView } from './services/metaPixel';
 
 
 
@@ -103,6 +104,19 @@ export default function App() {
       }
     }
   }, [currentUser, location.pathname]);
+
+  // Meta Pixel Initialization & PageView Tracking (REAL Mode Only)
+  useEffect(() => {
+    if (!isDemoView && authMode !== 'demo') {
+      initMetaPixel();
+    }
+  }, [isDemoView, authMode]);
+
+  useEffect(() => {
+    if (!isDemoView && authMode !== 'demo') {
+      trackPageView(location.pathname + location.search);
+    }
+  }, [location.pathname, location.search, isDemoView, authMode]);
 
 
   // States for lists
