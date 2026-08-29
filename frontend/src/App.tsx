@@ -109,11 +109,6 @@ export default function App() {
   useEffect(() => {
     if (!isDemoView && authMode !== 'demo') {
       initMetaPixel();
-    }
-  }, [isDemoView, authMode]);
-
-  useEffect(() => {
-    if (!isDemoView && authMode !== 'demo') {
       trackPageView(location.pathname + location.search);
     }
   }, [location.pathname, location.search, isDemoView, authMode]);

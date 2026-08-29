@@ -4,7 +4,10 @@
  * Provides safe, isolated Meta Pixel initialization and PageView tracking.
  * - Only active in REAL / production mode
  * - Disabled in DEMO mode and during automated testing
- * - Idempotent initialization and de-duplicated PageView tracking on route changes
+ * - Idempotent initialization: fbq('init', pixelId)
+ * - Single source of truth for PageView tracking via trackPageView(path)
+ * - Strict deduplication ensuring 1 real route change = exactly 1 PageView
+ * - No duplicate events from React StrictMode, re-renders, or concurrent effects
  * - No PII transmission
  * - Fallback safe (no-op if window.fbq is unavailable or blocked)
  */
@@ -47,7 +50,10 @@ export function setPixelEnvironmentAllowedForTesting(allowed: boolean | null): v
 }
 
 /**
- * Initializes the Meta Pixel base script.
+ * Initializes the Meta Pixel base script and registers the Pixel ID.
+ * Does NOT fire PageView directly — PageView tracking is handled exclusively by trackPageView()
+ * to eliminate duplicate events during initial mount or React StrictMode re-renders.
+ * 
  * @param customPixelId Optional pixel ID to override the env variable (e.g. for testing)
  * @returns boolean indicating whether initialization was executed
  */
@@ -94,9 +100,7 @@ export function initMetaPixel(customPixelId?: string): boolean {
       }
 
       window.fbq('init', pixelId);
-      window.fbq('track', 'PageView');
       isInitialized = true;
-      lastTrackedPath = window.location.pathname + window.location.search;
       return true;
     }
     return false;
@@ -107,9 +111,11 @@ export function initMetaPixel(customPixelId?: string): boolean {
 }
 
 /**
- * Tracks a PageView event on SPA route changes.
- * Avoids duplicate events when invoked consecutively on the exact same path.
- * @param path The current route/path
+ * Tracks a PageView event on initial load and on SPA route changes.
+ * Single source of truth for PageView events.
+ * Strictly avoids duplicate events when invoked on the exact same path.
+ * 
+ * @param path The current route/path (e.g. location.pathname + location.search)
  */
 export function trackPageView(path?: string): void {
   if (!isPixelEnvironmentAllowed() || !isInitialized) {
@@ -118,6 +124,7 @@ export function trackPageView(path?: string): void {
 
   const currentPath = path || (typeof window !== 'undefined' ? window.location.pathname + window.location.search : '');
 
+  // Strict deduplication guard
   if (currentPath && currentPath === lastTrackedPath) {
     return;
   }
