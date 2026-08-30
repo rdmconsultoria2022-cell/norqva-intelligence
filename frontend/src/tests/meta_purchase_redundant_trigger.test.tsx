@@ -209,7 +209,7 @@ describe('NORQVA — Meta Purchase Redundant Observational Trigger & Deduplicati
         return {
           ok: true,
           status: 200,
-          json: async () => ({ id: orderId, status: 'PAID', total_amount: 17.90 })
+          json: async () => ({ id: orderId, status: 'PAID', total_amount: 17.90, offer_human_id: 'OFF-000001' })
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -234,7 +234,7 @@ describe('NORQVA — Meta Purchase Redundant Observational Trigger & Deduplicati
       value: 17.90,
       currency: 'BRL',
       content_type: 'product',
-      content_ids: ['AST-001'],
+      content_ids: ['OFF-000001'],
       num_items: 1
     });
     expect(purchaseCalls[0][3]).toEqual({

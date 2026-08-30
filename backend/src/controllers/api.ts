@@ -2204,10 +2204,15 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
       const computedHash = crypto.createHash('sha256').update(String(checkoutToken)).digest('hex');
 
       const orderRes = await pool.query(
-        `SELECT id, status, total_amount, is_demo, created_at, updated_at, 
-                checkout_token_hash, checkout_token_expires_at, checkout_token_revoked_at
-         FROM orders 
-         WHERE id = $1`,
+        `SELECT o.id, o.status, o.total_amount, o.is_demo, o.created_at, o.updated_at, 
+                o.checkout_token_hash, o.checkout_token_expires_at, o.checkout_token_revoked_at,
+                oi.offer_id, oi.quantity,
+                of.human_id as offer_human_id
+         FROM orders o
+         LEFT JOIN order_items oi ON oi.order_id = o.id
+         LEFT JOIN offers of ON of.id = oi.offer_id
+         WHERE o.id = $1
+         LIMIT 1`,
         [id]
       );
 
@@ -2229,11 +2234,14 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
         return res.status(403).json({ error: 'Checkout token has been revoked.' });
       }
 
-      // Minimized response for status polling (Zero PII / Token exposure)
+      // Minimized response for status polling (Zero PII / Token exposure, canonical commerce fields included)
       return res.status(200).json({
         id: order.id,
         status: order.status,
         total_amount: parseFloat(order.total_amount),
+        offer_human_id: order.offer_human_id || null,
+        offer_id: order.offer_id || null,
+        quantity: order.quantity ? parseInt(String(order.quantity), 10) : 1,
         is_demo: order.is_demo,
         created_at: order.created_at,
         updated_at: order.updated_at

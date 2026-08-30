@@ -166,16 +166,20 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
 
               if (!isDemo) {
                 try {
+                  const canonicalContentId = orderData.offer_human_id
+                    || orderData.offer_id
+                    || (orderData.items && orderData.items[0]?.offer_id)
+                    || orderId;
+                  const canonicalQuantity = Number(orderData.quantity)
+                    || (orderData.items && orderData.items.reduce((acc: number, curr: any) => acc + (curr.quantity || 1), 0))
+                    || 1;
+
                   trackPurchase({
                     orderId: orderData.id || orderId,
                     value: Number(parseFloat(String(orderData.total_amount || amount)) || Number(amount) || 0),
                     currency: 'BRL',
-                    contentIds: orderData.items && orderData.items.length > 0
-                      ? orderData.items.map((i: any) => i.offer_id || i.product_id || orderId)
-                      : [orderId],
-                    numItems: orderData.items && orderData.items.length > 0
-                      ? orderData.items.reduce((acc: number, curr: any) => acc + (curr.quantity || 1), 0)
-                      : 1
+                    contentIds: [canonicalContentId],
+                    numItems: canonicalQuantity
                   });
                 } catch (_) {}
               }

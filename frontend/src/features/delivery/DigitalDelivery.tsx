@@ -64,16 +64,17 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
               if (orderRes.ok) {
                 const orderData = await orderRes.json();
                 if (orderData && orderData.status === 'PAID') {
-                  const deliveryAssetIds = data.deliveries && data.deliveries.length > 0
-                    ? data.deliveries.map((d: any) => d.assetId || orderId)
-                    : [orderId];
+                  const canonicalContentId = orderData.offer_human_id
+                    || orderData.offer_id
+                    || orderId;
+                  const canonicalQuantity = Number(orderData.quantity) || 1;
 
                   trackPurchase({
                     orderId: orderData.id || orderId,
                     value: Number(parseFloat(String(orderData.total_amount)) || 0),
                     currency: 'BRL',
-                    contentIds: deliveryAssetIds,
-                    numItems: deliveryAssetIds.length || 1
+                    contentIds: [canonicalContentId],
+                    numItems: canonicalQuantity
                   });
                 }
               }
