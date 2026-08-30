@@ -734,6 +734,48 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const { humanId } = req.params;
+
+  if (!humanId || typeof humanId !== 'string') {
+    return res.status(400).json({ error: 'humanId is required.' });
+  }
+
+  try {
+    const query = `
+      SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo
+      FROM offers 
+      WHERE (human_id = $1 OR id::text = $1) 
+        AND is_deleted = FALSE 
+        AND status IN ('ATIVA', 'TESTE')
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [humanId.trim()]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Oferta não encontrada ou indisponível.' });
+    }
+
+    const offer = result.rows[0];
+
+    // Whitelist output strictly containing public commercial fields (Zero internal intelligence / PII / scoring)
+    return res.status(200).json({
+      id: offer.id,
+      human_id: offer.human_id,
+      name: offer.name,
+      description: offer.description,
+      price: parseFloat(offer.price),
+      promotional_price: offer.promotional_price !== null ? parseFloat(offer.promotional_price) : null,
+      bonus: offer.bonus || null,
+      is_demo: offer.is_demo
+    });
+  } catch (err) {
+    console.error('Get public offer error:', err);
+    return res.status(500).json({ error: 'Falha ao buscar oferta.' });
+  }
+}
+
 // 6. Creatives
 export async function getCreatives(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');

@@ -38,6 +38,7 @@ import {
   reviewOpportunity,
   decideOpportunity,
   analyzeOpportunity,
+  getPublicOffer,
   createCustomer,
   getCustomers,
   createOrder,
@@ -232,10 +233,11 @@ app.post('/api/decisions', requireRole(['ADMIN']), createDecision);
 app.get('/api/audit', requireRole(['ADMIN']), getAuditLogs);
 app.post('/api/config/clear-demo', requireRole(['ADMIN']), clearDemo);
 
-// Customers and Checkout endpoints (Sprint 2.5B)
-app.post('/api/customers', requireRole(['ADMIN', 'OPERATIONS']), createCustomer);
+// Customers and Checkout endpoints (Sprint 2.5B & Public Commerce V1)
+app.get('/api/public/offers/:humanId', orderStatusRateLimiter, getPublicOffer);
+app.post('/api/customers', checkoutRateLimiter, createCustomer);
 app.get('/api/customers', requireRole(['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE']), getCustomers);
-app.post('/api/checkout', checkoutRateLimiter, requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), createOrder);
+app.post('/api/checkout', checkoutRateLimiter, createOrder);
 app.get('/api/orders', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOrders);
 app.get('/api/orders/:id', orderStatusRateLimiter, requireRoleOrCheckoutToken(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOrderById);
 

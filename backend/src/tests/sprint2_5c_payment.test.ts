@@ -839,5 +839,74 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
       expect(createRes.status).toBe(201);
       expect(createRes.headers['x-ratelimit-limit']).toBeDefined();
     });
+
+    test('Q01: GET /api/public/offers/:humanId returns 200 with whitelist fields without authentication', async () => {
+      const res = await request(app)
+        .get(`/api/public/offers/${demoOffer.human_id}`);
+      
+      expect(res.status).toBe(200);
+      expect(res.body.human_id).toBe(demoOffer.human_id);
+      expect(res.body.name).toBe(demoOffer.name);
+      expect(res.body.price).toBe(parseFloat(demoOffer.price));
+      expect(res.body.description).toBeDefined();
+
+      // Zero internal scoring / intelligence / user leak
+      expect(res.body.score).toBeUndefined();
+      expect(res.body.estimated_cost).toBeUndefined();
+      expect(res.body.opportunity_id).toBeUndefined();
+      expect(res.body.created_by).toBeUndefined();
+    });
+
+    test('Q02: GET /api/public/offers/:humanId with invalid id returns 404', async () => {
+      const res = await request(app)
+        .get('/api/public/offers/OFF-NONEXISTENT-999');
+      
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Oferta não encontrada ou indisponível.');
+    });
+
+    test('Q03: POST /api/customers without auth headers creates customer successfully under rate limiter', async () => {
+      const uniqueEmail = `anon-${Date.now()}@buyer.com`;
+      const res = await request(app)
+        .post('/api/customers')
+        .send({
+          name: 'Comprador Publico Anonimo',
+          email: uniqueEmail,
+          phone: '11999998888',
+          is_demo: true
+        });
+
+      expect([200, 201]).toContain(res.status);
+      expect(res.body.id).toBeDefined();
+      expect(res.body.email).toBe(uniqueEmail);
+    });
+
+    test('Q04: POST /api/checkout without auth headers creates order and issues checkout_token', async () => {
+      // 1. Create public customer
+      const custRes = await request(app)
+        .post('/api/customers')
+        .send({
+          name: 'Public Buyer',
+          email: `pub-buyer-${Date.now()}@test.com`,
+          is_demo: true
+        });
+      expect([200, 201]).toContain(custRes.status);
+      const customerId = custRes.body.id;
+
+      // 2. Public Checkout
+      const orderRes = await request(app)
+        .post('/api/checkout')
+        .send({
+          offer_id: demoOffer.id,
+          quantity: 1,
+          customer_id: customerId,
+          idempotency_key: `public-checkout-${Date.now()}`
+        });
+
+      expect(orderRes.status).toBe(201);
+      expect(orderRes.body.id).toBeDefined();
+      expect(orderRes.body.checkout_token).toBeDefined();
+      expect(orderRes.body.status).toBe('PENDING');
+    });
   });
 });

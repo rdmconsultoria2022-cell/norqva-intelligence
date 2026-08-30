@@ -39,6 +39,7 @@ import { DigitalDelivery } from './features/delivery/DigitalDelivery';
 import { DigitalAssetAdminModal } from './features/delivery/DigitalAssetAdminModal';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { AppShell } from './components/layout/AppShell';
+import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
 
@@ -94,9 +95,10 @@ export default function App() {
     const isRecovery = location.pathname === '/reset-password' || isRecoveryHash || !!hasCode;
     const isForgot = location.pathname === '/forgot-password';
     const isLogin = location.pathname === '/login';
+    const isPublicOffer = location.pathname.startsWith('/p/');
 
     if (!currentUser) {
-      if (!isRecovery && !isForgot && !isLogin) {
+      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer) {
         navigate('/login', { replace: true });
       }
     } else {
@@ -449,6 +451,17 @@ export default function App() {
   };
 
 
+
+  const isPublicOffer = location.pathname.startsWith('/p/');
+
+  if (isPublicOffer) {
+    return (
+      <PublicOfferPage
+        showError={showError}
+        showSuccess={showSuccess}
+      />
+    );
+  }
 
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
 
