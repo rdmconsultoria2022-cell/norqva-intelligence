@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Download, PackageCheck, FileCode, CheckCircle, AlertTriangle, Loader2, X } from 'lucide-react';
 import { DigitalDeliveryProps, DeliveryTokenItem, DownloadResult } from './deliveryTypes';
 import { API_BASE } from '../../lib/api';
+import { trackPurchase } from '../../services/metaPixel';
 
 export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   orderId,
@@ -49,6 +50,38 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
         if (isMountedRef.current) {
           setTokens(data.deliveries || []);
+
+          // Redundant observational Purchase tracking: executed strictly upon authoritative delivery authorization
+          if (!isDemo) {
+            try {
+              const orderRes = await fetch(`${API_BASE}/orders/${orderId}`, {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-checkout-token': checkoutToken
+                },
+                signal: controller.signal
+              });
+              if (orderRes.ok) {
+                const orderData = await orderRes.json();
+                if (orderData && orderData.status === 'PAID') {
+                  const deliveryAssetIds = data.deliveries && data.deliveries.length > 0
+                    ? data.deliveries.map((d: any) => d.assetId || orderId)
+                    : [orderId];
+
+                  trackPurchase({
+                    orderId: orderData.id || orderId,
+                    value: Number(parseFloat(String(orderData.total_amount)) || 0),
+                    currency: 'BRL',
+                    contentIds: deliveryAssetIds,
+                    numItems: deliveryAssetIds.length || 1
+                  });
+                }
+              }
+            } catch (trackErr) {
+              // Fail-safe: pixel errors never interrupt digital delivery UI or asset downloads
+              console.warn('[Meta Pixel]: Digital delivery Purchase tracking observer error:', trackErr);
+            }
+          }
         }
       } catch (err: any) {
         if (err.name === 'AbortError') return;
