@@ -3103,81 +3103,132 @@ export async function downloadDelivery(req: any, res: Response) {
     return res.status(400).json({ error: 'Delivery token parameter is missing.' });
   }
 
-  const client = await pool.connect();
   try {
     const hashedToken = crypto.createHash('sha256').update(String(token)).digest('hex');
 
-    await client.query('BEGIN');
-
-    // Query and lock delivery entitlement row
-    const deliveryRes = await client.query(
+    // 1. Initial Read Verification (No lock held during external I/O)
+    const initialRes = await pool.query(
       `SELECT d.*, a.storage_bucket, a.storage_path, a.is_demo as asset_demo, o.status as order_status, o.is_demo as order_demo
        FROM order_deliveries d
        JOIN digital_assets a ON d.asset_id = a.id
        JOIN orders o ON d.order_id = o.id
-       WHERE d.delivery_token_hash = $1 FOR UPDATE`,
+       WHERE d.delivery_token_hash = $1`,
       [hashedToken]
     );
 
-    if (deliveryRes.rows.length === 0) {
-      await client.query('COMMIT');
+    if (initialRes.rows.length === 0) {
       return res.status(404).json({ error: 'Delivery token not found or invalid.' });
     }
-    const delivery = deliveryRes.rows[0];
+    const initialDelivery = initialRes.rows[0];
 
-    // 1. Verify token status
-    if (delivery.status !== 'ACTIVE') {
-      await client.query('COMMIT');
-      if (delivery.download_count >= delivery.max_downloads) {
+    // Status pre-check
+    if (initialDelivery.status !== 'ACTIVE') {
+      if (initialDelivery.download_count >= initialDelivery.max_downloads) {
         return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
       }
       return res.status(403).json({ error: 'Delivery token is expired or revoked.' });
     }
 
-    // 2. Verify token expiration time
-    if (delivery.delivery_token_expires_at && new Date() > new Date(delivery.delivery_token_expires_at)) {
-      await client.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [delivery.id]);
-      await client.query('COMMIT');
+    // Expiration pre-check
+    if (initialDelivery.delivery_token_expires_at && new Date() > new Date(initialDelivery.delivery_token_expires_at)) {
+      await pool.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [initialDelivery.id]);
       return res.status(403).json({ error: 'Delivery token has expired.' });
     }
 
-    // 3. Verify order paid
-    if (delivery.order_status !== 'PAID') {
-      await client.query('COMMIT');
+    // Order paid pre-check
+    if (initialDelivery.order_status !== 'PAID') {
       return res.status(403).json({ error: 'Access denied: Associated order has not been paid.' });
     }
 
-    // 4. Verify download limit
-    if (delivery.download_count >= delivery.max_downloads) {
-      await client.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [delivery.id]);
-      await client.query('COMMIT');
+    // Download limit pre-check
+    if (initialDelivery.download_count >= initialDelivery.max_downloads) {
+      await pool.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [initialDelivery.id]);
       return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
     }
 
-    // Increment download count atomically
-    const newCount = delivery.download_count + 1;
-    const newStatus = newCount >= delivery.max_downloads ? 'EXPIRED' : 'ACTIVE';
-
-    await client.query(
-      `UPDATE order_deliveries 
-       SET download_count = $1, status = $2, last_download_at = NOW(), updated_at = NOW() 
-       WHERE id = $3`,
-      [newCount, newStatus, delivery.id]
-    );
-
-    await client.query('COMMIT');
-
-    // Generate Supabase Storage Signed URL
+    // 2. Generate Supabase Storage Signed URL FIRST (External I/O outside of DB transaction)
     const ttlSeconds = parseInt(process.env.STORAGE_SIGNED_URL_TTL_SECONDS || '60', 10);
-    const signedUrl = await generateStorageSignedUrl(delivery.storage_bucket, delivery.storage_path, ttlSeconds);
+    const signedUrl = await generateStorageSignedUrl(initialDelivery.storage_bucket, initialDelivery.storage_path, ttlSeconds);
 
-    // Audit logs
-    await writeAuditLog(pool, null, 'DELIVERY_URL_ISSUED', `Signed URL issued for delivery entitlement ${delivery.id}.`, null, null, delivery.order_demo);
-    if (newStatus === 'EXPIRED') {
-      await writeAuditLog(pool, null, 'DELIVERY_LIMIT_REACHED', `Maximum download limit reached for delivery ${delivery.id}.`, null, null, delivery.order_demo);
+    // 3. Atomic Lock & Consumption Transaction (Strictly re-verifying under row-level lock)
+    const client = await pool.connect();
+    let finalCount = initialDelivery.download_count + 1;
+    let finalStatus = 'ACTIVE';
+    let maxAllowed = initialDelivery.max_downloads;
+    let isOrderDemo = initialDelivery.order_demo;
+    let deliveryId = initialDelivery.id;
+
+    try {
+      await client.query('BEGIN');
+
+      const lockedRes = await client.query(
+        `SELECT d.*, o.status as order_status, o.is_demo as order_demo
+         FROM order_deliveries d
+         JOIN orders o ON d.order_id = o.id
+         WHERE d.delivery_token_hash = $1 FOR UPDATE`,
+        [hashedToken]
+      );
+
+      if (lockedRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Delivery token not found or invalid.' });
+      }
+      const lockedDelivery = lockedRes.rows[0];
+
+      if (lockedDelivery.status !== 'ACTIVE') {
+        await client.query('ROLLBACK');
+        if (lockedDelivery.download_count >= lockedDelivery.max_downloads) {
+          return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
+        }
+        return res.status(403).json({ error: 'Delivery token is expired or revoked.' });
+      }
+
+      if (lockedDelivery.delivery_token_expires_at && new Date() > new Date(lockedDelivery.delivery_token_expires_at)) {
+        await client.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [lockedDelivery.id]);
+        await client.query('COMMIT');
+        return res.status(403).json({ error: 'Delivery token has expired.' });
+      }
+
+      if (lockedDelivery.order_status !== 'PAID') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Access denied: Associated order has not been paid.' });
+      }
+
+      if (lockedDelivery.download_count >= lockedDelivery.max_downloads) {
+        await client.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [lockedDelivery.id]);
+        await client.query('COMMIT');
+        return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
+      }
+
+      // Safe to increment now that URL was generated AND row lock validated limits
+      finalCount = lockedDelivery.download_count + 1;
+      finalStatus = finalCount >= lockedDelivery.max_downloads ? 'EXPIRED' : 'ACTIVE';
+      maxAllowed = lockedDelivery.max_downloads;
+      isOrderDemo = lockedDelivery.order_demo;
+      deliveryId = lockedDelivery.id;
+
+      await client.query(
+        `UPDATE order_deliveries 
+         SET download_count = $1, status = $2, last_download_at = NOW(), updated_at = NOW() 
+         WHERE id = $3`,
+        [finalCount, finalStatus, deliveryId]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
-    const downloadsRemaining = Math.max(0, delivery.max_downloads - newCount);
+    // 4. Audit Trail & Success Response
+    await writeAuditLog(pool, null, 'DELIVERY_URL_ISSUED', `Signed URL issued for delivery entitlement ${deliveryId}.`, null, null, isOrderDemo);
+    if (finalStatus === 'EXPIRED') {
+      await writeAuditLog(pool, null, 'DELIVERY_LIMIT_REACHED', `Maximum download limit reached for delivery ${deliveryId}.`, null, null, isOrderDemo);
+    }
+
+    const downloadsRemaining = Math.max(0, maxAllowed - finalCount);
     return res.status(200).json({
       success: true,
       download_url: signedUrl,
@@ -3185,11 +3236,8 @@ export async function downloadDelivery(req: any, res: Response) {
       downloads_remaining: downloadsRemaining
     });
   } catch (err: any) {
-    await client.query('ROLLBACK');
     console.error('Download delivery error:', err);
     return res.status(500).json({ error: 'Failed to process download delivery.' });
-  } finally {
-    client.release();
   }
 }
 

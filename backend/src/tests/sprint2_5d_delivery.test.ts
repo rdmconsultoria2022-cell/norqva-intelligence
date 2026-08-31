@@ -8,6 +8,7 @@ import { runMigrations } from '../db/migrations';
 import { seedDemoData } from '../db/seed';
 import { AsaasPaymentProvider } from '../utils/payment';
 import { finalizePaidOrder, reconcileAndFinalizePayment, generateStorageSignedUrl } from '../controllers/api';
+import { resetAllRateLimits } from '../middleware/rateLimiter';
 import https from 'https';
 import { EventEmitter } from 'events';
 
@@ -17,6 +18,8 @@ process.env.ASAAS_API_KEY = process.env.ASAAS_API_KEY || 'MOCK';
 process.env.ASAAS_WEBHOOK_AUTH_TOKEN = 'test_webhook_secret_token_123';
 process.env.AUTH_MODE = 'demo';
 process.env.STORAGE_SIGNED_URL_TTL_SECONDS = '1';
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'MOCK';
+process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://mockproject.supabase.co';
 
 describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integration', () => {
   let pool: Pool;
@@ -95,6 +98,7 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
 
   let defaultSpies: any[] = [];
   beforeEach(() => {
+    resetAllRateLimits();
     process.env.AUTH_MODE = 'demo';
     defaultSpies = [
       vi.spyOn(AsaasPaymentProvider.prototype, 'searchPaymentByExternalReference').mockResolvedValue(null),
@@ -619,6 +623,10 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
   describe('Digital Asset Administration & E2E Delivery Flow (D01 - D10)', () => {
     let adminAsset: any;
     let customOffer: any;
+
+    beforeEach(() => {
+      resetAllRateLimits();
+    });
 
     async function createCustomOrderAndPayment(off: any) {
       const orderId = crypto.randomUUID();
@@ -1238,8 +1246,8 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
       expect(signedUrl).not.toContain('/storage/v1/storage/v1');
 
       httpsSpy.mockRestore();
-      process.env.SUPABASE_URL = prevSupabaseUrl;
-      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey;
+      process.env.SUPABASE_URL = prevSupabaseUrl || 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey || 'MOCK';
     });
 
     test('D26: generateStorageSignedUrl sanitizes leading slashes in storage_path', async () => {
@@ -1274,8 +1282,200 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
       expect(signedUrl).toBe('https://mockproject.supabase.co/storage/v1/object/sign/norqva-assets/subfolder/planilha.xlsx?token=tok');
 
       httpsSpy.mockRestore();
-      process.env.SUPABASE_URL = prevSupabaseUrl;
-      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey;
+      process.env.SUPABASE_URL = prevSupabaseUrl || 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey || 'MOCK';
+    });
+
+    test('D27: infrastructure failure in signed URL generation leaves download_count untouched', async () => {
+      const { order, payment } = await createTestOrderAndPayment();
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      const rawToken = tokenRes.body.deliveries[0].rawToken;
+
+      const prevSupabaseUrl = process.env.SUPABASE_URL;
+      const prevKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      process.env.SUPABASE_URL = 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'valid-test-service-role-key-xyz';
+
+      // Mock https.request to simulate network error
+      const mockReq = new EventEmitter() as any;
+      mockReq.write = vi.fn();
+      mockReq.end = vi.fn();
+
+      const httpsSpy = vi.spyOn(https, 'request').mockImplementation((options: any, callback: any) => {
+        process.nextTick(() => {
+          mockReq.emit('error', new Error('Network socket hang up'));
+        });
+        return mockReq;
+      });
+
+      const dlRes = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(dlRes.status).toBe(500);
+
+      // Verify download_count in DB is still 0
+      const row = (await pool.query('SELECT download_count, status FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(row.download_count).toBe(0);
+      expect(row.status).toBe('ACTIVE');
+
+      httpsSpy.mockRestore();
+      process.env.SUPABASE_URL = prevSupabaseUrl || 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey || 'MOCK';
+    });
+
+    test('D28: Supabase 403 or 500 error does not consume download limit', async () => {
+      const { order, payment } = await createTestOrderAndPayment();
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      const rawToken = tokenRes.body.deliveries[0].rawToken;
+
+      const prevSupabaseUrl = process.env.SUPABASE_URL;
+      const prevKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      process.env.SUPABASE_URL = 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'valid-test-service-role-key-xyz';
+
+      // Mock Supabase returning 403 Unauthorized
+      const mockReq = new EventEmitter() as any;
+      mockReq.write = vi.fn();
+      mockReq.end = vi.fn();
+
+      const httpsSpy = vi.spyOn(https, 'request').mockImplementation((options: any, callback: any) => {
+        const mockRes = new EventEmitter() as any;
+        mockRes.statusCode = 403;
+        process.nextTick(() => {
+          callback(mockRes);
+          mockRes.emit('data', JSON.stringify({ statusCode: '403', error: 'Unauthorized', message: 'Invalid Compact JWS' }));
+          mockRes.emit('end');
+        });
+        return mockReq;
+      });
+
+      const dlRes = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(dlRes.status).toBe(500);
+
+      // Verify download_count in DB was NOT consumed
+      const row = (await pool.query('SELECT download_count, status FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(row.download_count).toBe(0);
+      expect(row.status).toBe('ACTIVE');
+
+      httpsSpy.mockRestore();
+      process.env.SUPABASE_URL = prevSupabaseUrl || 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey || 'MOCK';
+    });
+
+    test('D29: successful signed URL generation consumes exactly 1 download', async () => {
+      const { order, payment } = await createTestOrderAndPayment();
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      const rawToken = tokenRes.body.deliveries[0].rawToken;
+
+      const dlRes = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(dlRes.status).toBe(200);
+      expect(dlRes.body.success).toBe(true);
+      expect(dlRes.body.download_url).toBeDefined();
+
+      const row = (await pool.query('SELECT download_count, status FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(row.download_count).toBe(1);
+      expect(row.status).toBe('ACTIVE');
+    });
+
+    test('D30: last allowed download authorizes delivery and transitions to EXPIRED, subsequent requests get 403', async () => {
+      const { order, payment } = await createTestOrderAndPayment();
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // Set max_downloads = 1 for testing boundary
+      await pool.query('UPDATE order_deliveries SET max_downloads = 1, download_count = 0, status = $1 WHERE order_id = $2', ['ACTIVE', order.id]);
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      const rawToken = tokenRes.body.deliveries[0].rawToken;
+
+      // 1st request (last available download)
+      const res1 = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(res1.status).toBe(200);
+      expect(res1.body.success).toBe(true);
+      expect(res1.body.downloads_remaining).toBe(0);
+
+      // Verify DB transitioned to EXPIRED
+      const row = (await pool.query('SELECT download_count, status FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(row.download_count).toBe(1);
+      expect(row.status).toBe('EXPIRED');
+
+      // 2nd request (exceeded)
+      const res2 = await request(app).get(`/api/delivery/${rawToken}`);
+      expect(res2.status).toBe(403);
+      expect(res2.body.error).toContain('Maximum download limit reached');
+    });
+
+    test('D31: two concurrent requests when only 1 download remains allow exactly one to succeed', async () => {
+      const { order, payment } = await createTestOrderAndPayment();
+      await request(app)
+        .post('/api/webhooks/asaas')
+        .set('asaas-access-token', 'test_webhook_secret_token_123')
+        .send({
+          event: 'PAYMENT_RECEIVED',
+          payment: { id: payment.provider_payment_id, externalReference: payment.id, value: 40.00 }
+        });
+
+      // Set max_downloads = 1, download_count = 0
+      await pool.query('UPDATE order_deliveries SET max_downloads = 1, download_count = 0, status = $1 WHERE order_id = $2', ['ACTIVE', order.id]);
+
+      const tokenRes = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+
+      const rawToken = tokenRes.body.deliveries[0].rawToken;
+
+      // Fire 2 simultaneous requests
+      const [res1, res2] = await Promise.all([
+        request(app).get(`/api/delivery/${rawToken}`),
+        request(app).get(`/api/delivery/${rawToken}`)
+      ]);
+
+      const statuses = [res1.status, res2.status].sort();
+      expect(statuses).toEqual([200, 403]);
+
+      // Verify download_count is strictly 1 and status EXPIRED
+      const row = (await pool.query('SELECT download_count, status FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0];
+      expect(row.download_count).toBe(1);
+      expect(row.status).toBe('EXPIRED');
     });
   });
 });

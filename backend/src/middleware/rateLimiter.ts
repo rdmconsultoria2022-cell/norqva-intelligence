@@ -15,7 +15,9 @@ export interface RateLimiterOptions {
 const stores = new Map<string, Map<string, number[]>>();
 
 export function resetAllRateLimits(): void {
-  stores.clear();
+  for (const store of stores.values()) {
+    store.clear();
+  }
 }
 
 export function createRateLimiter(options: RateLimiterOptions) {
