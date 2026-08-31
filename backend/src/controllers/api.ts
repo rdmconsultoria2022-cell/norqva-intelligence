@@ -3695,3 +3695,138 @@ export async function syncMetaData(req: AuthenticatedRequest, res: Response) {
     return res.status(500).json({ error: err.message || 'Failed to synchronize Meta acquisition data.' });
   }
 }
+
+export async function metaTokenPreflight(req: any, res: Response) {
+  const token = process.env.META_ACCESS_TOKEN;
+  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  const apiVersion = process.env.META_API_VERSION || 'v26.0';
+
+  if (!token) {
+    return res.status(200).json({
+      configured: false,
+      error: 'META_ACCESS_TOKEN is not configured on this environment.'
+    });
+  }
+
+  const maskSecret = (s?: string) => {
+    if (!s || s.length < 8) return '****';
+    return s.slice(0, 4) + '...' + s.slice(-4);
+  };
+
+  const maskAccountId = (id?: string) => {
+    if (!id) return null;
+    const clean = id.startsWith('act_') ? id.slice(4) : id;
+    if (clean.length < 4) return 'act_****';
+    return 'act_...' + clean.slice(-4);
+  };
+
+  const fetchMeta = async (endpoint: string, params: Record<string, string> = {}) => {
+    const url = new URL(`https://graph.facebook.com/${apiVersion}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`);
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.append(k, v);
+    }
+    url.searchParams.append('access_token', token);
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    return { status: response.status, ok: response.ok, data };
+  };
+
+  try {
+    // 1. /me profile
+    const meRes = await fetchMeta('/me', { fields: 'id,name' });
+
+    // 2. /me/permissions
+    const permRes = await fetchMeta('/me/permissions');
+    const grantedScopes: string[] = [];
+    if (permRes.data?.data && Array.isArray(permRes.data.data)) {
+      permRes.data.data.forEach((p: any) => {
+        if (p.status === 'granted') grantedScopes.push(p.permission);
+      });
+    }
+
+    // 3. /app details
+    const appRes = await fetchMeta('/app', { fields: 'id,name' });
+
+    // 4. /debug_token if app credentials present
+    let debugInfo: any = null;
+    if (appId && appSecret) {
+      const debugRes = await fetchMeta('/debug_token', {
+        input_token: token,
+        access_token: `${appId}|${appSecret}`
+      });
+      if (debugRes.data?.data) {
+        const d = debugRes.data.data;
+        const fmtExp = (val: any) => (val === 0 || !val ? 'Never' : new Date(val * 1000).toISOString());
+        debugInfo = {
+          type: d.type,
+          application: d.application,
+          data_access_expires_at: fmtExp(d.data_access_expires_at),
+          expires_at: fmtExp(d.expires_at),
+          is_valid: d.is_valid,
+          scopes: d.scopes
+        };
+      }
+    }
+
+    // 5. Ad Account verification
+    let adAccountInfo: any = null;
+    if (adAccountId) {
+      const formattedAct = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const actRes = await fetchMeta(`/${formattedAct}`, {
+        fields: 'id,name,currency,timezone_name,account_status,business,owner,capabilities,is_personal'
+      });
+      adAccountInfo = {
+        status: actRes.status,
+        ok: actRes.ok,
+        data: actRes.data ? {
+          idMasked: maskAccountId(actRes.data.id),
+          name: actRes.data.name,
+          currency: actRes.data.currency,
+          timezone_name: actRes.data.timezone_name,
+          account_status: actRes.data.account_status,
+          business: actRes.data.business ? { id: maskSecret(actRes.data.business.id), name: actRes.data.business.name } : null,
+          capabilities: actRes.data.capabilities
+        } : null,
+        error: !actRes.ok ? actRes.data : null
+      };
+    }
+
+    // 6. Pixel / Dataset 1049452567443586 verification
+    const targetPixelId = '1049452567443586';
+    const pixelRes = await fetchMeta(`/${targetPixelId}`, {
+      fields: 'id,name,can_proxy,is_unavailable,creation_time,last_fired_time'
+    });
+
+    // 7. Pages / Accounts verification
+    const accountsRes = await fetchMeta('/me/accounts', {
+      fields: 'id,name,category,tasks,instagram_business_account{id,username}'
+    });
+
+    return res.status(200).json({
+      configured: true,
+      apiVersion,
+      tokenMasked: maskSecret(token),
+      appIdMasked: maskSecret(appId),
+      adAccountIdMasked: maskAccountId(adAccountId),
+      user: meRes.data,
+      app: appRes.data,
+      debugInfo,
+      grantedScopes,
+      adAccountInfo,
+      pixelInfo: {
+        status: pixelRes.status,
+        ok: pixelRes.ok,
+        data: pixelRes.data
+      },
+      pagesInfo: {
+        status: accountsRes.status,
+        ok: accountsRes.ok,
+        data: accountsRes.data
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
