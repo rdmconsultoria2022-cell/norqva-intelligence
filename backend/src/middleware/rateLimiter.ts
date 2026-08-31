@@ -14,6 +14,23 @@ export interface RateLimiterOptions {
 
 const stores = new Map<string, Map<string, number[]>>();
 
+// Periodic cleanup to avoid memory leak / unpruned IP maps
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    const now = Date.now();
+    for (const store of stores.values()) {
+      for (const [key, timestamps] of store.entries()) {
+        const valid = timestamps.filter(t => now - t < 15 * 60 * 1000);
+        if (valid.length === 0) {
+          store.delete(key);
+        } else {
+          store.set(key, valid);
+        }
+      }
+    }
+  }, 5 * 60 * 1000).unref();
+}
+
 export function resetAllRateLimits(): void {
   for (const store of stores.values()) {
     store.clear();

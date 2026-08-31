@@ -9,5 +9,16 @@ export default defineConfig({
     proxy: {
       '/api': 'http://127.0.0.1:5000'
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-icons': ['lucide-react'],
+          'vendor-supabase': ['@supabase/supabase-js']
+        }
+      }
+    }
   }
 });

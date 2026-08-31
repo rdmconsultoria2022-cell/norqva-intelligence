@@ -3,6 +3,27 @@ import { UserObj } from '../types';
 
 export const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
 
+let cachedAccessToken: string | null = null;
+let tokenExpiresAt: number = 0;
+
+if (typeof window !== 'undefined' && supabase?.auth) {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    cachedAccessToken = session?.access_token || null;
+    tokenExpiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
+  });
+}
+
+async function getValidAccessToken(): Promise<string | null> {
+  const now = Date.now();
+  if (cachedAccessToken && tokenExpiresAt > now + 30000) {
+    return cachedAccessToken;
+  }
+  const { data: { session } } = await supabase.auth.getSession();
+  cachedAccessToken = session?.access_token || null;
+  tokenExpiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
+  return cachedAccessToken;
+}
+
 export async function apiFetch(
   url: string,
   options: RequestInit = {},
@@ -16,9 +37,9 @@ export async function apiFetch(
   };
 
   if (authMode === 'real') {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`;
+    const token = await getValidAccessToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
   } else {
     if (currentUser) {
@@ -34,6 +55,8 @@ export async function apiFetch(
     if (res.status === 401 && authMode === 'real') {
       const { data: refreshData } = await supabase.auth.refreshSession();
       if (refreshData.session) {
+        cachedAccessToken = refreshData.session.access_token;
+        tokenExpiresAt = refreshData.session.expires_at ? refreshData.session.expires_at * 1000 : 0;
         const retryHeaders = {
           ...headers,
           'Authorization': `Bearer ${refreshData.session.access_token}`
@@ -44,6 +67,8 @@ export async function apiFetch(
           return retryData;
         }
       }
+      cachedAccessToken = null;
+      tokenExpiresAt = 0;
       if (onSessionExpired) {
         onSessionExpired();
       }
