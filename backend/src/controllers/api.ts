@@ -3035,15 +3035,17 @@ export async function generateStorageSignedUrl(bucket: string, path: string, ttl
     throw new Error('SUPABASE_URL is not configured.');
   }
 
+  const cleanPath = path.replace(/^\/+/, '');
+
   // Fallback mock signed URL generation for tests when no real keys exist
   if (
     process.env.NODE_ENV === 'test' &&
     (!process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY === 'MOCK')
   ) {
-    return `${supabaseUrl}/storage/v1/object/sign/${bucket}/${path}?token=mock_signed_token&expires=${Math.floor(Date.now() / 1000) + ttlSeconds}`;
+    return `${supabaseUrl}/storage/v1/object/sign/${bucket}/${cleanPath}?token=mock_signed_token&expires=${Math.floor(Date.now() / 1000) + ttlSeconds}`;
   }
 
-  const url = `${supabaseUrl}/storage/v1/object/sign/${bucket}/${path}`;
+  const url = `${supabaseUrl}/storage/v1/object/sign/${bucket}/${cleanPath}`;
   const payload = JSON.stringify({ expiresIn: ttlSeconds });
 
   return new Promise((resolve, reject) => {
@@ -3055,6 +3057,7 @@ export async function generateStorageSignedUrl(bucket: string, path: string, ttl
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${serviceRoleKey}`,
+        'apikey': serviceRoleKey,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload)
       }
@@ -3071,7 +3074,10 @@ export async function generateStorageSignedUrl(bucket: string, path: string, ttl
             if (!signedPath) {
               return reject(new Error('Invalid response from Supabase Storage: signedURL not found.'));
             }
-            resolve(`${supabaseUrl}${signedPath}`);
+            const normalizedPath = signedPath.startsWith('/storage/v1')
+              ? signedPath
+              : `/storage/v1${signedPath.startsWith('/') ? '' : '/'}${signedPath}`;
+            resolve(`${supabaseUrl}${normalizedPath}`);
           } catch (e) {
             reject(e);
           }

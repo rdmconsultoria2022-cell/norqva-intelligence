@@ -7,7 +7,9 @@ import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { seedDemoData } from '../db/seed';
 import { AsaasPaymentProvider } from '../utils/payment';
-import { finalizePaidOrder, reconcileAndFinalizePayment } from '../controllers/api';
+import { finalizePaidOrder, reconcileAndFinalizePayment, generateStorageSignedUrl } from '../controllers/api';
+import https from 'https';
+import { EventEmitter } from 'events';
 
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
 process.env.CPF_CNPJ_HASH_SECRET = process.env.CPF_CNPJ_HASH_SECRET || 'default_hmac_secret_for_testing';
@@ -1172,6 +1174,108 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
 
       expect(JSON.stringify(res.body)).not.toContain('delivery_token_hash');
       expect(JSON.stringify(res.body)).not.toContain('hash');
+    });
+
+    test('D24: generateStorageSignedUrl normalizes signedURL starting with /object/sign to include /storage/v1 exactly once', async () => {
+      const prevSupabaseUrl = process.env.SUPABASE_URL;
+      const prevKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      process.env.SUPABASE_URL = 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'valid-test-service-role-key-xyz';
+
+      const mockReq = new EventEmitter() as any;
+      mockReq.write = vi.fn();
+      mockReq.end = vi.fn();
+
+      const httpsSpy = vi.spyOn(https, 'request').mockImplementation((options: any, callback: any) => {
+        const mockRes = new EventEmitter() as any;
+        mockRes.statusCode = 200;
+        process.nextTick(() => {
+          callback(mockRes);
+          mockRes.emit('data', JSON.stringify({
+            signedURL: '/object/sign/norqva-assets/planilha.xlsx?token=jwt_signed_token_123'
+          }));
+          mockRes.emit('end');
+        });
+        return mockReq;
+      });
+
+      const signedUrl = await generateStorageSignedUrl('norqva-assets', 'planilha.xlsx', 60);
+
+      expect(signedUrl).toBe('https://mockproject.supabase.co/storage/v1/object/sign/norqva-assets/planilha.xlsx?token=jwt_signed_token_123');
+      expect(signedUrl).not.toContain('/storage/v1/storage/v1');
+
+      httpsSpy.mockRestore();
+      process.env.SUPABASE_URL = prevSupabaseUrl;
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey;
+    });
+
+    test('D25: generateStorageSignedUrl does not duplicate /storage/v1 if Supabase already includes it', async () => {
+      const prevSupabaseUrl = process.env.SUPABASE_URL;
+      const prevKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      process.env.SUPABASE_URL = 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'valid-test-service-role-key-xyz';
+
+      const mockReq = new EventEmitter() as any;
+      mockReq.write = vi.fn();
+      mockReq.end = vi.fn();
+
+      const httpsSpy = vi.spyOn(https, 'request').mockImplementation((options: any, callback: any) => {
+        const mockRes = new EventEmitter() as any;
+        mockRes.statusCode = 200;
+        process.nextTick(() => {
+          callback(mockRes);
+          mockRes.emit('data', JSON.stringify({
+            signedURL: '/storage/v1/object/sign/norqva-assets/planilha.xlsx?token=jwt_signed_token_123'
+          }));
+          mockRes.emit('end');
+        });
+        return mockReq;
+      });
+
+      const signedUrl = await generateStorageSignedUrl('norqva-assets', 'planilha.xlsx', 60);
+
+      expect(signedUrl).toBe('https://mockproject.supabase.co/storage/v1/object/sign/norqva-assets/planilha.xlsx?token=jwt_signed_token_123');
+      expect(signedUrl).not.toContain('/storage/v1/storage/v1');
+
+      httpsSpy.mockRestore();
+      process.env.SUPABASE_URL = prevSupabaseUrl;
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey;
+    });
+
+    test('D26: generateStorageSignedUrl sanitizes leading slashes in storage_path', async () => {
+      const prevSupabaseUrl = process.env.SUPABASE_URL;
+      const prevKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      process.env.SUPABASE_URL = 'https://mockproject.supabase.co';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'valid-test-service-role-key-xyz';
+
+      let requestedPath = '';
+      const mockReq = new EventEmitter() as any;
+      mockReq.write = vi.fn();
+      mockReq.end = vi.fn();
+
+      const httpsSpy = vi.spyOn(https, 'request').mockImplementation((options: any, callback: any) => {
+        requestedPath = options.path;
+        const mockRes = new EventEmitter() as any;
+        mockRes.statusCode = 200;
+        process.nextTick(() => {
+          callback(mockRes);
+          mockRes.emit('data', JSON.stringify({
+            signedURL: '/object/sign/norqva-assets/subfolder/planilha.xlsx?token=tok'
+          }));
+          mockRes.emit('end');
+        });
+        return mockReq;
+      });
+
+      const signedUrl = await generateStorageSignedUrl('norqva-assets', '///subfolder/planilha.xlsx', 60);
+
+      expect(requestedPath).toBe('/storage/v1/object/sign/norqva-assets/subfolder/planilha.xlsx');
+      expect(requestedPath).not.toContain('//subfolder');
+      expect(signedUrl).toBe('https://mockproject.supabase.co/storage/v1/object/sign/norqva-assets/subfolder/planilha.xlsx?token=tok');
+
+      httpsSpy.mockRestore();
+      process.env.SUPABASE_URL = prevSupabaseUrl;
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey;
     });
   });
 });
