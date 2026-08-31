@@ -11,7 +11,7 @@ import {
   MetaPreflightStatus
 } from '../services/meta/metaMutatingClient';
 
-describe('NORQVA — SPRINT 3.0: META MUTATING CLIENT & FAIL-CLOSED GUARDS (G01 – G20)', () => {
+describe('NORQVA — SPRINT 3.0: META MUTATING CLIENT & FAIL-CLOSED GUARDS (G01 – G21)', () => {
   let pool: Pool;
   let adminUserId: string;
   let nonAdminUserId: string;
@@ -527,9 +527,10 @@ describe('NORQVA — SPRINT 3.0: META MUTATING CLIENT & FAIL-CLOSED GUARDS (G01 
     expect(JSON.stringify(lastLog)).not.toContain('access_token');
   });
 
-  it('G20: Emergency Kill Switch / Pausing is permitted even with feature flag disabled', async () => {
+  it('G20: Emergency Kill Switch / Pausing is strictly blocked when META_MUTATION_ENABLED = false (Zero Transport Calls)', async () => {
     process.env.META_MUTATION_ENABLED = 'false';
-    const client = new MetaMutatingClient();
+    const mockTransport = vi.fn().mockResolvedValue({ id: 'cmp_paused_res' });
+    const client = new MetaMutatingClient(mockTransport);
 
     const actRes = await pool.query(
       `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo)
@@ -549,14 +550,69 @@ describe('NORQVA — SPRINT 3.0: META MUTATING CLIENT & FAIL-CLOSED GUARDS (G01 
     const context: MetaMutatingSecurityContext = {
       userId: adminUserId,
       userRole: 'ADMIN',
-      isDemo: false
+      isDemo: false,
+      preflightOverrideForTesting: validPreflight
     };
 
-    const res = await client.setEntityStatus(pool, 'CAMPAIGN', dummyCmpId, 'PAUSED', context);
-    expect(res.success).toBe(true);
-    expect(res.status).toBe('PAUSED');
+    // Emergency pause must fail-closed when feature flag is false
+    await expect(
+      client.setEntityStatus(pool, 'CAMPAIGN', dummyCmpId, 'PAUSED', context)
+    ).rejects.toThrow('BLOCKED_BY_META_WRITE_SAFETY_HOLD: Meta mutating operations are strictly disabled by feature flag');
 
-    const updated = (await pool.query('SELECT status FROM meta_campaigns WHERE id = $1', [dummyCmpId])).rows[0];
-    expect(updated.status).toBe('PAUSED');
+    // Prove transport was called ZERO times
+    expect(mockTransport).toHaveBeenCalledTimes(0);
+
+    // Prove database entity status remains unchanged
+    const unchanged = (await pool.query('SELECT status FROM meta_campaigns WHERE id = $1', [dummyCmpId])).rows[0];
+    expect(unchanged.status).toBe('ACTIVE');
+  });
+
+  it('G21: Emergency Kill Switch is strictly blocked when META_MUTATION_CREDENTIAL_READY = NO even if feature flag is true (Zero Transport Calls)', async () => {
+    process.env.META_MUTATION_ENABLED = 'true';
+    const mockTransport = vi.fn().mockResolvedValue({ id: 'cmp_paused_res' });
+    const client = new MetaMutatingClient(mockTransport);
+
+    const actRes = await pool.query(
+      `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo)
+       VALUES ('act_kill_switch_test_2', 'Kill Switch Acct 2', 'BRL', FALSE)
+       ON CONFLICT (meta_account_id, is_demo) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`
+    );
+
+    const dummyCmpId = crypto.randomUUID();
+    const metaCmpId = `cmp_ks_${crypto.randomUUID().slice(0, 8)}`;
+    await pool.query(
+      `INSERT INTO meta_campaigns (id, meta_campaign_id, ad_account_id, name, status, effective_status, is_demo)
+       VALUES ($1, $2, $3, 'Active Campaign 2', 'ACTIVE', 'ACTIVE', FALSE)`,
+      [dummyCmpId, metaCmpId, actRes.rows[0].id]
+    );
+
+    const invalidCredentialPreflight: MetaPreflightStatus = {
+      tokenValid: false,
+      adsRead: false,
+      adsManagement: false,
+      adAccountAccess: false,
+      pixelAccess: false,
+      metaMutationCredentialReady: false
+    };
+
+    const context: MetaMutatingSecurityContext = {
+      userId: adminUserId,
+      userRole: 'ADMIN',
+      isDemo: false,
+      preflightOverrideForTesting: invalidCredentialPreflight
+    };
+
+    // Emergency pause must fail-closed when credentials / pre-flight are not ready
+    await expect(
+      client.setEntityStatus(pool, 'CAMPAIGN', dummyCmpId, 'PAUSED', context)
+    ).rejects.toThrow('BLOCKED_BY_META_WRITE_SAFETY_HOLD: Credential pre-flight checks failed');
+
+    // Prove transport was called ZERO times
+    expect(mockTransport).toHaveBeenCalledTimes(0);
+
+    // Prove database entity status remains unchanged
+    const unchanged = (await pool.query('SELECT status FROM meta_campaigns WHERE id = $1', [dummyCmpId])).rows[0];
+    expect(unchanged.status).toBe('ACTIVE');
   });
 });

@@ -99,7 +99,7 @@ export class MetaMutatingClient {
   public assertFeatureFlagAndPreflight(context: MetaMutatingSecurityContext): void {
     const isFeatureFlagEnabled = process.env.META_MUTATION_ENABLED === 'true';
     if (!isFeatureFlagEnabled) {
-      throw new Error('[SECURITY EXCEPTION]: Meta mutating operations are strictly disabled by feature flag (META_MUTATION_ENABLED is not true).');
+      throw new Error('[SECURITY EXCEPTION]: BLOCKED_BY_META_WRITE_SAFETY_HOLD: Meta mutating operations are strictly disabled by feature flag (META_MUTATION_ENABLED is not true).');
     }
 
     if (context.isDemo) {
@@ -117,7 +117,7 @@ export class MetaMutatingClient {
     if (!preflight.metaMutationCredentialReady) failedChecks.push('META_MUTATION_CREDENTIAL_READY');
 
     if (failedChecks.length > 0) {
-      throw new Error(`[SECURITY EXCEPTION]: Meta mutation blocked: Credential pre-flight checks failed (${failedChecks.join(', ')}).`);
+      throw new Error(`[SECURITY EXCEPTION]: BLOCKED_BY_META_WRITE_SAFETY_HOLD: Credential pre-flight checks failed (${failedChecks.join(', ')}).`);
     }
   }
 
@@ -749,9 +749,8 @@ export class MetaMutatingClient {
     newStatus: 'PAUSED' | 'ACTIVE',
     context: MetaMutatingSecurityContext
   ): Promise<{ success: boolean; entityId: string; status: string }> {
-    if (newStatus === 'ACTIVE') {
-      this.assertFeatureFlagAndPreflight(context);
-    }
+    // Unconditional fail-closed check: No mutation (even pause) can bypass the Global Safety Hold
+    this.assertFeatureFlagAndPreflight(context);
 
     const table = entityType === 'CAMPAIGN' ? 'meta_campaigns' : entityType === 'ADSET' ? 'meta_ad_sets' : 'meta_ads';
     const idCol = entityType === 'CAMPAIGN' ? 'meta_campaign_id' : entityType === 'ADSET' ? 'meta_adset_id' : 'meta_ad_id';
@@ -760,7 +759,7 @@ export class MetaMutatingClient {
     try {
       await client.query('BEGIN');
 
-      if (!context.isDemo && process.env.META_MUTATION_ENABLED === 'true') {
+      if (!context.isDemo) {
         await this.callTransportPost(`/${metaEntityId}`, { status: newStatus });
       }
 
