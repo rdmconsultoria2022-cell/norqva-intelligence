@@ -63,8 +63,7 @@ import {
   getMetaAdSets,
   getMetaAds,
   getMetaInsights,
-  syncMetaData,
-  metaTokenPreflight
+  syncMetaData
 } from './controllers/api';
 
 import { securityHeaders } from './middleware/securityHeaders';
@@ -268,7 +267,6 @@ app.get('/api/meta/adsets', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CR
 app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAds);
 app.get('/api/meta/insights', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaInsights);
 app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
-app.get('/api/public/meta-token-preflight', metaTokenPreflight);
 
 // 5. Centralized Error Handler (Must be registered last)
 app.use(errorHandler());
