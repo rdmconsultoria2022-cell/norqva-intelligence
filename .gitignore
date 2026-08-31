@@ -29,6 +29,8 @@ Thumbs.db
 # Temporary & Scratch Utilities
 *.tmp
 *.cjs
+coverage/
+backend/coverage/
 backend/restore_admin.js
 backend/verify_admin_mapping.js
 backend/run_real_*
