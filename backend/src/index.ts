@@ -50,6 +50,8 @@ import {
   webhookAsaas,
   getDeliveryTokens,
   downloadDelivery,
+  getE2EDeliveryStatus,
+  recoverE2EDelivery,
   createDigitalAsset,
   getDigitalAssets,
   linkOfferDigitalAsset,
@@ -250,6 +252,8 @@ app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentByI
 app.post('/api/webhooks/asaas', webhookRateLimiter, webhookAsaas);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
+app.get('/api/public/delivery-e2e-status', getE2EDeliveryStatus);
+app.post('/api/public/delivery-e2e-recover', recoverE2EDelivery);
 
 // Digital Assets Administration endpoints
 app.post('/api/digital-assets', requireRole(['ADMIN']), createDigitalAsset);

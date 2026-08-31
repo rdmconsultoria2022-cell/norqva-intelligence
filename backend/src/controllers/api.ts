@@ -3695,3 +3695,73 @@ export async function syncMetaData(req: AuthenticatedRequest, res: Response) {
     return res.status(500).json({ error: err.message || 'Failed to synchronize Meta acquisition data.' });
   }
 }
+
+export async function getE2EDeliveryStatus(req: any, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const result = await pool.query(`
+      SELECT d.id, d.order_id, d.status, d.download_count, d.max_downloads,
+             d.delivery_token_expires_at, d.last_download_at, d.delivery_token_hash,
+             o.status as order_status, o.total_amount, o.created_at as order_created_at
+      FROM order_deliveries d
+      JOIN orders o ON o.id = d.order_id
+      WHERE o.id::text LIKE '194093f7%'
+      LIMIT 1
+    `);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Order #194093f7 or associated delivery not found.' });
+    }
+
+    return res.status(200).json(result.rows[0]);
+  } catch (err: any) {
+    console.error('getE2EDeliveryStatus error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+export async function recoverE2EDelivery(req: any, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    // 1. Verify that order exists and is PAID
+    const check = await pool.query(`
+      SELECT o.id, o.status as order_status, d.id as delivery_id, d.status as delivery_status,
+             d.download_count, d.max_downloads, d.delivery_token_expires_at, d.delivery_token_hash, d.last_download_at
+      FROM orders o
+      JOIN order_deliveries d ON d.order_id = o.id
+      WHERE o.id::text LIKE '194093f7%'
+    `);
+
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Order #194093f7 not found.' });
+    }
+
+    const current = check.rows[0];
+    if (current.order_status !== 'PAID') {
+      return res.status(400).json({ error: `Cannot recover delivery: order is not PAID (current status: ${current.order_status}).` });
+    }
+
+    // 2. Perform surgical recovery
+    const updateRes = await pool.query(`
+      UPDATE order_deliveries
+      SET download_count = 0,
+          status = 'ACTIVE',
+          delivery_token_expires_at = CASE 
+            WHEN delivery_token_expires_at IS NULL OR delivery_token_expires_at < NOW() + INTERVAL '2 hour' 
+            THEN NOW() + INTERVAL '24 hour' 
+            ELSE delivery_token_expires_at 
+          END,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, order_id, status, download_count, max_downloads, delivery_token_expires_at, last_download_at, delivery_token_hash, updated_at
+    `, [current.delivery_id]);
+
+    return res.status(200).json({
+      before: current,
+      after: updateRes.rows[0]
+    });
+  } catch (err: any) {
+    console.error('recoverE2EDelivery error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
