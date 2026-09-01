@@ -2365,7 +2365,8 @@ export async function checkoutPix(req: any, res: Response) {
   // Load environment variables
   const apiKey = process.env.ASAAS_API_KEY;
   const baseUrl = process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3';
-  const env = process.env.ASAAS_ENV || 'sandbox';
+  const env = (process.env.ASAAS_ENV || 'sandbox').trim().toLowerCase();
+  const providerEnv = env === 'production' ? 'PRODUCTION' : 'SANDBOX';
   const hashSecret = process.env.CPF_CNPJ_HASH_SECRET || 'default_hmac_secret_for_testing';
   const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
 
@@ -2416,9 +2417,9 @@ export async function checkoutPix(req: any, res: Response) {
         
         const insertRes = await client.query(
           `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference)
-           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, 'SANDBOX', $7)
+           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8)
            RETURNING *`,
-          [paymentId, humanId, orderId, order.total_amount, idempotency_key, order.is_demo, paymentId]
+          [paymentId, humanId, orderId, order.total_amount, idempotency_key, order.is_demo, providerEnv, paymentId]
         );
         isNew = true;
         payment = insertRes.rows[0];
@@ -2495,8 +2496,8 @@ export async function checkoutPix(req: any, res: Response) {
 
     // 2. Resolve Customer ID mapping
     const mappingRes = await pool.query(
-      "SELECT provider_customer_id FROM payment_provider_customers WHERE customer_id = $1 AND provider = 'ASAAS' AND provider_environment = 'SANDBOX'",
-      [customer.id]
+      "SELECT provider_customer_id FROM payment_provider_customers WHERE customer_id = $1 AND provider = 'ASAAS' AND provider_environment = $2",
+      [customer.id, providerEnv]
     );
 
     if (mappingRes.rows.length > 0) {
@@ -2535,8 +2536,8 @@ export async function checkoutPix(req: any, res: Response) {
       try {
         await pool.query(
           `INSERT INTO payment_provider_customers (customer_id, provider, provider_customer_id, provider_environment, is_demo)
-           VALUES ($1, 'ASAAS', $2, 'SANDBOX', $3)`,
-          [customer.id, providerCustomerId, customer.is_demo]
+           VALUES ($1, 'ASAAS', $2, $3, $4)`,
+          [customer.id, providerCustomerId, providerEnv, customer.is_demo]
         );
       } catch (mapErr: any) {
         if (mapErr.code !== '23505') throw mapErr;
@@ -2720,8 +2721,9 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   }
 
   // Validate environment compatibility
+  const allowProd = process.env.ALLOW_PRODUCTION_PAYMENTS === 'true';
   const isProductionCall = baseUrl.includes('api.asaas.com') && !baseUrl.includes('api-sandbox.asaas.com');
-  if (isProductionCall) {
+  if (isProductionCall && !allowProd) {
     throw new Error('RECONCILIATION_FAILED: Production environment blocked.');
   }
 
