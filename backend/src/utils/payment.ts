@@ -195,4 +195,14 @@ export class AsaasPaymentProvider {
       amount: res.value
     };
   }
+
+  async validateAuth(): Promise<{ authenticated: boolean; environment: string; error?: string }> {
+    try {
+      // Read-only account balance check to verify API key validity without mutations
+      await this.request<{ balance?: number }>('/finance/balance', 'GET');
+      return { authenticated: true, environment: this.env };
+    } catch (err: any) {
+      return { authenticated: false, environment: this.env, error: err.message };
+    }
+  }
 }

@@ -65,7 +65,8 @@ import {
   getMetaInsights,
   syncMetaData,
   getExecutiveDashboard,
-  migrateDestinationUrl
+  migrateDestinationUrl,
+  validatePaymentConnection
 } from './controllers/api';
 
 import { securityHeaders } from './middleware/securityHeaders';
@@ -260,6 +261,9 @@ app.get('/api/digital-assets', requireRole(['ADMIN', 'OPERATIONS']), getDigitalA
 app.post('/api/offers/:id/digital-assets', requireRole(['ADMIN']), linkOfferDigitalAsset);
 app.get('/api/offers/:id/digital-assets', requireRole(['ADMIN', 'OPERATIONS', 'PRODUCT', 'INTELLIGENCE']), getOfferDigitalAssets);
 app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), unlinkOfferDigitalAsset);
+
+// Payment Core Diagnostics (Admin Read-Only)
+app.get('/api/admin/payments/validate-connection', requireRole(['ADMIN']), validatePaymentConnection);
 
 // Meta Acquisition Core (Phase A - Read-Only Ingestion)
 app.get('/api/meta/connection/status', requireRole(['ADMIN']), getMetaConnectionStatus);

@@ -4045,4 +4045,36 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
   }
 }
 
+export async function validatePaymentConnection(req: Request, res: Response) {
+  const apiKey = process.env.ASAAS_API_KEY;
+  const baseUrl = process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3';
+  const env = process.env.ASAAS_ENV || 'sandbox';
+  const allowProd = process.env.ALLOW_PRODUCTION_PAYMENTS === 'true';
+  const webhookToken = process.env.ASAAS_WEBHOOK_AUTH_TOKEN;
+
+  if (!apiKey) {
+    return res.status(500).json({ error: 'ASAAS_API_KEY not configured.' });
+  }
+
+  try {
+    const provider = new AsaasPaymentProvider(apiKey, baseUrl, env);
+    const authResult = await provider.validateAuth();
+    return res.status(200).json({
+      environment: env,
+      base_url_hostname: new URL(baseUrl).hostname,
+      production_payments_enabled: allowProd,
+      webhook_token_configured: !!webhookToken,
+      authenticated: authResult.authenticated,
+      auth_error: authResult.error ? '[SANITIZED_ERROR]' : null
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err.message,
+      environment: env,
+      production_payments_enabled: allowProd
+    });
+  }
+}
+
+
 
