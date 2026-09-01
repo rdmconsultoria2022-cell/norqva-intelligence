@@ -17,19 +17,43 @@ export class AsaasPaymentProvider {
   private baseUrl: string;
   private env: string;
 
-  constructor(apiKey: string, baseUrl: string, env: string) {
-    // Sandbox only guard:
-    const parsedUrl = new URL(baseUrl);
-    if (parsedUrl.hostname !== 'api-sandbox.asaas.com') {
-      throw new Error('[SECURITY EXCEPTION]: AsaasPaymentProvider is strictly locked to Sandbox/Homologation environment in this Gate.');
+  constructor(apiKey: string, baseUrl: string, env: string, options?: { allowProductionPayments?: boolean; webhookAuthToken?: string }) {
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+      throw new Error('[PAYMENT SECURITY EXCEPTION]: Asaas API key must be provided and non-empty.');
     }
-    if (env !== 'sandbox') {
-      throw new Error('[SECURITY EXCEPTION]: AsaasPaymentProvider environment must be set to sandbox.');
+
+    const normalizedEnv = (env || '').trim().toLowerCase();
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(baseUrl);
+    } catch {
+      throw new Error(`[PAYMENT SECURITY EXCEPTION]: Invalid Asaas base URL format: '${baseUrl}'.`);
+    }
+
+    const allowProd = options?.allowProductionPayments ?? (process.env.ALLOW_PRODUCTION_PAYMENTS === 'true');
+    const webhookToken = options?.webhookAuthToken ?? process.env.ASAAS_WEBHOOK_AUTH_TOKEN;
+
+    if (normalizedEnv === 'sandbox') {
+      if (parsedUrl.hostname !== 'api-sandbox.asaas.com') {
+        throw new Error('[PAYMENT SECURITY EXCEPTION]: Sandbox environment requires https://api-sandbox.asaas.com base URL.');
+      }
+    } else if (normalizedEnv === 'production') {
+      if (!allowProd) {
+        throw new Error('[PAYMENT SECURITY EXCEPTION]: Production payments are strictly blocked. ALLOW_PRODUCTION_PAYMENTS must be explicitly set to true.');
+      }
+      if (parsedUrl.hostname !== 'api.asaas.com') {
+        throw new Error('[PAYMENT SECURITY EXCEPTION]: Production environment requires https://api.asaas.com base URL.');
+      }
+      if (!webhookToken || typeof webhookToken !== 'string' || webhookToken.trim() === '') {
+        throw new Error('[PAYMENT SECURITY EXCEPTION]: Production environment requires ASAAS_WEBHOOK_AUTH_TOKEN to be configured.');
+      }
+    } else {
+      throw new Error(`[PAYMENT SECURITY EXCEPTION]: Invalid ASAAS_ENV '${env}'. Must be strictly 'sandbox' or 'production'.`);
     }
 
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
-    this.env = env;
+    this.env = normalizedEnv;
   }
 
   private request<T>(path: string, method: string, payload?: any): Promise<T> {
