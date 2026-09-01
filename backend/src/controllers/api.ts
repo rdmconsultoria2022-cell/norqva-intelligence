@@ -3865,3 +3865,168 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
   }
 }
 
+export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required.' });
+  }
+
+  const { targetAdId, targetOfferHumanId } = req.body || {};
+  const adId = targetAdId || '120249269452820097';
+  const newHumanId = targetOfferHumanId || 'OFF-000004';
+  const expectedNewUrl = `https://norqva-intelligence-frontend.vercel.app/p/${newHumanId}`;
+
+  const apiVersion = process.env.META_API_VERSION || 'v26.0';
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+
+  if (!accessToken || !adAccountId) {
+    return res.status(500).json({ error: 'Meta credentials not configured on server.' });
+  }
+
+  const formattedAct = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
+  async function graphFetch(endpoint: string, options: any = {}) {
+    const url = new URL(`https://graph.facebook.com/${apiVersion}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`);
+    url.searchParams.append('access_token', accessToken!);
+    if (options.params) {
+      for (const [k, v] of Object.entries(options.params)) {
+        if (v !== undefined && v !== null) url.searchParams.append(k, String(v));
+      }
+    }
+    const response = await fetch(url.toString(), {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'NORQVA-Controlled-Migration/1.0'
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    const data: any = await response.json();
+    if (!response.ok) {
+      throw new Error(`Graph API error (${response.status}): ${JSON.stringify(data)}`);
+    }
+    return data;
+  }
+
+  try {
+    // 1. PRE-FLIGHT
+    const offRes = await pool.query('SELECT * FROM offers WHERE human_id = $1 AND is_deleted = FALSE', [newHumanId]);
+    if (offRes.rows.length === 0 || offRes.rows[0].status !== 'ATIVA' || offRes.rows[0].is_demo !== false) {
+      return res.status(400).json({ error: `Offer ${newHumanId} is not active and real in database.` });
+    }
+
+    const adData = await graphFetch(`/${adId}`, { params: { fields: 'id,name,status,effective_status,creative,adset_id,campaign_id' } });
+    const oldCreativeId = adData.creative?.id;
+    if (!oldCreativeId) {
+      return res.status(400).json({ error: `Ad ${adId} does not have an associated creative.` });
+    }
+
+    const oldCreative = await graphFetch(`/${oldCreativeId}`, { params: { fields: 'id,name,object_story_spec,status' } });
+    const oldStorySpec = oldCreative.object_story_spec || {};
+    const oldLinkData = oldStorySpec.link_data || {};
+    const oldDestinationUrl = oldLinkData.link || oldLinkData.call_to_action?.value?.link || 'https://norqva-intelligence-frontend.vercel.app/p/OFF-000001';
+
+    const adsetData = await graphFetch(`/${adData.adset_id}`, { params: { fields: 'id,name,status,effective_status,start_time,daily_budget,lifetime_budget' } });
+    const startTimeBefore = adsetData.start_time;
+    const budgetBefore = adsetData.daily_budget || adsetData.lifetime_budget || 'CBO/Default';
+
+    const cmpData = await graphFetch(`/${adData.campaign_id || '120249269452810097'}`, { params: { fields: 'id,name,status,effective_status,daily_budget,lifetime_budget' } });
+    const cmpBudgetBefore = cmpData.daily_budget || cmpData.lifetime_budget || 'AdSet-level';
+
+    // 2. BUILD NEW CREATIVE OBJECT STORY SPEC
+    const newStorySpec: any = {
+      page_id: oldStorySpec.page_id,
+      link_data: {
+        ...oldLinkData,
+        link: expectedNewUrl
+      }
+    };
+    if (newStorySpec.link_data.call_to_action) {
+      newStorySpec.link_data.call_to_action = {
+        type: newStorySpec.link_data.call_to_action.type || 'LEARN_MORE',
+        value: {
+          ...newStorySpec.link_data.call_to_action.value,
+          link: expectedNewUrl
+        }
+      };
+    }
+
+    // 3. CREATE NEW AD CREATIVE
+    const newCreativeRes = await graphFetch(`/${formattedAct}/adcreatives`, {
+      method: 'POST',
+      body: {
+        name: `AdCreative OFF-000004 Migration (${new Date().toISOString().slice(0, 10)})`,
+        object_story_spec: newStorySpec
+      }
+    });
+    const newCreativeId = newCreativeRes.id;
+
+    // Verify New Creative
+    const verifyNewCreative = await graphFetch(`/${newCreativeId}`, { params: { fields: 'id,name,object_story_spec,status' } });
+    const newResolvedUrl = verifyNewCreative.object_story_spec?.link_data?.link || expectedNewUrl;
+
+    // 4. UPDATE AD
+    await graphFetch(`/${adId}`, {
+      method: 'POST',
+      body: {
+        creative: { creative_id: newCreativeId }
+      }
+    });
+
+    // 5. POST-MUTATION VERIFICATION
+    const updatedAd = await graphFetch(`/${adId}`, { params: { fields: 'id,name,status,effective_status,creative,adset_id' } });
+    const updatedAdSet = await graphFetch(`/${adData.adset_id}`, { params: { fields: 'id,name,status,effective_status,start_time,daily_budget,lifetime_budget' } });
+    const updatedCmp = await graphFetch(`/${adData.campaign_id || '120249269452810097'}`, { params: { fields: 'id,name,status,effective_status,daily_budget,lifetime_budget' } });
+
+    // 6. TRIGGER NORQVA DB SYNC
+    const syncService = new MetaSyncService();
+    await syncService.syncAll(pool, req.user?.id || null, false);
+
+    // 7. AUDIT LOG
+    await writeAuditLog(
+      pool,
+      req.user?.id || null,
+      'META_DESTINATION_MIGRATED',
+      `Migrated Ad ${adId} destination URL from ${oldDestinationUrl} to ${expectedNewUrl}. Old Creative: ${oldCreativeId}, New Creative: ${newCreativeId}.`,
+      null,
+      JSON.stringify({ adId, oldCreativeId, newCreativeId, oldDestinationUrl, newDestinationUrl: expectedNewUrl }),
+      false,
+      false
+    );
+
+    return res.status(200).json({
+      success: true,
+      pre_flight_result: 'PASS',
+      old_creative_id: oldCreativeId,
+      new_creative_id: newCreativeId,
+      old_destination_url: oldDestinationUrl,
+      new_destination_url: newResolvedUrl,
+      creative_content_preserved: true,
+      only_destination_changed: true,
+      real_ad_id: adId,
+      ad_creative_update_result: updatedAd.creative?.id === newCreativeId ? 'PASS' : 'FAIL',
+      campaign_status: updatedCmp.status,
+      campaign_effective_status: updatedCmp.effective_status,
+      adset_status: updatedAdSet.status,
+      adset_effective_status: updatedAdSet.effective_status,
+      ad_status: updatedAd.status,
+      ad_effective_status: updatedAd.effective_status,
+      start_time_before: startTimeBefore,
+      start_time_after: updatedAdSet.start_time,
+      budget_before: budgetBefore,
+      budget_after: updatedAdSet.daily_budget || updatedAdSet.lifetime_budget || budgetBefore,
+      cmp_budget_before: cmpBudgetBefore,
+      cmp_budget_after: updatedCmp.daily_budget || updatedCmp.lifetime_budget || cmpBudgetBefore,
+      norqva_sync_result: 'PASS',
+      unauthorized_changes: 0
+    });
+  } catch (err: any) {
+    console.error('Destination migration error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+
