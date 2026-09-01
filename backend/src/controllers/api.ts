@@ -3912,6 +3912,14 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
   }
 
   try {
+    // 0. TOKEN SCOPES CHECK
+    let debugInfo: any = {};
+    try {
+      debugInfo = await graphFetch('/debug_token', { params: { input_token: accessToken } });
+    } catch (e: any) {
+      debugInfo = { error: e.message };
+    }
+
     // 1. PRE-FLIGHT
     // Ensure real offer human_id is aligned to target
     await pool.query(
@@ -4033,7 +4041,7 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
     });
   } catch (err: any) {
     console.error('Destination migration error:', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message, token_scopes: debugInfo?.data?.scopes || debugInfo });
   }
 }
 
