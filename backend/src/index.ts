@@ -66,7 +66,8 @@ import {
   syncMetaData,
   getExecutiveDashboard,
   migrateDestinationUrl,
-  validatePaymentConnection
+  validatePaymentConnection,
+  testStorageSign
 } from './controllers/api';
 
 import { securityHeaders } from './middleware/securityHeaders';
@@ -264,6 +265,7 @@ app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), un
 
 // Payment Core Diagnostics (Admin Read-Only)
 app.get('/api/admin/payments/validate-connection', requireRole(['ADMIN']), validatePaymentConnection);
+app.get('/api/admin/storage/test-sign', requireRole(['ADMIN']), testStorageSign);
 
 // Meta Acquisition Core (Phase A - Read-Only Ingestion)
 app.get('/api/meta/connection/status', requireRole(['ADMIN']), getMetaConnectionStatus);

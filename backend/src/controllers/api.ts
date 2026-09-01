@@ -4079,5 +4079,13 @@ export async function validatePaymentConnection(req: AuthenticatedRequest, res: 
   }
 }
 
-
-
+export async function testStorageSign(req: AuthenticatedRequest, res: Response) {
+  const bucket = (req.query.bucket as string) || 'norqva-digital-products';
+  const path = (req.query.path as string) || 'products/guia-estrategico-performance-2026.pdf';
+  try {
+    const url = await generateStorageSignedUrl(bucket, path, 60);
+    return res.status(200).json({ success: true, bucket, path, url });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message, bucket, path });
+  }
+}
