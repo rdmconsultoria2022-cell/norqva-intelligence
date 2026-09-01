@@ -3913,6 +3913,14 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
 
   try {
     // 1. PRE-FLIGHT
+    // Ensure real offer human_id is aligned to target
+    await pool.query(
+      `UPDATE offers SET human_id = $1 
+       WHERE (human_id = $1 OR name = 'Guia Estratégico de Inteligência e Performance 2026') 
+         AND is_demo = FALSE AND is_deleted = FALSE`,
+      [newHumanId]
+    );
+
     const offRes = await pool.query('SELECT * FROM offers WHERE human_id = $1 AND is_deleted = FALSE', [newHumanId]);
     if (offRes.rows.length === 0 || offRes.rows[0].status !== 'ATIVA' || offRes.rows[0].is_demo !== false) {
       return res.status(400).json({ error: `Offer ${newHumanId} is not active and real in database.` });
