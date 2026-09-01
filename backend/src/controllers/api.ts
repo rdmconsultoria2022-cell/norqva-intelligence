@@ -3695,3 +3695,173 @@ export async function syncMetaData(req: AuthenticatedRequest, res: Response) {
     return res.status(500).json({ error: err.message || 'Failed to synchronize Meta acquisition data.' });
   }
 }
+
+// 29. Dashboard V1 - Executive Operations Dashboard (READ-ONLY)
+export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+
+    // 1. Meta Insights & Connection Aggregation (Pure SELECT, no side effects)
+    const metaInsightsRes = await pool.query(
+      `SELECT 
+         COALESCE(SUM(spend), 0)::numeric as total_spend,
+         COALESCE(SUM(impressions), 0)::bigint as total_impressions,
+         COALESCE(SUM(reach), 0)::bigint as total_reach,
+         COALESCE(SUM(clicks), 0)::bigint as total_clicks
+       FROM meta_insights
+       WHERE is_demo = $1`,
+      [isDemo]
+    );
+    const metaStats = metaInsightsRes.rows[0];
+    const totalSpend = parseFloat(metaStats.total_spend);
+    const totalImpressions = parseInt(metaStats.total_impressions, 10);
+    const totalReach = parseInt(metaStats.total_reach, 10);
+    const totalClicks = parseInt(metaStats.total_clicks, 10);
+
+    const metaConnRes = await pool.query(
+      `SELECT last_validated_at, updated_at FROM meta_connections WHERE is_demo = $1`,
+      [isDemo]
+    );
+    const lastMetaSync = metaConnRes.rows[0]?.updated_at || metaConnRes.rows[0]?.last_validated_at || null;
+
+    // Meta Campaigns Status Breakdown
+    const campaignsRes = await pool.query(
+      `SELECT id, name, meta_campaign_id, status, effective_status, last_synced_at 
+       FROM meta_campaigns WHERE is_demo = $1 ORDER BY created_at DESC`,
+      [isDemo]
+    );
+    const adSetsRes = await pool.query(
+      `SELECT id, name, meta_adset_id, status, effective_status, daily_budget, last_synced_at 
+       FROM meta_ad_sets WHERE is_demo = $1 ORDER BY created_at DESC`,
+      [isDemo]
+    );
+    const adsRes = await pool.query(
+      `SELECT id, name, meta_ad_id, status, effective_status, last_synced_at 
+       FROM meta_ads WHERE is_demo = $1 ORDER BY created_at DESC`,
+      [isDemo]
+    );
+
+    // 2. Commerce Orders Aggregation
+    const ordersRes = await pool.query(
+      `SELECT 
+         COUNT(*)::int as total_orders,
+         COUNT(*) FILTER (WHERE status = 'PENDING')::int as pending_orders,
+         COUNT(*) FILTER (WHERE status = 'PAID')::int as paid_orders,
+         COUNT(*) FILTER (WHERE status IN ('CANCELLED', 'EXPIRED'))::int as cancelled_orders,
+         COALESCE(SUM(total_amount) FILTER (WHERE status = 'PAID'), 0)::numeric as gross_revenue
+       FROM orders
+       WHERE is_demo = $1`,
+      [isDemo]
+    );
+    const orderStats = ordersRes.rows[0];
+    const totalOrders = orderStats.total_orders;
+    const pendingOrders = orderStats.pending_orders;
+    const paidOrders = orderStats.paid_orders;
+    const cancelledOrders = orderStats.cancelled_orders;
+    const grossRevenue = parseFloat(orderStats.gross_revenue);
+    const aov = paidOrders > 0 ? parseFloat((grossRevenue / paidOrders).toFixed(2)) : 0;
+
+    // 3. Finance Payments Aggregation
+    const paymentsRes = await pool.query(
+      `SELECT 
+         COUNT(*)::int as total_pix_created,
+         COUNT(*) FILTER (WHERE status = 'CONFIRMED')::int as total_pix_confirmed,
+         COUNT(*) FILTER (WHERE status = 'PENDING')::int as total_pix_pending,
+         COUNT(*) FILTER (WHERE status = 'FAILED' OR status = 'CANCELLED')::int as total_pix_failed,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'CONFIRMED'), 0)::numeric as confirmed_revenue,
+         COUNT(*) FILTER (WHERE status = 'CONFIRMED' AND provider_payment_id IS NOT NULL)::int as reconciled_transactions
+       FROM payments
+       WHERE is_demo = $1`,
+      [isDemo]
+    );
+    const paymentStats = paymentsRes.rows[0];
+    const totalPixCreated = paymentStats.total_pix_created;
+    const totalPixConfirmed = paymentStats.total_pix_confirmed;
+    const confirmedRevenue = parseFloat(paymentStats.confirmed_revenue);
+    const reconciledTransactions = paymentStats.reconciled_transactions;
+    const approvalRate = totalPixCreated > 0 ? parseFloat(((totalPixConfirmed / totalPixCreated) * 100).toFixed(1)) : null;
+
+    // 4. Delivery Aggregation
+    const deliveriesRes = await pool.query(
+      `SELECT 
+         COUNT(*)::int as total_entitlements,
+         COALESCE(SUM(od.download_count), 0)::int as total_downloads,
+         COUNT(*) FILTER (WHERE od.download_count > 0)::int as completed_downloads,
+         COUNT(*) FILTER (WHERE od.download_count = 0 AND od.status = 'ACTIVE')::int as pending_downloads
+       FROM order_deliveries od
+       JOIN orders o ON o.id = od.order_id
+       WHERE o.is_demo = $1`,
+      [isDemo]
+    );
+    const deliveryStats = deliveriesRes.rows[0];
+    const totalEntitlements = deliveryStats.total_entitlements;
+    const totalDownloads = deliveryStats.total_downloads;
+    const completedDownloads = deliveryStats.completed_downloads;
+    const pendingDownloads = deliveryStats.pending_downloads;
+
+    // Derived Meta Math
+    const ctr = totalImpressions > 0 ? parseFloat(((totalClicks / totalImpressions) * 100).toFixed(2)) : null;
+    const cpc = totalClicks > 0 ? parseFloat((totalSpend / totalClicks).toFixed(2)) : null;
+    const cpm = totalImpressions > 0 ? parseFloat(((totalSpend / totalImpressions) * 1000).toFixed(2)) : null;
+    const frequency = totalReach > 0 ? parseFloat((totalImpressions / totalReach).toFixed(2)) : null;
+
+    // 5. Recent Activity Stream (Top 10 Orders)
+    const recentOrdersRes = await pool.query(
+      `SELECT o.id, o.total_amount, o.status, o.created_at, c.name as customer_name, c.email as customer_email,
+              p.human_id as payment_human_id, p.status as payment_status,
+              od.download_count, od.status as delivery_status
+       FROM orders o
+       LEFT JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN payments p ON p.order_id = o.id
+       LEFT JOIN order_deliveries od ON od.order_id = o.id
+       WHERE o.is_demo = $1
+       ORDER BY o.created_at DESC
+       LIMIT 10`,
+      [isDemo]
+    );
+
+    return res.status(200).json({
+      meta: {
+        spend: totalSpend,
+        impressions: totalImpressions,
+        reach: totalReach,
+        clicks: totalClicks,
+        ctr,
+        cpc,
+        cpm,
+        frequency,
+        lastSync: lastMetaSync,
+        campaigns: campaignsRes.rows,
+        adSets: adSetsRes.rows,
+        ads: adsRes.rows
+      },
+      commerce: {
+        totalOrders,
+        pendingOrders,
+        paidOrders,
+        cancelledOrders,
+        grossRevenue,
+        aov
+      },
+      finance: {
+        totalPixCreated,
+        totalPixConfirmed,
+        approvalRate,
+        confirmedRevenue,
+        reconciledTransactions
+      },
+      delivery: {
+        totalEntitlements,
+        totalDownloads,
+        completedDownloads,
+        pendingDownloads
+      },
+      recentOrders: recentOrdersRes.rows
+    });
+  } catch (err: any) {
+    console.error('Failed to retrieve executive dashboard metrics:', err);
+    return res.status(500).json({ error: 'Failed to retrieve executive dashboard metrics.' });
+  }
+}
+
