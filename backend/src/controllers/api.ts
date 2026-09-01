@@ -3887,6 +3887,8 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
 
   const formattedAct = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
 
+  let debugInfo: any = null;
+
   async function graphFetch(endpoint: string, options: any = {}) {
     const url = new URL(`https://graph.facebook.com/${apiVersion}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`);
     url.searchParams.append('access_token', accessToken!);
@@ -3913,7 +3915,6 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
 
   try {
     // 0. TOKEN SCOPES CHECK
-    let debugInfo: any = {};
     try {
       debugInfo = await graphFetch('/debug_token', { params: { input_token: accessToken } });
     } catch (e: any) {
@@ -4045,7 +4046,7 @@ export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Resp
   }
 }
 
-export async function validatePaymentConnection(req: Request, res: Response) {
+export async function validatePaymentConnection(req: AuthenticatedRequest, res: Response) {
   const apiKey = process.env.ASAAS_API_KEY;
   const baseUrl = process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3';
   const env = process.env.ASAAS_ENV || 'sandbox';
