@@ -23,6 +23,79 @@ interface MetaAdsViewProps {
   showSuccess: (msg: string) => void;
 }
 
+// Helper function to map Meta effective_status / status
+export interface MetaStatusConfig {
+  label: string;
+  badgeClass: string;
+}
+
+export function getMetaDeliveryStatus(effectiveStatus?: string | null, configuredStatus?: string | null): MetaStatusConfig {
+  const raw = (effectiveStatus || configuredStatus || '').toUpperCase();
+
+  switch (raw) {
+    case 'ACTIVE':
+      return {
+        label: 'VEICULANDO',
+        badgeClass: 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+      };
+    case 'PENDING_START_TIME':
+      return {
+        label: 'PROGRAMADO',
+        badgeClass: 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+      };
+    case 'IN_PROCESS':
+      return {
+        label: 'EM PROCESSAMENTO',
+        badgeClass: 'bg-amber-950/40 text-amber-400 border border-amber-500/20'
+      };
+    case 'WITH_ISSUES':
+      return {
+        label: 'COM PROBLEMAS',
+        badgeClass: 'bg-orange-950/60 text-orange-400 border border-orange-500/30'
+      };
+    case 'PAUSED':
+      return {
+        label: 'PAUSADO',
+        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+      };
+    case 'CAMPAIGN_PAUSED':
+      return {
+        label: 'PAUSADO P/ CAMPANHA',
+        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+      };
+    case 'ADSET_PAUSED':
+      return {
+        label: 'PAUSADO P/ CONJUNTO',
+        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+      };
+    case 'DISAPPROVED':
+      return {
+        label: 'REJEITADO',
+        badgeClass: 'bg-rose-950/60 text-rose-400 border border-rose-500/30'
+      };
+    case 'ARCHIVED':
+      return {
+        label: 'ARQUIVADO',
+        badgeClass: 'bg-slate-900 text-slate-500 border border-slate-800'
+      };
+    case 'DELETED':
+      return {
+        label: 'EXCLUÍDO',
+        badgeClass: 'bg-slate-900 text-slate-500 border border-slate-800'
+      };
+    case 'COMPLETED':
+      return {
+        label: 'CONCLUÍDO',
+        badgeClass: 'bg-slate-800 text-emerald-400/80 border border-slate-700'
+      };
+    default:
+      return {
+        label: raw || 'DESCONHECIDO',
+        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+      };
+  }
+}
+
 export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   currentUser,
   isDemoView,
@@ -39,6 +112,26 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const [adSets, setAdSets] = useState<any[]>([]);
   const [ads, setAds] = useState<any[]>([]);
   const [insights, setInsights] = useState<any[]>([]);
+
+  const renderStatusBadge = (item: { status?: string; effective_status?: string }) => {
+    const deliveryStatus = getMetaDeliveryStatus(item.effective_status, item.status);
+    const configured = item.status || '—';
+    const effective = item.effective_status || item.status || '—';
+    const tooltip = `Status configurado: ${configured} | Veiculação: ${effective}`;
+
+    return (
+      <div className="flex flex-col gap-0.5 items-start" title={tooltip}>
+        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${deliveryStatus.badgeClass}`}>
+          {deliveryStatus.label}
+        </span>
+        {item.status && item.effective_status && item.status !== item.effective_status && (
+          <span className="text-[9px] font-mono text-slate-500">
+            Admin: {item.status}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   const loadAllData = async () => {
     setLoading(true);
@@ -275,13 +368,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         <td className="p-3.5 font-mono text-slate-400 text-[11px]">{c.meta_campaign_id}</td>
                         <td className="p-3.5 font-mono text-slate-300 text-[11px]">{c.objective || '—'}</td>
                         <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            c.status === 'ACTIVE'
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {c.status}
-                          </span>
+                          {renderStatusBadge(c)}
                         </td>
                         <td className="p-3.5 font-mono text-slate-500 text-[10px]">
                           {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString('pt-BR') : '—'}
@@ -322,13 +409,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                           {s.daily_budget ? `R$ ${parseFloat(s.daily_budget).toFixed(2)}` : '—'}
                         </td>
                         <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            s.status === 'ACTIVE'
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {s.status}
-                          </span>
+                          {renderStatusBadge(s)}
                         </td>
                       </tr>
                     ))}
@@ -362,13 +443,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         <td className="p-3.5 text-slate-300">{a.adset_name || '—'}</td>
                         <td className="p-3.5 font-mono text-slate-400 text-[11px]">{a.meta_ad_id}</td>
                         <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            a.status === 'ACTIVE'
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {a.status}
-                          </span>
+                          {renderStatusBadge(a)}
                         </td>
                       </tr>
                     ))}
