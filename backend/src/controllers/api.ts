@@ -3029,6 +3029,27 @@ export async function getDeliveryTokens(req: any, res: Response) {
   }
 }
 
+export async function updateDigitalAsset(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const { id } = req.params;
+  const { storage_bucket, storage_path, name } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE digital_assets 
+       SET storage_bucket = COALESCE($1, storage_bucket),
+           storage_path = COALESCE($2, storage_path),
+           name = COALESCE($3, name)
+       WHERE id = $4
+       RETURNING *`,
+      [storage_bucket, storage_path, name, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Asset not found.' });
+    return res.status(200).json(result.rows[0]);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 export async function generateStorageSignedUrl(bucket: string, path: string, ttlSeconds: number): Promise<string> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';

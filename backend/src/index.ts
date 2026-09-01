@@ -52,6 +52,7 @@ import {
   downloadDelivery,
   createDigitalAsset,
   getDigitalAssets,
+  updateDigitalAsset,
   linkOfferDigitalAsset,
   getOfferDigitalAssets,
   unlinkOfferDigitalAsset,
@@ -259,6 +260,7 @@ app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
 // Digital Assets Administration endpoints
 app.post('/api/digital-assets', requireRole(['ADMIN']), createDigitalAsset);
 app.get('/api/digital-assets', requireRole(['ADMIN', 'OPERATIONS']), getDigitalAssets);
+app.put('/api/digital-assets/:id', requireRole(['ADMIN']), updateDigitalAsset);
 app.post('/api/offers/:id/digital-assets', requireRole(['ADMIN']), linkOfferDigitalAsset);
 app.get('/api/offers/:id/digital-assets', requireRole(['ADMIN', 'OPERATIONS', 'PRODUCT', 'INTELLIGENCE']), getOfferDigitalAssets);
 app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), unlinkOfferDigitalAsset);
