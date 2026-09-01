@@ -3239,7 +3239,7 @@ export async function downloadDelivery(req: any, res: Response) {
     });
   } catch (err: any) {
     console.error('Download delivery error:', err);
-    return res.status(500).json({ error: 'Failed to process download delivery.' });
+    return res.status(500).json({ error: 'Failed to process download delivery.', details: err.message });
   }
 }
 
