@@ -4110,3 +4110,57 @@ export async function testStorageSign(req: AuthenticatedRequest, res: Response) 
     return res.status(500).json({ error: err.message, bucket, path });
   }
 }
+
+export async function testInsightsProbe(req: AuthenticatedRequest, res: Response) {
+  try {
+    const client = new MetaClient();
+    const isDemo = req.query.mode === 'demo';
+    const accounts = await client.getAdAccounts(isDemo);
+    if (!accounts.length) {
+      return res.status(404).json({ error: 'No ad accounts found' });
+    }
+    const actId = accounts[0].id;
+    const formatted = actId.startsWith('act_') ? actId : `act_${actId}`;
+
+    const fields = 'account_id,campaign_id,adset_id,ad_id,date_start,date_stop,spend,impressions,reach,clicks,cpc,cpm,ctr,frequency,actions,inline_link_clicks';
+
+    // A) date_preset = 'last_30d'
+    const resLast30d = await (client as any).fetchGraphApi(`/${formatted}/insights`, {
+      level: 'campaign',
+      date_preset: 'last_30d',
+      fields
+    });
+
+    // B) date_preset = 'today'
+    const resToday = await (client as any).fetchGraphApi(`/${formatted}/insights`, {
+      level: 'campaign',
+      date_preset: 'today',
+      fields
+    });
+
+    // C) explicit time_range since=2026-09-01 until=2026-09-01
+    const resTimeRange = await (client as any).fetchGraphApi(`/${formatted}/insights`, {
+      level: 'campaign',
+      time_range: JSON.stringify({ since: '2026-09-01', until: '2026-09-01' }),
+      fields
+    });
+
+    // D) date_preset = 'maximum'
+    const resMaximum = await (client as any).fetchGraphApi(`/${formatted}/insights`, {
+      level: 'campaign',
+      date_preset: 'maximum',
+      fields
+    });
+
+    return res.status(200).json({
+      probe_timestamp: new Date().toISOString(),
+      ad_account: accounts[0],
+      probe_last_30d: resLast30d,
+      probe_today: resToday,
+      probe_time_range_today: resTimeRange,
+      probe_maximum: resMaximum
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
