@@ -3,6 +3,7 @@ import { ShoppingCart, ShieldCheck, User, Mail, Phone, FileText, Loader2, X } fr
 import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
 import { apiFetch } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
+import { getAttributionContext, sendFunnelEvent } from '../../services/attribution';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
@@ -61,7 +62,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         throw new Error('Falha ao processar cadastro de cliente para o pedido.');
       }
 
-      // 2. Create Order via authoritative server calculation
+      // 2. Extract Attribution Context
+      const attrCtx = getAttributionContext();
+
+      // 3. Create Order via authoritative server calculation
       const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `order-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -70,13 +74,23 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         offer_id: offer.id,
         customer_id: customerId,
         quantity: quantity,
-        idempotency_key: idempotencyKey
+        idempotency_key: idempotencyKey,
+        visitor_id: attrCtx.visitor_id,
+        session_id: attrCtx.session_id,
+        fbclid: attrCtx.fbclid,
+        utm_source: attrCtx.utm_source,
+        utm_medium: attrCtx.utm_medium,
+        utm_campaign: attrCtx.utm_campaign,
+        utm_content: attrCtx.utm_content
       };
 
       const orderResult: CheckoutOrderResult = await apiFetch('/checkout', {
         method: 'POST',
         body: JSON.stringify(orderPayload)
       }, isDemo ? 'demo' : 'real', currentUser);
+
+      // Emit first-party CHECKOUT_STARTED telemetry event
+      sendFunnelEvent('CHECKOUT_STARTED', offer.human_id || offer.id, { quantity, total_amount: orderResult.total_amount }, isDemo);
 
       if (showSuccess) {
         showSuccess('Pedido gerado com sucesso!');

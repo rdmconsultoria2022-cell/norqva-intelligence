@@ -14,6 +14,7 @@ import { API_BASE } from '../../lib/api';
 import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { DigitalDelivery } from '../delivery/DigitalDelivery';
+import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 
 export interface PublicOfferData {
   id: string;
@@ -54,6 +55,9 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   useEffect(() => {
     let isMounted = true;
 
+    // Capture any incoming URL attribution params immediately
+    captureUrlAttribution();
+
     const fetchOffer = async () => {
       if (!humanId) {
         setLoading(false);
@@ -73,6 +77,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
         if (isMounted) {
           setOffer(data);
+          // Emit first-party OFFER_VIEW telemetry event
+          sendFunnelEvent('OFFER_VIEW', data.human_id || humanId, { offer_name: data.name }, data.is_demo);
         }
       } catch (err: any) {
         if (isMounted) {

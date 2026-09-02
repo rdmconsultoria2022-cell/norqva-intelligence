@@ -2032,17 +2032,36 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'Real orders must have total amount greater than 0.' });
     }
 
-    // 6. Write Operations - INSERT Order
+    // 6. Write Operations - INSERT Order with Attribution Context
     const orderId = crypto.randomUUID();
     const rawCheckoutToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawCheckoutToken).digest('hex');
     const tokenExpiresAt = new Date();
     tokenExpiresAt.setHours(tokenExpiresAt.getHours() + 24); // Expires in 24 hours
 
+    const visitor_id = typeof req.body.visitor_id === 'string' ? req.body.visitor_id.trim().slice(0, 100) : null;
+    const session_id = typeof req.body.session_id === 'string' ? req.body.session_id.trim().slice(0, 100) : null;
+    const fbclid = typeof req.body.fbclid === 'string' ? req.body.fbclid.trim().slice(0, 255) : null;
+    const utm_source = typeof req.body.utm_source === 'string' ? req.body.utm_source.trim().slice(0, 255) : null;
+    const utm_medium = typeof req.body.utm_medium === 'string' ? req.body.utm_medium.trim().slice(0, 255) : null;
+    const utm_campaign = typeof req.body.utm_campaign === 'string' ? req.body.utm_campaign.trim().slice(0, 255) : null;
+    const utm_content = typeof req.body.utm_content === 'string' ? req.body.utm_content.trim().slice(0, 255) : null;
+    const attribution_metadata = req.body.attribution_metadata && typeof req.body.attribution_metadata === 'object'
+      ? JSON.stringify(req.body.attribution_metadata)
+      : null;
+
     await client.query(
-      `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, is_demo, checkout_token_hash, checkout_token_expires_at)
-       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7)`,
-      [orderId, customer_id, totalAmount, idempotency_key, isDemo, tokenHash, tokenExpiresAt]
+      `INSERT INTO orders (
+         id, customer_id, total_amount, status, idempotency_key, is_demo,
+         checkout_token_hash, checkout_token_expires_at,
+         visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata
+       )
+       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [
+        orderId, customer_id, totalAmount, idempotency_key, isDemo,
+        tokenHash, tokenExpiresAt,
+        visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata
+      ]
     );
 
     // 7. Write Operations - INSERT Order Item

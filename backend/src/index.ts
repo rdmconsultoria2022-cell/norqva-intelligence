@@ -72,6 +72,8 @@ import {
   testInsightsProbe
 } from './controllers/api';
 
+import { recordFunnelEvent, getFunnelEventsSummary } from './controllers/telemetryController';
+
 import { securityHeaders } from './middleware/securityHeaders';
 import { configureCors } from './middleware/cors';
 import { requestIdMiddleware } from './middleware/requestId';
@@ -242,6 +244,8 @@ app.post('/api/config/clear-demo', requireRole(['ADMIN']), clearDemo);
 
 // Customers and Checkout endpoints (Sprint 2.5B & Public Commerce V1)
 app.get('/api/public/offers/:humanId', orderStatusRateLimiter, getPublicOffer);
+app.post('/api/public/telemetry/events', generalRateLimiter, recordFunnelEvent);
+app.get('/api/admin/telemetry/funnel-summary', requireRole(['ADMIN', 'INTELLIGENCE', 'PERFORMANCE', 'OPERATIONS']), getFunnelEventsSummary);
 app.post('/api/customers', checkoutRateLimiter, createCustomer);
 app.get('/api/customers', requireRole(['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE']), getCustomers);
 app.post('/api/checkout', checkoutRateLimiter, createOrder);
