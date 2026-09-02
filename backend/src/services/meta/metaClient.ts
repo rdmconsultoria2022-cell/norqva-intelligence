@@ -463,8 +463,10 @@ export class MetaClient {
   public async getInsights(
     adAccountId: string,
     level: 'account' | 'campaign' | 'adset' | 'ad' = 'campaign',
-    datePreset: string = 'last_30d',
-    isDemo: boolean = false
+    datePreset?: string,
+    isDemo: boolean = false,
+    timeRange?: { since: string; until: string },
+    timeIncrement?: string | number
   ): Promise<MetaInsightPayload[]> {
     if (isDemo) {
       return [
@@ -489,11 +491,24 @@ export class MetaClient {
     }
 
     const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
-    const data = await this.paginateGraphApi(`/${formatted}/insights`, {
+    const params: Record<string, string> = {
       level,
-      date_preset: datePreset,
       fields: 'account_id,campaign_id,adset_id,ad_id,date_start,date_stop,spend,impressions,reach,clicks,cpc,cpm,ctr,frequency,actions,inline_link_clicks'
-    });
+    };
+
+    if (timeRange) {
+      params.time_range = JSON.stringify(timeRange);
+    } else if (datePreset) {
+      params.date_preset = datePreset;
+    } else {
+      params.date_preset = 'today';
+    }
+
+    if (timeIncrement !== undefined) {
+      params.time_increment = String(timeIncrement);
+    }
+
+    const data = await this.paginateGraphApi(`/${formatted}/insights`, params);
 
     return data.map(row => {
       const entity_level = level.toUpperCase() as 'ACCOUNT' | 'CAMPAIGN' | 'ADSET' | 'AD';

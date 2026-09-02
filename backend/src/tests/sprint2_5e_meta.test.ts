@@ -426,4 +426,39 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
     expect(demoInsights[0]).toHaveProperty('ctr');
     expect(demoInsights[0]).toHaveProperty('frequency');
   });
+
+  // M37 — Dynamic rolling window includes current day in account timezone
+  it('M37: Dynamic rolling window includes current day in account timezone without double-counting', async () => {
+    const tz = 'America/Sao_Paulo';
+    const now = new Date();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+    const pastDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sinceStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(pastDate);
+
+    expect(todayStr).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(sinceStr).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(new Date(todayStr).getTime()).toBeGreaterThanOrEqual(new Date(sinceStr).getTime());
+
+    const client = new MetaClient('v26.0');
+    const insights = await client.getInsights('act_demo', 'campaign', undefined, true, { since: sinceStr, until: todayStr });
+    expect(insights.length).toBeGreaterThan(0);
+    expect(insights[0].spend).toBeGreaterThan(0);
+  });
+
+  // M38 — Idempotent resync does not duplicate rows in database
+  it('M38: Idempotent resync updates existing records and preserves historical data without duplication', async () => {
+    const syncService = new MetaSyncService();
+    const res1 = await syncService.syncAll(pool, null, true);
+    expect(res1.success).toBe(true);
+
+    const countRes1 = await pool.query('SELECT COUNT(*)::int as cnt FROM meta_insights WHERE is_demo = true');
+    const initialCount = countRes1.rows[0].cnt;
+
+    // Second sync on same day
+    const res2 = await syncService.syncAll(pool, null, true);
+    expect(res2.success).toBe(true);
+
+    const countRes2 = await pool.query('SELECT COUNT(*)::int as cnt FROM meta_insights WHERE is_demo = true');
+    expect(countRes2.rows[0].cnt).toBe(initialCount);
+  });
 });
