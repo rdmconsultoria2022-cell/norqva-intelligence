@@ -50,19 +50,12 @@ export class MetaSyncService {
         const ads = await this.client.getAds(act.id, isDemo);
         adsByAccount.set(act.id, ads);
 
-        // 5. Fetch Insights (Dynamic rolling window covering past 30 days up to and including current day)
-        const tz = act.timezone_name || 'America/Sao_Paulo';
-        const now = new Date();
-        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
-        const pastDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const sinceStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(pastDate);
-
+        // 5. Fetch Insights (Current Day Live Sync with deterministic daily upsert)
         const campaignInsights = await this.client.getInsights(
           act.id,
           'campaign',
-          undefined,
-          isDemo,
-          { since: sinceStr, until: todayStr }
+          'today',
+          isDemo
         );
         insightsByAccount.set(act.id, campaignInsights);
       }
