@@ -9,6 +9,14 @@ export interface AIExecutionDetails {
   input_tokens: number;
   output_tokens: number;
   estimated_cost: number;
+  provider_request_id?: string;
+  http_status?: number;
+  started_at?: string;
+  completed_at?: string;
+  total_tokens?: number;
+  token_source?: string;
+  cost_source?: string;
+  system_fingerprint?: string;
 }
 
 export interface AIProvider {
