@@ -112,7 +112,11 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
     try {
       // Request on-demand signed URL via secure backend token exchange
-      const res = await fetch(`${API_BASE}/delivery/${item.rawToken}`);
+      const res = await fetch(`${API_BASE}/delivery/${item.rawToken}?format=json`, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
       const data: DownloadResult = await res.json();
 
       if (!res.ok || !data.success || !data.download_url) {

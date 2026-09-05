@@ -3139,12 +3139,106 @@ export async function generateStorageSignedUrl(bucket: string, path: string, ttl
 
 import https from 'https';
 
+function renderDeliveryErrorHtml(title: string, message: string): string {
+  const sanitize = (str: string) => str.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${sanitize(title)} — NORQVA Entrega Digital</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #020617;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 16px;
+      padding: 36px 28px;
+      max-width: 460px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .brand {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #10b981;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+    .icon {
+      font-size: 40px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 12px;
+      color: #f1f5f9;
+    }
+    p {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin: 0 0 24px;
+    }
+    .footer {
+      border-top: 1px solid #1e293b;
+      padding-top: 18px;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">NORQVA INTELLIGENCE</div>
+    <div class="icon">⚠️</div>
+    <h1>${sanitize(title)}</h1>
+    <p>${sanitize(message)}</p>
+    <div class="footer">
+      Se você realizou o pagamento e precisa de um novo link, verifique seu e-mail ou entre em contato com nosso suporte com o ID do seu pedido.
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 export async function downloadDelivery(req: any, res: Response) {
   const pool: Pool = req.app.get('db');
   const { token } = req.params;
 
+  // HEAD method safety: Return headers without consuming download quota
+  if (req.method === 'HEAD') {
+    return res.status(200).end();
+  }
+
+  const acceptsHtml = Boolean(req.headers.accept && req.headers.accept.includes('text/html'));
+  const isBrowserDoc = req.headers['sec-fetch-dest'] === 'document';
+  const isDirectBrowserNavigation = (acceptsHtml || isBrowserDoc) && req.query.format !== 'json';
+
+  const respondError = (status: number, title: string, message: string) => {
+    if (isDirectBrowserNavigation) {
+      return res.status(status).type('html').send(renderDeliveryErrorHtml(title, message));
+    }
+    return res.status(status).json({ error: message });
+  };
+
   if (!token) {
-    return res.status(400).json({ error: 'Delivery token parameter is missing.' });
+    return respondError(400, 'Link Incompleto', 'Delivery token parameter is missing.');
   }
 
   try {
@@ -3161,33 +3255,33 @@ export async function downloadDelivery(req: any, res: Response) {
     );
 
     if (initialRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Delivery token not found or invalid.' });
+      return respondError(404, 'Link Não Encontrado', 'Delivery token not found or invalid.');
     }
     const initialDelivery = initialRes.rows[0];
 
     // Status pre-check
     if (initialDelivery.status !== 'ACTIVE') {
       if (initialDelivery.download_count >= initialDelivery.max_downloads) {
-        return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
+        return respondError(403, 'Limite de Downloads Atingido', 'Maximum download limit reached for this token.');
       }
-      return res.status(403).json({ error: 'Delivery token is expired or revoked.' });
+      return respondError(403, 'Link Expirado', 'Delivery token is expired or revoked.');
     }
 
     // Expiration pre-check
     if (initialDelivery.delivery_token_expires_at && new Date() > new Date(initialDelivery.delivery_token_expires_at)) {
       await pool.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [initialDelivery.id]);
-      return res.status(403).json({ error: 'Delivery token has expired.' });
+      return respondError(403, 'Link Expirado', 'Delivery token has expired.');
     }
 
     // Order paid pre-check
     if (initialDelivery.order_status !== 'PAID') {
-      return res.status(403).json({ error: 'Access denied: Associated order has not been paid.' });
+      return respondError(403, 'Acesso Negado', 'Access denied: Associated order has not been paid.');
     }
 
     // Download limit pre-check
     if (initialDelivery.download_count >= initialDelivery.max_downloads) {
       await pool.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [initialDelivery.id]);
-      return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
+      return respondError(403, 'Limite de Downloads Atingido', 'Maximum download limit reached for this token.');
     }
 
     // 2. Generate Supabase Storage Signed URL FIRST (External I/O outside of DB transaction)
@@ -3215,33 +3309,33 @@ export async function downloadDelivery(req: any, res: Response) {
 
       if (lockedRes.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Delivery token not found or invalid.' });
+        return respondError(404, 'Link Não Encontrado', 'Delivery token not found or invalid.');
       }
       const lockedDelivery = lockedRes.rows[0];
 
       if (lockedDelivery.status !== 'ACTIVE') {
         await client.query('ROLLBACK');
         if (lockedDelivery.download_count >= lockedDelivery.max_downloads) {
-          return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
+          return respondError(403, 'Limite de Downloads Atingido', 'Maximum download limit reached for this token.');
         }
-        return res.status(403).json({ error: 'Delivery token is expired or revoked.' });
+        return respondError(403, 'Link Expirado', 'Delivery token is expired or revoked.');
       }
 
       if (lockedDelivery.delivery_token_expires_at && new Date() > new Date(lockedDelivery.delivery_token_expires_at)) {
         await client.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [lockedDelivery.id]);
         await client.query('COMMIT');
-        return res.status(403).json({ error: 'Delivery token has expired.' });
+        return respondError(403, 'Link Expirado', 'Delivery token has expired.');
       }
 
       if (lockedDelivery.order_status !== 'PAID') {
         await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Access denied: Associated order has not been paid.' });
+        return respondError(403, 'Acesso Negado', 'Access denied: Associated order has not been paid.');
       }
 
       if (lockedDelivery.download_count >= lockedDelivery.max_downloads) {
         await client.query("UPDATE order_deliveries SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [lockedDelivery.id]);
         await client.query('COMMIT');
-        return res.status(403).json({ error: 'Maximum download limit reached for this token.' });
+        return respondError(403, 'Limite de Downloads Atingido', 'Maximum download limit reached for this token.');
       }
 
       // Safe to increment now that URL was generated AND row lock validated limits
@@ -3272,6 +3366,11 @@ export async function downloadDelivery(req: any, res: Response) {
       await writeAuditLog(pool, null, 'DELIVERY_LIMIT_REACHED', `Maximum download limit reached for delivery ${deliveryId}.`, null, null, isOrderDemo);
     }
 
+    // 5. Customer Delivery Experience: Direct Browser Redirect or JSON API
+    if (isDirectBrowserNavigation) {
+      return res.redirect(302, signedUrl);
+    }
+
     const downloadsRemaining = Math.max(0, maxAllowed - finalCount);
     return res.status(200).json({
       success: true,
@@ -3281,7 +3380,7 @@ export async function downloadDelivery(req: any, res: Response) {
     });
   } catch (err: any) {
     console.error('Download delivery error:', err);
-    return res.status(500).json({ error: 'Failed to process download delivery.', details: err.message });
+    return respondError(500, 'Erro no Servidor', 'Failed to process download delivery.');
   }
 }
 
