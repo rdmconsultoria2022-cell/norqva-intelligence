@@ -69,10 +69,27 @@ import {
   migrateDestinationUrl,
   validatePaymentConnection,
   testStorageSign,
-  testInsightsProbe
+  testInsightsProbe,
+  uploadStorageAsset,
+  reissueOrderDelivery
 } from './controllers/api';
 
+import {
+  getMarketDiscoveryProbe,
+  searchMarketDiscoveryAds,
+  getMarketDiscoveryClusters,
+  getMarketDiscoveryAdById,
+  getMarketDiscoveryTestQueue,
+  addToMarketDiscoveryTestQueue,
+  removeFromMarketDiscoveryTestQueue,
+  ingestOperatorLiveAd,
+  getLiveIngestedAds,
+  resolveSourceUrlOrId,
+  probeLandingPage
+} from './controllers/marketDiscoveryController';
+
 import { recordFunnelEvent, getFunnelEventsSummary } from './controllers/telemetryController';
+import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 
 import { securityHeaders } from './middleware/securityHeaders';
 import { configureCors } from './middleware/cors';
@@ -273,6 +290,8 @@ app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), un
 // Payment Core Diagnostics (Admin Read-Only)
 app.get('/api/admin/payments/validate-connection', requireRole(['ADMIN']), validatePaymentConnection);
 app.get('/api/admin/storage/test-sign', requireRole(['ADMIN']), testStorageSign);
+app.post('/api/admin/storage/upload', requireRole(['ADMIN']), uploadStorageAsset);
+app.post('/api/admin/orders/:orderId/reissue-delivery', requireRole(['ADMIN']), reissueOrderDelivery);
 app.get('/api/admin/meta/test-insights-probe', requireRole(['ADMIN']), testInsightsProbe);
 
 // Meta Acquisition Core (Phase A - Read-Only Ingestion)
@@ -285,6 +304,23 @@ app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREAT
 app.get('/api/meta/insights', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaInsights);
 app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
 app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDestinationUrl);
+
+// Market Discovery Core (Gate 07.7 - Read-Only Market Exploration)
+app.get('/api/market-discovery/probe', getMarketDiscoveryProbe);
+app.get('/api/market-discovery/search', searchMarketDiscoveryAds);
+app.get('/api/market-discovery/clusters', getMarketDiscoveryClusters);
+app.get('/api/market-discovery/ad/:id', getMarketDiscoveryAdById);
+app.get('/api/market-discovery/queue', getMarketDiscoveryTestQueue);
+app.post('/api/market-discovery/queue', addToMarketDiscoveryTestQueue);
+app.delete('/api/market-discovery/queue/:id', removeFromMarketDiscoveryTestQueue);
+app.post('/api/market-discovery/ingest-live', ingestOperatorLiveAd);
+app.get('/api/market-discovery/live-ads', getLiveIngestedAds);
+app.post('/api/market-discovery/resolve-source', resolveSourceUrlOrId);
+app.post('/api/market-discovery/probe-landing-page', probeLandingPage);
+
+// Agentic Orchestration Foundation 1.0 (Level 0 Read-Only / Fail-Closed)
+app.post('/api/orchestration/sessions', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'PERFORMANCE', 'OPERATIONS']), createOrchestrationSession);
+app.get('/api/orchestration/sessions/:id', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'PERFORMANCE', 'OPERATIONS']), getOrchestrationSessionById);
 
 // 5. Centralized Error Handler (Must be registered last)
 app.use(errorHandler());

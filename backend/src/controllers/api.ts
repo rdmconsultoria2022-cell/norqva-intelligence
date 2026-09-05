@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { Pool, PoolClient } from 'pg';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { encryptData, decryptData, generateHmacHash } from '../utils/crypto';
 import { AsaasPaymentProvider } from '../utils/payment';
@@ -4183,3 +4185,168 @@ export async function testInsightsProbe(req: AuthenticatedRequest, res: Response
     return res.status(500).json({ error: err.message });
   }
 }
+
+export async function uploadStorageAsset(req: AuthenticatedRequest, res: Response) {
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required.' });
+  }
+
+  const bucket = (req.body.bucket as string) || 'digital-products';
+  const targetPath = (req.body.path as string) || 'TRATTORIA_EM_CASA_FINAL.pdf';
+  const sourceFile = req.body.sourceFile || 'TRATTORIA_EM_CASA_FINAL.pdf';
+
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';
+
+    if (!supabaseUrl) {
+      return res.status(500).json({ error: 'SUPABASE_URL is not configured.' });
+    }
+
+    const localPath = path.join(process.cwd(), 'public', 'products', sourceFile);
+    if (!fs.existsSync(localPath)) {
+      return res.status(404).json({ error: `Source file not found at ${localPath}` });
+    }
+
+    const fileBuffer = fs.readFileSync(localPath);
+    const sourceSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    const cleanPath = targetPath.replace(/^\/+/, '');
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${cleanPath}`;
+    const parsedUrl = new URL(uploadUrl);
+
+    const uploadRes: any = await new Promise((resolve, reject) => {
+      const uReq = https.request({
+        hostname: parsedUrl.hostname,
+        port: 443,
+        path: parsedUrl.pathname,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'apikey': serviceRoleKey,
+          'Content-Type': 'application/pdf',
+          'Content-Length': fileBuffer.length,
+          'x-upsert': 'true'
+        }
+      }, (uRes) => {
+        let body = '';
+        uRes.on('data', (c) => body += c);
+        uRes.on('end', () => {
+          resolve({ status: uRes.statusCode, body });
+        });
+      });
+      uReq.on('error', reject);
+      uReq.write(fileBuffer);
+      uReq.end();
+    });
+
+    if (uploadRes.status < 200 || uploadRes.status >= 300) {
+      return res.status(500).json({ error: `Supabase Storage upload failed with status ${uploadRes.status}: ${uploadRes.body}` });
+    }
+
+    const signedUrl = await generateStorageSignedUrl(bucket, cleanPath, 300);
+
+    return res.status(200).json({
+      success: true,
+      bucket,
+      path: cleanPath,
+      size: fileBuffer.length,
+      source_sha256: sourceSha256,
+      signed_url: signedUrl
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required.' });
+  }
+
+  const { orderId } = req.params;
+  const { assetId } = req.body;
+
+  if (!orderId || !assetId) {
+    return res.status(400).json({ error: 'orderId parameter and assetId body are required.' });
+  }
+
+  try {
+    const orderRes = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
+    if (orderRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+    const order = orderRes.rows[0];
+
+    const assetRes = await pool.query('SELECT * FROM digital_assets WHERE id = $1', [assetId]);
+    if (assetRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Digital asset not found.' });
+    }
+    const asset = assetRes.rows[0];
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const existingDel = await client.query('SELECT * FROM order_deliveries WHERE order_id = $1', [orderId]);
+      
+      let deliveryRecord;
+      if (existingDel.rows.length > 0) {
+        const updateRes = await client.query(
+          `UPDATE order_deliveries
+           SET asset_id = $1,
+               status = 'ACTIVE',
+               download_count = 0,
+               delivery_token_hash = $2,
+               delivery_token_expires_at = $3,
+               updated_at = NOW()
+           WHERE order_id = $4
+           RETURNING *`,
+          [asset.id, tokenHash, expiresAt, orderId]
+        );
+        deliveryRecord = updateRes.rows[0];
+      } else {
+        const itemRes = await client.query('SELECT id FROM order_items WHERE order_id = $1 LIMIT 1', [orderId]);
+        const itemId = itemRes.rows[0]?.id || null;
+        const insertRes = await client.query(
+          `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status, download_count, delivery_token_hash, delivery_token_expires_at)
+           VALUES ($1, $2, $3, 'ACTIVE', 0, $4, $5)
+           RETURNING *`,
+          [orderId, itemId, asset.id, tokenHash, expiresAt]
+        );
+        deliveryRecord = insertRes.rows[0];
+      }
+
+      await client.query('COMMIT');
+
+      await writeAuditLog(pool, req.user?.id || null, 'ORDER_DELIVERY_REMEDIATED', `Remediated delivery for order ${orderId} to asset ${asset.name} (${asset.id}).`, null, null, order.is_demo);
+
+      return res.status(200).json({
+        success: true,
+        orderId: order.id,
+        deliveryId: deliveryRecord.id,
+        assetId: asset.id,
+        assetName: asset.name,
+        rawToken,
+        expiresAt: expiresAt.toISOString(),
+        status: 'ACTIVE',
+        downloadCount: 0
+      });
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+

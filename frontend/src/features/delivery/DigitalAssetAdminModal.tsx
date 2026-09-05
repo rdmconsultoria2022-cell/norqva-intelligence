@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, Plus, Link2, Trash2, X, CheckCircle, AlertTriangle, FileCode } from 'lucide-react';
 
 interface DigitalAsset {
@@ -40,9 +40,9 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
 
   // New asset form
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newName, setNewName] = useState('NORQVA E2E Digital Delivery Test');
-  const [newBucket, setNewBucket] = useState('digital-products');
-  const [newPath, setNewPath] = useState('staging/NORQVA-E2E-Teste.pdf');
+  const [newName, setNewName] = useState('');
+  const [newBucket, setNewBucket] = useState('');
+  const [newPath, setNewPath] = useState('');
 
   const loadData = async () => {
     try {
@@ -237,12 +237,12 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
               className="w-full py-2 bg-slate-800 border border-slate-700 hover:bg-slate-750 text-slate-300 text-xs font-mono rounded flex items-center justify-center gap-1.5 transition"
             >
               <Plus className="h-4 w-4 text-emerald-400" />
-              Cadastrar Novo Ativo Digital (Staging / E2E)
+              Cadastrar Novo Ativo Digital
             </button>
           ) : (
             <form onSubmit={handleCreateAsset} className="space-y-3 p-3 bg-slate-950/70 border border-slate-800 rounded">
               <div className="flex items-center justify-between">
-                <h5 className="text-xs font-bold font-mono text-emerald-400">Novo Ativo Digital de Teste</h5>
+                <h5 className="text-xs font-bold font-mono text-emerald-400">Novo Ativo Digital</h5>
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
@@ -258,6 +258,7 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ex: Trattoria em Casa — PDF Oficial"
                     required
                     className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
                   />
@@ -269,6 +270,7 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
                       type="text"
                       value={newBucket}
                       onChange={(e) => setNewBucket(e.target.value)}
+                      placeholder="Ex: digital-products"
                       required
                       className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
                     />
@@ -279,6 +281,7 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
                       type="text"
                       value={newPath}
                       onChange={(e) => setNewPath(e.target.value)}
+                      placeholder="Ex: TRATTORIA_EM_CASA_FINAL.pdf"
                       required
                       className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
                     />
