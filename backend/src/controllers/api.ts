@@ -4449,3 +4449,536 @@ export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Respo
   }
 }
 
+// 31. Dashboard Financial Intelligence V1 (READ-ONLY HARDENED)
+export async function getFinancialDashboard(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const period = (req.query.period as string) || 'all';
+
+    let startDate: Date | null = null;
+    if (period === '7d') {
+      startDate = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    } else if (period === '30d') {
+      startDate = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    } else if (period === '90d') {
+      startDate = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+    }
+
+    const dateFilterParam = startDate ? startDate.toISOString() : null;
+
+    // Fail-Closed Provenance Filters:
+    // 1. Inbound Commercial Revenue & Orders: Strictly COMMERCIAL_PRODUCTION
+    const orderProvenanceClause = isDemo
+      ? `(o.data_provenance != 'COMMERCIAL_PRODUCTION' OR o.is_demo = TRUE)`
+      : `(o.data_provenance = 'COMMERCIAL_PRODUCTION')`;
+
+    // 2. Gateway Settlement & Payment Fees: Strictly COMMERCIAL_PRODUCTION
+    const paymentProvenanceClause = isDemo
+      ? `(p.data_provenance != 'COMMERCIAL_PRODUCTION' OR p.is_demo = TRUE)`
+      : `(p.data_provenance = 'COMMERCIAL_PRODUCTION')`;
+
+    // 3. Outbound Media Spend & Acquisition Evidence: Verified Real Meta Source Only via Positive Relational Chain
+    const mediaSpendProvenanceClause = isDemo
+      ? `(mi.is_demo = TRUE OR mi.data_provenance IN ('DEMO_SEED', 'QA_FIXTURE') OR mac.is_demo = TRUE OR mconn.is_demo = TRUE)`
+      : `(
+          mi.is_demo = FALSE 
+          AND mac.is_demo = FALSE 
+          AND mac.connection_id IS NOT NULL
+          AND mconn.id IS NOT NULL
+          AND mconn.is_demo = FALSE
+          AND mconn.status IN ('CONNECTED', 'EXPIRED')
+          AND mi.data_provenance IN ('COMMERCIAL_PRODUCTION', 'LEGACY_MIGRATION')
+        )`;
+
+    // 1. Meta Ad Spend & Insights Aggregation
+    const accountSpendRes = await pool.query(
+      `SELECT 
+         COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
+         COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
+         COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
+         COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
+       FROM meta_insights mi
+       JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
+       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+       WHERE ${mediaSpendProvenanceClause}
+         AND mi.entity_level = 'ACCOUNT'
+         AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)`,
+      [dateFilterParam]
+    );
+
+    let totalSpend = parseFloat(accountSpendRes.rows[0]?.total_spend || '0');
+    let totalImpressions = parseInt(accountSpendRes.rows[0]?.total_impressions || '0', 10);
+    let totalReach = parseInt(accountSpendRes.rows[0]?.total_reach || '0', 10);
+    let totalClicks = parseInt(accountSpendRes.rows[0]?.total_clicks || '0', 10);
+
+    if (totalSpend === 0) {
+      const campaignSpendRes = await pool.query(
+        `SELECT 
+           COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
+           COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
+           COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
+           COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
+         FROM meta_insights mi
+         JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
+         LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+         WHERE ${mediaSpendProvenanceClause}
+           AND mi.entity_level = 'CAMPAIGN'
+           AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)`,
+        [dateFilterParam]
+      );
+      totalSpend = parseFloat(campaignSpendRes.rows[0]?.total_spend || '0');
+      totalImpressions = parseInt(campaignSpendRes.rows[0]?.total_impressions || '0', 10);
+      totalReach = parseInt(campaignSpendRes.rows[0]?.total_reach || '0', 10);
+      totalClicks = parseInt(campaignSpendRes.rows[0]?.total_clicks || '0', 10);
+    }
+
+    totalSpend = Math.round(totalSpend * 100) / 100;
+
+    // 2. Orders & Revenue Aggregation
+    // Deterministic revenue model:
+    // - PAID: Contributes to grossPaidRevenue (current retained commercial revenue).
+    // - REFUNDED: Principal tracked separately in refundPrincipal. Since status='REFUNDED' orders are not in 'PAID', refund principal is NEVER double-subtracted.
+    // - PENDING, FAILED, CANCELLED: Strictly excluded from gross revenue.
+    const ordersAggRes = await pool.query(
+      `SELECT 
+         COUNT(*)::int as total_orders,
+         COUNT(*) FILTER (WHERE o.status = 'PAID')::int as paid_orders,
+         COUNT(*) FILTER (WHERE o.status = 'PENDING')::int as pending_orders,
+         COUNT(*) FILTER (WHERE o.status = 'FAILED')::int as failed_orders,
+         COUNT(*) FILTER (WHERE o.status = 'CANCELLED')::int as cancelled_orders,
+         COUNT(*) FILTER (WHERE o.status = 'REFUNDED')::int as refunded_orders,
+         COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'PAID'), 0)::numeric as gross_paid_revenue,
+         COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'REFUNDED'), 0)::numeric as refund_principal
+       FROM orders o
+       WHERE ${orderProvenanceClause}
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1)`,
+      [dateFilterParam]
+    );
+
+    const orderRow = ordersAggRes.rows[0] || {};
+    const totalOrdersCount = parseInt(orderRow.total_orders || '0', 10);
+    const paidOrdersCount = parseInt(orderRow.paid_orders || '0', 10);
+    const pendingOrdersCount = parseInt(orderRow.pending_orders || '0', 10);
+    const failedOrdersCount = parseInt(orderRow.failed_orders || '0', 10);
+    const cancelledOrdersCount = parseInt(orderRow.cancelled_orders || '0', 10);
+    const refundedOrdersCount = parseInt(orderRow.refunded_orders || '0', 10);
+
+    const grossRevenue = Math.round(parseFloat(orderRow.gross_paid_revenue || '0') * 100) / 100;
+    const refundPrincipal = Math.round(parseFloat(orderRow.refund_principal || '0') * 100) / 100;
+    const cumulativeGrossRevenue = Math.round((grossRevenue + refundPrincipal) * 100) / 100;
+    const netCommercialRevenue = grossRevenue;
+
+    // 3. Cost Knowledge Model & Coverage Classification
+    // Distinguishes KNOWN_ZERO, KNOWN_VALUE, and UNKNOWN (NULL) provider fees.
+    const paymentsAggRes = await pool.query(
+      `SELECT 
+         COUNT(*)::int as total_confirmed_payments,
+         COUNT(p.provider_fee)::int as known_fee_count,
+         COUNT(*) FILTER (WHERE p.provider_fee IS NULL)::int as null_fee_count,
+         COUNT(*) FILTER (WHERE p.provider_fee = 0)::int as zero_fee_count,
+         COALESCE(SUM(p.provider_fee), 0)::numeric as total_known_gateway_fees
+       FROM payments p
+       WHERE ${paymentProvenanceClause}
+         AND p.status = 'CONFIRMED'
+         AND ($1::timestamptz IS NULL OR p.created_at >= $1)`,
+      [dateFilterParam]
+    );
+
+    const payRow = paymentsAggRes.rows[0] || {};
+    const totalConfirmedPayments = parseInt(payRow.total_confirmed_payments || '0', 10);
+    const knownFeeCount = parseInt(payRow.known_fee_count || '0', 10);
+    const nullFeeCount = parseInt(payRow.null_fee_count || '0', 10);
+    const zeroFeeCount = parseInt(payRow.zero_fee_count || '0', 10);
+    const totalKnownGatewayFees = Math.round(parseFloat(payRow.total_known_gateway_fees || '0') * 100) / 100;
+
+    let costCoverage: 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' = 'COMPLETE';
+    let gatewayCostState: 'KNOWN_VALUE' | 'KNOWN_ZERO' | 'PARTIAL' | 'UNKNOWN' = 'KNOWN_ZERO';
+    let isCostKnown = true;
+
+    if (totalConfirmedPayments === 0) {
+      costCoverage = 'COMPLETE';
+      gatewayCostState = 'KNOWN_ZERO';
+      isCostKnown = true;
+    } else if (nullFeeCount === 0) {
+      costCoverage = 'COMPLETE';
+      gatewayCostState = totalKnownGatewayFees > 0 ? 'KNOWN_VALUE' : 'KNOWN_ZERO';
+      isCostKnown = true;
+    } else if (knownFeeCount > 0 && nullFeeCount > 0) {
+      costCoverage = 'PARTIAL';
+      gatewayCostState = 'PARTIAL';
+      isCostKnown = false;
+    } else {
+      costCoverage = 'UNKNOWN';
+      gatewayCostState = 'UNKNOWN';
+      isCostKnown = false;
+    }
+
+    const otherCosts = 0.00;
+    const totalCosts = isCostKnown ? totalKnownGatewayFees + otherCosts : totalKnownGatewayFees;
+    const resultAfterMedia = Math.round((grossRevenue - totalSpend) * 100) / 100;
+    const netProfit = Math.round((resultAfterMedia - totalCosts) * 100) / 100;
+    const netMargin = grossRevenue > 0 ? Math.round((netProfit / grossRevenue) * 10000) / 100 : null;
+    const aov = paidOrdersCount > 0 ? Math.round((grossRevenue / paidOrdersCount) * 100) / 100 : 0.00;
+    const roas = totalSpend > 0 ? Math.round((grossRevenue / totalSpend) * 100) / 100 : null;
+
+    const netResultSemantic = isCostKnown ? 'RESULTADO_LIQUIDO_REAL' : 'RESULTADO_LIQUIDO_CONHECIDO_PARCIAL';
+
+    // 4. Individualized View: By Product
+    const productProvenanceClause = isDemo
+      ? `(p.data_provenance != 'COMMERCIAL_PRODUCTION' OR p.is_demo = TRUE)`
+      : `(p.data_provenance = 'COMMERCIAL_PRODUCTION')`;
+
+    const productBreakdownRes = await pool.query(
+      `SELECT 
+         p.id as product_id,
+         p.human_id as product_human_id,
+         p.name as product_name,
+         COUNT(oi.id) FILTER (WHERE o.status = 'PAID')::int as units_sold,
+         COALESCE(SUM(oi.total_price) FILTER (WHERE o.status = 'PAID'), 0)::numeric as gross_revenue,
+         COALESCE(SUM(pay.provider_fee) FILTER (WHERE o.status = 'PAID' AND pay.status = 'CONFIRMED'), 0)::numeric as gateway_fees,
+         COUNT(pay.id) FILTER (WHERE o.status = 'PAID' AND pay.status = 'CONFIRMED' AND pay.provider_fee IS NULL)::int as null_fees_count
+       FROM products p
+       LEFT JOIN order_items oi ON oi.product_id = p.id
+       LEFT JOIN orders o ON o.id = oi.order_id AND ${isDemo ? `(o.data_provenance != 'COMMERCIAL_PRODUCTION' OR o.is_demo = TRUE)` : `(o.data_provenance = 'COMMERCIAL_PRODUCTION')`} AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+       LEFT JOIN payments pay ON pay.order_id = o.id
+       WHERE ${productProvenanceClause}
+       GROUP BY p.id, p.human_id, p.name
+       ORDER BY gross_revenue DESC, units_sold DESC`,
+      [dateFilterParam]
+    );
+
+    const byProduct = productBreakdownRes.rows.map(row => {
+      const pRev = Math.round(parseFloat(row.gross_revenue || '0') * 100) / 100;
+      const pFees = Math.round(parseFloat(row.gateway_fees || '0') * 100) / 100;
+      const pSpend = grossRevenue > 0 ? Math.round(((pRev / grossRevenue) * totalSpend) * 100) / 100 : (productBreakdownRes.rows.length === 1 ? totalSpend : 0.00);
+      const pNetProfit = Math.round((pRev - pSpend - pFees) * 100) / 100;
+      const pNetMargin = pRev > 0 ? Math.round((pNetProfit / pRev) * 10000) / 100 : null;
+
+      return {
+        productId: row.product_id,
+        productHumanId: row.product_human_id,
+        productName: row.product_name,
+        unitsSold: parseInt(row.units_sold || '0', 10),
+        grossRevenue: pRev,
+        attributedSpend: pSpend,
+        gatewayFees: pFees,
+        hasUnknownCosts: parseInt(row.null_fees_count || '0', 10) > 0,
+        netProfit: pNetProfit,
+        netMargin: pNetMargin
+      };
+    });
+
+    // 5. Individualized View: By Campaign & Hardened Attribution Precedence
+    const mediaCampaignClause = isDemo
+      ? `(mc.is_demo = TRUE OR mc.data_provenance IN ('DEMO_SEED', 'QA_FIXTURE') OR mac.is_demo = TRUE OR mconn.is_demo = TRUE)`
+      : `(
+          mc.is_demo = FALSE 
+          AND mac.is_demo = FALSE 
+          AND mac.connection_id IS NOT NULL
+          AND mconn.id IS NOT NULL
+          AND mconn.is_demo = FALSE
+          AND mconn.status IN ('CONNECTED', 'EXPIRED')
+          AND mc.data_provenance IN ('COMMERCIAL_PRODUCTION', 'LEGACY_MIGRATION')
+        )`;
+
+    const campaignsRes = await pool.query(
+      `SELECT 
+         mc.id as campaign_id,
+         mc.meta_campaign_id,
+         mc.name as campaign_name,
+         mc.status,
+         mc.effective_status,
+         COALESCE(SUM(mi.spend), 0)::numeric as spend,
+         COALESCE(SUM(mi.impressions), 0)::bigint as impressions,
+         COALESCE(SUM(mi.clicks), 0)::bigint as clicks
+       FROM meta_campaigns mc
+       JOIN meta_ad_accounts mac ON mac.id = mc.ad_account_id
+       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+       LEFT JOIN meta_insights mi ON mi.campaign_id = mc.id 
+         AND mi.entity_level = 'CAMPAIGN' 
+         AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)
+         AND ${mediaSpendProvenanceClause}
+       WHERE ${mediaCampaignClause}
+       GROUP BY mc.id, mc.meta_campaign_id, mc.name, mc.status, mc.effective_status
+       ORDER BY spend DESC`,
+      [dateFilterParam]
+    );
+
+    // Fetch all paid orders in period for attribution matching
+    const paidOrdersRes = await pool.query(
+      `SELECT 
+         o.id,
+         o.total_amount,
+         o.utm_source,
+         o.utm_medium,
+         o.utm_campaign,
+         o.utm_content,
+         o.fbclid,
+         o.attribution_metadata
+       FROM orders o
+       WHERE ${orderProvenanceClause}
+         AND o.status = 'PAID'
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1)`,
+      [dateFilterParam]
+    );
+
+    const campaignAttributionMap = new Map<string, { orders: number; revenue: number }>();
+    let unattributedOrdersCount = 0;
+    let unattributedRevenue = 0.00;
+    let conflictedOrdersCount = 0;
+    let conflictedRevenue = 0.00;
+
+    paidOrdersRes.rows.forEach(order => {
+      const orderAmount = Math.round(parseFloat(order.total_amount || '0') * 100) / 100;
+      let matchedCampaignId: string | null = null;
+      let isConflict = false;
+
+      // 1. Exact Meta Campaign ID matching (Strongest identifier)
+      let idMatchCampaignId: string | null = null;
+      if (order.utm_campaign) {
+        const orderUtm = String(order.utm_campaign).trim().toLowerCase();
+        const idMatches = campaignsRes.rows.filter(c => c.meta_campaign_id && c.meta_campaign_id.toLowerCase() === orderUtm);
+        if (idMatches.length === 1) {
+          idMatchCampaignId = idMatches[0].campaign_id;
+        } else if (idMatches.length > 1) {
+          isConflict = true;
+        }
+      }
+
+      let metaMetaCampaignId: string | null = null;
+      if (!isConflict && order.attribution_metadata?.campaign_id) {
+        const metaId = String(order.attribution_metadata.campaign_id).trim().toLowerCase();
+        const metaMatches = campaignsRes.rows.filter(c => c.meta_campaign_id && c.meta_campaign_id.toLowerCase() === metaId);
+        if (metaMatches.length === 1) {
+          metaMetaCampaignId = metaMatches[0].campaign_id;
+        } else if (metaMatches.length > 1) {
+          isConflict = true;
+        }
+      }
+
+      // Check conflict between UTM ID match and Attribution Metadata ID match
+      if (!isConflict && idMatchCampaignId && metaMetaCampaignId && idMatchCampaignId !== metaMetaCampaignId) {
+        isConflict = true;
+      }
+
+      if (!isConflict) {
+        matchedCampaignId = idMatchCampaignId || metaMetaCampaignId;
+      }
+
+      // 2. Exact Campaign Name matching (Second tier)
+      if (!isConflict && !matchedCampaignId && order.utm_campaign) {
+        const orderUtmName = String(order.utm_campaign).trim().toLowerCase();
+        const nameMatches = campaignsRes.rows.filter(c => c.name && c.name.trim().toLowerCase() === orderUtmName);
+        if (nameMatches.length === 1) {
+          matchedCampaignId = nameMatches[0].campaign_id;
+        } else if (nameMatches.length > 1) {
+          isConflict = true;
+        }
+      }
+
+      if (!isConflict && !matchedCampaignId && order.attribution_metadata?.campaign_name) {
+        const metaName = String(order.attribution_metadata.campaign_name).trim().toLowerCase();
+        const metaNameMatches = campaignsRes.rows.filter(c => c.name && c.name.trim().toLowerCase() === metaName);
+        if (metaNameMatches.length === 1) {
+          matchedCampaignId = metaNameMatches[0].campaign_id;
+        } else if (metaNameMatches.length > 1) {
+          isConflict = true;
+        }
+      }
+
+      // 3. Single Campaign Fallback with fbclid (Only if 1 campaign exists and zero conflict)
+      if (!isConflict && !matchedCampaignId && order.fbclid && campaignsRes.rows.length === 1) {
+        matchedCampaignId = campaignsRes.rows[0].campaign_id;
+      }
+
+      if (isConflict) {
+        conflictedOrdersCount += 1;
+        conflictedRevenue = Math.round((conflictedRevenue + orderAmount) * 100) / 100;
+      } else if (matchedCampaignId) {
+        const current = campaignAttributionMap.get(matchedCampaignId) || { orders: 0, revenue: 0 };
+        current.orders += 1;
+        current.revenue = Math.round((current.revenue + orderAmount) * 100) / 100;
+        campaignAttributionMap.set(matchedCampaignId, current);
+      } else {
+        unattributedOrdersCount += 1;
+        unattributedRevenue = Math.round((unattributedRevenue + orderAmount) * 100) / 100;
+      }
+    });
+
+    const byCampaign = campaignsRes.rows.map(c => {
+      const cSpend = Math.round(parseFloat(c.spend || '0') * 100) / 100;
+      const cImpressions = parseInt(c.impressions || '0', 10);
+      const cClicks = parseInt(c.clicks || '0', 10);
+      const attr = campaignAttributionMap.get(c.campaign_id) || { orders: 0, revenue: 0 };
+      const cRev = Math.round(attr.revenue * 100) / 100;
+      const cResult = Math.round((cRev - cSpend) * 100) / 100;
+      const cRoas = cSpend > 0 ? Math.round((cRev / cSpend) * 100) / 100 : null;
+      const cCtr = cImpressions > 0 ? Math.round(((cClicks / cImpressions) * 100) * 100) / 100 : null;
+      const cCpc = cClicks > 0 ? Math.round((cSpend / cClicks) * 100) / 100 : null;
+
+      return {
+        campaignId: c.campaign_id,
+        metaCampaignId: c.meta_campaign_id,
+        campaignName: c.name,
+        status: c.status,
+        effectiveStatus: c.effective_status,
+        spend: cSpend,
+        impressions: cImpressions,
+        clicks: cClicks,
+        ctr: cCtr,
+        cpc: cCpc,
+        attributedOrders: attr.orders,
+        attributedRevenue: cRev,
+        resultAfterMedia: cResult,
+        roas: cRoas
+      };
+    });
+
+    // 6. Individualized View: By Creative / Ad
+    const mediaAdClause = isDemo
+      ? `(ma.is_demo = TRUE OR ma.data_provenance IN ('DEMO_SEED', 'QA_FIXTURE') OR mac.is_demo = TRUE OR mconn.is_demo = TRUE)`
+      : `(
+          ma.is_demo = FALSE 
+          AND mac.is_demo = FALSE 
+          AND mac.connection_id IS NOT NULL
+          AND mconn.id IS NOT NULL
+          AND mconn.is_demo = FALSE
+          AND mconn.status IN ('CONNECTED', 'EXPIRED')
+          AND ma.data_provenance IN ('COMMERCIAL_PRODUCTION', 'LEGACY_MIGRATION')
+        )`;
+
+    const adsRes = await pool.query(
+      `SELECT 
+         ma.id as ad_id,
+         ma.meta_ad_id,
+         ma.name as ad_name,
+         ma.status,
+         ma.effective_status,
+         mas.name as adset_name,
+         mc.name as campaign_name,
+         COALESCE(SUM(mi.spend), 0)::numeric as spend,
+         COALESCE(SUM(mi.clicks), 0)::bigint as clicks,
+         COALESCE(SUM(mi.impressions), 0)::bigint as impressions
+       FROM meta_ads ma
+       JOIN meta_ad_sets mas ON mas.id = ma.adset_id
+       JOIN meta_campaigns mc ON mc.id = mas.campaign_id
+       JOIN meta_ad_accounts mac ON mac.id = mc.ad_account_id
+       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+       LEFT JOIN meta_insights mi ON mi.ad_id = ma.id 
+         AND mi.entity_level = 'AD' 
+         AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)
+         AND ${mediaSpendProvenanceClause}
+       WHERE ${mediaAdClause}
+       GROUP BY ma.id, ma.meta_ad_id, ma.name, ma.status, ma.effective_status, mas.name, mc.name
+       ORDER BY spend DESC`,
+      [dateFilterParam]
+    );
+
+    const byCreative = adsRes.rows.map(ad => {
+      const aSpend = Math.round(parseFloat(ad.spend || '0') * 100) / 100;
+      let matchedOrders = 0;
+      let matchedRev = 0.00;
+
+      paidOrdersRes.rows.forEach(order => {
+        const orderAmount = parseFloat(order.total_amount || '0');
+        if (order.utm_content) {
+          const content = String(order.utm_content).trim();
+          if ((ad.meta_ad_id && content === ad.meta_ad_id) || (ad.ad_name && content === ad.ad_name)) {
+            matchedOrders += 1;
+            matchedRev = Math.round((matchedRev + orderAmount) * 100) / 100;
+          }
+        }
+      });
+
+      return {
+        adId: ad.ad_id,
+        metaAdId: ad.meta_ad_id,
+        adName: ad.ad_name,
+        adsetName: ad.adset_name,
+        campaignName: ad.campaign_name,
+        status: ad.status,
+        effectiveStatus: ad.effective_status,
+        spend: aSpend,
+        clicks: parseInt(ad.clicks || '0', 10),
+        impressions: parseInt(ad.impressions || '0', 10),
+        attributedOrders: matchedOrders,
+        attributedRevenue: matchedRev
+      };
+    });
+
+    // 7. Reconciliation Metrics & Checksum
+    const productTotalRev = Math.round(byProduct.reduce((acc, p) => acc + p.grossRevenue, 0) * 100) / 100;
+    const campaignTotalRev = Math.round(byCampaign.reduce((acc, c) => acc + c.attributedRevenue, 0) * 100) / 100;
+    const campaignPlusUnattributedRev = Math.round((campaignTotalRev + unattributedRevenue + conflictedRevenue) * 100) / 100;
+    const campaignTotalSpend = Math.round(byCampaign.reduce((acc, c) => acc + c.spend, 0) * 100) / 100;
+
+    const isReconciled = Math.abs(grossRevenue - productTotalRev) < 0.01 &&
+                         Math.abs(grossRevenue - campaignPlusUnattributedRev) < 0.01;
+
+    return res.status(200).json({
+      period,
+      mode: isDemo ? 'demo' : 'real',
+      dataProvenanceAuthority: isDemo ? 'DEMO_SEED_FIXTURE' : 'COMMERCIAL_PRODUCTION_ONLY',
+      costCoverage,
+      gatewayCostState,
+      netResultSemantic,
+      summary: {
+        totalSpend,
+        totalImpressions,
+        totalReach,
+        totalClicks,
+        grossRevenue,
+        grossPaidRevenue: grossRevenue,
+        refundPrincipal,
+        cumulativeGrossRevenue,
+        netCommercialRevenue,
+        resultAfterMedia,
+        gatewayFees: totalKnownGatewayFees,
+        otherCosts,
+        totalCosts,
+        isCostKnown,
+        costCoverage,
+        gatewayCostState,
+        netProfit,
+        netMargin,
+        totalOrdersCount,
+        paidOrdersCount,
+        pendingOrdersCount,
+        failedOrdersCount,
+        cancelledOrdersCount,
+        refundedOrdersCount,
+        aov,
+        roas
+      },
+      byProduct,
+      byCampaign,
+      byCreative,
+      unattributed: {
+        ordersCount: unattributedOrdersCount,
+        revenue: unattributedRevenue
+      },
+      conflicted: {
+        ordersCount: conflictedOrdersCount,
+        revenue: conflictedRevenue
+      },
+      reconciliation: {
+        isReconciled,
+        totalGrossRevenue: grossRevenue,
+        productTotalRevenue: productTotalRev,
+        campaignAttributedRevenue: campaignTotalRev,
+        unattributedRevenue,
+        conflictedRevenue,
+        campaignPlusUnattributedRevenue: campaignPlusUnattributedRev,
+        totalSpend,
+        campaignTotalSpend
+      }
+    });
+  } catch (err: any) {
+    console.error('getFinancialDashboard error:', err);
+    return res.status(500).json({ error: err.message || 'Erro ao carregar dados do dashboard financeiro.' });
+  }
+}
+
+
+
