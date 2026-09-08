@@ -10,6 +10,15 @@ import { writeAuditLog } from '../db/audit';
 import { clearDemoData } from '../db/db';
 import { calculateScores } from '../utils/score';
 import { MockAIProvider } from '../utils/ai';
+import {
+  getCommercialOrderClause,
+  getCommercialPaymentClause,
+  getCommercialProductClause,
+  getCommercialOfferClause,
+  getCommercialPerformanceClause,
+  getCommercialMediaSpendClause,
+  isCommercialEligible
+} from '../utils/commercialTruthPolicy';
 
 export const aiProvider = new MockAIProvider();
 
@@ -42,25 +51,27 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response) {
     const end = req.query.endDate as string;
 
     let dateFilter = '';
-    const params: any[] = [isDemo];
+    const params: any[] = [];
 
     if (filter === 'HOJE') {
-      dateFilter = 'AND date = $2';
+      dateFilter = 'AND date = $1';
       params.push(new Date().toISOString().split('T')[0]);
     } else if (filter === '7_DIAS') {
-      dateFilter = 'AND date >= $2';
+      dateFilter = 'AND date >= $1';
       const d = new Date();
       d.setDate(d.getDate() - 7);
       params.push(d.toISOString().split('T')[0]);
     } else if (filter === '30_DIAS') {
-      dateFilter = 'AND date >= $2';
+      dateFilter = 'AND date >= $1';
       const d = new Date();
       d.setDate(d.getDate() - 30);
       params.push(d.toISOString().split('T')[0]);
     } else if (filter === 'PERSONALIZADO' && start && end) {
-      dateFilter = 'AND date BETWEEN $2 AND $3';
+      dateFilter = 'AND date BETWEEN $1 AND $2';
       params.push(start, end);
     }
+
+    const perfClause = getCommercialPerformanceClause('performance_entries', isDemo);
 
     const query = `
       SELECT 
@@ -75,7 +86,7 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response) {
         COALESCE(SUM(taxas), 0) as taxas,
         COALESCE(SUM(outros_custos), 0) as outros_custos
       FROM performance_entries
-      WHERE is_demo = $1 ${dateFilter}
+      WHERE ${perfClause} ${dateFilter}
     `;
 
     const statsRes = await pool.query(query, params);
@@ -432,11 +443,19 @@ export async function getProducts(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
     const isDemo = req.query.mode === 'demo';
+    const scope = (req.query.scope as string) || (req.query.mode === 'audit' || req.query.mode === 'qa' || req.query.mode === 'all' ? 'all' : 'commercial');
+    const isAuditScope = scope === 'all' || scope === 'audit' || scope === 'qa';
+
+    let whereClause = 'p.is_demo = $1 AND p.is_deleted = FALSE';
+    if (!isDemo && !isAuditScope) {
+      whereClause += " AND p.data_provenance = 'COMMERCIAL_PRODUCTION'";
+    }
+
     const products = await pool.query(
       `SELECT p.*, u.name as responsible_name 
        FROM products p 
        LEFT JOIN users u ON p.responsible_id = u.id 
-       WHERE p.is_demo = $1 AND p.is_deleted = FALSE 
+       WHERE ${whereClause} 
        ORDER BY p.created_at DESC`,
       [isDemo]
     );
@@ -599,11 +618,19 @@ export async function getOffers(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
     const isDemo = req.query.mode === 'demo';
+    const scope = (req.query.scope as string) || (req.query.mode === 'audit' || req.query.mode === 'qa' || req.query.mode === 'all' ? 'all' : 'commercial');
+    const isAuditScope = scope === 'all' || scope === 'audit' || scope === 'qa';
+
+    let whereClause = 'o.is_demo = $1 AND o.is_deleted = FALSE';
+    if (!isDemo && !isAuditScope) {
+      whereClause += " AND o.data_provenance = 'COMMERCIAL_PRODUCTION'";
+    }
+
     const offers = await pool.query(
       `SELECT o.*, p.name as product_name 
        FROM offers o 
        JOIN products p ON o.product_id = p.id 
-       WHERE o.is_demo = $1 AND o.is_deleted = FALSE 
+       WHERE ${whereClause} 
        ORDER BY o.created_at DESC`,
       [isDemo]
     );
@@ -702,13 +729,15 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     const updatedUpsell = upsell !== undefined ? upsell : existingOffer.upsell;
     const updatedCross = cross_sell !== undefined ? cross_sell : existingOffer.cross_sell;
     const updatedStatus = status !== undefined ? status : existingOffer.status;
+    const updatedProductId = req.body.product_id !== undefined ? req.body.product_id : existingOffer.product_id;
+    const updatedDataProvenance = req.body.data_provenance !== undefined ? req.body.data_provenance : existingOffer.data_provenance;
 
     const updateRes = await client.query(
       `UPDATE offers
-       SET name = $1, price = $2, promotional_price = $3, bonus = $4, description = $5, upsell = $6, cross_sell = $7, status = $8
-       WHERE id = $9
+       SET name = $1, price = $2, promotional_price = $3, bonus = $4, description = $5, upsell = $6, cross_sell = $7, status = $8, product_id = $9, data_provenance = $10
+       WHERE id = $11
        RETURNING *`,
-      [updatedName, updatedPrice, updatedPromo, updatedBonus, updatedDesc, updatedUpsell, updatedCross, updatedStatus, id]
+      [updatedName, updatedPrice, updatedPromo, updatedBonus, updatedDesc, updatedUpsell, updatedCross, updatedStatus, updatedProductId, updatedDataProvenance, id]
     );
 
     const offer = updateRes.rows[0];
@@ -2052,25 +2081,31 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       ? JSON.stringify(req.body.attribution_metadata)
       : null;
 
+    const derivedProvenance = isDemo
+      ? 'DEMO_SEED'
+      : (offer.data_provenance === 'COMMERCIAL_PRODUCTION' ? 'COMMERCIAL_PRODUCTION' : 'STAGING_SANDBOX_QA');
+
     await client.query(
       `INSERT INTO orders (
          id, customer_id, total_amount, status, idempotency_key, is_demo,
          checkout_token_hash, checkout_token_expires_at,
-         visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata
+         visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata,
+         data_provenance
        )
-       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         orderId, customer_id, totalAmount, idempotency_key, isDemo,
         tokenHash, tokenExpiresAt,
-        visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata
+        visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata,
+        derivedProvenance
       ]
     );
 
     // 7. Write Operations - INSERT Order Item
     const itemId = crypto.randomUUID();
     await client.query(
-      `INSERT INTO order_items (id, order_id, offer_id, product_id, product_name_snapshot, offer_name_snapshot, offer_description_snapshot, unit_price, quantity, total_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      `INSERT INTO order_items (id, order_id, offer_id, product_id, product_name_snapshot, offer_name_snapshot, offer_description_snapshot, unit_price, quantity, total_price, data_provenance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         itemId,
         orderId,
@@ -2081,7 +2116,8 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
         offer.description || null,
         activePrice,
         qty,
-        totalPrice
+        totalPrice,
+        derivedProvenance
       ]
     );
 
@@ -2162,6 +2198,9 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
   const role = req.user?.role;
   const isDemo = req.query.mode === 'demo';
 
+  const scope = (req.query.scope as string) || (req.query.mode === 'audit' || req.query.mode === 'qa' || req.query.mode === 'all' ? 'all' : 'commercial');
+  const isAuditScope = scope === 'all' || scope === 'audit' || scope === 'qa';
+
   // Least privilege access control / PII filtering
   const canSeeFullPII = role === 'ADMIN' || role === 'OPERATIONS';
   const canSeePartialPII = role === 'PERFORMANCE' || role === 'INTELLIGENCE';
@@ -2172,8 +2211,13 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
   }
 
   try {
+    let whereClause = 'o.is_demo = $1';
+    if (!isDemo && !isAuditScope) {
+      whereClause += " AND o.data_provenance = 'COMMERCIAL_PRODUCTION'";
+    }
+
     const query = `
-      SELECT o.id, o.total_amount, o.status, o.idempotency_key, o.is_demo, o.created_at,
+      SELECT o.id, o.total_amount, o.status, o.idempotency_key, o.is_demo, o.data_provenance, o.created_at,
              json_build_object(
                'id', c.id,
                'name', ${canSeeFullPII || canSeePartialPII ? 'c.name' : "'[REDACTED]'"},
@@ -2190,13 +2234,14 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
                  'offer_description_snapshot', oi.offer_description_snapshot,
                  'unit_price', oi.unit_price,
                  'quantity', oi.quantity,
-                 'total_price', oi.total_price
+                 'total_price', oi.total_price,
+                 'data_provenance', oi.data_provenance
                )
              ) as items
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
       LEFT JOIN order_items oi ON o.id = oi.order_id
-      WHERE o.is_demo = $1
+      WHERE ${whereClause}
       GROUP BY o.id, c.id
       ORDER BY o.created_at DESC
     `;
@@ -2436,11 +2481,12 @@ export async function checkoutPix(req: any, res: Response) {
         const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
         const humanId = `PG-${dateStr}-${randomSuffix}`;
         
+        const derivedPaymentProvenance = order.data_provenance || (order.is_demo ? 'DEMO_SEED' : 'STAGING_SANDBOX_QA');
         const insertRes = await client.query(
-          `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference)
-           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8)
+          `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference, data_provenance)
+           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8, $9)
            RETURNING *`,
-          [paymentId, humanId, orderId, order.total_amount, idempotency_key, order.is_demo, providerEnv, paymentId]
+          [paymentId, humanId, orderId, order.total_amount, idempotency_key, order.is_demo, providerEnv, paymentId, derivedPaymentProvenance]
         );
         isNew = true;
         payment = insertRes.rows[0];
@@ -3886,6 +3932,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     );
 
     // 2. Commerce Orders Aggregation
+    const orderProvClause = getCommercialOrderClause('orders', isDemo);
     const ordersRes = await pool.query(
       `SELECT 
          COUNT(*)::int as total_orders,
@@ -3894,8 +3941,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
          COUNT(*) FILTER (WHERE status IN ('CANCELLED', 'EXPIRED'))::int as cancelled_orders,
          COALESCE(SUM(total_amount) FILTER (WHERE status = 'PAID'), 0)::numeric as gross_revenue
        FROM orders
-       WHERE is_demo = $1`,
-      [isDemo]
+       WHERE ${orderProvClause}`
     );
     const orderStats = ordersRes.rows[0];
     const totalOrders = orderStats.total_orders;
@@ -3906,6 +3952,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     const aov = paidOrders > 0 ? parseFloat((grossRevenue / paidOrders).toFixed(2)) : 0;
 
     // 3. Finance Payments Aggregation
+    const payProvClause = getCommercialPaymentClause('payments', isDemo);
     const paymentsRes = await pool.query(
       `SELECT 
          COUNT(*)::int as total_pix_created,
@@ -3915,8 +3962,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
          COALESCE(SUM(amount) FILTER (WHERE status = 'CONFIRMED'), 0)::numeric as confirmed_revenue,
          COUNT(*) FILTER (WHERE status = 'CONFIRMED' AND provider_payment_id IS NOT NULL)::int as reconciled_transactions
        FROM payments
-       WHERE is_demo = $1`,
-      [isDemo]
+       WHERE ${payProvClause}`
     );
     const paymentStats = paymentsRes.rows[0];
     const totalPixCreated = paymentStats.total_pix_created;
@@ -3926,6 +3972,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     const approvalRate = totalPixCreated > 0 ? parseFloat(((totalPixConfirmed / totalPixCreated) * 100).toFixed(1)) : null;
 
     // 4. Delivery Aggregation
+    const delivOrderClause = getCommercialOrderClause('o', isDemo);
     const deliveriesRes = await pool.query(
       `SELECT 
          COUNT(*)::int as total_entitlements,
@@ -3934,8 +3981,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
          COUNT(*) FILTER (WHERE od.download_count = 0 AND od.status = 'ACTIVE')::int as pending_downloads
        FROM order_deliveries od
        JOIN orders o ON o.id = od.order_id
-       WHERE o.is_demo = $1`,
-      [isDemo]
+       WHERE ${delivOrderClause}`
     );
     const deliveryStats = deliveriesRes.rows[0];
     const totalEntitlements = deliveryStats.total_entitlements;
@@ -3950,6 +3996,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     const frequency = totalReach > 0 ? parseFloat((totalImpressions / totalReach).toFixed(2)) : null;
 
     // 5. Recent Activity Stream (Top 10 Orders)
+    const recentOrderClause = getCommercialOrderClause('o', isDemo);
     const recentOrdersRes = await pool.query(
       `SELECT o.id, o.total_amount, o.status, o.created_at, c.name as customer_name, c.email as customer_email,
               p.human_id as payment_human_id, p.status as payment_status,
@@ -3958,10 +4005,9 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
        LEFT JOIN customers c ON c.id = o.customer_id
        LEFT JOIN payments p ON p.order_id = o.id
        LEFT JOIN order_deliveries od ON od.order_id = o.id
-       WHERE o.is_demo = $1
+       WHERE ${recentOrderClause}
        ORDER BY o.created_at DESC
-       LIMIT 10`,
-      [isDemo]
+       LIMIT 10`
     );
 
     return res.status(200).json({
