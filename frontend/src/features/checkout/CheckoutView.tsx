@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { ShoppingCart, ShieldCheck, User, Mail, Phone, FileText, Loader2, X } from 'lucide-react';
+import { ShieldCheck, User, Mail, Phone, FileText, Loader2, X, Lock, CheckCircle2 } from 'lucide-react';
 import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
 import { apiFetch } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
@@ -18,6 +18,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState('');
   const [cpfCnpj, setCpfCnpj] = useState('');
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,7 +36,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     }
 
     if (!customerName.trim() || !customerEmail.trim()) {
-      showError('Nome e e-mail são obrigatórios para checkout.');
+      showError('Nome e e-mail são obrigatórios para receber o livro digital.');
       return;
     }
 
@@ -122,77 +123,74 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-6 text-sm shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-400">
-              <ShoppingCart className="h-5 w-5" />
+    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 antialiased">
+      <div className="bg-[#FAF7F2] border border-stone-200 rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar text-stone-800 font-sans">
+        
+        {/* Modal Header */}
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-stone-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-full bg-[#B83B1E] text-white shadow-md">
+              <Lock className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold font-mono text-slate-100 uppercase tracking-wider">
+              <h3 className="text-lg font-serif font-bold text-stone-900">
                 Checkout Seguro
               </h3>
-              <p className="text-[11px] text-slate-400 font-mono">
-                {isDemo ? 'Ambiente DEMO (Simulação RBAC)' : 'Ambiente REAL (Produção)'}
+              <p className="text-xs text-stone-500 font-medium">
+                Liberação Imediata via Pix • Acesso Vitalício
               </p>
             </div>
           </div>
           <button
             onClick={onCancel}
             disabled={isSubmitting}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Offer Summary Card */}
-        <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 mb-5 space-y-2">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
-                {offer.human_id || 'OFERTA'}
-              </span>
-              <h4 className="text-sm font-bold text-slate-200 mt-0.5">{offer.name}</h4>
-              {offer.product_name && (
-                <div className="text-[11px] text-slate-400 font-mono">Produto: {offer.product_name}</div>
-              )}
+        {/* Product Summary Card */}
+        <div className="p-4 rounded-xl bg-white border border-stone-200/90 mb-6 shadow-sm space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-900 shrink-0 border border-stone-300 shadow-sm">
+                <img 
+                  src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
+                  alt="Capa do Livro"
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B83B1E] block">
+                  Livro Digital Oficial
+                </span>
+                <h4 className="text-sm font-serif font-bold text-stone-900 leading-tight">
+                  {offer.name}
+                </h4>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  28 Preparações • PDF de Alta Resolução
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-lg font-black font-mono text-emerald-400">
+            <div className="text-right shrink-0">
+              <div className="text-xl font-serif font-bold text-[#B83B1E]">
                 R${displayPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
-              {offer.promotional_price !== null && offer.promotional_price !== undefined && (
-                <div className="text-[10px] line-through text-slate-500 font-mono">
-                  R${parseFloat(String(offer.price)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </div>
-              )}
             </div>
           </div>
-
-          {offer.description && (
-            <p className="text-xs text-slate-400 leading-relaxed pt-1 border-t border-slate-900">
-              {offer.description}
-            </p>
-          )}
-
-          {offer.bonus && (
-            <div className="text-[11px] font-mono text-emerald-400/90 pt-1">
-              🎁 <span className="font-semibold">Bônus:</span> {offer.bonus}
-            </div>
-          )}
         </div>
 
         {/* Customer & Order Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          
           <div>
-            <label className="block text-xs font-mono uppercase text-slate-400 mb-1">
+            <label className="block text-xs font-semibold text-stone-700 mb-1">
               Nome Completo *
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
                 <User className="h-4 w-4" />
               </div>
               <input
@@ -202,17 +200,17 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Ex: João da Silva"
-                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-slate-200 text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E] disabled:opacity-50 transition"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-mono uppercase text-slate-400 mb-1">
+            <label className="block text-xs font-semibold text-stone-700 mb-1">
               E-mail de Contato *
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
                 <Mail className="h-4 w-4" />
               </div>
               <input
@@ -222,84 +220,103 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 placeholder="seuemail@empresa.com"
-                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-slate-200 text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E] disabled:opacity-50 transition"
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-mono uppercase text-slate-400 mb-1">
-                Telefone / WhatsApp
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                  <Phone className="h-4 w-4" />
-                </div>
-                <input
-                  type="text"
-                  disabled={isSubmitting}
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="(11) 99999-9999"
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-slate-200 text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono uppercase text-slate-400 mb-1">
-                CPF / CNPJ
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                  <FileText className="h-4 w-4" />
-                </div>
-                <input
-                  type="text"
-                  disabled={isSubmitting}
-                  value={cpfCnpj}
-                  onChange={(e) => setCpfCnpj(e.target.value)}
-                  placeholder="000.000.000-00"
-                  className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-slate-200 text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50 font-mono"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between border-t border-slate-800 text-xs font-mono text-slate-400">
-            <span className="flex items-center gap-1">
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
-              Preço e estoque autorizados pelo servidor
+            <span className="text-[11px] text-stone-500 mt-1 block">
+              Você receberá seu e-book e os links de acesso permanente neste e-mail.
             </span>
-            <span>Qtd: {quantity}</span>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3">
+          {/* Subtle Disclosure Control for Optional Fields */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowOptionalFields(!showOptionalFields)}
+              className="text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1.5 transition py-1 focus:outline-none"
+            >
+              <span className="text-stone-400 font-mono text-sm leading-none">{showOptionalFields ? '−' : '+'}</span>
+              <span>{showOptionalFields ? 'Ocultar dados opcionais' : 'Adicionar dados opcionais'}</span>
+            </button>
+
+            {showOptionalFields && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    WhatsApp / Telefone <span className="text-stone-400 font-normal">(Opcional)</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="text"
+                      disabled={isSubmitting}
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="(11) 99999-9999"
+                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] disabled:opacity-50 transition"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    CPF / CNPJ <span className="text-stone-400 font-normal">(Opcional)</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="text"
+                      disabled={isSubmitting}
+                      value={cpfCnpj}
+                      onChange={(e) => setCpfCnpj(e.target.value)}
+                      placeholder="000.000.000-00"
+                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] disabled:opacity-50 transition"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-3 flex items-center justify-between border-t border-stone-200 text-xs text-stone-500">
+            <span className="flex items-center gap-1.5 text-[#2B3D2B] font-medium">
+              <ShieldCheck className="h-4 w-4 text-[#2B3D2B]" />
+              Pagamento seguro
+            </span>
+            <span>Total: R$ {displayPrice.toFixed(2).replace('.', ',')}</span>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3">
             <button
               type="button"
               disabled={isSubmitting}
               onClick={onCancel}
-              className="px-4 py-2 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 font-mono text-xs font-semibold disabled:opacity-50 transition"
+              className="px-4 py-2.5 rounded-xl bg-stone-200 text-stone-700 hover:bg-stone-300 text-xs font-semibold disabled:opacity-50 transition"
             >
-              Cancelar
+              Voltar
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 rounded-md bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 shadow-lg shadow-emerald-950/40 transition"
+              aria-label={`Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix — Gerar Pedido & Pagamento`}
+              className="px-6 py-3 rounded-xl bg-[#B83B1E] text-white hover:bg-[#8F2810] text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-[#B83B1E]/20 transition active:scale-95"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Processando...
+                  <span>Processando...</span>
                 </>
               ) : (
-                'Gerar Pedido & Pagamento'
+                <span>Pagar R$ {displayPrice.toFixed(2).replace('.', ',')} com Pix</span>
               )}
             </button>
           </div>
         </form>
+
       </div>
     </div>
   );

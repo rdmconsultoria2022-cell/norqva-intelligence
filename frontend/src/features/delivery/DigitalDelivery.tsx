@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, PackageCheck, FileCode, CheckCircle, AlertTriangle, Loader2, X } from 'lucide-react';
+import { Download, CheckCircle2, AlertTriangle, Loader2, X, BookOpen, Sparkles, Mail, Heart } from 'lucide-react';
 import { DigitalDeliveryProps, DeliveryTokenItem, DownloadResult } from './deliveryTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
@@ -127,7 +127,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
         setDownloadStatus(prev => ({
           ...prev,
           [item.assetId]: data.downloads_remaining !== undefined
-            ? `Restam ${data.downloads_remaining} download(s)`
+            ? `Download iniciado • Restam ${data.downloads_remaining} downloads`
             : 'Download autorizado'
         }));
       }
@@ -143,7 +143,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
       document.body.removeChild(link);
 
       if (showSuccess) {
-        showSuccess('Download iniciado com sucesso!');
+        showSuccess('Download do e-book iniciado com sucesso!');
       }
     } catch (err: any) {
       console.error('Download error:', err);
@@ -158,27 +158,28 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-6 text-sm shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar">
+    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 antialiased">
+      <div className="bg-[#FAF7F2] border border-stone-200 rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar text-stone-800 font-sans">
+        
         {/* Header */}
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-400">
-              <PackageCheck className="h-5 w-5" />
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-stone-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-full bg-emerald-600 text-white shadow-md">
+              <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold font-mono text-slate-100 uppercase tracking-wider">
-                Entrega Digital de Ativos
+              <h3 className="text-lg font-serif font-bold text-stone-900">
+                Seu Trattoria em Casa está pronto!
               </h3>
-              <p className="text-[11px] text-slate-400 font-mono">
-                Pedido #{orderId.substring(0, 8)} • Acesso Seguro
+              <p className="text-xs text-stone-500 font-medium">
+                Parabéns pela compra • Acesso Digital Liberado
               </p>
             </div>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+              className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition"
             >
               <X className="h-5 w-5" />
             </button>
@@ -187,35 +188,37 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
         {/* Content */}
         {loading ? (
-          <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400 font-mono text-xs">
-            <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
-            Validando direitos de acesso e gerando tokens...
+          <div className="py-12 flex flex-col items-center justify-center gap-3 text-stone-600 text-xs">
+            <Loader2 className="h-8 w-8 text-[#B83B1E] animate-spin" />
+            <p className="font-medium">Preparando seu e-book para download seguro...</p>
           </div>
         ) : fetchError ? (
           <div className="py-8 text-center space-y-3">
-            <div className="h-12 w-12 mx-auto rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center text-red-400">
+            <div className="h-12 w-12 mx-auto rounded-full bg-red-100 border border-red-300 flex items-center justify-center text-red-600">
               <AlertTriangle className="h-6 w-6" />
             </div>
-            <p className="text-xs text-red-400 font-mono">
+            <p className="text-sm font-semibold text-red-700">
               Não foi possível preparar o download.
             </p>
-            <p className="text-[11px] text-slate-500 font-mono">{fetchError}</p>
+            <p className="text-xs text-stone-500">{fetchError}</p>
           </div>
         ) : tokens.length === 0 ? (
           <div className="py-8 text-center space-y-3">
-            <div className="h-12 w-12 mx-auto rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
+            <div className="h-12 w-12 mx-auto rounded-full bg-stone-200 border border-stone-300 flex items-center justify-center text-stone-600">
               <AlertTriangle className="h-6 w-6" />
             </div>
-            <p className="text-xs text-slate-400 font-mono">
+            <p className="text-sm text-stone-700">
               Nenhum ativo digital disponível para este pedido.
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="text-xs text-slate-400 leading-relaxed">
-              Seus produtos digitais estão liberados. Clique no botão correspondente para iniciar o download do pacote assinado.
+          <div className="space-y-6">
+            
+            <div className="text-sm text-stone-700 leading-relaxed">
+              O seu guia prático com as <strong>28 preparações tradicionais</strong> foi gerado e já está disponível para leitura no seu celular, tablet ou computador.
             </div>
 
+            {/* Book Download Cards */}
             <div className="space-y-3">
               {tokens.map((item) => {
                 const isExhausted = item.status === 'EXHAUSTED' || (item.downloadCount !== undefined && item.maxDownloads !== undefined && item.downloadCount >= item.maxDownloads);
@@ -225,22 +228,27 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                 return (
                   <div
                     key={item.assetId}
-                    className="p-4 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-4"
+                    className="p-5 rounded-2xl bg-white border border-stone-200/90 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="p-2 rounded bg-slate-900 border border-slate-800 text-emerald-400 shrink-0">
-                        <FileCode className="h-5 w-5" />
+                    <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
+                      <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-900 shrink-0 border border-stone-300 shadow-sm">
+                        <img 
+                          src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
+                          alt="Capa do Livro"
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                        />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-200 truncate">
-                          {item.assetTitle || `Ativo Digital #${item.assetId.substring(0, 8)}`}
+                        <div className="text-sm font-serif font-bold text-stone-900 truncate">
+                          {item.assetTitle || 'Trattoria em Casa — Edição Digital (PDF)'}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono">
+                        <div className="text-xs text-stone-500 mt-0.5">
                           {isExhausted
                             ? 'Limite de downloads atingido.'
                             : isInactive
-                            ? 'Este ativo não está mais disponível.'
-                            : downloadStatus[item.assetId] || 'Assinatura criptográfica válida'}
+                            ? 'Este arquivo não está mais disponível.'
+                            : downloadStatus[item.assetId] || '28 preparações • Massas, molhos e técnicas italianas (PDF • 39 páginas)'}
                         </div>
                       </div>
                     </div>
@@ -248,25 +256,26 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                     <button
                       onClick={() => handleDownload(item)}
                       disabled={!isUsable || downloadingId === item.assetId}
-                      className={`px-3.5 py-2 rounded-md font-mono text-xs font-bold flex items-center gap-1.5 shrink-0 transition ${
+                      {...(isUsable && !downloadingId ? { 'aria-label': 'Baixar Arquivo' } : {})}
+                      className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shrink-0 transition active:scale-95 shadow-md ${
                         isUsable
-                          ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
-                          : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                          ? 'bg-[#B83B1E] text-white hover:bg-[#8F2810] shadow-[#B83B1E]/20'
+                          : 'bg-stone-200 text-stone-400 cursor-not-allowed'
                       }`}
                     >
                       {downloadingId === item.assetId ? (
                         <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Baixando...
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Baixando...</span>
                         </>
                       ) : isExhausted ? (
-                        'Limite Atingido'
+                        <span>Limite Atingido</span>
                       ) : isInactive ? (
-                        'Indisponível'
+                        <span>Indisponível</span>
                       ) : (
                         <>
-                          <Download className="h-3.5 w-3.5" />
-                          Baixar Arquivo
+                          <Download className="h-4 w-4" />
+                          <span>BAIXAR MEU LIVRO (PDF)</span>
                         </>
                       )}
                     </button>
@@ -275,10 +284,21 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
               })}
             </div>
 
-            <div className="p-3 rounded-lg bg-slate-950/40 border border-slate-850 text-[11px] text-slate-500 font-mono flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-              Os links expiram temporariamente e não são armazenados no navegador.
+            {/* Email info & Support card */}
+            <div className="p-4 rounded-xl bg-stone-100/90 border border-stone-200/80 space-y-2 text-xs text-stone-600">
+              <div className="flex items-center gap-2 font-semibold text-stone-800">
+                <Mail className="h-4 w-4 text-[#B83B1E]" />
+                <span>Cópia de Acesso Permanente Enviada</span>
+              </div>
+              <p>
+                Enviamos também os links diretos para o seu e-mail cadastrado, garantindo que você nunca perca o acesso ao seu exemplar.
+              </p>
+              <div className="pt-2 border-t border-stone-200 text-[11px] text-stone-500 flex items-center justify-between">
+                <span>Dúvidas ou suporte: <strong>suporte@norqva.com</strong></span>
+                <span className="flex items-center gap-1 text-[#B83B1E]"><Heart className="h-3 w-3 fill-current" /> Bom apetite!</span>
+              </div>
             </div>
+
           </div>
         )}
       </div>

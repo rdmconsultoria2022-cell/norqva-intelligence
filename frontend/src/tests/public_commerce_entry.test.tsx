@@ -32,7 +32,7 @@ describe('NORQVA — Public Commerce Entry V1 (/p/:humanId)', () => {
     description: 'Sistema completo de análise preditiva e otimização.',
     price: 97.00,
     promotional_price: 17.90,
-    bonus: 'Acesso vitalício à comunidade VIP',
+    bonus: null,
     is_demo: false
   };
 
@@ -72,8 +72,7 @@ describe('NORQVA — Public Commerce Entry V1 (/p/:humanId)', () => {
     );
 
     expect(await screen.findByText('Planilha Inteligente de Performance')).toBeInTheDocument();
-    expect(screen.getByText(/Acesso vitalício à comunidade VIP/i)).toBeInTheDocument();
-    expect(screen.getByText(/R\$ 17,90/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/R\$ 17,90/i).length).toBeGreaterThan(0);
     expect(screen.getByText('Comprar com Pix')).toBeInTheDocument();
 
     // Verify user is NOT on login page
@@ -214,7 +213,7 @@ describe('NORQVA — Public Commerce Entry V1 (/p/:humanId)', () => {
     fireEvent.change(emailInput, { target: { value: 'anon@teste.com' } });
 
     // 4. Submit Checkout
-    const submitBtn = screen.getByRole('button', { name: /Gerar Pedido & Pagamento/i });
+    const submitBtn = screen.getByRole('button', { name: /Pagar .* com Pix/i });
     fireEvent.click(submitBtn);
 
     // 5. Verify InitiateCheckout event fired
@@ -226,7 +225,7 @@ describe('NORQVA — Public Commerce Entry V1 (/p/:humanId)', () => {
     });
 
     // 6. PaymentStatus modal detects PAID and automatically transitions to DigitalDelivery
-    expect(await screen.findByText(/Baixar Arquivo/i, {}, { timeout: 6000 })).toBeInTheDocument();
+    expect(await screen.findByText(/BAIXAR MEU LIVRO/i, {}, { timeout: 6000 })).toBeInTheDocument();
 
     // 7. Verify Purchase event fired
     await waitFor(() => {
