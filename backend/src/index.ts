@@ -160,14 +160,23 @@ app.get('/ready', async (_req, res) => {
 // 3. Apply Tiered Rate Limiters to API routes
 app.use('/api/', generalRateLimiter);
 
-// 4. Auth REST Endpoints (Supabase Auth emulation)
+// 4. Auth REST Endpoints (Supabase Auth emulation - DEMO/TEST ONLY)
 app.post('/api/auth/login', authRateLimiter, async (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const authMode = process.env.AUTH_MODE || 'demo';
+
+  if (isProduction || authMode === 'real') {
+    return res.status(403).json({
+      error: 'Mock login is disabled in production/real mode. Please authenticate directly with Supabase Auth.'
+    });
+  }
+
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
   }
 
-  // Emulation: accept password 'norqva123' for seeded active profiles
+  // Emulation: accept password for seeded active profiles in demo/test mode only
   if (password !== 'norqva123') {
     return res.status(401).json({ error: 'Credenciais inválidas.' });
   }

@@ -11,8 +11,7 @@ UPDATE offers
 SET product_id = (SELECT id FROM products WHERE name = 'TRATTORIA EM CASA' AND is_demo = FALSE ORDER BY created_at DESC LIMIT 1),
     status = 'ATIVA',
     data_provenance = 'COMMERCIAL_PRODUCTION'
-WHERE human_id = 'OFF-000001' AND is_demo = FALSE 
-  AND EXISTS (SELECT 1 FROM products WHERE name = 'TRATTORIA EM CASA' AND is_demo = FALSE);
+WHERE human_id = 'OFF-000001' AND is_demo = FALSE;
 
 -- 3. Ensure historical QA product da2ee0ee-439c-4dbe-97dd-34536dc0cebe is classified as STAGING_SANDBOX_QA
 UPDATE products 
