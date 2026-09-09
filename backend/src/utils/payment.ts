@@ -16,12 +16,10 @@ export class AsaasPaymentProvider {
   private apiKey: string;
   private baseUrl: string;
   private env: string;
+  private allowProductionPayments: boolean;
+  private webhookAuthToken?: string;
 
   constructor(apiKey: string, baseUrl: string, env: string, options?: { allowProductionPayments?: boolean; webhookAuthToken?: string }) {
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
-      throw new Error('[PAYMENT SECURITY EXCEPTION]: Asaas API key must be provided and non-empty.');
-    }
-
     const normalizedEnv = (env || '').trim().toLowerCase();
     let parsedUrl: URL;
     try {
@@ -37,23 +35,39 @@ export class AsaasPaymentProvider {
       if (parsedUrl.hostname !== 'api-sandbox.asaas.com') {
         throw new Error('[PAYMENT SECURITY EXCEPTION]: Sandbox environment requires https://api-sandbox.asaas.com base URL.');
       }
-    } else if (normalizedEnv === 'production') {
-      if (!allowProd) {
-        throw new Error('[PAYMENT SECURITY EXCEPTION]: Production payments are strictly blocked. ALLOW_PRODUCTION_PAYMENTS must be explicitly set to true.');
+      if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+        throw new Error('[PAYMENT SECURITY EXCEPTION]: Asaas API key must be provided and non-empty.');
       }
+    } else if (normalizedEnv === 'production') {
       if (parsedUrl.hostname !== 'api.asaas.com') {
         throw new Error('[PAYMENT SECURITY EXCEPTION]: Production environment requires https://api.asaas.com base URL.');
       }
-      if (!webhookToken || typeof webhookToken !== 'string' || webhookToken.trim() === '') {
-        throw new Error('[PAYMENT SECURITY EXCEPTION]: Production environment requires ASAAS_WEBHOOK_AUTH_TOKEN to be configured.');
+      if (allowProd) {
+        if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+          throw new Error('[PAYMENT SECURITY EXCEPTION]: Asaas API key must be provided and non-empty.');
+        }
+        if (!webhookToken || typeof webhookToken !== 'string' || webhookToken.trim() === '') {
+          throw new Error('[PAYMENT SECURITY EXCEPTION]: Production environment requires ASAAS_WEBHOOK_AUTH_TOKEN to be configured.');
+        }
       }
     } else {
       throw new Error(`[PAYMENT SECURITY EXCEPTION]: Invalid ASAAS_ENV '${env}'. Must be strictly 'sandbox' or 'production'.`);
     }
 
-    this.apiKey = apiKey;
+    this.apiKey = apiKey || '';
     this.baseUrl = baseUrl;
     this.env = normalizedEnv;
+    this.allowProductionPayments = allowProd;
+    this.webhookAuthToken = webhookToken;
+  }
+
+  private ensureMutationsAllowed(): void {
+    if (this.env === 'production' && !this.allowProductionPayments) {
+      throw new Error('[PAYMENT SECURITY EXCEPTION]: PRODUCTION_PAYMENTS_LOCKED');
+    }
+    if (!this.apiKey || this.apiKey.trim() === '') {
+      throw new Error('[PAYMENT SECURITY EXCEPTION]: Asaas API key must be provided and non-empty.');
+    }
   }
 
   private request<T>(path: string, method: string, payload?: any): Promise<T> {
@@ -113,6 +127,7 @@ export class AsaasPaymentProvider {
     cpfCnpj?: string;
     externalReference: string;
   }): Promise<string> {
+    this.ensureMutationsAllowed();
     const payload: any = {
       name: params.name,
       email: params.email,
@@ -146,6 +161,7 @@ export class AsaasPaymentProvider {
     idempotencyKey: string;
     providerCustomerId: string;
   }): Promise<PixPaymentResponse> {
+    this.ensureMutationsAllowed();
     // Set dueDate to tomorrow to allow prompt payment
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);

@@ -21,9 +21,6 @@ export function validateProductionEnvironment(): EnvValidationResult {
     'SUPABASE_URL',
     'SUPABASE_JWKS_URL',
     'SUPABASE_PUBLISHABLE_KEY',
-    'ASAAS_API_KEY',
-    'ASAAS_BASE_URL',
-    'ASAAS_WEBHOOK_AUTH_TOKEN',
     'CORS_ALLOWED_ORIGINS'
   ];
 
@@ -33,33 +30,52 @@ export function validateProductionEnvironment(): EnvValidationResult {
   const asaasEnv = (process.env.ASAAS_ENV || 'sandbox').trim().toLowerCase();
   const asaasBase = (process.env.ASAAS_BASE_URL || '').trim();
   const allowProd = process.env.ALLOW_PRODUCTION_PAYMENTS === 'true';
-  const asaasKey = process.env.ASAAS_API_KEY || '';
-  const webhookToken = process.env.ASAAS_WEBHOOK_AUTH_TOKEN || '';
+  const asaasKey = (process.env.ASAAS_API_KEY || '').trim();
+  const webhookToken = (process.env.ASAAS_WEBHOOK_AUTH_TOKEN || '').trim();
+  const appEnv = (process.env.APP_ENV || '').trim().toLowerCase();
 
-  if (asaasEnv === 'sandbox') {
-    if (!asaasBase.includes('api-sandbox.asaas.com')) {
-      throw new Error('[SECURITY ERROR]: Sandbox environment requires https://api-sandbox.asaas.com base URL.');
-    }
-  } else if (asaasEnv === 'production') {
-    if (!allowProd) {
-      throw new Error('[SECURITY ERROR]: Production payments are strictly blocked. ALLOW_PRODUCTION_PAYMENTS must be true.');
-    }
-    if (!asaasBase.includes('api.asaas.com') || asaasBase.includes('sandbox')) {
-      throw new Error('[SECURITY ERROR]: Production environment requires https://api.asaas.com base URL.');
-    }
-    if (!asaasKey || asaasKey.trim() === '') {
-      throw new Error('[SECURITY ERROR]: Production environment requires non-empty ASAAS_API_KEY.');
-    }
-    if (!webhookToken || webhookToken.trim() === '') {
-      throw new Error('[SECURITY ERROR]: Production environment requires non-empty ASAAS_WEBHOOK_AUTH_TOKEN.');
-    }
-  } else {
+  // Validate ASAAS_ENV Enum
+  if (asaasEnv !== 'sandbox' && asaasEnv !== 'production') {
     throw new Error(`[SECURITY ERROR]: Invalid ASAAS_ENV '${process.env.ASAAS_ENV}'. Must be 'sandbox' or 'production'.`);
   }
 
-  // Lock staging specifically to Asaas Sandbox
-  if (process.env.APP_ENV === 'staging' && asaasEnv !== 'sandbox') {
-    throw new Error('[SECURITY ERROR]: Staging environment must be locked to Asaas Sandbox.');
+  // Staging environment must remain locked to Sandbox and cannot enable production payments
+  if (appEnv === 'staging') {
+    if (asaasEnv !== 'sandbox') {
+      throw new Error('[SECURITY ERROR]: Staging environment must be locked to Asaas Sandbox.');
+    }
+    if (allowProd) {
+      throw new Error('[SECURITY ERROR]: Staging environment cannot enable production payments.');
+    }
+  }
+
+  if (asaasEnv === 'sandbox') {
+    if (allowProd) {
+      throw new Error('[SECURITY ERROR]: Sandbox environment cannot enable production payments.');
+    }
+    if (!asaasBase || !asaasBase.includes('api-sandbox.asaas.com')) {
+      throw new Error('[SECURITY ERROR]: Sandbox environment requires https://api-sandbox.asaas.com base URL.');
+    }
+    // If running in sandbox production mode (e.g. staging runtime), require sandbox keys
+    if (!asaasKey) missing.push('ASAAS_API_KEY');
+    if (!webhookToken) missing.push('ASAAS_WEBHOOK_AUTH_TOKEN');
+  } else if (asaasEnv === 'production') {
+    if (!asaasBase || !asaasBase.includes('api.asaas.com') || asaasBase.includes('sandbox')) {
+      throw new Error('[SECURITY ERROR]: Production environment requires https://api.asaas.com base URL.');
+    }
+
+    if (allowProd) {
+      // Production Payments ACTIVE: require live credentials
+      if (!asaasKey) {
+        throw new Error('[SECURITY ERROR]: Production environment requires non-empty ASAAS_API_KEY.');
+      }
+      if (!webhookToken) {
+        throw new Error('[SECURITY ERROR]: Production environment requires non-empty ASAAS_WEBHOOK_AUTH_TOKEN.');
+      }
+    } else {
+      // Production Payments LOCKED: Day Zero Safe Posture
+      console.log('[SECURITY NOTICE]: Production payments are LOCKED (ALLOW_PRODUCTION_PAYMENTS=false). Mutating payment operations will be blocked fail-closed.');
+    }
   }
 
   if (missing.length > 0) {
@@ -70,3 +86,4 @@ export function validateProductionEnvironment(): EnvValidationResult {
 
   return { valid: true, missing: [] };
 }
+

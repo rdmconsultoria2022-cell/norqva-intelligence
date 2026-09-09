@@ -2432,9 +2432,14 @@ export async function checkoutPix(req: any, res: Response) {
   const apiKey = process.env.ASAAS_API_KEY;
   const baseUrl = process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3';
   const env = (process.env.ASAAS_ENV || 'sandbox').trim().toLowerCase();
+  const allowProd = process.env.ALLOW_PRODUCTION_PAYMENTS === 'true';
   const providerEnv = env === 'production' ? 'PRODUCTION' : 'SANDBOX';
   const hashSecret = process.env.CPF_CNPJ_HASH_SECRET || 'default_hmac_secret_for_testing';
   const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
+
+  if (env === 'production' && !allowProd) {
+    return res.status(403).json({ error: '[PAYMENT SECURITY EXCEPTION]: PRODUCTION_PAYMENTS_LOCKED' });
+  }
 
   if (!apiKey) {
     return res.status(500).json({ error: 'Payment provider not configured on server.' });
@@ -2443,7 +2448,7 @@ export async function checkoutPix(req: any, res: Response) {
   // Instantiate provider
   let provider: AsaasPaymentProvider;
   try {
-    provider = new AsaasPaymentProvider(apiKey, baseUrl, env);
+    provider = new AsaasPaymentProvider(apiKey, baseUrl, env, { allowProductionPayments: allowProd });
   } catch (err: any) {
     console.error('Provider instantiation error:', err);
     return res.status(500).json({ error: err.message });

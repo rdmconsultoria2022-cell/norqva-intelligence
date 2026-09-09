@@ -27,15 +27,27 @@ describe('GATE 06.2A — Asaas Payment Provider Production Safety & Fail-Closed 
     }).toThrow(/Sandbox environment requires https:\/\/api-sandbox\.asaas\.com base URL/);
   });
 
-  it('TEST 03: production env + production URL + allowProductionPayments=false -> FAIL CLOSED', () => {
-    expect(() => {
-      new AsaasPaymentProvider(
-        dummyProdKey,
-        'https://api.asaas.com/v3',
-        'production',
-        { allowProductionPayments: false, webhookAuthToken: dummyWebhookToken }
-      );
-    }).toThrow(/Production payments are strictly blocked/);
+  it('TEST 03: production env + production URL + allowProductionPayments=false -> BOOT PASS, MUTATION FAIL CLOSED', async () => {
+    const provider = new AsaasPaymentProvider(
+      dummyProdKey,
+      'https://api.asaas.com/v3',
+      'production',
+      { allowProductionPayments: false, webhookAuthToken: dummyWebhookToken }
+    );
+    expect(provider).toBeDefined();
+
+    await expect(provider.createPixPayment({
+      amount: 19.9,
+      description: 'TRATTORIA EM CASA',
+      idempotencyKey: 'idem_test_123',
+      providerCustomerId: 'cus_test_123'
+    })).rejects.toThrow(/PRODUCTION_PAYMENTS_LOCKED/);
+
+    await expect(provider.createCustomer({
+      name: 'Test Customer',
+      email: 'test@example.com',
+      externalReference: 'cust_ext_123'
+    })).rejects.toThrow(/PRODUCTION_PAYMENTS_LOCKED/);
   });
 
   it('TEST 04: production env + production URL + allow=true without API key -> FAIL CLOSED', () => {
