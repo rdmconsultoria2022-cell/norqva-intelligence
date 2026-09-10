@@ -1,7 +1,8 @@
 import { supabase } from '../supabase';
 import { UserObj } from '../types';
 
-export const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api';
+const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+export const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || (isTest ? '/api' : 'https://norqva-production-backend.onrender.com/api');
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt: number = 0;
