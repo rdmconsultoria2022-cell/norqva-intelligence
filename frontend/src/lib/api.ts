@@ -2,7 +2,13 @@ import { supabase } from '../supabase';
 import { UserObj } from '../types';
 
 const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-export const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || (isTest ? '/api' : 'https://norqva-production-backend.onrender.com/api');
+const envBase = (import.meta as any).env?.VITE_API_BASE_URL;
+
+export const API_BASE = isTest
+  ? (envBase || '/api')
+  : (envBase && !envBase.includes('staging') 
+      ? envBase 
+      : 'https://norqva-production-backend.onrender.com/api');
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt: number = 0;
