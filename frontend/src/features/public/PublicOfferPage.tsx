@@ -53,6 +53,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
   // Commercial modal state flow
   const [showCheckout, setShowCheckout] = useState<boolean>(false);
+  const [customerDraft, setCustomerDraft] = useState<any | null>(null);
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState<any | null>(null);
 
@@ -456,6 +457,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
         <CheckoutView
           offer={offer as any}
           isDemo={offer.is_demo}
+          initialCustomer={customerDraft}
+          onCustomerChange={setCustomerDraft}
           onOrderCreated={(order) => {
             setShowCheckout(false);
             setActivePaymentOrder(order);
@@ -475,6 +478,10 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           isDemo={offer.is_demo}
           onPaymentConfirmed={() => {
             setActiveDeliveryOrder(activePaymentOrder);
+          }}
+          onBackToCheckout={() => {
+            setActivePaymentOrder(null);
+            setShowCheckout(true);
           }}
           onClose={() => {
             setActivePaymentOrder(null);

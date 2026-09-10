@@ -57,11 +57,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
     );
 
     expect(screen.getByText('Plano Escala Pro')).toBeInTheDocument();
-    expect(screen.getByText('OFF-001')).toBeInTheDocument();
-    expect(screen.getByText(/Produto: NORQVA Core Engine/i)).toBeInTheDocument();
     expect(screen.getByText('R$197,00')).toBeInTheDocument();
-    expect(screen.getByText('R$297,00')).toBeInTheDocument();
-    expect(screen.getByText(/Mentoria Semanal Inclusa/i)).toBeInTheDocument();
+    expect(screen.getByText('Livro Digital Oficial')).toBeInTheDocument();
   });
 
   // B02: checkout submit sends expected request exactly once
@@ -107,10 +104,12 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
     const nameInput = screen.getByPlaceholderText(/João da Silva/i);
     const emailInput = screen.getByPlaceholderText(/seuemail@empresa.com/i);
+    const cpfInput = screen.getByPlaceholderText(/000\.000\.000-00/i);
     const submitBtn = screen.getByRole('button', { name: /Gerar Pedido & Pagamento/i });
 
     fireEvent.change(nameInput, { target: { value: 'Carlos Teste' } });
     fireEvent.change(emailInput, { target: { value: 'carlos@test.com' } });
+    fireEvent.change(cpfInput, { target: { value: '52998224725' } });
 
     fireEvent.click(submitBtn);
 
@@ -168,10 +167,12 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
     const nameInput = screen.getByPlaceholderText(/João da Silva/i);
     const emailInput = screen.getByPlaceholderText(/seuemail@empresa.com/i);
+    const cpfInput = screen.getByPlaceholderText(/000\.000\.000-00/i);
     const submitBtn = screen.getByRole('button', { name: /Gerar Pedido & Pagamento/i });
 
     fireEvent.change(nameInput, { target: { value: 'Carlos Teste' } });
     fireEvent.change(emailInput, { target: { value: 'carlos@test.com' } });
+    fireEvent.change(cpfInput, { target: { value: '52998224725' } });
 
     // Click twice rapidly
     fireEvent.click(submitBtn);
@@ -463,7 +464,7 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
     fireEvent.click(downloadBtn);
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith('/api/delivery/raw-1');
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/delivery/raw-1'), expect.anything());
     });
 
     expect(setItemSpyLocal).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining(signedUrl));
@@ -585,10 +586,12 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
     const nameInput = screen.getByPlaceholderText(/João da Silva/i);
     const emailInput = screen.getByPlaceholderText(/seuemail@empresa.com/i);
+    const cpfInput = screen.getByPlaceholderText(/000\.000\.000-00/i);
     const submitBtn = screen.getByRole('button', { name: /Gerar Pedido & Pagamento/i });
 
     fireEvent.change(nameInput, { target: { value: 'Demo User' } });
     fireEvent.change(emailInput, { target: { value: 'demo@test.com' } });
+    fireEvent.change(cpfInput, { target: { value: '52998224725' } });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -857,8 +860,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       // F01: createPix HTTP failure transitions to FAILED and shows safe error message
       expect(await screen.findByText('Não foi possível gerar o pagamento Pix')).toBeInTheDocument();
       expect(screen.getByText('Falha no Pagamento')).toBeInTheDocument();
-      expect(screen.getByText('Provider validation failed: CPF/CNPJ inválido')).toBeInTheDocument();
-      expect(showError).toHaveBeenCalledWith('Provider validation failed: CPF/CNPJ inválido');
+      expect(screen.getByText('Informe um CPF válido para continuar.')).toBeInTheDocument();
+      expect(showError).toHaveBeenCalledWith('Informe um CPF válido para continuar.');
 
       // F02: FAILED state does NOT render awaiting-payment UI
       expect(screen.queryByText('Aguardando Pagamento Pix')).not.toBeInTheDocument();

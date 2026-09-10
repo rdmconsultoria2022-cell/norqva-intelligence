@@ -592,7 +592,13 @@ describe('NORQVA Commercial Integration - Gate 2.5B', () => {
 
   it('should override client payload attempts to define is_demo scope', async () => {
     // Query a demo offer
-    const offerRes = await pool.query("SELECT id, customer_id FROM (SELECT o.id, (SELECT c.id FROM customers c WHERE c.is_demo = TRUE LIMIT 1) as customer_id FROM offers o WHERE o.is_demo = TRUE LIMIT 1) as t");
+    const offerRes = await pool.query(
+      `SELECT o.id, (SELECT c.id FROM customers c WHERE c.is_demo = TRUE LIMIT 1) as customer_id
+       FROM offers o
+       JOIN products p ON o.product_id = p.id
+       WHERE o.is_demo = TRUE AND p.is_demo = TRUE AND o.is_deleted = FALSE
+       LIMIT 1`
+    );
     const demoOffer = offerRes.rows[0];
 
     if (demoOffer && demoOffer.customer_id) {

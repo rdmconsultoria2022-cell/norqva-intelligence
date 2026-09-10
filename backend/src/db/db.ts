@@ -71,7 +71,26 @@ export function initializeDB(): Pool {
       memDb.public.registerFunction({
         name: 'gen_random_uuid',
         returns: 'uuid',
+        impure: true,
         implementation: () => require('crypto').randomUUID()
+      });
+
+      memDb.public.registerFunction({
+        name: 'uuid_generate_v4',
+        returns: 'uuid',
+        impure: true,
+        implementation: () => require('crypto').randomUUID()
+      });
+
+      memDb.public.registerFunction({
+        name: 'json_build_object',
+        implementation: (...args: any[]) => {
+          const obj: any = {};
+          for (let i = 0; i < args.length; i += 2) {
+            obj[args[i]] = args[i + 1];
+          }
+          return obj;
+        }
       });
 
       const PgMemPool = memDb.adapters.createPg().Pool;

@@ -1,26 +1,36 @@
 import React, { useState, useRef } from 'react';
-import { ShieldCheck, User, Mail, Phone, FileText, Loader2, X, Lock, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, User, Mail, Phone, FileText, Loader2, X, Lock, AlertCircle } from 'lucide-react';
 import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
 import { apiFetch } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
 import { getAttributionContext, sendFunnelEvent } from '../../services/attribution';
+import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from './checkoutValidation';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
   isDemo,
   currentUser = null,
+  initialCustomer = null,
+  onCustomerChange,
   onOrderCreated,
   onCancel,
   showError,
   showSuccess
 }) => {
-  const [customerName, setCustomerName] = useState(currentUser?.name || '');
-  const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [cpfCnpj, setCpfCnpj] = useState('');
-  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [customerName, setCustomerName] = useState(initialCustomer?.name || currentUser?.name || '');
+  const [customerEmail, setCustomerEmail] = useState(initialCustomer?.email || currentUser?.email || '');
+  const [customerPhone, setCustomerPhone] = useState(initialCustomer?.phone ? maskPhone(initialCustomer.phone) : '');
+  const [cpfCnpj, setCpfCnpj] = useState(initialCustomer?.cpf_cnpj ? maskCpf(initialCustomer.cpf_cnpj) : '');
   const [quantity, setQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Field touch state for inline error display
+  const [touched, setTouched] = useState({
+    name: false,
+    email: false,
+    cpf: false,
+    phone: false
+  });
 
   const isSubmittingRef = useRef(false);
 
@@ -28,15 +38,68 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     ? parseFloat(String(offer.promotional_price))
     : parseFloat(String(offer.price));
 
+  // Compute field validation errors
+  const nameValid = validateFullName(customerName);
+  const emailValid = validateEmail(customerEmail);
+  const cpfValid = validateCpf(cpfCnpj);
+  const phoneClean = customerPhone.replace(/\D/g, '');
+  const phoneValid = phoneClean.length === 0 || phoneClean.length === 10 || phoneClean.length === 11;
+
+  const isFormValid = nameValid && emailValid && cpfValid && phoneValid;
+
+  const handleNameChange = (val: string) => {
+    setCustomerName(val);
+    onCustomerChange?.({ name: val, email: customerEmail, phone: customerPhone, cpf_cnpj: cpfCnpj });
+  };
+
+  const handleEmailChange = (val: string) => {
+    setCustomerEmail(val);
+    onCustomerChange?.({ name: customerName, email: val, phone: customerPhone, cpf_cnpj: cpfCnpj });
+  };
+
+  const handleCpfChange = (val: string) => {
+    const masked = maskCpf(val);
+    setCpfCnpj(masked);
+    onCustomerChange?.({ name: customerName, email: customerEmail, phone: customerPhone, cpf_cnpj: masked });
+  };
+
+  const handlePhoneChange = (val: string) => {
+    const masked = maskPhone(val);
+    setCustomerPhone(masked);
+    onCustomerChange?.({ name: customerName, email: customerEmail, phone: masked, cpf_cnpj: cpfCnpj });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    setTouched({
+      name: true,
+      email: true,
+      cpf: true,
+      phone: true
+    });
 
     if (isSubmittingRef.current || isSubmitting) {
       return;
     }
 
-    if (!customerName.trim() || !customerEmail.trim()) {
-      showError('Nome e e-mail são obrigatórios para receber o livro digital.');
+    if (!nameValid) {
+      showError('Informe seu nome completo (nome e sobrenome).');
+      return;
+    }
+
+    if (!emailValid) {
+      showError('Informe um e-mail válido para receber o livro digital.');
+      return;
+    }
+
+    if (!cpfValid) {
+      showError('Informe um CPF válido para continuar.');
+      return;
+    }
+
+    if (!phoneValid) {
+      showError('Informe um telefone válido com DDD (10 ou 11 dígitos).');
       return;
     }
 
@@ -44,12 +107,15 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Create or register customer
+      // 1. Create or register customer with normalized data
+      const cleanCpf = cpfCnpj.replace(/\D/g, '');
+      const cleanPhone = customerPhone.replace(/\D/g, '');
+
       const customerPayload = {
         name: customerName.trim(),
         email: customerEmail.trim().toLowerCase(),
-        phone: customerPhone.trim() || undefined,
-        cpf_cnpj: cpfCnpj.trim() || undefined,
+        phone: cleanPhone || undefined,
+        cpf_cnpj: cleanCpf,
         is_demo: isDemo
       };
 
@@ -185,6 +251,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         {/* Customer & Order Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
+          {/* Field 1: Nome Completo */}
           <div>
             <label className="block text-xs font-semibold text-stone-700 mb-1">
               Nome Completo *
@@ -198,13 +265,25 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 required
                 disabled={isSubmitting}
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
+                onBlur={() => setTouched(prev => ({ ...prev, name: true }))}
                 placeholder="Ex: João da Silva"
-                className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E] disabled:opacity-50 transition"
+                className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
+                  touched.name && !nameValid
+                    ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
+                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                } disabled:opacity-50`}
               />
             </div>
+            {touched.name && !nameValid && (
+              <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 inline shrink-0" />
+                Informe seu nome completo (nome e sobrenome).
+              </p>
+            )}
           </div>
 
+          {/* Field 2: E-mail */}
           <div>
             <label className="block text-xs font-semibold text-stone-700 mb-1">
               E-mail de Contato *
@@ -218,67 +297,94 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 required
                 disabled={isSubmitting}
                 value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
+                onChange={(e) => handleEmailChange(e.target.value)}
+                onBlur={() => setTouched(prev => ({ ...prev, email: true }))}
                 placeholder="seuemail@empresa.com"
-                className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E] disabled:opacity-50 transition"
+                className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
+                  touched.email && !emailValid
+                    ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
+                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                } disabled:opacity-50`}
               />
             </div>
-            <span className="text-[11px] text-stone-500 mt-1 block">
-              Você receberá seu e-book e os links de acesso permanente neste e-mail.
-            </span>
+            {touched.email && !emailValid ? (
+              <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 inline shrink-0" />
+                Informe um e-mail válido.
+              </p>
+            ) : (
+              <span className="text-[11px] text-stone-500 mt-1 block">
+                Você receberá seu e-book e os links de acesso permanente neste e-mail.
+              </span>
+            )}
           </div>
 
-          {/* Subtle Disclosure Control for Optional Fields */}
+          {/* Field 3: CPF (Permanently Visible & Required) */}
           <div>
-            <button
-              type="button"
-              onClick={() => setShowOptionalFields(!showOptionalFields)}
-              className="text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1.5 transition py-1 focus:outline-none"
-            >
-              <span className="text-stone-400 font-mono text-sm leading-none">{showOptionalFields ? '−' : '+'}</span>
-              <span>{showOptionalFields ? 'Ocultar dados opcionais' : 'Adicionar dados opcionais'}</span>
-            </button>
-
-            {showOptionalFields && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5">
-                <div>
-                  <label className="block text-xs font-semibold text-stone-700 mb-1">
-                    WhatsApp / Telefone <span className="text-stone-400 font-normal">(Opcional)</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
-                      <Phone className="h-4 w-4" />
-                    </div>
-                    <input
-                      type="text"
-                      disabled={isSubmitting}
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="(11) 99999-9999"
-                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] disabled:opacity-50 transition"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-stone-700 mb-1">
-                    CPF / CNPJ <span className="text-stone-400 font-normal">(Opcional)</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <input
-                      type="text"
-                      disabled={isSubmitting}
-                      value={cpfCnpj}
-                      onChange={(e) => setCpfCnpj(e.target.value)}
-                      placeholder="000.000.000-00"
-                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E] disabled:opacity-50 transition"
-                    />
-                  </div>
-                </div>
+            <label className="block text-xs font-semibold text-stone-700 mb-1">
+              CPF *
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
+                <FileText className="h-4 w-4" />
               </div>
+              <input
+                type="text"
+                required
+                disabled={isSubmitting}
+                value={cpfCnpj}
+                onChange={(e) => handleCpfChange(e.target.value)}
+                onBlur={() => setTouched(prev => ({ ...prev, cpf: true }))}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
+                  touched.cpf && !cpfValid
+                    ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
+                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                } disabled:opacity-50`}
+              />
+            </div>
+            {touched.cpf && !cpfValid ? (
+              <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 inline shrink-0" />
+                Informe um CPF válido (11 dígitos).
+              </p>
+            ) : (
+              <span className="text-[11px] text-stone-500 mt-1 block">
+                Necessário para emissão do Pix pelo Banco Central.
+              </span>
+            )}
+          </div>
+
+          {/* Field 4: WhatsApp / Celular (Optional) */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-700 mb-1">
+              WhatsApp / Celular <span className="text-stone-400 font-normal">(Opcional)</span>
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
+                <Phone className="h-4 w-4" />
+              </div>
+              <input
+                type="text"
+                disabled={isSubmitting}
+                value={customerPhone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
+                placeholder="(11) 99999-9999"
+                maxLength={15}
+                className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
+                  touched.phone && !phoneValid
+                    ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
+                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                } disabled:opacity-50`}
+              />
+            </div>
+            {touched.phone && !phoneValid && (
+              <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 inline shrink-0" />
+                Informe um telefone válido com DDD (10 ou 11 dígitos).
+              </p>
             )}
           </div>
 
@@ -301,9 +407,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)}
               aria-label={`Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix — Gerar Pedido & Pagamento`}
-              className="px-6 py-3 rounded-xl bg-[#B83B1E] text-white hover:bg-[#8F2810] text-sm font-bold flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-[#B83B1E]/20 transition active:scale-95"
+              className={`px-6 py-3 rounded-xl text-white text-sm font-bold flex items-center gap-2 transition active:scale-95 ${
+                isSubmitting || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)
+                  ? 'bg-stone-400 cursor-not-allowed shadow-none'
+                  : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-lg shadow-[#B83B1E]/20'
+              }`}
             >
               {isSubmitting ? (
                 <>
@@ -321,3 +431,4 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     </div>
   );
 };
+

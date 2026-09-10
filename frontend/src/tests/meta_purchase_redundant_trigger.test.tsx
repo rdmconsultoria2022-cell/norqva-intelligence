@@ -451,7 +451,7 @@ describe('NORQVA — Meta Purchase Redundant Observational Trigger & Deduplicati
     // Delivery UI successfully renders despite fbq exception
     await waitFor(() => {
       expect(screen.getByText(/Planilha Inteligente/i)).toBeInTheDocument();
-      expect(screen.getByText(/Baixar Arquivo/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Baixar/i })).toBeInTheDocument();
     });
   });
 

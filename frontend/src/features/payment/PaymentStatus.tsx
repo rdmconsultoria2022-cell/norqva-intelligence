@@ -4,6 +4,27 @@ import { PaymentStatusProps, PaymentInfo, PaymentStatusEnum } from './paymentTyp
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
 
+function sanitizeErrorMessage(msg: string): string {
+  if (!msg) return 'Não foi possível gerar a cobrança Pix. Tente novamente em instantes.';
+  const lower = msg.toLowerCase();
+  if (lower.includes('cpf') || lower.includes('cnpj')) {
+    return 'Informe um CPF válido para continuar.';
+  }
+  if (lower.includes('nome') || lower.includes('name')) {
+    return 'Informe seu nome completo (nome e sobrenome).';
+  }
+  if (lower.includes('email') || lower.includes('e-mail')) {
+    return 'Informe um e-mail válido.';
+  }
+  if (lower.includes('locked') || lower.includes('production_payments_locked')) {
+    return 'Pagamentos temporariamente indisponíveis no momento. Tente novamente mais tarde.';
+  }
+  if (lower.includes('provider') || lower.includes('asaas') || lower.includes('timeout') || lower.includes('status 4') || lower.includes('status 5') || lower.includes('exception')) {
+    return 'Não foi possível gerar o Pix agora. Tente novamente em instantes.';
+  }
+  return msg;
+}
+
 export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   orderId,
   checkoutToken,
@@ -12,6 +33,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   initialPayment = null,
   onPaymentConfirmed,
   onClose,
+  onBackToCheckout,
   showError,
   showSuccess
 }) => {
@@ -63,10 +85,10 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         const data = await res.json();
 
         if (!res.ok) {
-          const safeMsg = data.error && typeof data.error === 'string'
+          const rawMsg = data.error && typeof data.error === 'string'
             ? data.error
             : 'Não foi possível gerar a cobrança Pix.';
-          throw new Error(safeMsg);
+          throw new Error(sanitizeErrorMessage(rawMsg));
         }
 
         if (isMountedRef.current) {
@@ -84,7 +106,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         if (isMountedRef.current) {
           setStatus('FAILED');
           setPollingActive(false);
-          const safeErr = err.message || 'Não foi possível gerar o pagamento Pix.';
+          const safeErr = sanitizeErrorMessage(err.message || '');
           setErrorMessage(safeErr);
           if (showError) {
             showError(safeErr);
@@ -304,14 +326,26 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                 {errorMessage || 'O tempo limite para pagamento expirou ou a transação falhou pelo gateway financeiro.'}
               </p>
             </div>
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="mt-2 px-4 py-2 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 font-mono text-xs font-semibold transition"
-              >
-                Fechar
-              </button>
-            )}
+            <div className="flex items-center justify-center gap-2 mt-2">
+              {onBackToCheckout && (
+                <button
+                  type="button"
+                  onClick={onBackToCheckout}
+                  className="px-4 py-2 rounded-md bg-[#B83B1E] text-white hover:bg-[#8F2810] font-mono text-xs font-semibold transition shadow-md"
+                >
+                  Voltar e corrigir dados
+                </button>
+              )}
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 font-mono text-xs font-semibold transition"
+                >
+                  Fechar
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           /* Pending / Pix Presentation State */

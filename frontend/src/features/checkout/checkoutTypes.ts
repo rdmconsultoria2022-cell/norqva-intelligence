@@ -1,4 +1,4 @@
-﻿import { UserObj } from '../../types';
+import { UserObj } from '../../types';
 
 export interface CheckoutOffer {
   id: string;
@@ -53,8 +53,12 @@ export interface CheckoutViewProps {
   offer: CheckoutOffer;
   isDemo: boolean;
   currentUser?: UserObj | null;
+  initialCustomer?: Partial<CheckoutCustomer> | null;
+  onCustomerChange?: (customer: Partial<CheckoutCustomer>) => void;
   onOrderCreated: (order: CheckoutOrderResult) => void;
   onCancel: () => void;
   showError: (msg: string) => void;
   showSuccess?: (msg: string) => void;
 }
+
+

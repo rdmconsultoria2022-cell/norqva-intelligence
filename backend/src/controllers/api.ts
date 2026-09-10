@@ -10,6 +10,7 @@ import { writeAuditLog } from '../db/audit';
 import { clearDemoData } from '../db/db';
 import { calculateScores } from '../utils/score';
 import { MockAIProvider } from '../utils/ai';
+import { validateCpf, validateFullName, validateEmail } from '../utils/validation';
 import {
   getCommercialOrderClause,
   getCommercialPaymentClause,
@@ -1887,19 +1888,44 @@ export async function analyzeOpportunity(req: AuthenticatedRequest, res: Respons
 export async function createCustomer(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const { name, email, phone, is_demo, cpf_cnpj } = req.body;
-  if (!name || !email) {
+  if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Name and email are required.' });
+  }
+
+  if (!email || typeof email !== 'string' || !email.trim()) {
+    return res.status(400).json({ error: 'Name and email are required.' });
+  }
+
+  if (!validateFullName(name)) {
+    return res.status(400).json({ error: 'Informe seu nome completo (nome e sobrenome).' });
+  }
+
+  if (!validateEmail(email)) {
+    return res.status(400).json({ error: 'Informe um e-mail válido.' });
   }
 
   const isDemo = is_demo === true || is_demo === 'true';
   const normalizedEmail = email.trim().toLowerCase();
+  const isInternalOrAdmin = !!(req.user || req.headers['x-user-role'] || req.headers['x-user-id'] || req.headers['authorization']);
+
+  // Commercial public checkout requires a valid CPF
+  if (!isDemo && !isInternalOrAdmin && !cpf_cnpj) {
+    return res.status(400).json({ error: 'Informe um CPF válido para continuar.' });
+  }
+
+  if (cpf_cnpj) {
+    const cleanCpf = String(cpf_cnpj).replace(/\D/g, '');
+    if (!validateCpf(cleanCpf)) {
+      return res.status(400).json({ error: 'Informe um CPF válido para continuar.' });
+    }
+  }
 
   let encryptedCpf: string | null = null;
   let cpfHash: string | null = null;
   const keyVersion = 1;
 
   if (cpf_cnpj) {
-    const normalized = cpf_cnpj.replace(/\D/g, '');
+    const normalized = String(cpf_cnpj).replace(/\D/g, '');
     if (normalized) {
       const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
       const hashSecret = process.env.CPF_CNPJ_HASH_SECRET || 'default_hmac_secret_for_testing';
@@ -1911,6 +1937,9 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
   }
 
   try {
+    const existing = await pool.query('SELECT id FROM customers WHERE email = $1 AND is_demo = $2', [normalizedEmail, isDemo]);
+    const isNew = existing.rows.length === 0;
+
     const query = `
       INSERT INTO customers (id, name, email, phone, is_demo, cpf_cnpj_encrypted, cpf_cnpj_hash, cpf_cnpj_encryption_key_version)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -1921,7 +1950,7 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
         cpf_cnpj_encrypted = COALESCE(EXCLUDED.cpf_cnpj_encrypted, customers.cpf_cnpj_encrypted),
         cpf_cnpj_hash = COALESCE(EXCLUDED.cpf_cnpj_hash, customers.cpf_cnpj_hash),
         cpf_cnpj_encryption_key_version = COALESCE(EXCLUDED.cpf_cnpj_encryption_key_version, customers.cpf_cnpj_encryption_key_version)
-      RETURNING id, name, email, phone, is_demo, created_at, (xmax = 0) AS is_new
+      RETURNING id, name, email, phone, is_demo, created_at
     `;
     const result = await pool.query(query, [
       crypto.randomUUID(),
@@ -1934,8 +1963,6 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
       keyVersion
     ]);
     const row = result.rows[0];
-    const isNew = row.is_new;
-    delete row.is_new;
     return res.status(isNew ? 201 : 200).json(row);
   } catch (err: any) {
     console.error('Create customer error:', err);
@@ -1955,6 +1982,17 @@ export async function getCustomers(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+async function fetchOrderWithItems(client: Pool | PoolClient, filterClause: string, params: any[]) {
+  const orderRes = await client.query(`SELECT * FROM orders WHERE ${filterClause}`, params);
+  if (orderRes.rows.length === 0) return null;
+  const order = orderRes.rows[0];
+  const itemsRes = await client.query('SELECT * FROM order_items WHERE order_id = $1', [order.id]);
+  return {
+    ...order,
+    items: itemsRes.rows
+  };
+}
+
 export async function createOrder(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const { offer_id, quantity, customer_id, idempotency_key } = req.body;
@@ -1962,6 +2000,14 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   if (!offer_id || !customer_id || !idempotency_key) {
     return res.status(400).json({ error: 'offer_id, customer_id, and idempotency_key are required.' });
   }
+
+  let cleanOfferId = offer_id;
+  while (Array.isArray(cleanOfferId)) cleanOfferId = cleanOfferId[0];
+  cleanOfferId = String(cleanOfferId);
+
+  let cleanCustomerId = customer_id;
+  while (Array.isArray(cleanCustomerId)) cleanCustomerId = cleanCustomerId[0];
+  cleanCustomerId = String(cleanCustomerId);
 
   const qty = parseInt(quantity, 10) || 1;
   if (qty <= 0 || qty > 1000) {
@@ -1976,7 +2022,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     // 1. Fetch Offer and derive is_demo scope
     const offerRes = await client.query(
       'SELECT * FROM offers WHERE id = $1 AND is_deleted = FALSE',
-      [offer_id]
+      [cleanOfferId]
     );
     if (offerRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -1993,37 +2039,16 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     derivedIsDemo = isDemo;
 
     // 2. Check Idempotency Key (scoped by is_demo) - SELECT-before-INSERT
-    const existingOrderRes = await client.query(
-      `SELECT o.*, 
-              json_agg(
-                json_build_object(
-                  'id', oi.id,
-                  'offer_id', oi.offer_id,
-                  'product_id', oi.product_id,
-                  'product_name_snapshot', oi.product_name_snapshot,
-                  'offer_name_snapshot', oi.offer_name_snapshot,
-                  'offer_description_snapshot', oi.offer_description_snapshot,
-                  'unit_price', oi.unit_price,
-                  'quantity', oi.quantity,
-                  'total_price', oi.total_price
-                )
-              ) as items
-       FROM orders o
-       LEFT JOIN order_items oi ON o.id = oi.order_id
-       WHERE o.idempotency_key = $1 AND o.is_demo = $2
-       GROUP BY o.id`,
-      [idempotency_key, isDemo]
-    );
-
-    if (existingOrderRes.rows.length > 0) {
+    const existingOrder = await fetchOrderWithItems(client, 'idempotency_key = $1 AND is_demo = $2', [idempotency_key, isDemo]);
+    if (existingOrder) {
       await client.query('COMMIT');
-      return res.status(200).json(existingOrderRes.rows[0]);
+      return res.status(200).json(existingOrder);
     }
 
     // 3. Load Customer and check isolation
     const customerRes = await client.query(
       'SELECT * FROM customers WHERE id = $1',
-      [customer_id]
+      [cleanCustomerId]
     );
     if (customerRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -2031,15 +2056,22 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     }
     const customer = customerRes.rows[0];
 
-    if (customer.is_demo !== isDemo) {
+    const isCustomerDemo = customer.is_demo === true || customer.is_demo === 'true';
+    const isOfferDemo = isDemo === true || isDemo === 'true';
+
+    if (isCustomerDemo !== isOfferDemo) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `Scope mismatch: Customer is_demo is ${customer.is_demo} but Offer is_demo is ${isDemo}.` });
     }
 
     // 4. Load Product and check isolation
+    let cleanProductId = offer.product_id;
+    while (Array.isArray(cleanProductId)) cleanProductId = cleanProductId[0];
+    cleanProductId = String(cleanProductId);
+
     const productRes = await client.query(
       'SELECT * FROM products WHERE id = $1 AND is_deleted = FALSE',
-      [offer.product_id]
+      [cleanProductId]
     );
     if (productRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -2047,7 +2079,9 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     }
     const product = productRes.rows[0];
 
-    if (product.is_demo !== isDemo) {
+    const isProductDemo = product.is_demo === true || product.is_demo === 'true';
+
+    if (isProductDemo !== isOfferDemo) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `Scope mismatch: Product is_demo is ${product.is_demo} but Offer is_demo is ${isDemo}.` });
     }
@@ -2094,7 +2128,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
        )
        VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
-        orderId, customer_id, totalAmount, idempotency_key, isDemo,
+        orderId, cleanCustomerId, totalAmount, idempotency_key, isDemo,
         tokenHash, tokenExpiresAt,
         visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content, attribution_metadata,
         derivedProvenance
@@ -2109,8 +2143,8 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       [
         itemId,
         orderId,
-        offer_id,
-        offer.product_id,
+        cleanOfferId,
+        cleanProductId,
         product.name,
         offer.name,
         offer.description || null,
@@ -2124,29 +2158,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     await client.query('COMMIT');
 
     // Fetch the fully created order to return
-    const orderQuery = await pool.query(
-      `SELECT o.*, 
-              json_agg(
-                json_build_object(
-                  'id', oi.id,
-                  'offer_id', oi.offer_id,
-                  'product_id', oi.product_id,
-                  'product_name_snapshot', oi.product_name_snapshot,
-                  'offer_name_snapshot', oi.offer_name_snapshot,
-                  'offer_description_snapshot', oi.offer_description_snapshot,
-                  'unit_price', oi.unit_price,
-                  'quantity', oi.quantity,
-                  'total_price', oi.total_price
-                )
-              ) as items
-       FROM orders o
-       LEFT JOIN order_items oi ON o.id = oi.order_id
-       WHERE o.id = $1
-       GROUP BY o.id`,
-      [orderId]
-    );
-
-    const orderData = orderQuery.rows[0];
+    const orderData = await fetchOrderWithItems(pool, 'id = $1', [orderId]);
     return res.status(201).json({
       ...orderData,
       checkout_token: rawCheckoutToken
@@ -2157,29 +2169,9 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     // Concurrency Protection: Recover if a concurrent request committed first
     if (derivedIsDemo !== undefined && (err.code === '23505' || err.message.includes('uq_orders_idempotency_is_demo') || err.message.includes('idempotency_key'))) {
       try {
-        const orderQuery = await pool.query(
-          `SELECT o.*, 
-                  json_agg(
-                    json_build_object(
-                      'id', oi.id,
-                      'offer_id', oi.offer_id,
-                      'product_id', oi.product_id,
-                      'product_name_snapshot', oi.product_name_snapshot,
-                      'offer_name_snapshot', oi.offer_name_snapshot,
-                      'offer_description_snapshot', oi.offer_description_snapshot,
-                      'unit_price', oi.unit_price,
-                      'quantity', oi.quantity,
-                      'total_price', oi.total_price
-                    )
-                  ) as items
-           FROM orders o
-           LEFT JOIN order_items oi ON o.id = oi.order_id
-           WHERE o.idempotency_key = $1 AND o.is_demo = $2
-           GROUP BY o.id`,
-          [idempotency_key, derivedIsDemo]
-        );
-        if (orderQuery.rows.length > 0) {
-          return res.status(200).json(orderQuery.rows[0]);
+        const orderData = await fetchOrderWithItems(pool, 'idempotency_key = $1 AND is_demo = $2', [idempotency_key, derivedIsDemo]);
+        if (orderData) {
+          return res.status(200).json(orderData);
         }
       } catch (retryErr) {
         console.error('Failed to retrieve order after unique violation:', retryErr);
@@ -2218,36 +2210,44 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
 
     const query = `
       SELECT o.id, o.total_amount, o.status, o.idempotency_key, o.is_demo, o.data_provenance, o.created_at,
-             json_build_object(
-               'id', c.id,
-               'name', ${canSeeFullPII || canSeePartialPII ? 'c.name' : "'[REDACTED]'"},
-               'email', ${canSeeFullPII ? 'c.email' : "'[REDACTED]'"},
-               'phone', ${canSeeFullPII ? 'c.phone' : "'[REDACTED]'"}
-             ) as customer,
-             json_agg(
-               json_build_object(
-                 'id', oi.id,
-                 'offer_id', oi.offer_id,
-                 'product_id', oi.product_id,
-                 'product_name_snapshot', oi.product_name_snapshot,
-                 'offer_name_snapshot', oi.offer_name_snapshot,
-                 'offer_description_snapshot', oi.offer_description_snapshot,
-                 'unit_price', oi.unit_price,
-                 'quantity', oi.quantity,
-                 'total_price', oi.total_price,
-                 'data_provenance', oi.data_provenance
-               )
-             ) as items
+             c.id as customer_id, c.name as customer_name, c.email as customer_email, c.phone as customer_phone
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
-      LEFT JOIN order_items oi ON o.id = oi.order_id
       WHERE ${whereClause}
-      GROUP BY o.id, c.id
       ORDER BY o.created_at DESC
     `;
 
     const result = await pool.query(query, [isDemo]);
-    return res.status(200).json(result.rows);
+    const orders = result.rows;
+
+    const orderIds = orders.map(r => r.id);
+    const itemsByOrderId: Record<string, any[]> = {};
+    if (orderIds.length > 0) {
+      const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = ANY($1)', [orderIds]);
+      for (const item of itemsRes.rows) {
+        if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
+        itemsByOrderId[item.order_id].push(item);
+      }
+    }
+
+    const payload = orders.map(r => ({
+      id: r.id,
+      total_amount: r.total_amount,
+      status: r.status,
+      idempotency_key: r.idempotency_key,
+      is_demo: r.is_demo,
+      data_provenance: r.data_provenance,
+      created_at: r.created_at,
+      customer: {
+        id: r.customer_id,
+        name: canSeeFullPII || canSeePartialPII ? r.customer_name : '[REDACTED]',
+        email: canSeeFullPII ? r.customer_email : '[REDACTED]',
+        phone: canSeeFullPII ? r.customer_phone : '[REDACTED]'
+      },
+      items: itemsByOrderId[r.id] || []
+    }));
+
+    return res.status(200).json(payload);
   } catch (err) {
     console.error('Get orders error:', err);
     return res.status(500).json({ error: 'Failed to query orders.' });
@@ -2269,40 +2269,39 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
     try {
       const query = `
         SELECT o.id, o.total_amount, o.status, o.idempotency_key, o.is_demo, o.created_at, o.updated_at,
-               json_build_object(
-                 'id', c.id,
-                 'name', ${canSeeFullPII || canSeePartialPII ? 'c.name' : "'[REDACTED]'"},
-                 'email', ${canSeeFullPII ? 'c.email' : "'[REDACTED]'"},
-                 'phone', ${canSeeFullPII ? 'c.phone' : "'[REDACTED]'"}
-               ) as customer,
-               json_agg(
-                 json_build_object(
-                   'id', oi.id,
-                   'offer_id', oi.offer_id,
-                   'product_id', oi.product_id,
-                   'product_name_snapshot', oi.product_name_snapshot,
-                   'offer_name_snapshot', oi.offer_name_snapshot,
-                   'offer_description_snapshot', oi.offer_description_snapshot,
-                   'unit_price', oi.unit_price,
-                   'quantity', oi.quantity,
-                   'total_price', oi.total_price
-                 )
-               ) as items
+               c.id as customer_id, c.name as customer_name, c.email as customer_email, c.phone as customer_phone
         FROM orders o
         JOIN customers c ON o.customer_id = c.id
-        LEFT JOIN order_items oi ON o.id = oi.order_id
         WHERE o.id = $1
-        GROUP BY o.id, c.id
       `;
 
       const result = await pool.query(query, [id]);
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Order not found.' });
       }
-      return res.status(200).json(result.rows[0]);
+
+      const r = result.rows[0];
+      const itemsRes = await pool.query('SELECT * FROM order_items WHERE order_id = $1', [r.id]);
+
+      return res.status(200).json({
+        id: r.id,
+        total_amount: r.total_amount,
+        status: r.status,
+        idempotency_key: r.idempotency_key,
+        is_demo: r.is_demo,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        customer: {
+          id: r.customer_id,
+          name: canSeeFullPII || canSeePartialPII ? r.customer_name : '[REDACTED]',
+          email: canSeeFullPII ? r.customer_email : '[REDACTED]',
+          phone: canSeeFullPII ? r.customer_phone : '[REDACTED]'
+        },
+        items: itemsRes.rows
+      });
     } catch (err) {
       console.error('Get order by id error:', err);
-      return res.status(500).json({ error: 'Failed to query order details.' });
+      return res.status(500).json({ error: 'Failed to query order.' });
     }
   }
 
@@ -2587,9 +2586,9 @@ export async function checkoutPix(req: any, res: Response) {
         } else if (emailMatches.length === 1) {
           providerCustomerId = emailMatches[0].id;
         } else {
-          // If CPF/CNPJ is required, check presence
-          if (!decryptedCpf) {
-            const valErr: any = new Error('CPF/CNPJ is required for payment provider registration.');
+          // If CPF/CNPJ is required, check presence and validity
+          if (!decryptedCpf || !validateCpf(decryptedCpf)) {
+            const valErr: any = new Error('Informe um CPF válido para continuar.');
             valErr.isValidationError = true;
             throw valErr;
           }
@@ -2657,19 +2656,19 @@ export async function checkoutPix(req: any, res: Response) {
 
     if (err.isValidationError) {
       await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
-      return res.status(400).json({ error: err.message });
+      return res.status(400).json({ error: err.message || 'Informe um CPF válido para continuar.' });
     }
 
     // 4xx Definitivo from Asaas
     if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
       await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
-      return res.status(400).json({ error: `Provider validation failed: ${err.message}` });
+      return res.status(400).json({ error: 'Não foi possível processar o pagamento com os dados fornecidos. Verifique seus dados e tente novamente.' });
     }
 
     // 5xx / Network Timeout / Uncertain State -> REQUIRES_RECONCILIATION
     await pool.query("UPDATE payments SET status = 'REQUIRES_RECONCILIATION', updated_at = NOW() WHERE id = $1", [paymentId]);
     return res.status(502).json({
-      error: 'Communication timeout with payment provider. Payment is in pending verification.',
+      error: 'Não foi possível gerar o Pix no momento. Tente novamente em instantes.',
       status: 'REQUIRES_RECONCILIATION'
     });
   }
@@ -3043,7 +3042,7 @@ export async function getDeliveryTokens(req: any, res: Response) {
          FROM order_deliveries od
          JOIN digital_assets da ON da.id = od.asset_id
          WHERE od.order_id = $1
-         FOR UPDATE OF od`,
+         FOR UPDATE`,
         [order.id]
       );
 

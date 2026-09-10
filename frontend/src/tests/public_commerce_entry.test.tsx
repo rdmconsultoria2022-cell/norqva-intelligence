@@ -209,8 +209,10 @@ describe('NORQVA — Public Commerce Entry V1 (/p/:humanId)', () => {
     // 3. Fill Customer form
     const nameInput = screen.getByPlaceholderText('Ex: João da Silva');
     const emailInput = screen.getByPlaceholderText('seuemail@empresa.com');
+    const cpfInput = screen.getByPlaceholderText('000.000.000-00');
     fireEvent.change(nameInput, { target: { value: 'Comprador Anonimo' } });
     fireEvent.change(emailInput, { target: { value: 'anon@teste.com' } });
+    fireEvent.change(cpfInput, { target: { value: '52998224725' } });
 
     // 4. Submit Checkout
     const submitBtn = screen.getByRole('button', { name: /Pagar .* com Pix/i });

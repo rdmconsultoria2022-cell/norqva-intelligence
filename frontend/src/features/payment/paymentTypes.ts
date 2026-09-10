@@ -1,4 +1,4 @@
-﻿export type PaymentStatusEnum =
+export type PaymentStatusEnum =
   | 'CREATED'
   | 'PENDING'
   | 'CONFIRMED'
@@ -24,6 +24,8 @@ export interface PaymentStatusProps {
   initialPayment?: PaymentInfo | null;
   onPaymentConfirmed?: () => void;
   onClose?: () => void;
+  onBackToCheckout?: () => void;
   showError: (msg: string) => void;
   showSuccess?: (msg: string) => void;
 }
+

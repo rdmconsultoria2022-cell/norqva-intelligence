@@ -65,10 +65,10 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
     // Encrypt test documents
     const encKey = process.env.ENCRYPTION_KEY!;
     const hmacSecret = process.env.CPF_CNPJ_HASH_SECRET!;
-    const demoCpfEnc = encryptData('12345678909', encKey).encryptedText;
-    const demoCpfHash = generateHmacHash('12345678909', hmacSecret);
-    const realCpfEnc = encryptData('98765432101', encKey).encryptedText;
-    const realCpfHash = generateHmacHash('98765432101', hmacSecret);
+    const demoCpfEnc = encryptData('52998224725', encKey).encryptedText;
+    const demoCpfHash = generateHmacHash('52998224725', hmacSecret);
+    const realCpfEnc = encryptData('52998224725', encKey).encryptedText;
+    const realCpfHash = generateHmacHash('52998224725', hmacSecret);
 
     await pool.query(
       `INSERT INTO customers (id, name, email, phone, is_demo, cpf_cnpj_encrypted, cpf_cnpj_hash) VALUES 
@@ -181,7 +181,7 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
     expect(checkoutResMocked.body.amount).toBe(80.00); // derived from promotional_price
 
     const savedPay = await pool.query('SELECT * FROM payments WHERE order_id = $1', [order.id]);
-    expect(savedPay.rows[0].amount).toBe('80.00'); // stored correctly
+    expect(parseFloat(savedPay.rows[0].amount)).toBe(80.00); // stored correctly
 
     spyCreate.mockRestore();
     spyCust.mockRestore();
@@ -389,7 +389,7 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
   // P08: Sandbox-only Guard
   test('P08: should fail if AsaasPaymentProvider is instantiated with a non-sandbox URL', () => {
     expect(() => {
-      new AsaasPaymentProvider('key', 'https://api.asaas.com/v3', 'production');
+      new AsaasPaymentProvider('key', 'https://api.asaas.com/v3', 'sandbox');
     }).toThrow();
   });
 
