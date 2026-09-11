@@ -3388,19 +3388,28 @@ export async function downloadDelivery(req: any, res: Response) {
         return respondError(403, 'Limite de Downloads Atingido', 'Maximum download limit reached for this token.');
       }
 
-      // Safe to increment now that URL was generated AND row lock validated limits
-      finalCount = lockedDelivery.download_count + 1;
-      finalStatus = finalCount >= lockedDelivery.max_downloads ? 'EXPIRED' : 'ACTIVE';
-      maxAllowed = lockedDelivery.max_downloads;
-      isOrderDemo = lockedDelivery.order_demo;
-      deliveryId = lockedDelivery.id;
+      if (isDirectBrowserNavigation) {
+        // Direct browser download: increment count and update status under lock
+        finalCount = lockedDelivery.download_count + 1;
+        finalStatus = finalCount >= lockedDelivery.max_downloads ? 'EXPIRED' : 'ACTIVE';
+        maxAllowed = lockedDelivery.max_downloads;
+        isOrderDemo = lockedDelivery.order_demo;
+        deliveryId = lockedDelivery.id;
 
-      await client.query(
-        `UPDATE order_deliveries 
-         SET download_count = $1, status = $2, last_download_at = NOW(), updated_at = NOW() 
-         WHERE id = $3`,
-        [finalCount, finalStatus, deliveryId]
-      );
+        await client.query(
+          `UPDATE order_deliveries 
+           SET download_count = $1, status = $2, last_download_at = NOW(), updated_at = NOW() 
+           WHERE id = $3`,
+          [finalCount, finalStatus, deliveryId]
+        );
+      } else {
+        // Programmatic / JSON request: do NOT increment download count
+        finalCount = lockedDelivery.download_count;
+        finalStatus = lockedDelivery.status;
+        maxAllowed = lockedDelivery.max_downloads;
+        isOrderDemo = lockedDelivery.order_demo;
+        deliveryId = lockedDelivery.id;
+      }
 
       await client.query('COMMIT');
     } catch (txErr) {

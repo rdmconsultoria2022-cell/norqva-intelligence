@@ -142,7 +142,10 @@ describe('NORQVA P0.1 Customer Delivery UX Remediation Tests', () => {
     expect(res.headers['content-type']).not.toContain('application/json');
   });
 
-  it('UX-02: Programmatic API / fetch request receives clean JSON with signed URL', async () => {
+  it('UX-02: Programmatic API / fetch request receives clean JSON with signed URL without consuming download quota', async () => {
+    const preDel = await pool.query('SELECT download_count FROM order_deliveries WHERE delivery_token_hash = $1', [validTokenHash]);
+    const preCount = preDel.rows[0].download_count;
+
     const res = await request(app)
       .get(`/api/delivery/${validRawToken}?format=json`)
       .set('Accept', 'application/json');
@@ -151,7 +154,10 @@ describe('NORQVA P0.1 Customer Delivery UX Remediation Tests', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.download_url).toBeDefined();
     expect(res.body.download_url).toContain('TRATTORIA_EM_CASA_FINAL.pdf');
-    expect(res.body.downloads_remaining).toBe(3);
+    expect(res.body.downloads_remaining).toBe(5 - preCount);
+
+    const postDel = await pool.query('SELECT download_count FROM order_deliveries WHERE delivery_token_hash = $1', [validTokenHash]);
+    expect(postDel.rows[0].download_count).toBe(preCount);
   });
 
   it('UX-03: Direct browser navigation with invalid token returns branded HTML error page', async () => {

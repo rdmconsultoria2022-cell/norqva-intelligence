@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, CheckCircle2, AlertTriangle, Loader2, X, BookOpen, Sparkles, Mail, Heart } from 'lucide-react';
-import { DigitalDeliveryProps, DeliveryTokenItem, DownloadResult } from './deliveryTypes';
+import { Download, AlertTriangle, Loader2, X, Sparkles, Mail, Heart } from 'lucide-react';
+import { DigitalDeliveryProps, DeliveryTokenItem } from './deliveryTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
 
@@ -15,8 +15,6 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   const [tokens, setTokens] = useState<DeliveryTokenItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadStatus, setDownloadStatus] = useState<Record<string, string>>({});
 
   const isMountedRef = useRef(true);
 
@@ -104,58 +102,6 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
       controller.abort();
     };
   }, [orderId, checkoutToken]);
-
-  const handleDownload = async (item: DeliveryTokenItem) => {
-    if (downloadingId || !item.rawToken) return;
-
-    setDownloadingId(item.assetId);
-
-    try {
-      // Request on-demand signed URL via secure backend token exchange
-      const res = await fetch(`${API_BASE}/delivery/${item.rawToken}?format=json`, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      const data: DownloadResult = await res.json();
-
-      if (!res.ok || !data.success || !data.download_url) {
-        throw new Error(data.error || 'Limite de downloads excedido ou link expirado.');
-      }
-
-      if (isMountedRef.current) {
-        setDownloadStatus(prev => ({
-          ...prev,
-          [item.assetId]: data.downloads_remaining !== undefined
-            ? `Download iniciado • Restam ${data.downloads_remaining} downloads`
-            : 'Download autorizado'
-        }));
-      }
-
-      // Ephemeral trigger: initiate direct download without storing signed URL
-      const link = document.createElement('a');
-      link.href = data.download_url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.setAttribute('download', '');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      if (showSuccess) {
-        showSuccess('Download do e-book iniciado com sucesso!');
-      }
-    } catch (err: any) {
-      console.error('Download error:', err);
-      if (isMountedRef.current) {
-        showError(err.message || 'Erro ao baixar arquivo digital.');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setDownloadingId(null);
-      }
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 antialiased">
@@ -248,37 +194,32 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                             ? 'Limite de downloads atingido.'
                             : isInactive
                             ? 'Este arquivo não está mais disponível.'
-                            : downloadStatus[item.assetId] || '28 preparações • Massas, molhos e técnicas italianas (PDF • 39 páginas)'}
+                            : '28 preparações • Massas, molhos e técnicas italianas (PDF • 39 páginas)'}
                         </div>
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleDownload(item)}
-                      disabled={!isUsable || downloadingId === item.assetId}
-                      {...(isUsable && !downloadingId ? { 'aria-label': 'Baixar Arquivo' } : {})}
-                      className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shrink-0 transition active:scale-95 shadow-md ${
-                        isUsable
-                          ? 'bg-[#B83B1E] text-white hover:bg-[#8F2810] shadow-[#B83B1E]/20'
-                          : 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                      }`}
-                    >
-                      {downloadingId === item.assetId ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Baixando...</span>
-                        </>
-                      ) : isExhausted ? (
-                        <span>Limite Atingido</span>
-                      ) : isInactive ? (
-                        <span>Indisponível</span>
-                      ) : (
-                        <>
-                          <Download className="h-4 w-4" />
-                          <span>BAIXAR MEU LIVRO (PDF)</span>
-                        </>
-                      )}
-                    </button>
+                    {isUsable ? (
+                      <a
+                        href={`${API_BASE}/delivery/${item.rawToken}`}
+                        aria-label="Baixar Arquivo"
+                        className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shrink-0 transition active:scale-95 shadow-md bg-[#B83B1E] text-white hover:bg-[#8F2810] shadow-[#B83B1E]/20 text-center no-underline cursor-pointer"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span>BAIXAR MEU LIVRO (PDF)</span>
+                      </a>
+                    ) : (
+                      <button
+                        disabled
+                        className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shrink-0 bg-stone-200 text-stone-400 cursor-not-allowed"
+                      >
+                        {isExhausted ? (
+                          <span>Limite Atingido</span>
+                        ) : (
+                          <span>Indisponível</span>
+                        )}
+                      </button>
+                    )}
                   </div>
                 );
               })}
