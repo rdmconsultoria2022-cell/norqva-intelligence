@@ -3,6 +3,8 @@
  * Supports secure, out-of-band delivery notifications and recovery magic-links.
  */
 
+import { ResendEmailProvider } from './resendProvider';
+
 export interface SendPurchaseAccessEmailParams {
   email: string;
   offerName: string;
@@ -29,60 +31,85 @@ export function clearTestEmails(): void {
   dispatchedEmailsForTesting.length = 0;
 }
 
-class TransactionalEmailService implements IEmailProvider {
-  private isProduction = process.env.NODE_ENV === "production";
+export class TransactionalEmailService implements IEmailProvider {
+  private customProvider: IEmailProvider | null = null;
+
+  /**
+   * Allows injecting a custom or mock provider for testing or alternative integrations
+   */
+  setProvider(provider: IEmailProvider | null): void {
+    this.customProvider = provider;
+  }
+
+  /**
+   * Resolves the active provider according to environment configuration
+   */
+  getResolvedProvider(): IEmailProvider | null {
+    if (this.customProvider) {
+      return this.customProvider;
+    }
+
+    const providerType = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+    const resendApiKey = process.env.RESEND_API_KEY;
+
+    if (providerType === 'resend' || (!providerType && resendApiKey)) {
+      if (resendApiKey) {
+        return new ResendEmailProvider(resendApiKey, process.env.EMAIL_FROM);
+      }
+    }
+
+    return null;
+  }
 
   async sendPurchaseAccessEmail(params: SendPurchaseAccessEmailParams): Promise<EmailServiceResult> {
-    const { email, offerName, recoveryUrl, isDemo } = params;
+    const { email, recoveryUrl, isDemo } = params;
 
     if (!email || !recoveryUrl) {
       return {
         success: false,
-        error: "INVALID_PARAMETERS"
+        error: 'INVALID_PARAMETERS'
       };
     }
 
-    // Capture in test / dev array
+    // Capture in test / audit array
     dispatchedEmailsForTesting.push(params);
 
-    // Check if transactional provider credentials exist (e.g., RESEND_API_KEY, SMTP, etc.)
-    const resendApiKey = process.env.RESEND_API_KEY;
-    const smtpHost = process.env.SMTP_HOST;
+    const isProduction = process.env.NODE_ENV === 'production';
+    const provider = this.getResolvedProvider();
 
-    if (!resendApiKey && !smtpHost) {
-      if (this.isProduction && !isDemo) {
-        // Safe fail-soft notice in production without exposing tokens or email
-        console.warn("[EmailService]: Production transactional email provider pending configuration. Access link generated securely.");
+    if (provider) {
+      return provider.sendPurchaseAccessEmail(params);
+    }
+
+    // Provider is not configured
+    const providerType = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+    if (providerType === 'resend' && !process.env.RESEND_API_KEY) {
+      if (isProduction && !isDemo) {
+        console.warn('[EmailService]: Resend provider selected but RESEND_API_KEY is missing. Failing closed safely.');
         return {
           success: false,
-          error: "EMAIL_PROVIDER_PENDING_CONFIG",
+          error: 'RESEND_API_KEY_MISSING',
           simulated: false
         };
       }
-
-      // Safe non-production simulation
-      return {
-        success: true,
-        messageId: "sim-" + Date.now() + "-" + Math.random().toString(36).substring(2, 8),
-        simulated: true
-      };
     }
 
-    try {
-      // If external provider is configured in future, delegate here
-      return {
-        success: true,
-        messageId: "msg-" + Date.now(),
-        simulated: false
-      };
-    } catch (err: any) {
-      console.error("[EmailService]: Error dispatching email:", err.message);
+    if (isProduction && !isDemo) {
+      console.warn('[EmailService]: Production transactional email provider pending configuration. Access link generated securely.');
       return {
         success: false,
-        error: err.message
+        error: 'EMAIL_PROVIDER_PENDING_CONFIG',
+        simulated: false
       };
     }
+
+    // Non-production fallback / simulation
+    return {
+      success: true,
+      messageId: 'sim-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
+      simulated: true
+    };
   }
 }
 
-export const emailService: IEmailProvider = new TransactionalEmailService();
+export const emailService = new TransactionalEmailService();
