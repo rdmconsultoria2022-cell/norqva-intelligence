@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { emailService } from '../services/emailService';
+import { validateFrontendUrl } from '../services/emailConfig';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { encryptData, decryptData, generateHmacHash } from '../utils/crypto';
 import { AsaasPaymentProvider } from '../utils/payment';
@@ -3582,16 +3583,23 @@ export async function requestOrderRecovery(req: any, res: Response) {
           [order.order_id, tokenHash, expiresAt, clientIp]
         );
 
-        const frontendUrl = process.env.FRONTEND_URL || 'https://norqva-intelligence-frontend.vercel.app';
-        const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
+        const isProd = process.env.NODE_ENV === 'production';
+        const frontendValidation = validateFrontendUrl(process.env.FRONTEND_URL, isProd);
+        
+        if (!frontendValidation.valid && isProd) {
+          console.warn('[Recovery]: Invalid FRONTEND_URL configuration in production:', frontendValidation.error);
+        } else {
+          const frontendUrl = frontendValidation.url || 'https://norqva-intelligence-frontend.vercel.app';
+          const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
 
-        await emailService.sendPurchaseAccessEmail({
-          email: order.customer_email,
-          offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
-          recoveryUrl,
-          orderId: order.order_id,
-          isDemo: order.is_demo
-        });
+          await emailService.sendPurchaseAccessEmail({
+            email: order.customer_email,
+            offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
+            recoveryUrl,
+            orderId: order.order_id,
+            isDemo: order.is_demo
+          });
+        }
       }
     }
 

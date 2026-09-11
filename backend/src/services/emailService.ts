@@ -4,6 +4,7 @@
  */
 
 import { ResendEmailProvider } from './resendProvider';
+import { validateTransactionalEmailConfig } from './emailConfig';
 
 export interface SendPurchaseAccessEmailParams {
   email: string;
@@ -49,13 +50,9 @@ export class TransactionalEmailService implements IEmailProvider {
       return this.customProvider;
     }
 
-    const providerType = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-    const resendApiKey = process.env.RESEND_API_KEY;
-
-    if (providerType === 'resend' || (!providerType && resendApiKey)) {
-      if (resendApiKey) {
-        return new ResendEmailProvider(resendApiKey, process.env.EMAIL_FROM);
-      }
+    const config = validateTransactionalEmailConfig(process.env);
+    if (config.valid && config.provider === 'resend' && config.apiKey) {
+      return new ResendEmailProvider(config.apiKey, config.from);
     }
 
     return null;
@@ -81,20 +78,18 @@ export class TransactionalEmailService implements IEmailProvider {
       return provider.sendPurchaseAccessEmail(params);
     }
 
-    // Provider is not configured
-    const providerType = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-    if (providerType === 'resend' && !process.env.RESEND_API_KEY) {
-      if (isProduction && !isDemo) {
-        console.warn('[EmailService]: Resend provider selected but RESEND_API_KEY is missing. Failing closed safely.');
+    const config = validateTransactionalEmailConfig(process.env);
+
+    if (isProduction && !isDemo) {
+      if (config.error) {
+        console.warn(`[EmailService]: Production email provider configuration invalid (${config.error}). Failing closed safely.`);
         return {
           success: false,
-          error: 'RESEND_API_KEY_MISSING',
+          error: config.error,
           simulated: false
         };
       }
-    }
 
-    if (isProduction && !isDemo) {
       console.warn('[EmailService]: Production transactional email provider pending configuration. Access link generated securely.');
       return {
         success: false,
@@ -113,3 +108,4 @@ export class TransactionalEmailService implements IEmailProvider {
 }
 
 export const emailService = new TransactionalEmailService();
+export { validateTransactionalEmailConfig, validateFrontendUrl } from './emailConfig';
