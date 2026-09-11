@@ -37,6 +37,7 @@ import { CheckoutView } from './features/checkout/CheckoutView';
 import { PaymentStatus } from './features/payment/PaymentStatus';
 import { DigitalDelivery } from './features/delivery/DigitalDelivery';
 import { DigitalAssetAdminModal } from './features/delivery/DigitalAssetAdminModal';
+import { OrderDeliveryView } from './features/delivery/OrderDeliveryView';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { AppShell } from './components/layout/AppShell';
 import { PublicOfferPage } from './features/public/PublicOfferPage';
@@ -96,9 +97,10 @@ export default function App() {
     const isForgot = location.pathname === '/forgot-password';
     const isLogin = location.pathname === '/login';
     const isPublicOffer = location.pathname.startsWith('/p/');
+    const isOrderDelivery = location.pathname.startsWith('/pedido/');
 
     if (!currentUser) {
-      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer) {
+      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery) {
         navigate('/login', { replace: true });
       }
     } else {
@@ -453,6 +455,16 @@ export default function App() {
 
 
   const isPublicOffer = location.pathname.startsWith('/p/');
+  const isOrderDelivery = location.pathname.startsWith('/pedido/');
+
+  if (isOrderDelivery) {
+    return (
+      <OrderDeliveryView
+        showError={showError}
+        showSuccess={showSuccess}
+      />
+    );
+  }
 
   if (isPublicOffer) {
     return (

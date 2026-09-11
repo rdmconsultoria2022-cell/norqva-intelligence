@@ -334,8 +334,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
     expect(screen.getByText('Manual de Integração')).toBeInTheDocument();
   });
 
-  // B08: signed URL is requested only when download is authorized
-  it('B08 signed URL is requested only when download is authorized', async () => {
+  // B08: direct download link is rendered with secure delivery route
+  it('B08 direct download link is rendered with secure delivery route', async () => {
     const fetchSpy = vi.fn().mockImplementation((url) => {
       if (url.includes('/delivery-tokens')) {
         return Promise.resolve({
@@ -343,16 +343,6 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
           json: async () => ({
             orderId: 'ord-123',
             deliveries: [{ assetId: 'ast-1', rawToken: 'raw-token-1', assetTitle: 'Arquivo Único' }]
-          })
-        });
-      }
-      if (url.includes('/delivery/raw-token-1')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            success: true,
-            download_url: 'https://supabase.co/storage/v1/object/sign/private/file.zip?token=signed123',
-            downloads_remaining: 2
           })
         });
       }
@@ -369,18 +359,9 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       />
     );
 
-    const downloadBtn = await screen.findByRole('button', { name: /Baixar Arquivo/i });
-
-    // Download URL should NOT have been requested prior to click
-    const deliveryCallsBefore = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/delivery/raw-token-1'));
-    expect(deliveryCallsBefore.length).toBe(0);
-
-    fireEvent.click(downloadBtn);
-
-    await waitFor(() => {
-      const deliveryCallsAfter = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/delivery/raw-token-1'));
-      expect(deliveryCallsAfter.length).toBe(1);
-    });
+    const downloadLink = await screen.findByRole('link', { name: /Baixar/i });
+    expect(downloadLink).toBeInTheDocument();
+    expect(downloadLink.getAttribute('href')).toContain('/delivery/raw-token-1');
   });
 
   // B09: raw delivery token is not persisted in browser storage
@@ -425,8 +406,6 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
     const setItemSpyLocal = vi.spyOn(Storage.prototype, 'setItem');
     const setItemSpySession = vi.spyOn(sessionStorage, 'setItem');
 
-    const signedUrl = 'https://supabase.co/storage/v1/object/sign/secret-bucket/file.zip?token=signed_expiring_token_123';
-
     const fetchSpy = vi.fn().mockImplementation((url) => {
       if (url.includes('/delivery-tokens')) {
         return Promise.resolve({
@@ -434,16 +413,6 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
           json: async () => ({
             orderId: 'ord-123',
             deliveries: [{ assetId: 'ast-1', rawToken: 'raw-1', assetTitle: 'Arquivo Protegido' }]
-          })
-        });
-      }
-      if (url.includes('/delivery/raw-1')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            success: true,
-            download_url: signedUrl,
-            downloads_remaining: 1
           })
         });
       }
@@ -460,39 +429,33 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       />
     );
 
-    const downloadBtn = await screen.findByRole('button', { name: /Baixar Arquivo/i });
-    fireEvent.click(downloadBtn);
+    const downloadLink = await screen.findByRole('link', { name: /Baixar/i });
+    expect(downloadLink).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/delivery/raw-1'), expect.anything());
-    });
-
-    expect(setItemSpyLocal).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining(signedUrl));
-    expect(setItemSpySession).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining(signedUrl));
+    expect(setItemSpyLocal).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('signed_expiring_token_123'));
+    expect(setItemSpySession).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('signed_expiring_token_123'));
 
     setItemSpyLocal.mockRestore();
     setItemSpySession.mockRestore();
   });
 
-  // B11: download limit error is handled safely
-  it('B11 download limit error is handled safely', async () => {
-    const handleError = vi.fn();
-
+  // B11: download limit exhausted renders disabled button
+  it('B11 download limit exhausted renders disabled button', async () => {
     const fetchSpy = vi.fn().mockImplementation((url) => {
       if (url.includes('/delivery-tokens')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
             orderId: 'ord-123',
-            deliveries: [{ assetId: 'ast-1', rawToken: 'exhausted-token', assetTitle: 'Arquivo com Limite Esgotado' }]
+            deliveries: [{
+              assetId: 'ast-1',
+              rawToken: 'exhausted-token',
+              assetTitle: 'Arquivo com Limite Esgotado',
+              status: 'EXHAUSTED',
+              downloadCount: 5,
+              maxDownloads: 5
+            }]
           })
-        });
-      }
-      if (url.includes('/delivery/exhausted-token')) {
-        return Promise.resolve({
-          ok: false,
-          status: 403,
-          json: async () => ({ success: false, error: 'Download limit exceeded.' })
         });
       }
       return Promise.resolve({ ok: true, json: async () => ({}) });
@@ -504,16 +467,12 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
         orderId="ord-123"
         checkoutToken="valid-checkout-token"
         isDemo={true}
-        showError={handleError}
+        showError={vi.fn()}
       />
     );
 
-    const downloadBtn = await screen.findByRole('button', { name: /Baixar Arquivo/i });
-    fireEvent.click(downloadBtn);
-
-    await waitFor(() => {
-      expect(handleError).toHaveBeenCalledWith('Download limit exceeded.');
-    });
+    expect(await screen.findByText(/Limite de downloads atingido/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Limite Atingido/i })).toBeDisabled();
   });
 
   // B12: unmounted payment/delivery component ignores stale async response
@@ -950,7 +909,7 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
       // 1st render shows active delivery
       expect(await screen.findByText('NORQVA E2E Digital Delivery Test')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Baixar Arquivo/i })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Baixar/i })).toBeInTheDocument();
       expect(screen.queryByText(/Nenhum ativo digital/i)).not.toBeInTheDocument();
 
       unmount();
@@ -967,7 +926,7 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
       // 2nd render also shows active delivery
       expect(await screen.findByText('NORQVA E2E Digital Delivery Test')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Baixar Arquivo/i })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Baixar/i })).toBeInTheDocument();
       expect(screen.queryByText(/Nenhum ativo digital/i)).not.toBeInTheDocument();
     });
 

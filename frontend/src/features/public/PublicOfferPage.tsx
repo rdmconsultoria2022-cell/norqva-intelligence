@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -19,6 +19,7 @@ import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { DigitalDelivery } from '../delivery/DigitalDelivery';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
+import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 
 export interface PublicOfferData {
   id: string;
@@ -50,6 +51,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   const [offer, setOffer] = useState<PublicOfferData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [existingSession, setExistingSession] = useState<any | null>(null);
 
   // Commercial modal state flow
   const [showCheckout, setShowCheckout] = useState<boolean>(false);
@@ -57,11 +59,29 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState<any | null>(null);
 
+  const navigate = useNavigate();
+
+  const handleOpenCheckout = () => {
+    if (existingSession && existingSession.status === 'PAID') {
+      navigate(`/pedido/${existingSession.orderId}/entrega#token=${existingSession.checkoutToken}`);
+      return;
+    }
+    setShowCheckout(true);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
     // Capture any incoming URL attribution params immediately
     captureUrlAttribution();
+
+    // Check for existing purchase session for this offer
+    if (humanId) {
+      const session = getPurchaseSessionByOffer(humanId);
+      if (session && session.status === 'PAID') {
+        setExistingSession(session);
+      }
+    }
 
     const fetchOffer = async () => {
       if (!humanId) {
@@ -139,6 +159,24 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-stone-800 flex flex-col justify-between selection:bg-[#B83B1E]/20 selection:text-[#8F2810] font-sans antialiased">
       
+      {/* Existing Paid Purchase Notification Banner */}
+      {existingSession && existingSession.status === 'PAID' && (
+        <div className="bg-[#2B3D2B] text-white px-4 py-3 text-center text-xs font-medium flex flex-wrap items-center justify-center gap-3 shadow-md z-40 relative">
+          <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+            <Sparkles className="h-4 w-4" />
+            <span>Compra Concluída</span>
+          </div>
+          <span>Você já garantiu seu exemplar deste guia digital!</span>
+          <button
+            onClick={() => navigate(`/pedido/${existingSession.orderId}/entrega#token=${existingSession.checkoutToken}`)}
+            className="px-3.5 py-1.5 rounded-lg bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold uppercase tracking-wider text-[11px] transition shadow flex items-center gap-1.5"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Acessar Meu Livro</span>
+          </button>
+        </div>
+      )}
+
       {/* Top Culinary Announcement Bar */}
       <div className="bg-[#2B3D2B] text-stone-200 text-[11px] sm:text-xs py-1.5 px-4 text-center font-medium tracking-wide flex items-center justify-center gap-2">
         <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
@@ -243,13 +281,24 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setShowCheckout(true)}
-                  className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-[#B83B1E]/25 hover:shadow-[#B83B1E]/40 flex items-center justify-center gap-2 shrink-0 group active:scale-95"
-                >
-                  <span>Comprar com Pix</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </button>
+                {existingSession && existingSession.status === 'PAID' ? (
+                  <button
+                    onClick={handleOpenCheckout}
+                    className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-emerald-900/25 flex items-center justify-center gap-2 shrink-0 active:scale-95"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Acessar Meu Livro</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleOpenCheckout}
+                    className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-[#B83B1E]/25 hover:shadow-[#B83B1E]/40 flex items-center justify-center gap-2 shrink-0 group active:scale-95"
+                  >
+                    <span>Comprar com Pix</span>
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </button>
+                )}
               </div>
 
               {/* Trust Badges — Truthful & No Truncation */}
@@ -426,13 +475,24 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
-              onClick={() => setShowCheckout(true)}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/20 flex items-center justify-center gap-2"
-            >
-              <span>Garantir Livro Digital (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
+            {existingSession && existingSession.status === 'PAID' ? (
+              <button
+                onClick={handleOpenCheckout}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/20 flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Acessar Meu Livro Digital</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleOpenCheckout}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/20 flex items-center justify-center gap-2"
+              >
+                <span>Garantir Livro Digital (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </section>
 
@@ -461,6 +521,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           onCustomerChange={setCustomerDraft}
           onOrderCreated={(order) => {
             setShowCheckout(false);
+            if (order?.id && order?.checkout_token) {
+              savePurchaseSession({
+                orderId: order.id,
+                checkoutToken: order.checkout_token,
+                offerHumanId: offer?.human_id || 'OFF-000001',
+                status: 'PENDING',
+                offerName: offer?.name
+              });
+            }
             setActivePaymentOrder(order);
           }}
           onCancel={() => setShowCheckout(false)}
@@ -477,7 +546,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           amount={activePaymentOrder.total_amount || activePrice}
           isDemo={offer.is_demo}
           onPaymentConfirmed={() => {
-            setActiveDeliveryOrder(activePaymentOrder);
+            updatePurchaseSessionStatus(activePaymentOrder.id, 'PAID');
+            navigate(`/pedido/${activePaymentOrder.id}/entrega#token=${activePaymentOrder.checkout_token}`);
           }}
           onBackToCheckout={() => {
             setActivePaymentOrder(null);

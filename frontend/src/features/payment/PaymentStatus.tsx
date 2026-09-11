@@ -3,6 +3,7 @@ import { QrCode, Copy, Check, Clock, AlertCircle, CheckCircle2, Loader2, X, Refr
 import { PaymentStatusProps, PaymentInfo, PaymentStatusEnum } from './paymentTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
+import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 
 function sanitizeErrorMessage(msg: string): string {
   if (!msg) return 'Não foi possível gerar a cobrança Pix. Tente novamente em instantes.';
@@ -95,6 +96,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           setPayment(data);
           setStatus(data.status || 'PENDING');
           if (data.status === 'CONFIRMED' || data.status === 'PAID') {
+            updatePurchaseSessionStatus(orderId, 'PAID');
             if (onPaymentConfirmed) onPaymentConfirmed();
           } else if (data.status === 'FAILED' || data.status === 'EXPIRED') {
             setPollingActive(false);
@@ -209,6 +211,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               if (showSuccess) {
                 showSuccess('Pagamento confirmado com sucesso!');
               }
+              updatePurchaseSessionStatus(orderId, 'PAID');
               if (onPaymentConfirmed) {
                 onPaymentConfirmed();
               }

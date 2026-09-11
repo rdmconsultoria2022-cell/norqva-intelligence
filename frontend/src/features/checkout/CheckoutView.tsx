@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
 import { getAttributionContext, sendFunnelEvent } from '../../services/attribution';
 import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from './checkoutValidation';
+import { savePurchaseSession } from '../../services/purchaseSession';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
@@ -176,6 +177,17 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         } catch (_) {
           // Fail-safe: pixel tracking must never interrupt checkout
         }
+      }
+
+      // Persist minimal non-PII purchase session for durable recovery
+      if (orderResult.id && orderResult.checkout_token) {
+        savePurchaseSession({
+          orderId: orderResult.id,
+          checkoutToken: orderResult.checkout_token,
+          offerHumanId: offer.human_id || 'OFF-000001',
+          status: 'PENDING',
+          offerName: offer.name
+        });
       }
 
       onOrderCreated(orderResult);
