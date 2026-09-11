@@ -38,6 +38,7 @@ import { PaymentStatus } from './features/payment/PaymentStatus';
 import { DigitalDelivery } from './features/delivery/DigitalDelivery';
 import { DigitalAssetAdminModal } from './features/delivery/DigitalAssetAdminModal';
 import { OrderDeliveryView } from './features/delivery/OrderDeliveryView';
+import { AccessRecoveryView } from './features/delivery/AccessRecoveryView';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { AppShell } from './components/layout/AppShell';
 import { PublicOfferPage } from './features/public/PublicOfferPage';
@@ -98,9 +99,10 @@ export default function App() {
     const isLogin = location.pathname === '/login';
     const isPublicOffer = location.pathname.startsWith('/p/');
     const isOrderDelivery = location.pathname.startsWith('/pedido/');
+    const isAccessRecovery = location.pathname.startsWith('/acesso/');
 
     if (!currentUser) {
-      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery) {
+      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery) {
         navigate('/login', { replace: true });
       }
     } else {
@@ -456,6 +458,16 @@ export default function App() {
 
   const isPublicOffer = location.pathname.startsWith('/p/');
   const isOrderDelivery = location.pathname.startsWith('/pedido/');
+  const isAccessRecovery = location.pathname.startsWith('/acesso/');
+
+  if (isAccessRecovery) {
+    return (
+      <AccessRecoveryView
+        showError={showError}
+        showSuccess={showSuccess}
+      />
+    );
+  }
 
   if (isOrderDelivery) {
     return (

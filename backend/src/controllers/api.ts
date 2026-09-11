@@ -3,6 +3,7 @@ import { Pool, PoolClient } from 'pg';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { emailService } from '../services/emailService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { encryptData, decryptData, generateHmacHash } from '../utils/crypto';
 import { AsaasPaymentProvider } from '../utils/payment';
@@ -3442,6 +3443,161 @@ export async function downloadDelivery(req: any, res: Response) {
     return respondError(500, 'Erro no Servidor', 'Failed to process download delivery.');
   }
 }
+
+export async function requestOrderRecovery(req: any, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const { email, offerHumanId } = req.body;
+
+  if (!email || typeof email !== 'string' || !validateEmail(email)) {
+    return res.status(400).json({ error: 'Por favor, informe um e-mail válido.' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const genericSuccessMessage = 'Se encontrarmos uma compra válida para este e-mail, enviaremos as instruções de acesso.';
+
+  try {
+    const query = `
+      SELECT o.id as order_id, o.checkout_token_hash, o.offer_human_id, o.offer_id, 
+             o.offer_name_snapshot, o.is_demo, c.email as customer_email
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      WHERE LOWER(c.email) = $1
+        AND o.status = 'PAID'
+        ${offerHumanId ? 'AND (o.offer_human_id = $2 OR o.offer_id::text = $2)' : ''}
+      ORDER BY o.created_at DESC
+      LIMIT 1
+    `;
+    const params = offerHumanId ? [normalizedEmail, offerHumanId] : [normalizedEmail];
+    const orderRes = await pool.query(query, params);
+
+    if (orderRes.rows.length > 0) {
+      const order = orderRes.rows[0];
+
+      // Check if active delivery exists
+      const deliveryRes = await pool.query(
+        'SELECT id, status FROM order_deliveries WHERE order_id = $1 AND status = $2 LIMIT 1',
+        [order.order_id, 'ACTIVE']
+      );
+
+      if (deliveryRes.rows.length > 0) {
+        const rawRecoveryToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(rawRecoveryToken).digest('hex');
+        const ttlHours = parseInt(process.env.RECOVERY_TOKEN_TTL_HOURS || '72', 10);
+        const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+        const clientIp = (req.ip || req.socket?.remoteAddress || 'unknown_ip').substring(0, 64);
+
+        await pool.query(
+          `INSERT INTO order_recovery_tokens (order_id, token_hash, status, expires_at, created_ip)
+           VALUES ($1, $2, 'ACTIVE', $3, $4)`,
+          [order.order_id, tokenHash, expiresAt, clientIp]
+        );
+
+        const frontendUrl = process.env.FRONTEND_URL || 'https://norqva-intelligence-frontend.vercel.app';
+        const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
+
+        await emailService.sendPurchaseAccessEmail({
+          email: order.customer_email,
+          offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
+          recoveryUrl,
+          orderId: order.order_id,
+          isDemo: order.is_demo
+        });
+      }
+    }
+
+    // Always return enumeration-resistant generic success
+    return res.status(200).json({
+      success: true,
+      message: genericSuccessMessage
+    });
+  } catch (err: any) {
+    console.error('Request order recovery error:', err.message);
+    return res.status(200).json({
+      success: true,
+      message: genericSuccessMessage
+    });
+  }
+}
+
+export async function claimOrderRecovery(req: any, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const { token } = req.params;
+
+  if (!token || typeof token !== 'string' || token.length < 32) {
+    return res.status(400).json({ error: 'Chave de recuperação inválida.' });
+  }
+
+  try {
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+    const result = await pool.query(
+      `SELECT ort.id as recovery_id, ort.order_id, ort.status as recovery_status, ort.expires_at,
+              o.status as order_status, o.offer_human_id, o.offer_id, o.offer_name_snapshot, o.is_demo,
+              d.status as delivery_status, d.download_count, d.max_downloads
+       FROM order_recovery_tokens ort
+       JOIN orders o ON ort.order_id = o.id
+       LEFT JOIN order_deliveries d ON d.order_id = o.id
+       WHERE ort.token_hash = $1`,
+      [tokenHash]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Chave de recuperação não encontrada ou inválida.' });
+    }
+
+    const row = result.rows[0];
+
+    if (row.recovery_status !== 'ACTIVE') {
+      return res.status(403).json({ error: 'Esta chave de recuperação não está mais ativa.' });
+    }
+
+    if (row.expires_at && new Date() > new Date(row.expires_at)) {
+      await pool.query("UPDATE order_recovery_tokens SET status = 'EXPIRED' WHERE id = $1", [row.recovery_id]);
+      return res.status(403).json({ error: 'Esta chave de recuperação expirou. Solicite um novo link de acesso.' });
+    }
+
+    if (row.order_status !== 'PAID') {
+      return res.status(403).json({ error: 'Acesso negado: Este pedido ainda não foi confirmado como pago.' });
+    }
+
+    if (row.delivery_status !== 'ACTIVE') {
+      return res.status(403).json({ error: 'Acesso negado: A entrega digital para este pedido não está ativa.' });
+    }
+
+    // Issue a fresh, valid checkout token for this recovered session
+    const freshCheckoutToken = crypto.randomBytes(32).toString('hex');
+    const freshCheckoutTokenHash = crypto.createHash('sha256').update(freshCheckoutToken).digest('hex');
+    const checkoutTokenExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+    await pool.query(
+      `UPDATE orders 
+       SET checkout_token_hash = $1, checkout_token_expires_at = $2, updated_at = NOW() 
+       WHERE id = $3`,
+      [freshCheckoutTokenHash, checkoutTokenExpiresAt, row.order_id]
+    );
+
+    await pool.query(
+      `UPDATE order_recovery_tokens 
+       SET last_used_at = NOW(), use_count = use_count + 1 
+       WHERE id = $1`,
+      [row.recovery_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      orderId: row.order_id,
+      checkoutToken: freshCheckoutToken,
+      offerHumanId: row.offer_human_id || row.offer_id || 'OFF-000001',
+      offerName: row.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
+      isDemo: row.is_demo,
+      status: 'PAID'
+    });
+  } catch (err: any) {
+    console.error('Claim order recovery error:', err);
+    return res.status(500).json({ error: 'Falha ao processar recuperação do pedido.' });
+  }
+}
+
 
 export async function getMe(req: AuthenticatedRequest, res: Response) {
   if (!req.user) {

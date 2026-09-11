@@ -126,3 +126,11 @@ export const webhookRateLimiter = createRateLimiter({
   max: 5000, // Safe high-throughput allowance for provider webhooks
   name: 'webhook'
 });
+
+export const recoveryRequestRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Muitas solicitações de recuperação de acesso. Por favor, aguarde alguns minutos.',
+  name: 'recovery-request'
+});
+

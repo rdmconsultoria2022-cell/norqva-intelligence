@@ -72,7 +72,9 @@ import {
   testStorageSign,
   testInsightsProbe,
   uploadStorageAsset,
-  reissueOrderDelivery
+  reissueOrderDelivery,
+  requestOrderRecovery,
+  claimOrderRecovery
 } from './controllers/api';
 
 import {
@@ -102,7 +104,8 @@ import {
   checkoutRateLimiter,
   orderStatusRateLimiter,
   deliveryRateLimiter,
-  webhookRateLimiter
+  webhookRateLimiter,
+  recoveryRequestRateLimiter
 } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown } from './utils/shutdown';
@@ -289,6 +292,10 @@ app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentByI
 app.post('/api/webhooks/asaas', webhookRateLimiter, webhookAsaas);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
+
+// Customer Out-of-Band Paid Order Recovery (Durable Recovery V1)
+app.post('/api/checkout/recovery/request', recoveryRequestRateLimiter, requestOrderRecovery);
+app.get('/api/checkout/recovery/:token', orderStatusRateLimiter, claimOrderRecovery);
 
 // Digital Assets Administration endpoints
 app.post('/api/digital-assets', requireRole(['ADMIN']), createDigitalAsset);

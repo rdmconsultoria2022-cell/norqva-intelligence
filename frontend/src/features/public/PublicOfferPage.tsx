@@ -18,6 +18,7 @@ import { API_BASE } from '../../lib/api';
 import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { DigitalDelivery } from '../delivery/DigitalDelivery';
+import { RecoveryRequestModal } from '../delivery/RecoveryRequestModal';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 
@@ -55,6 +56,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
   // Commercial modal state flow
   const [showCheckout, setShowCheckout] = useState<boolean>(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState<boolean>(false);
   const [customerDraft, setCustomerDraft] = useState<any | null>(null);
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState<any | null>(null);
@@ -300,6 +302,18 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                   </button>
                 )}
               </div>
+
+              {(!existingSession || existingSession.status !== 'PAID') && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowRecoveryModal(true)}
+                    className="text-stone-500 hover:text-[#B83B1E] text-xs font-medium underline transition cursor-pointer"
+                  >
+                    Já comprou seu exemplar? Recuperar acesso
+                  </button>
+                </div>
+              )}
 
               {/* Trust Badges — Truthful & No Truncation */}
               <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-0.5 text-[10px] sm:text-[11px] text-stone-700 font-medium">
@@ -571,6 +585,16 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
             setActiveDeliveryOrder(null);
             setActivePaymentOrder(null);
           }}
+          showError={showError}
+          showSuccess={showSuccess}
+        />
+      )}
+
+      {/* Recovery Request Modal */}
+      {showRecoveryModal && (
+        <RecoveryRequestModal
+          offerHumanId={offer?.human_id || humanId}
+          onClose={() => setShowRecoveryModal(false)}
           showError={showError}
           showSuccess={showSuccess}
         />
