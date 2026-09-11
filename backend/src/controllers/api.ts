@@ -2255,6 +2255,132 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+export interface AuthorizedCustomerAccess {
+  authorized: boolean;
+  source?: 'CUSTOMER_SESSION' | 'CHECKOUT_TOKEN';
+  order?: any;
+  error?: string;
+  statusCode?: number;
+}
+
+export async function authorizeCustomerOrderAccess(
+  pool: Pool,
+  orderId: string,
+  credential?: string
+): Promise<AuthorizedCustomerAccess> {
+  if (!credential || typeof credential !== 'string' || credential.trim().length === 0) {
+    return {
+      authorized: false,
+      error: 'Authentication required. Active customer session or valid checkout token is missing.',
+      statusCode: 401
+    };
+  }
+
+  const computedHash = crypto.createHash('sha256').update(credential.trim()).digest('hex');
+
+  // 1. Try multi-session order_customer_sessions first
+  try {
+    const sessionRes = await pool.query(
+      `SELECT ocs.id as session_id, ocs.order_id, ocs.status as session_status, ocs.expires_at,
+              o.id, o.status, o.total_amount, o.is_demo, o.created_at, o.updated_at,
+              oi.offer_id, oi.quantity,
+              of.human_id as offer_human_id, of.name as offer_name
+       FROM order_customer_sessions ocs
+       JOIN orders o ON ocs.order_id = o.id
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN offers of ON of.id = oi.offer_id
+       WHERE ocs.order_id = $1 AND ocs.session_token_hash = $2
+       LIMIT 1`,
+      [orderId, computedHash]
+    );
+
+    if (sessionRes.rows.length > 0) {
+      const session = sessionRes.rows[0];
+
+      if (session.session_status !== 'ACTIVE') {
+        return {
+          authorized: false,
+          error: 'Esta sessão de acesso não está mais ativa.',
+          statusCode: 403
+        };
+      }
+
+      if (session.expires_at && new Date() > new Date(session.expires_at)) {
+        return {
+          authorized: false,
+          error: 'Esta sessão de acesso expirou. Solicite um novo link de acesso.',
+          statusCode: 403
+        };
+      }
+
+      // Non-blocking touch last_used_at
+      pool.query('UPDATE order_customer_sessions SET last_used_at = NOW() WHERE id = $1', [session.session_id]).catch(() => {});
+
+      return {
+        authorized: true,
+        source: 'CUSTOMER_SESSION',
+        order: session
+      };
+    }
+  } catch (err: any) {
+    // Fallback safely to legacy checkout_token_hash if order_customer_sessions is pending
+  }
+
+  // 2. Legacy orders.checkout_token_hash check (Backward Compatibility)
+  const orderRes = await pool.query(
+    `SELECT o.id, o.status, o.total_amount, o.is_demo, o.created_at, o.updated_at,
+            o.checkout_token_hash, o.checkout_token_expires_at, o.checkout_token_revoked_at,
+            oi.offer_id, oi.quantity,
+            of.human_id as offer_human_id, of.name as offer_name
+     FROM orders o
+     LEFT JOIN order_items oi ON oi.order_id = o.id
+     LEFT JOIN offers of ON of.id = oi.offer_id
+     WHERE o.id = $1
+     LIMIT 1`,
+    [orderId]
+  );
+
+  if (orderRes.rows.length === 0) {
+    return {
+      authorized: false,
+      error: 'Order not found.',
+      statusCode: 404
+    };
+  }
+
+  const legacyOrder = orderRes.rows[0];
+
+  if (legacyOrder.checkout_token_hash !== computedHash) {
+    return {
+      authorized: false,
+      error: 'Invalid checkout token or customer session.',
+      statusCode: 403
+    };
+  }
+
+  if (legacyOrder.checkout_token_expires_at && new Date() > new Date(legacyOrder.checkout_token_expires_at)) {
+    return {
+      authorized: false,
+      error: 'Checkout token has expired.',
+      statusCode: 403
+    };
+  }
+
+  if (legacyOrder.checkout_token_revoked_at) {
+    return {
+      authorized: false,
+      error: 'Checkout token has been revoked.',
+      statusCode: 403
+    };
+  }
+
+  return {
+    authorized: true,
+    source: 'CHECKOUT_TOKEN',
+    order: legacyOrder
+  };
+}
+
 export async function getOrderById(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const role = req.user?.role;
@@ -2306,41 +2432,15 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
     }
   }
 
-  // 2. Checkout Token Authorization
+  // 2. Checkout Token / Customer Session Authorization
   if (checkoutToken) {
     try {
-      const computedHash = crypto.createHash('sha256').update(String(checkoutToken)).digest('hex');
-
-      const orderRes = await pool.query(
-        `SELECT o.id, o.status, o.total_amount, o.is_demo, o.created_at, o.updated_at, 
-                o.checkout_token_hash, o.checkout_token_expires_at, o.checkout_token_revoked_at,
-                oi.offer_id, oi.quantity,
-                of.human_id as offer_human_id
-         FROM orders o
-         LEFT JOIN order_items oi ON oi.order_id = o.id
-         LEFT JOIN offers of ON of.id = oi.offer_id
-         WHERE o.id = $1
-         LIMIT 1`,
-        [id]
-      );
-
-      if (orderRes.rows.length === 0) {
-        return res.status(404).json({ error: 'Order not found.' });
+      const auth = await authorizeCustomerOrderAccess(pool, id, checkoutToken as string);
+      if (!auth.authorized || !auth.order) {
+        return res.status(auth.statusCode || 403).json({ error: auth.error || 'Access denied.' });
       }
 
-      const order = orderRes.rows[0];
-
-      if (order.checkout_token_hash !== computedHash) {
-        return res.status(403).json({ error: 'Invalid checkout token.' });
-      }
-
-      if (order.checkout_token_expires_at && new Date() > new Date(order.checkout_token_expires_at)) {
-        return res.status(403).json({ error: 'Checkout token has expired.' });
-      }
-
-      if (order.checkout_token_revoked_at) {
-        return res.status(403).json({ error: 'Checkout token has been revoked.' });
-      }
+      const order = auth.order;
 
       // Minimized response for status polling (Zero PII / Token exposure, canonical commerce fields included)
       return res.status(200).json({
@@ -3003,21 +3103,11 @@ export async function getDeliveryTokens(req: any, res: Response) {
   }
 
   try {
-    const hashedToken = crypto.createHash('sha256').update(String(checkoutToken)).digest('hex');
-
-    // Query order and lock it
-    const orderRes = await pool.query(
-      `SELECT * FROM orders 
-       WHERE id = $1 AND checkout_token_hash = $2 
-       AND (checkout_token_expires_at IS NULL OR checkout_token_expires_at > NOW())
-       AND checkout_token_revoked_at IS NULL`,
-      [orderId, hashedToken]
-    );
-
-    if (orderRes.rows.length === 0) {
-      return res.status(403).json({ error: 'Forbidden: Invalid or expired checkout token.' });
+    const auth = await authorizeCustomerOrderAccess(pool, orderId, checkoutToken as string);
+    if (!auth.authorized || !auth.order) {
+      return res.status(auth.statusCode || 403).json({ error: auth.error || 'Forbidden: Invalid or expired checkout token.' });
     }
-    const order = orderRes.rows[0];
+    const order = auth.order;
 
     if (order.status !== 'PAID') {
       return res.status(403).json({ error: 'Forbidden: Order is not paid yet.' });
@@ -3527,10 +3617,13 @@ export async function claimOrderRecovery(req: any, res: Response) {
     return res.status(400).json({ error: 'Chave de recuperação inválida.' });
   }
 
+  const client = await pool.connect();
   try {
     const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
 
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `SELECT ort.id as recovery_id, ort.order_id, ort.status as recovery_status, ort.expires_at,
               o.status as order_status, o.offer_human_id, o.offer_id, o.offer_name_snapshot, o.is_demo,
               d.status as delivery_status, d.download_count, d.max_downloads
@@ -3542,59 +3635,75 @@ export async function claimOrderRecovery(req: any, res: Response) {
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Chave de recuperação não encontrada ou inválida.' });
     }
 
     const row = result.rows[0];
 
-    if (row.recovery_status !== 'ACTIVE') {
-      return res.status(403).json({ error: 'Esta chave de recuperação não está mais ativa.' });
-    }
-
-    if (row.expires_at && new Date() > new Date(row.expires_at)) {
-      await pool.query("UPDATE order_recovery_tokens SET status = 'EXPIRED' WHERE id = $1", [row.recovery_id]);
-      return res.status(403).json({ error: 'Esta chave de recuperação expirou. Solicite um novo link de acesso.' });
-    }
-
+    // Check order and delivery eligibility FIRST
     if (row.order_status !== 'PAID') {
+      await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Acesso negado: Este pedido ainda não foi confirmado como pago.' });
     }
 
     if (row.delivery_status !== 'ACTIVE') {
+      await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Acesso negado: A entrega digital para este pedido não está ativa.' });
     }
 
-    // Issue a fresh, valid checkout token for this recovered session
-    const freshCheckoutToken = crypto.randomBytes(32).toString('hex');
-    const freshCheckoutTokenHash = crypto.createHash('sha256').update(freshCheckoutToken).digest('hex');
-    const checkoutTokenExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-
-    await pool.query(
-      `UPDATE orders 
-       SET checkout_token_hash = $1, checkout_token_expires_at = $2, updated_at = NOW() 
-       WHERE id = $3`,
-      [freshCheckoutTokenHash, checkoutTokenExpiresAt, row.order_id]
-    );
-
-    await pool.query(
-      `UPDATE order_recovery_tokens 
-       SET last_used_at = NOW(), use_count = use_count + 1 
-       WHERE id = $1`,
+    // Atomic claim: update status to 'USED' only if it is currently 'ACTIVE' and unexpired
+    const updateRes = await client.query(
+      `UPDATE order_recovery_tokens
+       SET status = 'USED',
+           last_used_at = NOW(),
+           use_count = use_count + 1
+       WHERE id = $1
+         AND status = 'ACTIVE'
+         AND expires_at > NOW()
+       RETURNING id, order_id`,
       [row.recovery_id]
     );
+
+    if (updateRes.rows.length === 0) {
+      // Re-check expiration for accurate state tracking
+      if (row.expires_at && new Date() > new Date(row.expires_at)) {
+        await client.query("UPDATE order_recovery_tokens SET status = 'EXPIRED' WHERE id = $1 AND status = 'ACTIVE'", [row.recovery_id]);
+      }
+      await client.query('COMMIT');
+      return res.status(410).json({ error: 'Este link de acesso não é mais válido. Solicite um novo link.' });
+    }
+
+    // Issue a fresh, customer-scoped multi-session credential in order_customer_sessions
+    // (Preserve existing orders.checkout_token_hash to never invalidate legacy/active sessions!)
+    const freshSessionToken = crypto.randomBytes(32).toString('hex');
+    const freshSessionTokenHash = crypto.createHash('sha256').update(freshSessionToken).digest('hex');
+    const sessionTokenExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    const clientIp = (req.ip || req.socket?.remoteAddress || 'unknown_ip').substring(0, 45);
+
+    await client.query(
+      `INSERT INTO order_customer_sessions (order_id, session_token_hash, status, expires_at, created_ip)
+       VALUES ($1, $2, 'ACTIVE', $3, $4)`,
+      [row.order_id, freshSessionTokenHash, sessionTokenExpiresAt, clientIp]
+    );
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
       orderId: row.order_id,
-      checkoutToken: freshCheckoutToken,
+      checkoutToken: freshSessionToken,
       offerHumanId: row.offer_human_id || row.offer_id || 'OFF-000001',
       offerName: row.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
       isDemo: row.is_demo,
       status: 'PAID'
     });
   } catch (err: any) {
+    await client.query('ROLLBACK');
     console.error('Claim order recovery error:', err);
     return res.status(500).json({ error: 'Falha ao processar recuperação do pedido.' });
+  } finally {
+    client.release();
   }
 }
 
