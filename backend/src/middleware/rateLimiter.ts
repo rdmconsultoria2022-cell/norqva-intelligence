@@ -10,6 +10,7 @@ export interface RateLimiterOptions {
   message?: string;
   name?: string;
   skip?: (req: Request) => boolean;
+  onLimit?: (req: Request, res: Response, retryAfterSec: number) => void;
 }
 
 const stores = new Map<string, Map<string, number[]>>();
@@ -28,7 +29,8 @@ if (typeof setInterval !== 'undefined') {
         }
       }
     }
-  }, 5 * 60 * 1000).unref();
+  }
+  , 5 * 60 * 1000).unref();
 }
 
 export function resetAllRateLimits(): void {
@@ -43,7 +45,8 @@ export function createRateLimiter(options: RateLimiterOptions) {
     max,
     message = 'Too many requests. Please try again later.',
     name = 'default',
-    skip
+    skip,
+    onLimit
   } = options;
 
   if (!stores.has(name)) {
@@ -69,6 +72,10 @@ export function createRateLimiter(options: RateLimiterOptions) {
       res.setHeader('Retry-After', String(retryAfterSec > 0 ? retryAfterSec : 1));
       res.setHeader('X-RateLimit-Limit', String(max));
       res.setHeader('X-RateLimit-Remaining', '0');
+
+      if (onLimit) {
+        onLimit(req, res, retryAfterSec);
+      }
 
       return res.status(429).json({
         error: message,
@@ -131,6 +138,12 @@ export const recoveryRequestRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: 'Muitas solicitações de recuperação de acesso. Por favor, aguarde alguns minutos.',
-  name: 'recovery-request'
+  name: 'recovery-request',
+  onLimit: () => {
+    console.log(JSON.stringify({
+      event: 'RECOVERY_REQUEST_RATE_LIMITED',
+      timestamp: new Date().toISOString()
+    }));
+  }
 });
 

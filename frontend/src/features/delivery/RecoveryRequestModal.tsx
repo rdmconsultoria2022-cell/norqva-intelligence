@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Mail, X, CheckCircle, Loader2 } from "lucide-react";
+import { Mail, X, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { API_BASE } from "../../lib/api";
 
 interface RecoveryRequestModalProps {
@@ -19,12 +19,17 @@ export const RecoveryRequestModal: React.FC<RecoveryRequestModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [responseMessage, setResponseMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes("@")) {
-      if (showError) showError("Por favor, informe um e-mail válido.");
+      const msg = "Por favor, informe um e-mail válido.";
+      setErrorMessage(msg);
+      if (showError) showError(msg);
       return;
     }
 
@@ -39,15 +44,43 @@ export const RecoveryRequestModal: React.FC<RecoveryRequestModalProps> = ({
         })
       });
 
-      const data = await res.json();
-      setSubmitted(true);
-      setResponseMessage(data.message || "Se encontrarmos uma compra válida para este e-mail, enviaremos as instruções de acesso.");
-      if (showSuccess) {
-        showSuccess("Solicitação recebida com sucesso!");
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // ignore json parse error
+      }
+
+      if (res.status === 200) {
+        setSubmitted(true);
+        setResponseMessage(
+          data?.message ||
+            "Se encontrarmos uma compra válida para este e-mail, enviaremos as instruções de acesso."
+        );
+        if (showSuccess) {
+          showSuccess("Solicitação recebida com sucesso!");
+        }
+      } else if (res.status === 429) {
+        const msg = "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.";
+        setSubmitted(false);
+        setErrorMessage(msg);
+        if (showError) showError(msg);
+      } else if (res.status === 400) {
+        const msg = data?.error || "Por favor, informe um e-mail válido.";
+        setSubmitted(false);
+        setErrorMessage(msg);
+        if (showError) showError(msg);
+      } else {
+        const msg = "Não foi possível solicitar o acesso agora. Tente novamente em alguns minutos.";
+        setSubmitted(false);
+        setErrorMessage(msg);
+        if (showError) showError(msg);
       }
     } catch (err: any) {
-      setSubmitted(true);
-      setResponseMessage("Se encontrarmos uma compra válida para este e-mail, enviaremos as instruções de acesso.");
+      const msg = "Não foi possível solicitar o acesso agora. Tente novamente em alguns minutos.";
+      setSubmitted(false);
+      setErrorMessage(msg);
+      if (showError) showError(msg);
     } finally {
       setLoading(false);
     }
@@ -104,6 +137,13 @@ export const RecoveryRequestModal: React.FC<RecoveryRequestModalProps> = ({
               Informe o mesmo e-mail que você utilizou no momento do pagamento para receber seu link de acesso exclusivo:
             </p>
 
+            {errorMessage && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-stone-700 mb-1.5">
                 Seu e-mail cadastrado
@@ -112,7 +152,10 @@ export const RecoveryRequestModal: React.FC<RecoveryRequestModalProps> = ({
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
                 placeholder="seu.email@exemplo.com"
                 className="w-full px-3.5 py-2.5 bg-white border border-stone-300 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#B83B1E] text-xs font-medium"
               />

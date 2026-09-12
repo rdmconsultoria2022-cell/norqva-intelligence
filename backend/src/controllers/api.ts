@@ -3540,8 +3540,19 @@ export async function requestOrderRecovery(req: any, res: Response) {
   const { email, offerHumanId } = req.body;
 
   if (!email || typeof email !== 'string' || !validateEmail(email)) {
+    console.log(JSON.stringify({
+      event: 'RECOVERY_REQUEST_INPUT_REJECTED',
+      timestamp: new Date().toISOString()
+    }));
     return res.status(400).json({ error: 'Por favor, informe um e-mail válido.' });
   }
+
+  const correlationId = crypto.randomUUID();
+  console.log(JSON.stringify({
+    event: 'RECOVERY_REQUEST_ACCEPTED',
+    timestamp: new Date().toISOString(),
+    correlation_id: correlationId
+  }));
 
   const normalizedEmail = email.trim().toLowerCase();
   const genericSuccessMessage = 'Se encontrarmos uma compra válida para este e-mail, enviaremos as instruções de acesso.';
@@ -3561,63 +3572,92 @@ export async function requestOrderRecovery(req: any, res: Response) {
     const params = offerHumanId ? [normalizedEmail, offerHumanId] : [normalizedEmail];
     const orderRes = await pool.query(query, params);
 
-    if (orderRes.rows.length > 0) {
-      const order = orderRes.rows[0];
+    if (orderRes.rows.length === 0) {
+      console.log(JSON.stringify({
+        event: 'RECOVERY_REQUEST_NO_ELIGIBLE_PURCHASE',
+        timestamp: new Date().toISOString(),
+        correlation_id: correlationId
+      }));
+      return res.status(200).json({
+        success: true,
+        message: genericSuccessMessage
+      });
+    }
 
-      // Check if active delivery exists
-      const deliveryRes = await pool.query(
-        'SELECT id, status FROM order_deliveries WHERE order_id = $1 AND status = $2 LIMIT 1',
-        [order.order_id, 'ACTIVE']
-      );
+    const order = orderRes.rows[0];
 
-      if (deliveryRes.rows.length > 0) {
-        const rawRecoveryToken = crypto.randomBytes(32).toString('hex');
-        const tokenHash = crypto.createHash('sha256').update(rawRecoveryToken).digest('hex');
-        const ttlHours = parseInt(process.env.RECOVERY_TOKEN_TTL_HOURS || '72', 10);
-        const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
-        const clientIp = (req.ip || req.socket?.remoteAddress || 'unknown_ip').substring(0, 64);
+    // Check if active delivery exists
+    const deliveryRes = await pool.query(
+      'SELECT id, status FROM order_deliveries WHERE order_id = $1 AND status = $2 LIMIT 1',
+      [order.order_id, 'ACTIVE']
+    );
 
-        await pool.query(
-          `INSERT INTO order_recovery_tokens (order_id, token_hash, status, expires_at, created_ip)
-           VALUES ($1, $2, 'ACTIVE', $3, $4)`,
-          [order.order_id, tokenHash, expiresAt, clientIp]
-        );
+    if (deliveryRes.rows.length === 0) {
+      console.log(JSON.stringify({
+        event: 'RECOVERY_REQUEST_NO_ACTIVE_DELIVERY',
+        timestamp: new Date().toISOString(),
+        correlation_id: correlationId
+      }));
+      return res.status(200).json({
+        success: true,
+        message: genericSuccessMessage
+      });
+    }
 
-        const isProd = process.env.NODE_ENV === 'production';
-        const frontendValidation = validateFrontendUrl(process.env.FRONTEND_URL, isProd);
-        
-        if (!frontendValidation.valid && isProd) {
-          console.warn('[Recovery]: Invalid FRONTEND_URL configuration in production:', frontendValidation.error);
-        } else {
-          const frontendUrl = frontendValidation.url || 'https://norqva-intelligence-frontend.vercel.app';
-          const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
-          const correlationId = crypto.randomUUID();
+    const rawRecoveryToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawRecoveryToken).digest('hex');
+    const ttlHours = parseInt(process.env.RECOVERY_TOKEN_TTL_HOURS || '72', 10);
+    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+    const clientIp = (req.ip || req.socket?.remoteAddress || 'unknown_ip').substring(0, 64);
 
-          console.log(JSON.stringify({
-            event: 'RECOVERY_EMAIL_FLOW_START',
-            timestamp: new Date().toISOString(),
-            correlation_id: correlationId,
-            is_demo: Boolean(order.is_demo)
-          }));
+    await pool.query(
+      `INSERT INTO order_recovery_tokens (order_id, token_hash, status, expires_at, created_ip)
+       VALUES ($1, $2, 'ACTIVE', $3, $4)`,
+      [order.order_id, tokenHash, expiresAt, clientIp]
+    );
 
-          const emailResult = await emailService.sendPurchaseAccessEmail({
-            email: order.customer_email,
-            offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
-            recoveryUrl,
-            correlationId,
-            isDemo: order.is_demo
-          });
+    console.log(JSON.stringify({
+      event: 'RECOVERY_REQUEST_TOKEN_CREATED',
+      timestamp: new Date().toISOString(),
+      correlation_id: correlationId
+    }));
 
-          console.log(JSON.stringify({
-            event: 'RECOVERY_EMAIL_FLOW_END',
-            timestamp: new Date().toISOString(),
-            correlation_id: correlationId,
-            success: emailResult.success,
-            simulated: Boolean(emailResult.simulated),
-            error_code: emailResult.error || null
-          }));
-        }
-      }
+    const isProd = process.env.NODE_ENV === 'production';
+    const frontendValidation = validateFrontendUrl(process.env.FRONTEND_URL, isProd);
+    
+    if (!frontendValidation.valid && isProd) {
+      console.warn(JSON.stringify({
+        event: 'RECOVERY_REQUEST_FRONTEND_CONFIG_FAILED',
+        timestamp: new Date().toISOString(),
+        correlation_id: correlationId
+      }));
+    } else {
+      const frontendUrl = frontendValidation.url || 'https://norqva-intelligence-frontend.vercel.app';
+      const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
+
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_FLOW_START',
+        timestamp: new Date().toISOString(),
+        correlation_id: correlationId,
+        is_demo: Boolean(order.is_demo)
+      }));
+
+      const emailResult = await emailService.sendPurchaseAccessEmail({
+        email: order.customer_email,
+        offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
+        recoveryUrl,
+        correlationId,
+        isDemo: order.is_demo
+      });
+
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_FLOW_END',
+        timestamp: new Date().toISOString(),
+        correlation_id: correlationId,
+        success: emailResult.success,
+        simulated: Boolean(emailResult.simulated),
+        error_code: emailResult.error || null
+      }));
     }
 
     // Always return enumeration-resistant generic success
@@ -3626,7 +3666,11 @@ export async function requestOrderRecovery(req: any, res: Response) {
       message: genericSuccessMessage
     });
   } catch (err: any) {
-    console.error('Request order recovery error:', err.message);
+    console.error(JSON.stringify({
+      event: 'RECOVERY_REQUEST_PRE_DISPATCH_EXCEPTION',
+      timestamp: new Date().toISOString(),
+      correlation_id: correlationId
+    }));
     return res.status(200).json({
       success: true,
       message: genericSuccessMessage
