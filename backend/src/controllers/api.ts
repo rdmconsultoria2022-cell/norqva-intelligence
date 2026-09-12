@@ -3,6 +3,8 @@ import { Pool, PoolClient } from 'pg';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
+import http from 'http';
 import { emailService } from '../services/emailService';
 import { validateFrontendUrl } from '../services/emailConfig';
 import { AuthenticatedRequest } from '../middleware/auth';
@@ -3213,73 +3215,138 @@ export async function updateDigitalAsset(req: AuthenticatedRequest, res: Respons
   }
 }
 
+export function normalizeStorageObjectPath(bucket: string, rawPath: string): string {
+  if (!rawPath || typeof rawPath !== 'string') {
+    throw new Error('INVALID_STORAGE_PATH');
+  }
+  let cleanPath = rawPath.replace(/^\/+/, '').trim();
+  const bucketPrefix = `${bucket}/`;
+  if (cleanPath.startsWith(bucketPrefix)) {
+    cleanPath = cleanPath.slice(bucketPrefix.length).replace(/^\/+/, '');
+  }
+  if (!cleanPath) {
+    throw new Error('EMPTY_STORAGE_PATH');
+  }
+  return cleanPath;
+}
+
 export async function generateStorageSignedUrl(bucket: string, path: string, ttlSeconds: number): Promise<string> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const supabaseUrl = (process.env.SUPABASE_URL || '').trim();
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
   if (!supabaseUrl) {
-    throw new Error('SUPABASE_URL is not configured.');
+    throw new Error('SUPABASE_URL_MISSING');
   }
 
-  const cleanPath = path.replace(/^\/+/, '');
+  if (isProduction && !serviceRoleKey) {
+    console.error(JSON.stringify({
+      event: 'STORAGE_SIGNING_CONFIG_ERROR',
+      timestamp: new Date().toISOString(),
+      reason: 'SUPABASE_SERVICE_ROLE_KEY_MISSING'
+    }));
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY_MISSING');
+  }
 
-  // Fallback mock signed URL generation for tests when no real keys exist
+  const cleanPath = normalizeStorageObjectPath(bucket, path);
+
+  // Fallback mock signed URL generation for tests/dev when mock key is used
   if (
-    process.env.NODE_ENV === 'test' &&
-    (!process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY === 'MOCK')
+    !isProduction &&
+    (!serviceRoleKey || serviceRoleKey === 'MOCK')
   ) {
-    return `${supabaseUrl}/storage/v1/object/sign/${bucket}/${cleanPath}?token=mock_signed_token&expires=${Math.floor(Date.now() / 1000) + ttlSeconds}`;
+    return `${supabaseUrl}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${cleanPath}?token=mock_signed_token&expires=${Math.floor(Date.now() / 1000) + ttlSeconds}`;
   }
 
-  const url = `${supabaseUrl}/storage/v1/object/sign/${bucket}/${cleanPath}`;
+  const effectiveKey = serviceRoleKey || (!isProduction ? (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim() : '');
+
+  if (!effectiveKey) {
+    throw new Error('SUPABASE_SIGNING_KEY_MISSING');
+  }
+
+  const url = `${supabaseUrl}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${cleanPath}`;
   const payload = JSON.stringify({ expiresIn: ttlSeconds });
 
   return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(url);
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || 443,
-      path: parsedUrl.pathname,
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'apikey': serviceRoleKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.on('data', (chunk) => body += chunk);
-      res.on('end', () => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const data = JSON.parse(body);
-            const signedPath = data.signedURL || data.signedUrl;
-            if (!signedPath) {
-              return reject(new Error('Invalid response from Supabase Storage: signedURL not found.'));
-            }
-            const normalizedPath = signedPath.startsWith('/storage/v1')
-              ? signedPath
-              : `/storage/v1${signedPath.startsWith('/') ? '' : '/'}${signedPath}`;
-            resolve(`${supabaseUrl}${normalizedPath}`);
-          } catch (e) {
-            reject(e);
-          }
-        } else {
-          reject(new Error(`Supabase Storage API returned status ${res.statusCode}: ${body}`));
+    try {
+      const parsedUrl = new URL(url);
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'http:' ? 80 : 443),
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${effectiveKey}`,
+          'apikey': effectiveKey,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
         }
-      });
-    });
+      };
 
-    req.on('error', (err) => reject(err));
-    req.write(payload);
-    req.end();
+      const clientLib = parsedUrl.protocol === 'http:' ? http : https;
+      const req = clientLib.request(options, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          const status = res.statusCode || 0;
+          if (status >= 200 && status < 300) {
+            try {
+              const data = JSON.parse(body);
+              const signedPath = data.signedURL || data.signedUrl;
+              if (!signedPath) {
+                return reject(new Error('SUPABASE_STORAGE_SIGNING_ERROR'));
+              }
+              const normalizedPath = signedPath.startsWith('/storage/v1')
+                ? signedPath
+                : `/storage/v1${signedPath.startsWith('/') ? '' : '/'}${signedPath}`;
+              resolve(`${supabaseUrl}${normalizedPath}`);
+            } catch (e) {
+              reject(new Error('SUPABASE_STORAGE_SIGNING_ERROR'));
+            }
+          } else if (status === 401 || status === 403) {
+            console.error(JSON.stringify({
+              event: 'STORAGE_SIGNING_FAILED',
+              timestamp: new Date().toISOString(),
+              error_code: 'SUPABASE_STORAGE_AUTH_ERROR',
+              http_status: status
+            }));
+            reject(new Error('SUPABASE_STORAGE_AUTH_ERROR'));
+          } else if (status === 404) {
+            console.error(JSON.stringify({
+              event: 'STORAGE_SIGNING_FAILED',
+              timestamp: new Date().toISOString(),
+              error_code: 'SUPABASE_STORAGE_OBJECT_NOT_FOUND',
+              http_status: status
+            }));
+            reject(new Error('SUPABASE_STORAGE_OBJECT_NOT_FOUND'));
+          } else {
+            console.error(JSON.stringify({
+              event: 'STORAGE_SIGNING_FAILED',
+              timestamp: new Date().toISOString(),
+              error_code: 'SUPABASE_STORAGE_SIGNING_ERROR',
+              http_status: status
+            }));
+            reject(new Error('SUPABASE_STORAGE_SIGNING_ERROR'));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error(JSON.stringify({
+          event: 'STORAGE_SIGNING_NETWORK_ERROR',
+          timestamp: new Date().toISOString(),
+          error_code: 'SUPABASE_STORAGE_NETWORK_ERROR'
+        }));
+        reject(new Error('SUPABASE_STORAGE_NETWORK_ERROR'));
+      });
+
+      req.write(payload);
+      req.end();
+    } catch (err: any) {
+      reject(new Error('SUPABASE_STORAGE_SIGNING_ERROR'));
+    }
   });
 }
-
-import https from 'https';
 
 function renderDeliveryErrorHtml(title: string, message: string): string {
   const sanitize = (str: string) => str.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -3530,7 +3597,12 @@ export async function downloadDelivery(req: any, res: Response) {
       downloads_remaining: downloadsRemaining
     });
   } catch (err: any) {
-    console.error('Download delivery error:', err);
+    const errorCode = err?.message || 'UNKNOWN_ERROR';
+    console.error(JSON.stringify({
+      event: 'DELIVERY_DOWNLOAD_FAILED',
+      timestamp: new Date().toISOString(),
+      error_code: errorCode
+    }));
     return respondError(500, 'Erro no Servidor', 'Failed to process download delivery.');
   }
 }
