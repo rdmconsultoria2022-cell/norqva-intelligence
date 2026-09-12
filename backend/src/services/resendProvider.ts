@@ -5,6 +5,7 @@
 
 import { Resend } from 'resend';
 import { IEmailProvider, SendPurchaseAccessEmailParams, EmailServiceResult } from './emailService';
+import { sanitizeEmailProviderError } from './emailConfig';
 
 export class ResendEmailProvider implements IEmailProvider {
   private resend: Resend;
@@ -116,6 +117,13 @@ export class ResendEmailProvider implements IEmailProvider {
     `.trim();
 
     try {
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_SEND_START',
+        timestamp: new Date().toISOString(),
+        order_id: params.orderId || null,
+        from_configured: Boolean(fromAddress)
+      }));
+
       const { data, error } = await this.resend.emails.send({
         from: fromAddress,
         to: [email],
@@ -125,13 +133,25 @@ export class ResendEmailProvider implements IEmailProvider {
       });
 
       if (error) {
-        // Sanitized logging without keys, tokens, or PII
-        console.error('[ResendEmailProvider]: Error dispatching email:', error.name || error.message);
+        const sanitizedErrorCode = sanitizeEmailProviderError(error);
+        console.error(JSON.stringify({
+          event: 'RECOVERY_EMAIL_SEND_FAILED',
+          timestamp: new Date().toISOString(),
+          order_id: params.orderId || null,
+          error_code: sanitizedErrorCode
+        }));
         return {
           success: false,
-          error: error.message || 'RESEND_DISPATCH_FAILED'
+          error: sanitizedErrorCode
         };
       }
+
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_SEND_SUCCESS',
+        timestamp: new Date().toISOString(),
+        order_id: params.orderId || null,
+        message_id: data?.id || 'resend-ok'
+      }));
 
       return {
         success: true,
@@ -139,10 +159,16 @@ export class ResendEmailProvider implements IEmailProvider {
         simulated: false
       };
     } catch (err: any) {
-      console.error('[ResendEmailProvider]: Unexpected error during dispatch:', err.message);
+      const sanitizedErrorCode = sanitizeEmailProviderError(err);
+      console.error(JSON.stringify({
+        event: 'RECOVERY_EMAIL_SEND_FAILED',
+        timestamp: new Date().toISOString(),
+        order_id: params.orderId || null,
+        error_code: sanitizedErrorCode
+      }));
       return {
         success: false,
-        error: err.message || 'RESEND_EXCEPTION'
+        error: sanitizedErrorCode
       };
     }
   }

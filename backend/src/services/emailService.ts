@@ -46,15 +46,35 @@ export class TransactionalEmailService implements IEmailProvider {
    * Resolves the active provider according to environment configuration
    */
   getResolvedProvider(): IEmailProvider | null {
+    console.log(JSON.stringify({
+      event: 'RECOVERY_EMAIL_PROVIDER_RESOLUTION_START',
+      timestamp: new Date().toISOString()
+    }));
+
     if (this.customProvider) {
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_PROVIDER_RESOLVED',
+        timestamp: new Date().toISOString(),
+        provider: 'CustomProvider'
+      }));
       return this.customProvider;
     }
 
     const config = validateTransactionalEmailConfig(process.env);
     if (config.valid && config.provider === 'resend' && config.apiKey) {
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_PROVIDER_RESOLVED',
+        timestamp: new Date().toISOString(),
+        provider: 'ResendEmailProvider'
+      }));
       return new ResendEmailProvider(config.apiKey, config.from);
     }
 
+    console.warn(JSON.stringify({
+      event: 'RECOVERY_EMAIL_PROVIDER_RESOLUTION_FAILED',
+      timestamp: new Date().toISOString(),
+      reason: config.error || 'NO_MATCHING_PROVIDER'
+    }));
     return null;
   }
 
@@ -108,4 +128,4 @@ export class TransactionalEmailService implements IEmailProvider {
 }
 
 export const emailService = new TransactionalEmailService();
-export { validateTransactionalEmailConfig, validateFrontendUrl } from './emailConfig';
+export { validateTransactionalEmailConfig, validateFrontendUrl, sanitizeEmailProviderError } from './emailConfig';

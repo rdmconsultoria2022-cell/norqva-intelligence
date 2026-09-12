@@ -3592,13 +3592,29 @@ export async function requestOrderRecovery(req: any, res: Response) {
           const frontendUrl = frontendValidation.url || 'https://norqva-intelligence-frontend.vercel.app';
           const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
 
-          await emailService.sendPurchaseAccessEmail({
+          console.log(JSON.stringify({
+            event: 'RECOVERY_EMAIL_FLOW_START',
+            timestamp: new Date().toISOString(),
+            order_id: order.order_id,
+            is_demo: Boolean(order.is_demo)
+          }));
+
+          const emailResult = await emailService.sendPurchaseAccessEmail({
             email: order.customer_email,
             offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
             recoveryUrl,
             orderId: order.order_id,
             isDemo: order.is_demo
           });
+
+          console.log(JSON.stringify({
+            event: 'RECOVERY_EMAIL_FLOW_END',
+            timestamp: new Date().toISOString(),
+            order_id: order.order_id,
+            success: emailResult.success,
+            simulated: Boolean(emailResult.simulated),
+            error_code: emailResult.error || null
+          }));
         }
       }
     }

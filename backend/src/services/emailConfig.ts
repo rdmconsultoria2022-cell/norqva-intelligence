@@ -149,3 +149,98 @@ export function validateTransactionalEmailConfig(env: NodeJS.ProcessEnv = proces
     frontendUrl: frontendUrlValidation.url
   };
 }
+
+export type SanitizedEmailErrorCode =
+  | 'RESEND_API_ERROR'
+  | 'RESEND_NETWORK_ERROR'
+  | 'RESEND_AUTH_ERROR'
+  | 'RESEND_PERMISSION_ERROR'
+  | 'RESEND_DOMAIN_ERROR'
+  | 'RESEND_RATE_LIMIT'
+  | 'RESEND_UNKNOWN_ERROR';
+
+export function sanitizeEmailProviderError(err: any): SanitizedEmailErrorCode {
+  if (!err) return 'RESEND_UNKNOWN_ERROR';
+
+  const status = Number(err.statusCode || err.status || (err.response && err.response.status) || 0);
+  const codeStr = String(err.code || '').toLowerCase();
+  const nameStr = String(err.name || '').toLowerCase();
+  const msgStr = String(err.message || '').toLowerCase();
+
+  // 1. Rate Limit
+  if (
+    status === 429 ||
+    msgStr.includes('rate_limit') ||
+    msgStr.includes('too many requests') ||
+    nameStr.includes('ratelimit')
+  ) {
+    return 'RESEND_RATE_LIMIT';
+  }
+
+  // 2. Auth Error (401 / missing / invalid API key / unauthorized)
+  if (
+    status === 401 ||
+    msgStr.includes('invalid api key') ||
+    msgStr.includes('missing api key') ||
+    msgStr.includes('unauthorized') ||
+    msgStr.includes('api_key_invalid') ||
+    nameStr.includes('unauthorized')
+  ) {
+    return 'RESEND_AUTH_ERROR';
+  }
+
+  // 3. Permission Error (403 / restricted api key / forbidden)
+  if (
+    status === 403 ||
+    msgStr.includes('forbidden') ||
+    msgStr.includes('permission_denied') ||
+    msgStr.includes('restricted_api_key') ||
+    nameStr.includes('forbidden')
+  ) {
+    return 'RESEND_PERMISSION_ERROR';
+  }
+
+  // 4. Domain / Validation Error (422 / domain not verified / invalid from / validation error)
+  if (
+    status === 422 ||
+    msgStr.includes('domain') ||
+    msgStr.includes('validation_error') ||
+    msgStr.includes('from_address') ||
+    msgStr.includes('not verified') ||
+    msgStr.includes('missing_required_field') ||
+    nameStr.includes('validation')
+  ) {
+    return 'RESEND_DOMAIN_ERROR';
+  }
+
+  // 5. Network Error (fetch failed, timeout, connection reset, dns)
+  if (
+    codeStr === 'enotfound' ||
+    codeStr === 'econnreset' ||
+    codeStr === 'etimedout' ||
+    codeStr === 'econnrefused' ||
+    msgStr.includes('fetch failed') ||
+    msgStr.includes('network') ||
+    msgStr.includes('timeout') ||
+    msgStr.includes('econnreset') ||
+    nameStr.includes('fetcherror') ||
+    nameStr.includes('networkerror')
+  ) {
+    return 'RESEND_NETWORK_ERROR';
+  }
+
+  // 6. Generic API Error (400, 500, 502, 503, 504, api_error)
+  if (
+    (status >= 400 && status <= 599) ||
+    msgStr.includes('application_error') ||
+    msgStr.includes('internal_server_error') ||
+    msgStr.includes('api_error') ||
+    nameStr.includes('api_error') ||
+    nameStr.includes('resenderror')
+  ) {
+    return 'RESEND_API_ERROR';
+  }
+
+  return 'RESEND_UNKNOWN_ERROR';
+}
+
