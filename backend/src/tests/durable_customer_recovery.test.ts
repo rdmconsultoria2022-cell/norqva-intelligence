@@ -27,8 +27,11 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
   let app: express.Express;
   let memDb: any;
   let pool: any;
+  const originalEnv = { ...process.env };
 
   beforeEach(async () => {
+    process.env = { ...originalEnv };
+    (emailService as any).setProvider(null);
     resetAllRateLimits();
     clearTestEmails();
     vi.restoreAllMocks();
@@ -68,9 +71,6 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
       CREATE TABLE orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         customer_id UUID NOT NULL REFERENCES customers(id),
-        offer_id UUID REFERENCES offers(id),
-        offer_human_id VARCHAR(64),
-        offer_name_snapshot VARCHAR(255),
         total_amount NUMERIC(10,2) NOT NULL,
         status VARCHAR(32) NOT NULL,
         checkout_token_hash VARCHAR(64),
@@ -85,7 +85,9 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         order_id UUID NOT NULL REFERENCES orders(id),
         offer_id UUID REFERENCES offers(id),
-        quantity INT DEFAULT 1
+        offer_name_snapshot VARCHAR(255),
+        quantity INT DEFAULT 1,
+        created_at TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE digital_assets (
@@ -145,6 +147,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
       );
     `);
 
+    await pool.query("INSERT INTO offers (id, human_id, name, price) VALUES ('11111111-1111-1111-1111-111111111111', 'OFF-000001', 'Trattoria em Casa', 19.90)");
+
     app = express();
     app.use(express.json());
     app.set('db', pool);
@@ -166,7 +170,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Legacy', 'legacy@example.com') RETURNING id")).rows[0];
     const legacyRawToken = crypto.randomBytes(32).toString('hex');
     const legacyTokenHash = crypto.createHash('sha256').update(legacyRawToken).digest('hex');
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount, checkout_token_hash) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90, '${legacyTokenHash}') RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount, checkout_token_hash) VALUES ('${cust.id}', 'PAID', 19.90, '${legacyTokenHash}') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia Trattoria', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -189,7 +194,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('B & C: Recovery magic token first claim succeeds and token status becomes USED', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Joao', 'joao@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia Trattoria', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -218,7 +224,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('D: Second claim with same raw recovery token fails closed (410)', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Joao', 'joao@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia Trattoria', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -240,7 +247,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('E: Concurrent recovery claims result in exactly one successful claim and one session', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Conc', 'conc@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia Trattoria', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -275,7 +283,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Multi', 'multi@example.com') RETURNING id")).rows[0];
     const legacyRawToken = crypto.randomBytes(32).toString('hex');
     const legacyTokenHash = crypto.createHash('sha256').update(legacyRawToken).digest('hex');
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount, checkout_token_hash) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90, '${legacyTokenHash}') RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount, checkout_token_hash) VALUES ('${cust.id}', 'PAID', 19.90, '${legacyTokenHash}') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia Trattoria', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -304,7 +313,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('G & H: Recovery-derived customer session accesses PAID order and delivery tokens', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Lucas', 'lucas@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia Trattoria', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -330,7 +340,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('I & J: Recovery session cannot create Pix or mutate payment financial state', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Lucas', 'lucas@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
 
     const sessionRawToken = crypto.randomBytes(32).toString('hex');
     const sessionTokenHash = crypto.createHash('sha256').update(sessionRawToken).digest('hex');
@@ -405,7 +416,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('M: Raw recovery and session tokens are never persisted or logged', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Pedro', 'pedro@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Ebook', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -432,7 +444,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
 
   it('N: Enumeration protection & rate limiting remain enforced', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Existente', 'comprador@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '11111111-1111-1111-1111-111111111111', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Ebook', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 

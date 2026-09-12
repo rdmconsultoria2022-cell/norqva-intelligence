@@ -6,9 +6,9 @@ import { Pool } from 'pg';
 import { newDb } from 'pg-mem';
 import { requestOrderRecovery } from '../controllers/api';
 import { recoveryRequestRateLimiter, resetAllRateLimits } from '../middleware/rateLimiter';
-import { TransactionalEmailService, emailService, clearTestEmails } from '../services/emailService';
+import { TransactionalEmailService, emailService, clearTestEmails, IEmailProvider } from '../services/emailService';
 
-describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', () => {
+describe('NORQVA — Recovery Early Exit Observability & Canonical Schema Suite', () => {
   let pool: Pool;
   let app: express.Application;
   const originalEnv = { ...process.env };
@@ -40,15 +40,18 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
     mem.public.registerFunction({
       name: 'gen_random_uuid',
       implementation: () => crypto.randomUUID(),
+      impure: true
     });
     mem.public.registerFunction({
       name: 'now',
       implementation: () => new Date(),
+      impure: true
     });
 
     const db = mem.adapters.createPg();
     pool = new db.Pool();
 
+    // Canonical Migration-derived schema (001 - 019)
     await pool.query(`
       CREATE TABLE customers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,10 +78,7 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
 
       CREATE TABLE orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        customer_id UUID REFERENCES customers(id),
-        offer_id UUID REFERENCES offers(id),
-        offer_human_id VARCHAR(50),
-        offer_name_snapshot VARCHAR(255),
+        customer_id UUID NOT NULL REFERENCES customers(id),
         status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
         total_amount NUMERIC(10,2) NOT NULL DEFAULT 19.90,
         checkout_token_hash VARCHAR(64),
@@ -87,6 +87,15 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
         is_demo BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE order_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id),
+        offer_id UUID NOT NULL REFERENCES offers(id),
+        offer_name_snapshot VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
       CREATE TABLE order_deliveries (
@@ -127,14 +136,12 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
   });
 
   it('1. Rate Limiter emits RECOVERY_REQUEST_RATE_LIMITED and returns 429 after 5 requests', async () => {
-    // Send 5 valid requests (will be handled or early exit)
     for (let i = 0; i < 5; i++) {
       await request(app)
         .post('/api/checkout/recovery/request')
         .send({ email: 'rate.test@example.com' });
     }
 
-    // 6th request triggers rate limiter
     const res6 = await request(app)
       .post('/api/checkout/recovery/request')
       .send({ email: 'rate.test@example.com' });
@@ -180,7 +187,6 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
     expect(noPurchaseLog).toBeDefined();
     expect(noPurchaseLog.correlation_id).toBe(acceptLog.correlation_id);
 
-    // Ensure zero token created
     const tokensRes = await pool.query('SELECT * FROM order_recovery_tokens');
     expect(tokensRes.rows.length).toBe(0);
   });
@@ -188,9 +194,9 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
   it('4. Paid order with NO active delivery emits RECOVERY_REQUEST_NO_ACTIVE_DELIVERY and returns 200 generic message', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Cliente', 'comprador.no.delivery@example.com') RETURNING id")).rows[0];
     const off = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-DELIV-01', 'Guia Digital') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_id, offer_human_id, offer_name_snapshot, status) VALUES ('${cust.id}', '${off.id}', 'OFF-DELIV-01', 'Guia Digital', 'PAID') RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${off.id}', 'Guia Digital')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Ebook', 'bucket', 'file.pdf') RETURNING id")).rows[0];
-    // Inactive delivery status = REVOKED
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'REVOKED')`);
 
     const res = await request(app)
@@ -204,7 +210,6 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
     expect(noDelivLog).toBeDefined();
     expect(noDelivLog.correlation_id).toBeDefined();
 
-    // Zero tokens created
     const tokensRes = await pool.query('SELECT * FROM order_recovery_tokens');
     expect(tokensRes.rows.length).toBe(0);
   });
@@ -214,7 +219,8 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
 
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Cliente Ativo', 'cliente.ativo@example.com') RETURNING id")).rows[0];
     const off = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-ACT-01', 'Guia Digital') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_id, offer_human_id, offer_name_snapshot, status) VALUES ('${cust.id}', '${off.id}', 'OFF-ACT-01', 'Guia Digital', 'PAID') RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${off.id}', 'Guia Digital')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Ebook', 'bucket', 'file.pdf') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -229,7 +235,6 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
     expect(tokenLog).toBeDefined();
     expect(tokenLog.correlation_id).toBeDefined();
 
-    // 1 token created
     const tokensRes = await pool.query('SELECT * FROM order_recovery_tokens WHERE order_id = $1', [ord.id]);
     expect(tokensRes.rows.length).toBe(1);
     expect(tokensRes.rows[0].status).toBe('ACTIVE');
@@ -241,7 +246,8 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
 
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Cliente Prod', 'cliente.prod@example.com') RETURNING id")).rows[0];
     const off = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-PROD-01', 'Guia Digital') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_id, offer_human_id, offer_name_snapshot, status) VALUES ('${cust.id}', '${off.id}', 'OFF-PROD-01', 'Guia Digital', 'PAID') RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${off.id}', 'Guia Digital')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Ebook', 'bucket', 'file.pdf') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -258,8 +264,8 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
   });
 
   it('7. Database exception during execution emits RECOVERY_REQUEST_PRE_DISPATCH_EXCEPTION and returns 200 generic message', async () => {
-    // Drop the orders table to trigger a query error
     await pool.query('DROP TABLE order_deliveries CASCADE');
+    await pool.query('DROP TABLE order_items CASCADE');
     await pool.query('DROP TABLE orders CASCADE');
 
     const res = await request(app)
@@ -282,7 +288,8 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
     const secretCpf = '123.456.789-00';
     const cust = (await pool.query("INSERT INTO customers (name, email, cpf) VALUES ('Cliente Super Secret', $1, $2) RETURNING id", [secretEmail, secretCpf])).rows[0];
     const off = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-SEC-01', 'Guia Secreto') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_id, offer_human_id, offer_name_snapshot, status) VALUES ('${cust.id}', '${off.id}', 'OFF-SEC-01', 'Guia Secreto', 'PAID') RETURNING id`)).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${off.id}', 'Guia Secreto')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Ebook', 'bucket', 'file.pdf') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
@@ -297,5 +304,98 @@ describe('NORQVA — Recovery Early Exit Observability & Rate Limiting Suite', (
     expect(allLogsJson).not.toContain(ord.id);
     expect(allLogsJson).not.toContain(off.id);
     expect(allLogsJson).not.toContain('acesso/');
+  });
+
+  it('9. Root cause regression: Normalized schema WITHOUT unnormalized columns on orders completes full flow', async () => {
+    process.env.FRONTEND_URL = 'https://norqva-intelligence-frontend.vercel.app';
+
+    const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Comprador Real', 'comprador.real@norqva.com.br') RETURNING id")).rows[0];
+    const off = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-TRATTORIA', 'Trattoria em Casa') RETURNING id")).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${off.id}', 'Trattoria em Casa — Edição Digital')`);
+    const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Guia PDF', 'bucket', 'guia.pdf') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
+
+    // Mock Email Provider to verify email dispatch parameters
+    let dispatchedOfferName = '';
+    let dispatchedEmail = '';
+    const mockProvider: IEmailProvider = {
+      sendPurchaseAccessEmail: vi.fn().mockImplementation(async (params) => {
+        dispatchedOfferName = params.offerName;
+        dispatchedEmail = params.email;
+        return { success: true, messageId: 'msg_test_123' };
+      })
+    };
+    (emailService as TransactionalEmailService).setProvider(mockProvider);
+
+    const res = await request(app)
+      .post('/api/checkout/recovery/request')
+      .send({ email: 'comprador.real@norqva.com.br', offerHumanId: 'OFF-TRATTORIA' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Verify events were emitted in exact expected sequence without PRE_DISPATCH_EXCEPTION
+    const events = capturedLogs.map(l => l.event).filter(Boolean);
+    expect(events).toContain('RECOVERY_REQUEST_ACCEPTED');
+    expect(events).toContain('RECOVERY_REQUEST_TOKEN_CREATED');
+    expect(events).toContain('RECOVERY_EMAIL_FLOW_START');
+    expect(events).not.toContain('RECOVERY_REQUEST_PRE_DISPATCH_EXCEPTION');
+
+    // Confirm dispatch used correct relational snapshot and email
+    expect(dispatchedOfferName).toBe('Trattoria em Casa — Edição Digital');
+    expect(dispatchedEmail).toBe('comprador.real@norqva.com.br');
+  });
+
+  it('10. Multi-item determinism: Correctly selects specific item by offerHumanId and falls back deterministically', async () => {
+    process.env.FRONTEND_URL = 'https://norqva-intelligence-frontend.vercel.app';
+
+    const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Multi Buyer', 'multi.buyer@example.com') RETURNING id")).rows[0];
+    const offA = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-MULTI-A', 'Item A') RETURNING id")).rows[0];
+    const offB = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-MULTI-B', 'Item B') RETURNING id")).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
+
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${offA.id}', 'Snapshot Item A')`);
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${offB.id}', 'Snapshot Item B')`);
+
+    const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Asset Multi', 'bucket', 'multi.pdf') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
+
+    let dispatchedOfferName = '';
+    const mockProvider: IEmailProvider = {
+      sendPurchaseAccessEmail: vi.fn().mockImplementation(async (params) => {
+        dispatchedOfferName = params.offerName;
+        return { success: true, messageId: 'msg_multi_123' };
+      })
+    };
+    (emailService as TransactionalEmailService).setProvider(mockProvider);
+
+    // 10.1. Request with offerHumanId = OFF-MULTI-A recovers Item A
+    await request(app)
+      .post('/api/checkout/recovery/request')
+      .send({ email: 'multi.buyer@example.com', offerHumanId: 'OFF-MULTI-A' });
+    expect(dispatchedOfferName).toBe('Snapshot Item A');
+
+    // 10.2. Request with offerHumanId = OFF-MULTI-B recovers Item B
+    await request(app)
+      .post('/api/checkout/recovery/request')
+      .send({ email: 'multi.buyer@example.com', offerHumanId: 'OFF-MULTI-B' });
+    expect(dispatchedOfferName).toBe('Snapshot Item B');
+
+    // 10.3. Request with non-matching offerHumanId returns generic success and does NOT dispatch
+    capturedLogs = [];
+    const nonMatchRes = await request(app)
+      .post('/api/checkout/recovery/request')
+      .send({ email: 'multi.buyer@example.com', offerHumanId: 'OFF-NONEXISTENT' });
+    expect(nonMatchRes.status).toBe(200);
+    const nonMatchEvents = capturedLogs.map(l => l.event).filter(Boolean);
+    expect(nonMatchEvents).toContain('RECOVERY_REQUEST_NO_ELIGIBLE_PURCHASE');
+    expect(nonMatchEvents).not.toContain('RECOVERY_EMAIL_FLOW_START');
+
+    // 10.4. Request without offerHumanId recovers deterministic canonical first item (Item A)
+    await request(app)
+      .post('/api/checkout/recovery/request')
+      .send({ email: 'multi.buyer@example.com' });
+    expect(dispatchedOfferName).toBe('Snapshot Item A');
   });
 });

@@ -3559,14 +3559,22 @@ export async function requestOrderRecovery(req: any, res: Response) {
 
   try {
     const query = `
-      SELECT o.id as order_id, o.checkout_token_hash, o.offer_human_id, o.offer_id, 
-             o.offer_name_snapshot, o.is_demo, c.email as customer_email
+      SELECT 
+        o.id as order_id, 
+        o.checkout_token_hash, 
+        o.is_demo, 
+        c.email as customer_email,
+        oi.offer_id,
+        oi.offer_name_snapshot,
+        of.human_id as offer_human_id
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
+      JOIN order_items oi ON oi.order_id = o.id
+      JOIN offers of ON of.id = oi.offer_id
       WHERE LOWER(c.email) = $1
         AND o.status = 'PAID'
-        ${offerHumanId ? 'AND (o.offer_human_id = $2 OR o.offer_id::text = $2)' : ''}
-      ORDER BY o.created_at DESC
+        ${offerHumanId ? 'AND (of.human_id = $2 OR oi.offer_id::text = $2)' : ''}
+      ORDER BY o.created_at DESC, oi.created_at ASC, oi.id ASC
       LIMIT 1
     `;
     const params = offerHumanId ? [normalizedEmail, offerHumanId] : [normalizedEmail];
@@ -3694,12 +3702,18 @@ export async function claimOrderRecovery(req: any, res: Response) {
 
     const result = await client.query(
       `SELECT ort.id as recovery_id, ort.order_id, ort.status as recovery_status, ort.expires_at,
-              o.status as order_status, o.offer_human_id, o.offer_id, o.offer_name_snapshot, o.is_demo,
+              o.status as order_status, o.is_demo,
+              oi.offer_id, oi.offer_name_snapshot,
+              of.human_id as offer_human_id,
               d.status as delivery_status, d.download_count, d.max_downloads
        FROM order_recovery_tokens ort
        JOIN orders o ON ort.order_id = o.id
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN offers of ON of.id = oi.offer_id
        LEFT JOIN order_deliveries d ON d.order_id = o.id
-       WHERE ort.token_hash = $1`,
+       WHERE ort.token_hash = $1
+       ORDER BY oi.id ASC NULLS LAST
+       LIMIT 1`,
       [tokenHash]
     );
 

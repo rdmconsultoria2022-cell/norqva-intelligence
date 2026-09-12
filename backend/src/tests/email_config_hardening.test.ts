@@ -24,15 +24,18 @@ describe('NORQVA — Production Email & Recovery Environment Configuration Harde
   beforeEach(async () => {
     clearTestEmails();
     process.env = { ...originalEnv };
+    (emailService as any).setProvider(null);
 
     const mem = newDb();
     mem.public.registerFunction({
       name: 'gen_random_uuid',
       implementation: () => crypto.randomUUID(),
+      impure: true
     });
     mem.public.registerFunction({
       name: 'now',
       implementation: () => new Date(),
+      impure: true
     });
 
     const db = mem.adapters.createPg();
@@ -54,18 +57,30 @@ describe('NORQVA — Production Email & Recovery Environment Configuration Harde
         status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
       );
 
+      CREATE TABLE offers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        human_id VARCHAR(50) UNIQUE,
+        name VARCHAR(255) NOT NULL
+      );
+
       CREATE TABLE orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         customer_id UUID REFERENCES customers(id),
-        offer_id UUID,
-        offer_human_id VARCHAR(50),
-        offer_name_snapshot VARCHAR(255),
         status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
         total_amount NUMERIC(10,2) NOT NULL DEFAULT 19.90,
         checkout_token_hash VARCHAR(64),
         is_demo BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE order_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID REFERENCES orders(id),
+        offer_id UUID REFERENCES offers(id),
+        offer_name_snapshot VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
       CREATE TABLE order_deliveries (
@@ -271,7 +286,9 @@ describe('NORQVA — Production Email & Recovery Environment Configuration Harde
   // M & N: Config inválida não altera order PAID nem delivery ACTIVE
   it('M & N: Invalid email config does NOT mutate order PAID, delivery ACTIVE, and keeps generic response', async () => {
     const cust = (await pool.query("INSERT INTO customers (name, email) VALUES ('Marcio', 'marcio@example.com') RETURNING id")).rows[0];
-    const ord = (await pool.query(`INSERT INTO orders (customer_id, offer_human_id, offer_name_snapshot, status, total_amount) VALUES ('${cust.id}', 'OFF-000001', 'Trattoria em Casa', 'PAID', 19.90) RETURNING id`)).rows[0];
+    const off = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-000001', 'Trattoria em Casa') RETURNING id")).rows[0];
+    const ord = (await pool.query(`INSERT INTO orders (customer_id, status, total_amount) VALUES ('${cust.id}', 'PAID', 19.90) RETURNING id`)).rows[0];
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${off.id}', 'Trattoria em Casa')`);
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('PDF', 'b', 'p') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
 
