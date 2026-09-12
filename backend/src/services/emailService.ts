@@ -11,6 +11,7 @@ export interface SendPurchaseAccessEmailParams {
   offerName: string;
   recoveryUrl: string;
   orderId?: string;
+  correlationId?: string;
   isDemo?: boolean;
 }
 
@@ -45,17 +46,19 @@ export class TransactionalEmailService implements IEmailProvider {
   /**
    * Resolves the active provider according to environment configuration
    */
-  getResolvedProvider(): IEmailProvider | null {
+  getResolvedProvider(correlationId?: string): IEmailProvider | null {
     console.log(JSON.stringify({
       event: 'RECOVERY_EMAIL_PROVIDER_RESOLUTION_START',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(correlationId ? { correlation_id: correlationId } : {})
     }));
 
     if (this.customProvider) {
       console.log(JSON.stringify({
         event: 'RECOVERY_EMAIL_PROVIDER_RESOLVED',
         timestamp: new Date().toISOString(),
-        provider: 'CustomProvider'
+        provider: 'CustomProvider',
+        ...(correlationId ? { correlation_id: correlationId } : {})
       }));
       return this.customProvider;
     }
@@ -65,7 +68,8 @@ export class TransactionalEmailService implements IEmailProvider {
       console.log(JSON.stringify({
         event: 'RECOVERY_EMAIL_PROVIDER_RESOLVED',
         timestamp: new Date().toISOString(),
-        provider: 'ResendEmailProvider'
+        provider: 'ResendEmailProvider',
+        ...(correlationId ? { correlation_id: correlationId } : {})
       }));
       return new ResendEmailProvider(config.apiKey, config.from);
     }
@@ -73,13 +77,14 @@ export class TransactionalEmailService implements IEmailProvider {
     console.warn(JSON.stringify({
       event: 'RECOVERY_EMAIL_PROVIDER_RESOLUTION_FAILED',
       timestamp: new Date().toISOString(),
-      reason: config.error || 'NO_MATCHING_PROVIDER'
+      reason: config.error || 'NO_MATCHING_PROVIDER',
+      ...(correlationId ? { correlation_id: correlationId } : {})
     }));
     return null;
   }
 
   async sendPurchaseAccessEmail(params: SendPurchaseAccessEmailParams): Promise<EmailServiceResult> {
-    const { email, recoveryUrl, isDemo } = params;
+    const { email, recoveryUrl, isDemo, correlationId } = params;
 
     if (!email || !recoveryUrl) {
       return {
@@ -92,7 +97,7 @@ export class TransactionalEmailService implements IEmailProvider {
     dispatchedEmailsForTesting.push(params);
 
     const isProduction = process.env.NODE_ENV === 'production';
-    const provider = this.getResolvedProvider();
+    const provider = this.getResolvedProvider(correlationId);
 
     if (provider) {
       return provider.sendPurchaseAccessEmail(params);

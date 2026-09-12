@@ -3591,11 +3591,12 @@ export async function requestOrderRecovery(req: any, res: Response) {
         } else {
           const frontendUrl = frontendValidation.url || 'https://norqva-intelligence-frontend.vercel.app';
           const recoveryUrl = `${frontendUrl}/acesso/${rawRecoveryToken}`;
+          const correlationId = crypto.randomUUID();
 
           console.log(JSON.stringify({
             event: 'RECOVERY_EMAIL_FLOW_START',
             timestamp: new Date().toISOString(),
-            order_id: order.order_id,
+            correlation_id: correlationId,
             is_demo: Boolean(order.is_demo)
           }));
 
@@ -3603,14 +3604,14 @@ export async function requestOrderRecovery(req: any, res: Response) {
             email: order.customer_email,
             offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
             recoveryUrl,
-            orderId: order.order_id,
+            correlationId,
             isDemo: order.is_demo
           });
 
           console.log(JSON.stringify({
             event: 'RECOVERY_EMAIL_FLOW_END',
             timestamp: new Date().toISOString(),
-            order_id: order.order_id,
+            correlation_id: correlationId,
             success: emailResult.success,
             simulated: Boolean(emailResult.simulated),
             error_code: emailResult.error || null

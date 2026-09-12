@@ -14,7 +14,7 @@ import {
 } from '../services/emailService';
 import { requestOrderRecovery } from '../controllers/api';
 
-describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Items A to O)', () => {
+describe('NORQVA — Resend Send Path Instrumentation & Observability Privacy Suite (Items A to O)', () => {
   let pool: Pool;
   let app: express.Application;
   const originalEnv = { ...process.env };
@@ -172,7 +172,7 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
     process.env.FRONTEND_URL = 'https://norqva-intelligence-frontend.vercel.app';
 
     const service = new TransactionalEmailService();
-    const resolved = service.getResolvedProvider();
+    const resolved = service.getResolvedProvider('corr-test-123');
 
     expect(resolved).toBeInstanceOf(ResendEmailProvider);
 
@@ -180,8 +180,10 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
     const resolvedLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_PROVIDER_RESOLVED');
 
     expect(startLog).toBeDefined();
+    expect(startLog.correlation_id).toBe('corr-test-123');
     expect(resolvedLog).toBeDefined();
     expect(resolvedLog.provider).toBe('ResendEmailProvider');
+    expect(resolvedLog.correlation_id).toBe('corr-test-123');
   });
 
   it('D: RECOVERY_EMAIL_PROVIDER_RESOLUTION_FAILED emitted when config missing in production', () => {
@@ -190,16 +192,17 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
     delete process.env.RESEND_API_KEY;
 
     const service = new TransactionalEmailService();
-    const resolved = service.getResolvedProvider();
+    const resolved = service.getResolvedProvider('corr-fail-456');
 
     expect(resolved).toBeNull();
 
     const failedLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_PROVIDER_RESOLUTION_FAILED');
     expect(failedLog).toBeDefined();
     expect(failedLog.reason).toBe('EMAIL_PROVIDER_NOT_CONFIGURED');
+    expect(failedLog.correlation_id).toBe('corr-fail-456');
   });
 
-  it('E & F: RECOVERY_EMAIL_SEND_START and RECOVERY_EMAIL_SEND_SUCCESS emitted on successful dispatch', async () => {
+  it('E & F: RECOVERY_EMAIL_SEND_START and RECOVERY_EMAIL_SEND_SUCCESS emitted with correlation_id and NO order_id', async () => {
     const mockResendInstance = {
       emails: {
         send: vi.fn().mockResolvedValue({ data: { id: 'msg_resend_99999' }, error: null })
@@ -213,7 +216,7 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
       email: 'comprador@example.com',
       offerName: 'Trattoria em Casa',
       recoveryUrl: 'https://norqva-intelligence-frontend.vercel.app/acesso/mock_token_123',
-      orderId: 'ord-uuid-555'
+      correlationId: 'test-corr-abc-999'
     });
 
     expect(result.success).toBe(true);
@@ -223,15 +226,18 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
     const sendSuccessLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_SEND_SUCCESS');
 
     expect(sendStartLog).toBeDefined();
-    expect(sendStartLog.order_id).toBe('ord-uuid-555');
+    expect(sendStartLog.correlation_id).toBe('test-corr-abc-999');
     expect(sendStartLog.from_configured).toBe(true);
+    expect((sendStartLog as any).order_id).toBeUndefined();
+    expect((sendStartLog as any).orderId).toBeUndefined();
 
     expect(sendSuccessLog).toBeDefined();
-    expect(sendSuccessLog.order_id).toBe('ord-uuid-555');
+    expect(sendSuccessLog.correlation_id).toBe('test-corr-abc-999');
     expect(sendSuccessLog.message_id).toBe('msg_resend_99999');
+    expect((sendSuccessLog as any).order_id).toBeUndefined();
   });
 
-  it('G: RECOVERY_EMAIL_SEND_FAILED emitted with sanitized error_code on SDK error return', async () => {
+  it('G: RECOVERY_EMAIL_SEND_FAILED emitted with sanitized error_code and correlation_id (no order_id)', async () => {
     const mockResendInstance = {
       emails: {
         send: vi.fn().mockResolvedValue({
@@ -248,7 +254,7 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
       email: 'comprador@example.com',
       offerName: 'Trattoria em Casa',
       recoveryUrl: 'https://norqva-intelligence-frontend.vercel.app/acesso/mock_token_123',
-      orderId: 'ord-uuid-777'
+      correlationId: 'test-corr-fail-777'
     });
 
     expect(result.success).toBe(false);
@@ -256,8 +262,9 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
 
     const sendFailedLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_SEND_FAILED');
     expect(sendFailedLog).toBeDefined();
-    expect(sendFailedLog.order_id).toBe('ord-uuid-777');
+    expect(sendFailedLog.correlation_id).toBe('test-corr-fail-777');
     expect(sendFailedLog.error_code).toBe('RESEND_DOMAIN_ERROR');
+    expect((sendFailedLog as any).order_id).toBeUndefined();
   });
 
   it('H: RECOVERY_EMAIL_SEND_FAILED emitted with sanitized error_code on thrown network exception', async () => {
@@ -274,7 +281,7 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
       email: 'comprador@example.com',
       offerName: 'Trattoria em Casa',
       recoveryUrl: 'https://norqva-intelligence-frontend.vercel.app/acesso/mock_token_123',
-      orderId: 'ord-uuid-888'
+      correlationId: 'test-corr-net-888'
     });
 
     expect(result.success).toBe(false);
@@ -282,11 +289,12 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
 
     const sendFailedLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_SEND_FAILED');
     expect(sendFailedLog).toBeDefined();
-    expect(sendFailedLog.order_id).toBe('ord-uuid-888');
+    expect(sendFailedLog.correlation_id).toBe('test-corr-net-888');
     expect(sendFailedLog.error_code).toBe('RESEND_NETWORK_ERROR');
+    expect((sendFailedLog as any).order_id).toBeUndefined();
   });
 
-  it('A, I & O: Full flow emits FLOW_START, FLOW_END, preserves enumeration safety & zero PII/secret leakage', async () => {
+  it('A, I & O: Full flow correlates with random correlation_id, zero order_id/customerId/PII/secret leakage', async () => {
     process.env.NODE_ENV = 'production';
     process.env.EMAIL_PROVIDER = 'resend';
     process.env.RESEND_API_KEY = 're_super_secret_production_key_xyz987';
@@ -327,29 +335,31 @@ describe('NORQVA — Resend Send Path Instrumentation & Observability Suite (Ite
 
     // Verify events were emitted
     const flowStartLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_FLOW_START');
+    const resStartLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_PROVIDER_RESOLUTION_START');
     const sendStartLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_SEND_START');
     const sendSuccessLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_SEND_SUCCESS');
     const flowEndLog = capturedLogs.find(l => l.event === 'RECOVERY_EMAIL_FLOW_END');
 
     expect(flowStartLog).toBeDefined();
-    expect(flowStartLog.order_id).toBe(ord.id);
+    expect(flowStartLog.correlation_id).toBeDefined();
     expect(flowStartLog.is_demo).toBe(false);
 
-    expect(sendStartLog).toBeDefined();
-    expect(sendStartLog.order_id).toBe(ord.id);
+    const correlationId = flowStartLog.correlation_id;
+    expect(typeof correlationId).toBe('string');
+    expect(correlationId.length).toBeGreaterThan(16);
 
-    expect(sendSuccessLog).toBeDefined();
-    expect(sendSuccessLog.order_id).toBe(ord.id);
-    expect(sendSuccessLog.message_id).toBe('re_msg_live_flow_123');
+    // Verify correlationId matches across all related events
+    expect(resStartLog.correlation_id).toBe(correlationId);
+    expect(sendStartLog.correlation_id).toBe(correlationId);
+    expect(sendSuccessLog.correlation_id).toBe(correlationId);
+    expect(flowEndLog.correlation_id).toBe(correlationId);
 
-    expect(flowEndLog).toBeDefined();
-    expect(flowEndLog.order_id).toBe(ord.id);
-    expect(flowEndLog.success).toBe(true);
-    expect(flowEndLog.error_code).toBeNull();
-
-    // Item O: Zero PII and zero secrets in any captured log
+    // Item O: Zero PII, zero tokens, zero commercial IDs (order_id, customer_id, offer_id) in logs
     const allLogStrings = JSON.stringify(capturedLogs);
 
+    expect(allLogStrings).not.toContain(ord.id);
+    expect(allLogStrings).not.toContain(cust.id);
+    expect(allLogStrings).not.toContain(off.id);
     expect(allLogStrings).not.toContain(sensitiveEmail);
     expect(allLogStrings).not.toContain(sensitiveCpf);
     expect(allLogStrings).not.toContain('re_super_secret_production_key_xyz987');

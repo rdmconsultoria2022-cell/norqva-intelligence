@@ -29,7 +29,7 @@ export class ResendEmailProvider implements IEmailProvider {
       };
     }
 
-    const fromAddress = process.env.EMAIL_FROM || this.defaultFrom;
+    const fromAddress = this.defaultFrom || process.env.EMAIL_FROM || 'NORQVA <acesso@mail.norqva.com.br>';
     const subject = 'Recupere seu acesso à sua compra NORQVA';
 
     const textContent = [
@@ -116,11 +116,13 @@ export class ResendEmailProvider implements IEmailProvider {
 </html>
     `.trim();
 
+    const correlationId = params.correlationId;
+
     try {
       console.log(JSON.stringify({
         event: 'RECOVERY_EMAIL_SEND_START',
         timestamp: new Date().toISOString(),
-        order_id: params.orderId || null,
+        ...(correlationId ? { correlation_id: correlationId } : {}),
         from_configured: Boolean(fromAddress)
       }));
 
@@ -137,7 +139,7 @@ export class ResendEmailProvider implements IEmailProvider {
         console.error(JSON.stringify({
           event: 'RECOVERY_EMAIL_SEND_FAILED',
           timestamp: new Date().toISOString(),
-          order_id: params.orderId || null,
+          ...(correlationId ? { correlation_id: correlationId } : {}),
           error_code: sanitizedErrorCode
         }));
         return {
@@ -149,7 +151,7 @@ export class ResendEmailProvider implements IEmailProvider {
       console.log(JSON.stringify({
         event: 'RECOVERY_EMAIL_SEND_SUCCESS',
         timestamp: new Date().toISOString(),
-        order_id: params.orderId || null,
+        ...(correlationId ? { correlation_id: correlationId } : {}),
         message_id: data?.id || 'resend-ok'
       }));
 
@@ -163,7 +165,7 @@ export class ResendEmailProvider implements IEmailProvider {
       console.error(JSON.stringify({
         event: 'RECOVERY_EMAIL_SEND_FAILED',
         timestamp: new Date().toISOString(),
-        order_id: params.orderId || null,
+        ...(correlationId ? { correlation_id: correlationId } : {}),
         error_code: sanitizedErrorCode
       }));
       return {
