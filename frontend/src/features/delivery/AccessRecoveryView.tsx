@@ -1,17 +1,29 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useLocation, useNavigate, Link } from "react-router-dom";
 import { Loader2, AlertTriangle, ArrowLeft, Mail } from "lucide-react";
 import { API_BASE } from "../../lib/api";
 import { savePurchaseSession } from "../../services/purchaseSession";
 
 interface AccessRecoveryViewProps {
+  recoveryToken?: string;
   showError?: (msg: string) => void;
   showSuccess?: (msg: string) => void;
 }
 
-export const AccessRecoveryView: React.FC<AccessRecoveryViewProps> = ({ showError, showSuccess }) => {
-  const { recoveryToken } = useParams<{ recoveryToken: string }>();
+export const AccessRecoveryView: React.FC<AccessRecoveryViewProps> = ({
+  recoveryToken: propToken,
+  showError,
+  showSuccess
+}) => {
+  const params = useParams<{ recoveryToken?: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
+
+  // Extract recoveryToken from prop, route params, or URL pathname (/acesso/:recoveryToken)
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const rawPathToken = pathParts[0] === 'acesso' ? pathParts[1] : '';
+  const rawToken = propToken || params.recoveryToken || rawPathToken;
+  const recoveryToken = rawToken ? decodeURIComponent(rawToken).trim() : '';
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +73,7 @@ export const AccessRecoveryView: React.FC<AccessRecoveryViewProps> = ({ showErro
         }
       } catch (err: any) {
         if (err.name === "AbortError") return;
-        console.error("Claim recovery error:", err);
+        console.error("Claim recovery error:", err?.message || "Failed to claim recovery link");
         if (isMounted) {
           setError(err.message || "Erro ao validar chave de recuperação.");
           if (showError) {

@@ -461,8 +461,11 @@ export default function App() {
   const isAccessRecovery = location.pathname.startsWith('/acesso/');
 
   if (isAccessRecovery) {
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    const rawRecoveryToken = pathParts[0] === 'acesso' ? pathParts[1] : '';
     return (
       <AccessRecoveryView
+        recoveryToken={rawRecoveryToken ? decodeURIComponent(rawRecoveryToken).trim() : undefined}
         showError={showError}
         showSuccess={showSuccess}
       />
