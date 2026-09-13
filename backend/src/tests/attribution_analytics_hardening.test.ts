@@ -321,4 +321,84 @@ describe('NORQVA — Step B2.1 Analytics Semantic & Temporal Hardening Suite', (
     expect(report.attributedMediaTruth.account.reach).toBeNull();
     expect(report.attributedMediaTruth.account.linkClicks).toBeNull();
   });
+
+  // AK. Temporal Edge Case: Order created at 23:58, Payment confirmed at 00:05 next day in America/Sao_Paulo
+  it('AK: Revenue day strictly matches payment confirmation day, NOT order creation day across midnight boundary', async () => {
+    const custId = crypto.randomUUID();
+    await pool.query(`INSERT INTO customers (id, name, email) VALUES ($1, 'Customer Midnight', 'mid@test.com')`, [custId]);
+
+    const orderId = crypto.randomUUID();
+    // 2026-09-13 23:58:00 in America/Sao_Paulo (UTC-3) => 2026-09-14T02:58:00.000Z
+    const orderCreatedAt = new Date('2026-09-14T02:58:00.000Z');
+    // 2026-09-14 00:05:00 in America/Sao_Paulo (UTC-3) => 2026-09-14T03:05:00.000Z
+    const paymentConfirmedAt = new Date('2026-09-14T03:05:00.000Z');
+
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, data_provenance, created_at, updated_at)
+       VALUES ($1, $2, 19.90, 'PAID', 'idem-mid-order', 'COMMERCIAL_PRODUCTION', $3, $4)`,
+      [orderId, custId, orderCreatedAt, paymentConfirmedAt]
+    );
+
+    await pool.query(
+      `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, external_reference, data_provenance, confirmed_at, created_at, updated_at)
+       VALUES ($1, 'PAY-MID', $2, 'ASAAS', 'CONFIRMED', 19.90, 'idem-mid-pay', 'ext-mid', 'COMMERCIAL_PRODUCTION', $3, $4, $3)`,
+      [crypto.randomUUID(), orderId, paymentConfirmedAt, orderCreatedAt]
+    );
+
+    // Query on 2026-09-13 (Day 1)
+    const reportDay1 = await getAttributionAnalyticsReport(pool, {
+      mode: 'real',
+      period: 'today',
+      baseDate: new Date('2026-09-13T15:00:00.000Z'),
+      timeZone: 'America/Sao_Paulo'
+    });
+
+    // On 2026-09-13: payment was not yet confirmed!
+    expect(reportDay1.globalCommercialTruth.paidOrdersCount).toBe(0);
+    expect(reportDay1.globalCommercialTruth.grossRevenue).toBe(0.00);
+
+    // Query on 2026-09-14 (Day 2)
+    const reportDay2 = await getAttributionAnalyticsReport(pool, {
+      mode: 'real',
+      period: 'today',
+      baseDate: new Date('2026-09-14T15:00:00.000Z'),
+      timeZone: 'America/Sao_Paulo'
+    });
+
+    // On 2026-09-14: payment is confirmed!
+    expect(reportDay2.globalCommercialTruth.paidOrdersCount).toBe(1);
+    expect(reportDay2.globalCommercialTruth.grossRevenue).toBe(19.90);
+  });
+
+  // AL. Unconfirmed payment or confirmed_at = null does not leak into revenue
+  it('AL: Unconfirmed / pending payments with confirmed_at = null never attribute revenue', async () => {
+    const custId = crypto.randomUUID();
+    await pool.query(`INSERT INTO customers (id, name, email) VALUES ($1, 'Customer Pending', 'pending@test.com')`, [custId]);
+
+    const orderId = crypto.randomUUID();
+    const baseDate = new Date('2026-09-13T12:00:00.000Z');
+
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, data_provenance, created_at, updated_at)
+       VALUES ($1, $2, 19.90, 'PENDING', 'idem-pen-order', 'COMMERCIAL_PRODUCTION', $3, $3)`,
+      [orderId, custId, baseDate]
+    );
+
+    await pool.query(
+      `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, external_reference, data_provenance, confirmed_at, created_at, updated_at)
+       VALUES ($1, 'PAY-PEN', $2, 'ASAAS', 'PENDING', 19.90, 'idem-pen-pay', 'ext-pen', 'COMMERCIAL_PRODUCTION', NULL, $3, $3)`,
+      [crypto.randomUUID(), orderId, baseDate]
+    );
+
+    const report = await getAttributionAnalyticsReport(pool, {
+      mode: 'real',
+      period: 'today',
+      baseDate,
+      timeZone: 'America/Sao_Paulo'
+    });
+
+    expect(report.globalCommercialTruth.pendingOrdersCount).toBe(1);
+    expect(report.globalCommercialTruth.paidOrdersCount).toBe(0);
+    expect(report.globalCommercialTruth.grossRevenue).toBe(0.00);
+  });
 });
