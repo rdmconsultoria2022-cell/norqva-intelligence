@@ -163,6 +163,8 @@ export interface AttributionAnalyticsResponse {
     refundPrincipal: number;
     commercialAov: number | null;
     totalConfirmedPayments: number;
+    financialTimestampUnavailableOrdersCount: number;
+    financialTimestampUnavailableRevenue: number;
   };
   attributedMediaTruth: {
     account: {
@@ -348,7 +350,7 @@ export async function getAttributionAnalyticsReport(
   const refundedOrdersCount = parseInt(pipelineRow.refunded_orders || '0', 10);
   const refundPrincipal = Math.round(parseFloat(pipelineRow.refund_principal || '0') * 100) / 100;
 
-  // 3. CANONICAL FINANCIAL REVENUE: Filtered by financial confirmation timestamp COALESCE(p.confirmed_at, p.updated_at, o.updated_at, o.created_at)
+  // 3. CANONICAL FINANCIAL REVENUE: Filtered strictly by payments.confirmed_at (No fallback)
   const financialRevenueRes = await pool.query(
     `SELECT 
        COUNT(DISTINCT o.id)::int as paid_orders,
@@ -356,11 +358,12 @@ export async function getAttributionAnalyticsReport(
        COALESCE(SUM(COALESCE(p.provider_fee, 0)), 0)::numeric as gateway_fees,
        COUNT(DISTINCT p.id)::int as total_confirmed_payments
      FROM orders o
-     LEFT JOIN payments p ON p.order_id = o.id AND p.status = 'CONFIRMED'
+     JOIN payments p ON p.order_id = o.id AND p.status = 'CONFIRMED'
      WHERE ${orderProvenanceClause}
        AND o.status = 'PAID'
-       AND COALESCE(p.confirmed_at, p.updated_at, o.updated_at, o.created_at) >= $1::timestamptz
-       AND COALESCE(p.confirmed_at, p.updated_at, o.updated_at, o.created_at) <= $2::timestamptz`,
+       AND p.confirmed_at IS NOT NULL
+       AND p.confirmed_at >= $1::timestamptz
+       AND p.confirmed_at <= $2::timestamptz`,
     [startDateParam, endDateParam]
   );
 
@@ -370,6 +373,21 @@ export async function getAttributionAnalyticsReport(
   const gatewayFees = Math.round(parseFloat(finRevRow.gateway_fees || '0') * 100) / 100;
   const totalConfirmedPayments = parseInt(finRevRow.total_confirmed_payments || '0', 10);
   const netRevenue = Math.round((grossRevenue - gatewayFees) * 100) / 100;
+
+  // Audit of any confirmed payments with NULL confirmed_at (FINANCIAL_TIMESTAMP_UNAVAILABLE)
+  const unconfirmedTimestampRes = await pool.query(
+    `SELECT 
+       COUNT(DISTINCT o.id)::int as unavailable_count,
+       COALESCE(SUM(COALESCE(p.amount, o.total_amount)), 0)::numeric as unavailable_revenue
+     FROM orders o
+     JOIN payments p ON p.order_id = o.id AND p.status = 'CONFIRMED'
+     WHERE ${orderProvenanceClause}
+       AND o.status = 'PAID'
+       AND p.confirmed_at IS NULL`
+  );
+  const unconfRow = unconfirmedTimestampRes.rows[0] || {};
+  const financialTimestampUnavailableOrdersCount = parseInt(unconfRow.unavailable_count || '0', 10);
+  const financialTimestampUnavailableRevenue = Math.round(parseFloat(unconfRow.unavailable_revenue || '0') * 100) / 100;
 
   // 4. Ingested Media Spend & Account Metrics (ACCOUNT Level) using Meta date boundaries
   const accountMediaRes = await pool.query(
@@ -581,13 +599,14 @@ export async function getAttributionAnalyticsReport(
        o.utm_content,
        o.fbclid,
        o.attribution_metadata,
-       COALESCE(p.confirmed_at, p.updated_at, o.updated_at, o.created_at) as financial_confirmed_at
+       p.confirmed_at as financial_confirmed_at
      FROM orders o
-     LEFT JOIN payments p ON p.order_id = o.id AND p.status = 'CONFIRMED'
+     JOIN payments p ON p.order_id = o.id AND p.status = 'CONFIRMED'
      WHERE ${orderProvenanceClause}
        AND o.status = 'PAID'
-       AND COALESCE(p.confirmed_at, p.updated_at, o.updated_at, o.created_at) >= $1::timestamptz 
-       AND COALESCE(p.confirmed_at, p.updated_at, o.updated_at, o.created_at) <= $2::timestamptz`,
+       AND p.confirmed_at IS NOT NULL
+       AND p.confirmed_at >= $1::timestamptz 
+       AND p.confirmed_at <= $2::timestamptz`,
     [startDateParam, endDateParam]
   );
 
@@ -875,7 +894,9 @@ export async function getAttributionAnalyticsReport(
       marginAfterMedia,
       refundPrincipal,
       commercialAov: overallRates.commercialAov,
-      totalConfirmedPayments
+      totalConfirmedPayments,
+      financialTimestampUnavailableOrdersCount,
+      financialTimestampUnavailableRevenue
     },
     attributedMediaTruth: {
       account: {

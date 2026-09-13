@@ -2830,7 +2830,7 @@ export async function finalizePaidOrder(
 
   // 4. Update states
   await client.query(
-    "UPDATE payments SET status = 'CONFIRMED', provider_payment_id = $1, updated_at = NOW() WHERE id = $2",
+    "UPDATE payments SET status = 'CONFIRMED', confirmed_at = COALESCE(confirmed_at, NOW()), provider_payment_id = $1, updated_at = NOW() WHERE id = $2",
     [verification.providerPaymentId, paymentId]
   );
   await client.query(

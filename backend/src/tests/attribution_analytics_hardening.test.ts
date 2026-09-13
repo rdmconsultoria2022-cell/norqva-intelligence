@@ -401,4 +401,104 @@ describe('NORQVA — Step B2.1 Analytics Semantic & Temporal Hardening Suite', (
     expect(report.globalCommercialTruth.paidOrdersCount).toBe(0);
     expect(report.globalCommercialTruth.grossRevenue).toBe(0.00);
   });
+
+  // AM. confirmed_at = null on confirmed payment is classified as financialTimestampUnavailable and not in window
+  it('AM: confirmed_at = null on confirmed payment is classified as financialTimestampUnavailable and excluded from window revenue', async () => {
+    const custId = crypto.randomUUID();
+    await pool.query(`INSERT INTO customers (id, name, email) VALUES ($1, 'Customer Null Conf', 'nullconf@test.com')`, [custId]);
+
+    const orderId = crypto.randomUUID();
+    const baseDate = new Date('2026-09-13T12:00:00.000Z');
+
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, data_provenance, created_at, updated_at)
+       VALUES ($1, $2, 25.00, 'PAID', 'idem-nullconf-order', 'COMMERCIAL_PRODUCTION', $3, $3)`,
+      [orderId, custId, baseDate]
+    );
+
+    await pool.query(
+      `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, external_reference, data_provenance, confirmed_at, created_at, updated_at)
+       VALUES ($1, 'PAY-NULLCONF', $2, 'ASAAS', 'CONFIRMED', 25.00, 'idem-nullconf-pay', 'ext-nullconf', 'COMMERCIAL_PRODUCTION', NULL, $3, $3)`,
+      [crypto.randomUUID(), orderId, baseDate]
+    );
+
+    const report = await getAttributionAnalyticsReport(pool, {
+      mode: 'real',
+      period: 'today',
+      baseDate,
+      timeZone: 'America/Sao_Paulo'
+    });
+
+    // Not assigned to today's gross revenue because confirmed_at is NULL
+    expect(report.globalCommercialTruth.paidOrdersCount).toBe(0);
+    expect(report.globalCommercialTruth.grossRevenue).toBe(0.00);
+    expect(report.globalCommercialTruth.financialTimestampUnavailableOrdersCount).toBe(1);
+    expect(report.globalCommercialTruth.financialTimestampUnavailableRevenue).toBe(25.00);
+  });
+
+  // AN. payments.updated_at cannot substitute confirmed_at
+  it('AN: payments.updated_at cannot substitute confirmed_at when updated_at is today but confirmed_at was yesterday', async () => {
+    const custId = crypto.randomUUID();
+    await pool.query(`INSERT INTO customers (id, name, email) VALUES ($1, 'Customer UpdatedAt', 'upd@test.com')`, [custId]);
+
+    const orderId = crypto.randomUUID();
+    const yesterdayConfirmedAt = new Date('2026-09-12T15:00:00.000Z');
+    const todayUpdatedAt = new Date('2026-09-13T15:00:00.000Z');
+
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, data_provenance, created_at, updated_at)
+       VALUES ($1, $2, 30.00, 'PAID', 'idem-upd-order', 'COMMERCIAL_PRODUCTION', $3, $4)`,
+      [orderId, custId, yesterdayConfirmedAt, todayUpdatedAt]
+    );
+
+    await pool.query(
+      `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, external_reference, data_provenance, confirmed_at, created_at, updated_at)
+       VALUES ($1, 'PAY-UPD', $2, 'ASAAS', 'CONFIRMED', 30.00, 'idem-upd-pay', 'ext-upd', 'COMMERCIAL_PRODUCTION', $3, $3, $4)`,
+      [crypto.randomUUID(), orderId, yesterdayConfirmedAt, todayUpdatedAt]
+    );
+
+    // Query for "today" (2026-09-13)
+    const reportToday = await getAttributionAnalyticsReport(pool, {
+      mode: 'real',
+      period: 'today',
+      baseDate: todayUpdatedAt,
+      timeZone: 'America/Sao_Paulo'
+    });
+
+    // Must be 0 because confirmed_at was yesterday, even though payments.updated_at was today!
+    expect(reportToday.globalCommercialTruth.paidOrdersCount).toBe(0);
+    expect(reportToday.globalCommercialTruth.grossRevenue).toBe(0.00);
+  });
+
+  // AO. orders.updated_at or orders.created_at cannot substitute confirmed_at
+  it('AO: orders.updated_at or orders.created_at cannot substitute confirmed_at when order is created/updated today but confirmed yesterday', async () => {
+    const custId = crypto.randomUUID();
+    await pool.query(`INSERT INTO customers (id, name, email) VALUES ($1, 'Customer OrdUpd', 'ordupd@test.com')`, [custId]);
+
+    const orderId = crypto.randomUUID();
+    const yesterdayConfirmedAt = new Date('2026-09-12T15:00:00.000Z');
+    const todayOrderAt = new Date('2026-09-13T15:00:00.000Z');
+
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, total_amount, status, idempotency_key, data_provenance, created_at, updated_at)
+       VALUES ($1, $2, 45.00, 'PAID', 'idem-ord-order', 'COMMERCIAL_PRODUCTION', $3, $3)`,
+      [orderId, custId, todayOrderAt]
+    );
+
+    await pool.query(
+      `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, external_reference, data_provenance, confirmed_at, created_at, updated_at)
+       VALUES ($1, 'PAY-ORD', $2, 'ASAAS', 'CONFIRMED', 45.00, 'idem-ord-pay', 'ext-ord', 'COMMERCIAL_PRODUCTION', $3, $4, $4)`,
+      [crypto.randomUUID(), orderId, yesterdayConfirmedAt, todayOrderAt]
+    );
+
+    const reportToday = await getAttributionAnalyticsReport(pool, {
+      mode: 'real',
+      period: 'today',
+      baseDate: todayOrderAt,
+      timeZone: 'America/Sao_Paulo'
+    });
+
+    expect(reportToday.globalCommercialTruth.paidOrdersCount).toBe(0);
+    expect(reportToday.globalCommercialTruth.grossRevenue).toBe(0.00);
+  });
 });

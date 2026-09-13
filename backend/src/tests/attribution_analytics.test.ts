@@ -288,16 +288,26 @@ describe('NORQVA — Attribution Analytics & Performance Intelligence Suite (Ste
 
       // Seed 2 Paid Orders:
       // Order 1: Baseline Unattributed (Gross = 19.90, status = PAID)
-      await pool.query(`
-        INSERT INTO orders (id, customer_id, total_amount, status, is_demo, data_provenance, idempotency_key, created_at)
-        VALUES (gen_random_uuid(), $1, 19.90, 'PAID', FALSE, 'COMMERCIAL_PRODUCTION', 'idem_01', $2)
+      const ord1Res = await pool.query(`
+        INSERT INTO orders (id, customer_id, total_amount, status, is_demo, data_provenance, idempotency_key, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, 19.90, 'PAID', FALSE, 'COMMERCIAL_PRODUCTION', 'idem_01', $2, $2) RETURNING id
       `, [custId, yesterday]);
+      const ord1Id = ord1Res.rows[0].id;
+      await pool.query(`
+        INSERT INTO payments (id, human_id, order_id, provider, status, amount, confirmed_at, idempotency_key, external_reference, data_provenance, created_at, updated_at)
+        VALUES (gen_random_uuid(), 'PAY_01', $1, 'ASAAS', 'CONFIRMED', 19.90, $2, 'idem_pay_01', 'ext_01', 'COMMERCIAL_PRODUCTION', $2, $2)
+      `, [ord1Id, yesterday]);
 
       // Order 2: Deterministically Attributed to Ad (Gross = 19.90, status = PAID)
-      await pool.query(`
-        INSERT INTO orders (id, customer_id, total_amount, status, is_demo, data_provenance, idempotency_key, utm_source, utm_campaign, utm_content, attribution_metadata, created_at)
-        VALUES (gen_random_uuid(), $1, 19.90, 'PAID', FALSE, 'COMMERCIAL_PRODUCTION', 'idem_02', 'meta', '120249371827010097', '120249371828010097', $2, $3)
+      const ord2Res = await pool.query(`
+        INSERT INTO orders (id, customer_id, total_amount, status, is_demo, data_provenance, idempotency_key, utm_source, utm_campaign, utm_content, attribution_metadata, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, 19.90, 'PAID', FALSE, 'COMMERCIAL_PRODUCTION', 'idem_02', 'meta', '120249371827010097', '120249371828010097', $2, $3, $3) RETURNING id
       `, [custId, JSON.stringify({ campaign_id: '120249371827010097', adset_id: '120249371827510097', ad_id: '120249371828010097' }), yesterday]);
+      const ord2Id = ord2Res.rows[0].id;
+      await pool.query(`
+        INSERT INTO payments (id, human_id, order_id, provider, status, amount, confirmed_at, idempotency_key, external_reference, data_provenance, created_at, updated_at)
+        VALUES (gen_random_uuid(), 'PAY_02', $1, 'ASAAS', 'CONFIRMED', 19.90, $2, 'idem_pay_02', 'ext_02', 'COMMERCIAL_PRODUCTION', $2, $2)
+      `, [ord2Id, yesterday]);
 
       // Order 3: Demo Order (Should be completely ignored in real mode)
       await pool.query(`
