@@ -176,6 +176,14 @@ export async function verifySupabaseToken(token: string): Promise<any> {
         console.warn('[JWT VALIDATION ERROR]: KID_NOT_FOUND');
         return null;
       }
+      if (header.alg === 'RS256' && key.kty !== 'RSA') {
+        console.warn('[JWT VALIDATION ERROR]: TOKEN_ALGORITHM_REJECTED');
+        return null;
+      }
+      if (header.alg === 'ES256' && key.kty !== 'EC') {
+        console.warn('[JWT VALIDATION ERROR]: TOKEN_ALGORITHM_REJECTED');
+        return null;
+      }
       const publicKeyPem = jwkToPem(key);
       const verify = crypto.createVerify('SHA256');
       verify.update(`${headerBase64}.${payloadBase64}`);

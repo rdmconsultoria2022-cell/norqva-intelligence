@@ -352,7 +352,8 @@ describe('NORQVA Authentication & Hardening Validation Suite', () => {
         
         expect(res.status).toBe(200);
       } finally {
-        process.env.SUPABASE_JWKS_URL = originalJwksUrl;
+        if (originalJwksUrl === undefined) delete process.env.SUPABASE_JWKS_URL;
+        else process.env.SUPABASE_JWKS_URL = originalJwksUrl;
         httpsGetSpy.mockRestore();
       }
     });
@@ -439,7 +440,8 @@ describe('NORQVA Authentication & Hardening Validation Suite', () => {
         
         expect(resExpired.status).toBe(401);
       } finally {
-        process.env.SUPABASE_JWKS_URL = originalJwksUrl;
+        if (originalJwksUrl === undefined) delete process.env.SUPABASE_JWKS_URL;
+        else process.env.SUPABASE_JWKS_URL = originalJwksUrl;
         httpsGetSpy.mockRestore();
       }
     });
