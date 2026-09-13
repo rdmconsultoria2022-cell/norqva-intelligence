@@ -67,6 +67,7 @@ import {
   syncMetaData,
   getExecutiveDashboard,
   getFinancialDashboard,
+  getAttributionAnalytics,
   migrateDestinationUrl,
   validatePaymentConnection,
   testStorageSign,
@@ -231,6 +232,7 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/dashboard', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDashboard);
 app.get('/api/executive/dashboard', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getExecutiveDashboard);
 app.get('/api/financial/dashboard', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getFinancialDashboard);
+app.get('/api/analytics/attribution', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getAttributionAnalytics);
 app.get('/api/users', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getUsers);
 app.get('/api/me', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMe);
 

@@ -141,7 +141,7 @@ describe('DashboardView Component — Financial Intelligence & Executive Views',
     });
 
     expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/financial/dashboard?mode=demo&period=all'),
+      expect.stringContaining('/financial/dashboard?mode=demo&period=30d'),
       expect.any(Object)
     );
   });

@@ -29,6 +29,11 @@ import {
   calculatePerformanceMetrics,
   MetaHierarchyContext
 } from '../services/attribution/deterministicAttributionResolver';
+import {
+  getAttributionAnalyticsReport,
+  parseTimeRangeWindow,
+  calculateAttributionMetrics
+} from '../services/attribution/attributionAnalyticsService';
 
 export const aiProvider = new MockAIProvider();
 
@@ -5366,6 +5371,14 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     const isReconciled = Math.abs(grossRevenue - productTotalRev) < 0.01 &&
                          Math.abs(grossRevenue - campaignPlusUnattributedRev) < 0.01;
 
+    // 8. Performance Attribution Intelligence (Step B2)
+    const attributionAnalytics = await getAttributionAnalyticsReport(pool, {
+      mode: isDemo ? 'demo' : 'real',
+      period,
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string
+    });
+
     return res.status(200).json({
       period,
       mode: isDemo ? 'demo' : 'real',
@@ -5422,13 +5435,37 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
         campaignPlusUnattributedRevenue: campaignPlusUnattributedRev,
         totalSpend,
         campaignTotalSpend
-      }
+      },
+      performanceAttribution: attributionAnalytics
     });
   } catch (err: any) {
     console.error('getFinancialDashboard error:', err);
     return res.status(500).json({ error: err.message || 'Erro ao carregar dados do dashboard financeiro.' });
   }
 }
+
+export async function getAttributionAnalytics(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const period = (req.query.period as string) || '30d';
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+
+    const report = await getAttributionAnalyticsReport(pool, {
+      mode: isDemo ? 'demo' : 'real',
+      period,
+      startDate,
+      endDate
+    });
+
+    return res.status(200).json(report);
+  } catch (err: any) {
+    console.error('getAttributionAnalytics error:', err);
+    return res.status(500).json({ error: err.message || 'Erro ao carregar análise de atribuição.' });
+  }
+}
+
 
 
 
