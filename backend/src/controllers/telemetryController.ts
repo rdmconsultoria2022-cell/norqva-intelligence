@@ -64,7 +64,22 @@ export async function recordFunnelEvent(req: Request, res: Response) {
       }
     }
 
-    // 3. Idempotent Upsert (Deduplicated on event_id, is_demo)
+    // 3. Idempotent Deduplication (Check existing event_id)
+    const checkRes = await pool.query(
+      'SELECT id, created_at FROM commercial_funnel_events WHERE event_id = $1 AND is_demo = $2 LIMIT 1',
+      [event_id, isDemo]
+    );
+
+    if (checkRes.rows.length > 0) {
+      return res.status(200).json({
+        success: true,
+        event_id,
+        recorded: false,
+        timestamp: checkRes.rows[0].created_at
+      });
+    }
+
+    // 4. Insert New Event
     const query = `
       INSERT INTO commercial_funnel_events (
         event_id, event_type, visitor_id, session_id,

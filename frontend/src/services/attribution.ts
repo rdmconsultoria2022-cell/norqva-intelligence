@@ -19,6 +19,12 @@ export interface AttributionContext {
   utm_medium: string | null;
   utm_campaign: string | null;
   utm_content: string | null;
+  utm_term: string | null;
+  campaign_id: string | null;
+  adset_id: string | null;
+  ad_id: string | null;
+  placement: string | null;
+  site_source_name: string | null;
 }
 
 export type FunnelEventType = 'LANDING_PAGE_VIEW' | 'OFFER_VIEW' | 'CHECKOUT_STARTED';
@@ -65,6 +71,7 @@ export function getSessionId(): string {
 
 /**
  * Captures attribution query parameters from current URL and stores in session context.
+ * Backward-compatible, fail-safe, and non-blocking.
  */
 export function captureUrlAttribution(): Partial<AttributionContext> {
   if (typeof window === 'undefined') return {};
@@ -75,6 +82,12 @@ export function captureUrlAttribution(): Partial<AttributionContext> {
     const utm_medium = params.get('utm_medium');
     const utm_campaign = params.get('utm_campaign');
     const utm_content = params.get('utm_content');
+    const utm_term = params.get('utm_term');
+    const campaign_id = params.get('campaign_id');
+    const adset_id = params.get('adset_id');
+    const ad_id = params.get('ad_id');
+    const placement = params.get('placement');
+    const site_source_name = params.get('site_source_name');
 
     const ctx: Record<string, string> = {};
     if (fbclid) ctx.fbclid = fbclid;
@@ -82,6 +95,12 @@ export function captureUrlAttribution(): Partial<AttributionContext> {
     if (utm_medium) ctx.utm_medium = utm_medium;
     if (utm_campaign) ctx.utm_campaign = utm_campaign;
     if (utm_content) ctx.utm_content = utm_content;
+    if (utm_term) ctx.utm_term = utm_term;
+    if (campaign_id) ctx.campaign_id = campaign_id;
+    if (adset_id) ctx.adset_id = adset_id;
+    if (ad_id) ctx.ad_id = ad_id;
+    if (placement) ctx.placement = placement;
+    if (site_source_name) ctx.site_source_name = site_source_name;
 
     if (Object.keys(ctx).length > 0) {
       const existing = JSON.parse(sessionStorage.getItem('norqva_attribution_ctx') || '{}');
@@ -116,7 +135,13 @@ export function getAttributionContext(): AttributionContext {
     utm_source: merged.utm_source || null,
     utm_medium: merged.utm_medium || null,
     utm_campaign: merged.utm_campaign || null,
-    utm_content: merged.utm_content || null
+    utm_content: merged.utm_content || null,
+    utm_term: merged.utm_term || null,
+    campaign_id: merged.campaign_id || null,
+    adset_id: merged.adset_id || null,
+    ad_id: merged.ad_id || null,
+    placement: merged.placement || null,
+    site_source_name: merged.site_source_name || null
   };
 }
 
@@ -144,6 +169,16 @@ export async function sendFunnelEvent(
   try {
     sentFunnelEvents.add(dedupKey);
 
+    const enrichedMetadata = {
+      ...(attr.utm_term ? { utm_term: attr.utm_term } : {}),
+      ...(attr.campaign_id ? { campaign_id: attr.campaign_id } : {}),
+      ...(attr.adset_id ? { adset_id: attr.adset_id } : {}),
+      ...(attr.ad_id ? { ad_id: attr.ad_id } : {}),
+      ...(attr.placement ? { placement: attr.placement } : {}),
+      ...(attr.site_source_name ? { site_source_name: attr.site_source_name } : {}),
+      ...(metadata || {})
+    };
+
     const payload = {
       event_id,
       event_type: eventType,
@@ -156,7 +191,7 @@ export async function sendFunnelEvent(
       utm_medium: attr.utm_medium,
       utm_campaign: attr.utm_campaign,
       utm_content: attr.utm_content,
-      metadata: metadata || null
+      metadata: Object.keys(enrichedMetadata).length > 0 ? enrichedMetadata : null
     };
 
     const modeQuery = isDemo ? '?mode=demo' : '';

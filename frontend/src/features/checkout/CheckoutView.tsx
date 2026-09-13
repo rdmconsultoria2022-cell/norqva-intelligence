@@ -138,6 +138,15 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         ? crypto.randomUUID()
         : `order-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+      const attributionMetadata = {
+        ...(attrCtx.utm_term ? { utm_term: attrCtx.utm_term } : {}),
+        ...(attrCtx.campaign_id ? { campaign_id: attrCtx.campaign_id } : {}),
+        ...(attrCtx.adset_id ? { adset_id: attrCtx.adset_id } : {}),
+        ...(attrCtx.ad_id ? { ad_id: attrCtx.ad_id } : {}),
+        ...(attrCtx.placement ? { placement: attrCtx.placement } : {}),
+        ...(attrCtx.site_source_name ? { site_source_name: attrCtx.site_source_name } : {})
+      };
+
       const orderPayload = {
         offer_id: offer.id,
         customer_id: customerId,
@@ -149,7 +158,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         utm_source: attrCtx.utm_source,
         utm_medium: attrCtx.utm_medium,
         utm_campaign: attrCtx.utm_campaign,
-        utm_content: attrCtx.utm_content
+        utm_content: attrCtx.utm_content,
+        attribution_metadata: Object.keys(attributionMetadata).length > 0 ? attributionMetadata : null
       };
 
       const orderResult: CheckoutOrderResult = await apiFetch('/checkout', {

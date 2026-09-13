@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { Pool } from 'pg';
 import crypto from 'crypto';
@@ -13,9 +13,12 @@ describe('NORQVA — GATE 07.4: FIRST-PARTY ATTRIBUTION & FUNNEL TELEMETRY', () 
   let testOfferId: string;
   let testCustomerId: string;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     pool = app.get('db') || initializeDB();
     await runMigrations(pool);
+  });
+
+  beforeEach(async () => {
 
     const adminAuthId = crypto.randomUUID();
     const adminRes = await pool.query(

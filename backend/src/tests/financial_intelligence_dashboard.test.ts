@@ -14,19 +14,30 @@ describe('DASHBOARD FINANCIAL INTELLIGENCE V1 — Comprehensive Data Integrity &
   let testAdAccountId: string;
 
   const cleanupRealTestData = async () => {
-    try {
-      await pool.query(`DELETE FROM meta_insights WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE OR entity_meta_id IN ('120249371827010097', 'demo_cmp_99', 'unconnected_cmp_99', 'democonn_cmp_99')`);
-      await pool.query(`DELETE FROM meta_ads WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`);
-      await pool.query(`DELETE FROM meta_ad_sets WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`);
-      await pool.query(`DELETE FROM meta_campaigns WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE OR meta_campaign_id IN ('120249371827010097', 'demo_cmp_99', 'unconnected_cmp_99', 'democonn_cmp_99')`);
-      await pool.query(`DELETE FROM meta_ad_accounts WHERE meta_account_id IN ('act_2887010388338951', 'demo_account_99', 'act_9999999999999999', 'act_demo_conn_01', 'act_test_01')`);
-      await pool.query(`DELETE FROM payments WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`);
-      await pool.query(`DELETE FROM order_items WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR order_id IN (SELECT id FROM orders WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE)`);
-      await pool.query(`DELETE FROM orders WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`);
-      await pool.query(`DELETE FROM offers WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`);
-      await pool.query(`DELETE FROM products WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`);
-      await pool.query(`DELETE FROM customers WHERE email LIKE '%@testmatrix.com' OR email LIKE '%@commercialdomain.com.br'`);
-    } catch (_) {}
+    const stmts = [
+      `DELETE FROM commercial_funnel_events`,
+      `DELETE FROM order_customer_sessions`,
+      `DELETE FROM order_recovery_tokens`,
+      `DELETE FROM order_deliveries`,
+      `DELETE FROM payments`,
+      `DELETE FROM order_items`,
+      `DELETE FROM orders`,
+      `DELETE FROM offers WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE OR human_id LIKE 'OFF-%'`,
+      `DELETE FROM products WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE OR human_id LIKE 'PRD-%'`,
+      `DELETE FROM meta_insights WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE OR entity_meta_id IN ('120249371827010097', 'demo_cmp_99', 'unconnected_cmp_99', 'democonn_cmp_99', '1209990001', '1208880001', '1208880002')`,
+      `DELETE FROM meta_ads WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`,
+      `DELETE FROM meta_ad_sets WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE`,
+      `DELETE FROM meta_campaigns WHERE data_provenance = 'COMMERCIAL_PRODUCTION' OR is_demo = FALSE OR meta_campaign_id IN ('120249371827010097', 'demo_cmp_99', 'unconnected_cmp_99', 'democonn_cmp_99', '1209990001', '1208880001', '1208880002')`,
+      `DELETE FROM meta_ad_accounts WHERE meta_account_id IN ('act_2887010388338951', 'demo_account_99', 'act_9999999999999999', 'act_demo_conn_01', 'act_test_01')`,
+      `DELETE FROM customers WHERE email LIKE '%@testmatrix.com' OR email LIKE '%@commercialdomain.com.br' OR email LIKE '%@customer.com'`
+    ];
+    for (const sql of stmts) {
+      try {
+        await pool.query(sql);
+      } catch (err: any) {
+        console.error('CLEANUP SQL ERROR:', sql, err.message);
+      }
+    }
   };
 
   beforeAll(async () => {
@@ -665,7 +676,6 @@ describe('DASHBOARD FINANCIAL INTELLIGENCE V1 — Comprehensive Data Integrity &
     const originalAllowProd = process.env.ALLOW_PRODUCTION_PAYMENTS;
 
     try {
-      process.env.NODE_ENV = 'production';
       process.env.APP_ENV = 'production';
       process.env.ASAAS_ENV = 'production';
       process.env.ALLOW_PRODUCTION_PAYMENTS = 'true';
@@ -686,6 +696,7 @@ describe('DASHBOARD FINANCIAL INTELLIGENCE V1 — Comprehensive Data Integrity &
       process.env.APP_ENV = 'local';
       process.env.ASAAS_ENV = 'sandbox';
       process.env.ALLOW_PRODUCTION_PAYMENTS = 'false';
+      process.env.JWT_SECRET = 'norqva-isolated-test-secret-only';
 
       // Query dashboard in mode=real under simulated local environment
       const res2 = await request(app)
