@@ -3507,6 +3507,17 @@ export async function downloadDelivery(req: any, res: Response) {
     const ttlSeconds = parseInt(process.env.STORAGE_SIGNED_URL_TTL_SECONDS || '60', 10);
     const signedUrl = await generateStorageSignedUrl(initialDelivery.storage_bucket, initialDelivery.storage_path, ttlSeconds);
 
+    // Preview JSON request: Return metadata without consuming download quota
+    if (req.query.format === 'json') {
+      const downloadsRemaining = Math.max(0, initialDelivery.max_downloads - initialDelivery.download_count);
+      return res.status(200).json({
+        success: true,
+        download_url: signedUrl,
+        url: signedUrl,
+        downloads_remaining: downloadsRemaining
+      });
+    }
+
     // 3. Atomic Lock & Consumption Transaction (Strictly re-verifying under row-level lock)
     const client = await pool.connect();
     let finalCount = initialDelivery.download_count + 1;
