@@ -241,10 +241,32 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
 
   // M19 — Digital Delivery regressions permanecem PASS
   it('M19: Digital delivery tokens endpoint remains protected and operational', async () => {
-    const res = await request(app)
+    // A) Non-existent order returns 404 Not Found
+    const notFoundRes = await request(app)
       .get('/api/checkout/orders/00000000-0000-0000-0000-000000000000/delivery-tokens')
       .set('x-checkout-token', 'dummy');
-    expect(res.status).toBe(403);
+    expect(notFoundRes.status).toBe(404);
+
+    // B) Existing order with unauthorized token returns 403 Forbidden
+    const custRes = await pool.query(
+      "INSERT INTO customers (id, name, email) VALUES ($1, 'Meta Test Cust', 'cust.meta.m19@norqva.com') RETURNING id",
+      [crypto.randomUUID()]
+    );
+    const custId = custRes.rows[0].id;
+    const validRawToken = crypto.randomBytes(32).toString('hex');
+    const validTokenHash = crypto.createHash('sha256').update(validRawToken).digest('hex');
+    const orderId = crypto.randomUUID();
+    const idempotencyKey = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO orders (id, customer_id, status, total_amount, idempotency_key, checkout_token_hash)
+       VALUES ($1, $2, 'PAID', 19.90, $3, $4)`,
+      [orderId, custId, idempotencyKey, validTokenHash]
+    );
+
+    const unauthorizedRes = await request(app)
+      .get(`/api/checkout/orders/${orderId}/delivery-tokens`)
+      .set('x-checkout-token', 'unauthorized_token_mismatch');
+    expect(unauthorizedRes.status).toBe(403);
   });
 
   // M20 — Frontend / API não expõe segredos
