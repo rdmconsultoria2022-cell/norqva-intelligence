@@ -34,6 +34,10 @@ import {
   parseTimeRangeWindow,
   calculateAttributionMetrics
 } from '../services/attribution/attributionAnalyticsService';
+import {
+  resolveEntitlementProductId,
+  provisionProductEntitlement
+} from '../services/entitlements/entitlementService';
 
 export const aiProvider = new MockAIProvider();
 
@@ -2954,6 +2958,46 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
     throw err;
   } finally {
     client.release();
+  }
+
+  // POST-COMMIT: Additive Entitlement Provisioning Hook
+  // Certified payment transaction is already committed (PAID).
+  // Any exception here is non-fatal to the payment.
+  try {
+    const postPay = await pool.query(
+      `SELECT p.id as payment_id, p.order_id, c.email as customer_email
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+       JOIN customers c ON c.id = o.customer_id
+       WHERE p.id = $1`,
+      [paymentId]
+    );
+    if (postPay.rows.length > 0) {
+      const pRow = postPay.rows[0];
+      const itemsRes = await pool.query(
+        `SELECT oi.*, p.name as product_name, off.human_id as offer_human_id
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         LEFT JOIN offers off ON off.id = oi.offer_id
+         WHERE oi.order_id = $1`,
+        [pRow.order_id]
+      );
+      for (const item of itemsRes.rows) {
+        const targetProdId = resolveEntitlementProductId(
+          item.product_name || item.product_name_snapshot || item.offer_name_snapshot || item.offer_human_id || ''
+        );
+        if (targetProdId) {
+          await provisionProductEntitlement({
+            orderId: pRow.order_id,
+            paymentId: pRow.payment_id,
+            customerEmail: pRow.customer_email,
+            productId: targetProdId
+          });
+        }
+      }
+    }
+  } catch (entErr: any) {
+    console.warn('[PostCommitEntitlement] Non-fatal provisioning warning:', entErr.message);
   }
 
   return {
