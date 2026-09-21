@@ -1,0 +1,97 @@
+{
+  "release_name": "NORQVA Bolso Blindado Web App V1.0.0",
+  "release_tag": "bolso-blindado-web-v1.0.0-certified-baseline",
+  "baseline_status": "CERTIFIED_WEB_APP_BASELINE_FROZEN",
+  "timestamp_utc": "2026-09-18T23:31:06.558300+00:00",
+  "institutional_brand": "NORQVA",
+  "product_name": "Bolso Blindado",
+  "product_architecture": {
+    "primary_experience": "NORQVA \u2014 Bolso Blindado Web App (HTML5 / CSS3 / Vanilla JS / localStorage)",
+    "supporting_product": "Planilha_Bolso_Blindado_2026.xlsx (Canonical Excel / Google Sheets Workbook)",
+    "guide_deliverable": "Guia_Rapido_Metodo_Bolso_Blindado_V2.pdf (Official 7-Page Implementation Guide)"
+  },
+  "visual_identity": {
+    "theme": "NORQVA Light Theme (Warm Ivory / Warm Off-White / Deep Charcoal Brown / Olive Green)",
+    "typography": "Editorial Serif (Headings) + Clean Modern Sans-Serif (Data/Controls)",
+    "palette": {
+      "canvas": "#F7F5F0",
+      "surface": "#FFFFFF",
+      "primary_text": "#2A211D",
+      "secondary_text": "#6B625B",
+      "accent_olive": "#3E5242",
+      "semantic_income": "#3D6B48",
+      "semantic_expense": "#B84A39",
+      "semantic_warning": "#C27D2B"
+    }
+  },
+  "functional_capabilities": [
+    "Dynamic Monthly Savings Goal Progress Engine (getGoalProgress)",
+    "Deterministic 4-State Threshold System (NEEDS_ATTENTION, GETTING_CLOSE, GOAL_ACHIEVED, NEGATIVE_BALANCE)",
+    "Live Transaction CRUD with instant recalculation of KPIs, categories and goal states",
+    "Category Breakdown Aggregation with proportional visual progress bars",
+    "4 Pillars Budget Allocation (Essencial 50%, Conforto 30%, Reserva 20%, D\u00edvidas)",
+    "Emergency Reserve Tracker (Goal: R$ 20.000,00 | Acumulado: R$ 8.500,00)",
+    "Deterministic Demo Dataset with 14 Brazilian Personal Finance Transactions",
+    "LocalStorage persistence with zero external backend/cloud dependency"
+  ],
+  "source_inventory_count": 10,
+  "file_inventory": {
+    "index.html": {
+      "size_bytes": 14957,
+      "sha256": "4032108c19c93b4a176429557d76c40eea647a6dfceccb90c99c5bb034c8295b"
+    },
+    "css/styles.css": {
+      "size_bytes": 15983,
+      "sha256": "ea46e1c394b6e79f8c6b332c947a7fa18aa8a6afc04b783740a72df1ce6978a6"
+    },
+    "js/store.js": {
+      "size_bytes": 12889,
+      "sha256": "b9b62af969da371fd0d06fe5cb63559ef9f0b33764babbc2ae65ad25c27477e3"
+    },
+    "js/app.js": {
+      "size_bytes": 15412,
+      "sha256": "5bf570a6c1df25fb526581587891b2067fceff846c209515f5d441fce98a5af7"
+    },
+    "screenshots/01_home_mobile_goal_red.png": {
+      "size_bytes": 43763,
+      "sha256": "2d06be8eff9b42c6f8f66f9c826355c76cdefbca705cbfc86d85d3b66da3ba53"
+    },
+    "screenshots/02_home_mobile_goal_amber.png": {
+      "size_bytes": 43763,
+      "sha256": "7e8f180e7c4b4f048e991a4216b87ed8f79641f49ffc6d76a085a62902d3a855"
+    },
+    "screenshots/03_home_mobile_goal_green.png": {
+      "size_bytes": 41445,
+      "sha256": "68b67522353f1648106acc5012e0b0791439968642516080eb71486d0792e044"
+    },
+    "screenshots/04_add_transaction_mobile.png": {
+      "size_bytes": 34843,
+      "sha256": "96fa7715783a3c1dbf12c685b3f5d3c6c74812071e2624cf934dad6f3a26e230"
+    },
+    "screenshots/05_home_desktop.png": {
+      "size_bytes": 54201,
+      "sha256": "ba26f53acb80a10b01a69505d973ef4c2e3320a9c2287fcde0c9ece5628ccb94"
+    },
+    "screenshots/06_planning_mobile.png": {
+      "size_bytes": 39788,
+      "sha256": "ef7798dc616201bc6e51c14e0f28fe7c779d5dd4c80b4a704904be6721edf7d8"
+    }
+  },
+  "product_decision_backlog": [
+    {
+      "id": "FIRST_RUN_GOAL_ONBOARDING",
+      "status": "PRODUCT_BACKLOG_APPROVED_FOR_FUTURE_IMPLEMENTATION",
+      "description": "On first real use, prompt user: 'Quanto voc\u00ea quer guardar por m\u00eas?' to set monthlySavingsGoal dynamically."
+    }
+  ],
+  "creative_implications": {
+    "real_web_app_available_for_creative_v2": true,
+    "demonstration_priority": "Use real Web App interaction captures/recordings in Creative V2"
+  },
+  "financial_ledger": {
+    "reference_kie_balance": 8679.43,
+    "post_gate_balance": 8679.43,
+    "credits_consumed": 0.0,
+    "paid_calls": 0
+  }
+}

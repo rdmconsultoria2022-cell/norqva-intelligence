@@ -12,7 +12,15 @@ import {
   ChefHat, 
   CheckCircle2, 
   Utensils, 
-  Flame 
+  Flame,
+  Wallet,
+  TrendingUp,
+  BarChart3,
+  PieChart,
+  Smartphone,
+  Check,
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { API_BASE } from '../../lib/api';
 import { CheckoutView } from '../checkout/CheckoutView';
@@ -45,8 +53,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   const params = useParams<{ humanId?: string }>();
   const location = useLocation();
   
-  // Extract humanId from route params or fallback to parsing pathname /p/:humanId
-  const rawHumanId = params.humanId || location.pathname.replace(/^\/p\/?/, '').split('/')[0];
+  // Extract humanId from route params or fallback to parsing pathname /p/:humanId or /oferta/:humanId
+  const rawHumanId = params.humanId || location.pathname.replace(/^\/(p|oferta)\/?/, '').split('/')[0];
   const humanId = rawHumanId ? decodeURIComponent(rawHumanId).trim() : '';
 
   const [offer, setOffer] = useState<PublicOfferData | null>(null);
@@ -129,14 +137,20 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
     ? (offer.promotional_price !== null && offer.promotional_price !== undefined
         ? offer.promotional_price
         : offer.price)
-    : 19.90;
+    : 29.90;
+
+  const isBolsoBlindado = Boolean(
+    offer?.human_id?.toUpperCase().includes('BOLSO') || 
+    offer?.name?.toLowerCase().includes('bolso') ||
+    humanId.toUpperCase().includes('BOLSO')
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-4 text-stone-800 font-sans">
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 text-slate-800 font-sans">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-[#B83B1E]" />
-          <p className="text-sm text-stone-500 font-medium">Carregando detalhes da experiência gastronômica...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+          <p className="text-sm text-slate-500 font-medium">Carregando detalhes da oferta...</p>
         </div>
       </div>
     );
@@ -144,13 +158,13 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
   if (fetchError || !offer) {
     return (
-      <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-4 text-stone-800 font-sans">
-        <div className="max-w-md w-full bg-white border border-stone-200 rounded-2xl p-8 text-center space-y-4 shadow-xl">
-          <div className="h-12 w-12 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center mx-auto text-[#B83B1E]">
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 text-slate-800 font-sans">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4 shadow-xl">
+          <div className="h-12 w-12 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center mx-auto text-amber-700">
             <AlertCircle className="h-6 w-6" />
           </div>
-          <h2 className="text-xl font-bold text-stone-900 font-serif">Oferta Indisponível</h2>
-          <p className="text-sm text-stone-600 leading-relaxed">
+          <h2 className="text-xl font-bold text-slate-900">Oferta Indisponível</h2>
+          <p className="text-sm text-slate-600 leading-relaxed">
             {fetchError || 'Esta oferta não está ativa ou não foi encontrada em nossos registros.'}
           </p>
         </div>
@@ -158,6 +172,500 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
     );
   }
 
+  // ==========================================
+  // VIEW: BOLSO BLINDADO COMMERCIAL EXPERIENCE
+  // ==========================================
+  if (isBolsoBlindado) {
+    return (
+      <div className="min-h-screen bg-[#0F172A] text-slate-100 flex flex-col justify-between font-sans antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
+        
+        {/* Existing Paid Purchase Notification Banner */}
+        {existingSession && existingSession.status === 'PAID' && (
+          <div className="bg-emerald-900/90 border-b border-emerald-700/50 text-white px-4 py-3 text-center text-xs font-medium flex flex-wrap items-center justify-center gap-3 shadow-md z-40 relative">
+            <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+              <Sparkles className="h-4 w-4" />
+              <span>Acesso Confirmado</span>
+            </div>
+            <span>Você já garantiu seu acesso ao Método Bolso Blindado!</span>
+            <button
+              onClick={() => navigate(`/pedido/${existingSession.orderId}/entrega#token=${existingSession.checkoutToken}`)}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase tracking-wider text-[11px] transition shadow flex items-center gap-1.5"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>Acessar Meu Aplicativo</span>
+            </button>
+          </div>
+        )}
+
+        {/* Top Announcement Bar */}
+        <div className="bg-slate-900/80 border-b border-slate-800 text-slate-300 text-[11px] sm:text-xs py-2 px-4 text-center font-medium tracking-wide flex items-center justify-center gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+          <span className="truncate">Método Bolso Blindado 2026 • Aplicativo Web + Planilha de Gestão + Guia Prático</span>
+        </div>
+
+        {/* Header */}
+        <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-30 shadow-md">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shadow-lg shadow-emerald-900/30 shrink-0">
+                <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
+              </div>
+              <div>
+                <span className="font-bold text-sm sm:text-base tracking-tight text-white block leading-tight">
+                  BOLSO BLINDADO
+                </span>
+                <span className="text-[9px] sm:text-[10px] tracking-widest text-emerald-400 uppercase font-semibold">
+                  Inteligência Financeira Pessoal
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-300 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700 shadow-sm">
+              <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-400" />
+              <span className="font-medium">Checkout Seguro Pix</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Commercial Content */}
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-10 sm:space-y-14">
+          
+          {/* HERO SECTION */}
+          <section className="bg-gradient-to-b from-slate-800/90 to-slate-900/90 border border-slate-700/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+              
+              {/* Left Column: Copy & Core Action */}
+              <div className="lg:col-span-7 space-y-5">
+                
+                {/* Badge */}
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-3 py-1 rounded-full">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span>Método & Aplicativo Web</span>
+                </div>
+
+                {/* Headline & Core Promise */}
+                <div className="space-y-2">
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight leading-tight">
+                    Organize seu dinheiro de forma simples e tenha clareza de onde ele está indo.
+                  </h1>
+                  <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+                    O Método Bolso Blindado é um aplicativo simples e direto ao ponto para registrar suas movimentações e acompanhar suas finanças pelo celular.
+                  </p>
+                </div>
+
+                {/* Price & Primary CTA Card */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-700 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                    <div>
+                      <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 block">
+                        Acesso Completo e Vitalício
+                      </span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl sm:text-4xl font-black text-emerald-400">
+                          R$ {activePrice.toFixed(2).replace('.', ',')}
+                        </span>
+                        <span className="text-xs text-slate-400">pagamento único via Pix</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-400 sm:text-right">
+                      <span className="inline-block px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 text-[11px] font-medium border border-emerald-500/20">
+                        Sem mensalidades
+                      </span>
+                    </div>
+                  </div>
+
+                  {existingSession && existingSession.status === 'PAID' ? (
+                    <button
+                      onClick={handleOpenCheckout}
+                      className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 active:scale-98"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Acessar Meu Aplicativo</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleOpenCheckout}
+                      className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 group active:scale-98"
+                    >
+                      <span>Quero acessar o Método Bolso Blindado</span>
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </button>
+                  )}
+
+                  {(!existingSession || existingSession.status !== 'PAID') && (
+                    <div className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowRecoveryModal(true)}
+                        className="text-slate-400 hover:text-emerald-400 text-xs font-medium underline transition cursor-pointer"
+                      >
+                        Já comprou seu acesso? Recuperar acesso
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Trust Badges */}
+                <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-slate-300 font-medium">
+                  <div className="flex items-center justify-center gap-1.5 p-2 bg-slate-800/60 rounded-lg border border-slate-700/60">
+                    <Flame className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    <span>Pix 24h</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5 p-2 bg-slate-800/60 rounded-lg border border-slate-700/60">
+                    <Smartphone className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                    <span>Acesso Imediato</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5 p-2 bg-slate-800/60 rounded-lg border border-slate-700/60">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                    <span>Pagamento Seguro</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right Column: Interactive App Interface Preview */}
+              <div className="lg:col-span-5 flex flex-col items-center">
+                <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4">
+                  
+                  {/* App Header Preview */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold text-xs">
+                        BB
+                      </div>
+                      <span className="text-xs font-bold text-white">Bolso Blindado V1.1</span>
+                    </div>
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">Janeiro 2026</span>
+                  </div>
+
+                  {/* 3 KPIs Mockup */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl">
+                      <div className="text-[10px] text-emerald-400 font-semibold">Entrou</div>
+                      <div className="text-xs font-bold text-white mt-0.5">R$ 5.200</div>
+                    </div>
+                    <div className="bg-rose-950/40 border border-rose-800/40 p-2.5 rounded-xl">
+                      <div className="text-[10px] text-rose-400 font-semibold">Saiu</div>
+                      <div className="text-xs font-bold text-white mt-0.5">R$ 2.450</div>
+                    </div>
+                    <div className="bg-blue-950/40 border border-blue-800/40 p-2.5 rounded-xl">
+                      <div className="text-[10px] text-blue-400 font-semibold">Disponível</div>
+                      <div className="text-xs font-bold text-emerald-300 mt-0.5">R$ 2.750</div>
+                    </div>
+                  </div>
+
+                  {/* Goal Progress Bar */}
+                  <div className="bg-slate-800/60 border border-slate-700/60 p-3 rounded-xl space-y-2">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-300 font-medium">Meta de Economia</span>
+                      <span className="text-emerald-400 font-bold">● Objetivo alcançado</span>
+                    </div>
+                    <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                      <div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full w-full"></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>118% da meta</span>
+                      <span>Guardado: R$ 3.560</span>
+                    </div>
+                  </div>
+
+                  {/* Categorias */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="text-[11px] font-semibold text-slate-300">Onde você mais gastou:</div>
+                    <div className="space-y-1 text-[10px] text-slate-400">
+                      <div className="flex justify-between bg-slate-800/40 p-1.5 rounded">
+                        <span>Moradia & Contas</span>
+                        <span className="font-semibold text-slate-200">R$ 1.200,00</span>
+                      </div>
+                      <div className="flex justify-between bg-slate-800/40 p-1.5 rounded">
+                        <span>Alimentação</span>
+                        <span className="font-semibold text-slate-200">R$ 680,00</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center pt-1 text-[11px] text-emerald-400 font-medium flex items-center justify-center gap-1">
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Disponível no seu celular pelo navegador</span>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+          </section>
+
+          {/* 5 CORE PILLARS & BENEFITS */}
+          <section className="space-y-6">
+            <div className="text-center max-w-2xl mx-auto space-y-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                Simplicidade e Clareza Financeira
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
+                Como o Método Bolso Blindado Funciona na Prática
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Desenvolvido para eliminar o estresse financeiro sem exigir horas preenchendo controles complicados.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              
+              {/* Pillar 1 */}
+              <div className="p-5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-sm">
+                    1
+                  </div>
+                  <h3 className="font-bold text-white text-sm sm:text-base">Entradas e Saídas Descomplicadas</h3>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Registre suas receitas e despesas em poucos toques. Categorias limpas e interface pensada para o uso ágil no dia a dia.
+                </p>
+              </div>
+
+              {/* Pillar 2 */}
+              <div className="p-5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-sm">
+                    2
+                  </div>
+                  <h3 className="font-bold text-white text-sm sm:text-base">Visão do Disponível em Tempo Real</h3>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Saiba exatamente quanto dinheiro você ainda tem livre no mês para gastar com tranquilidade, sem comprometer o básico.
+                </p>
+              </div>
+
+              {/* Pillar 3 */}
+              <div className="p-5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-sm">
+                    3
+                  </div>
+                  <h3 className="font-bold text-white text-sm sm:text-base">Categorização Inteligente</h3>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Identifique os maiores ralos do seu orçamento com gráficos visuais e barras de progresso por categoria de despesa.
+                </p>
+              </div>
+
+              {/* Pillar 4 */}
+              <div className="p-5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-sm">
+                    4
+                  </div>
+                  <h3 className="font-bold text-white text-sm sm:text-base">Método dos 4 Pilares (50/30/20)</h3>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Distribuição orçamentária balanceada para cobrir necessidades, estilo de vida, reserva de emergência e investimentos.
+                </p>
+              </div>
+
+              {/* Pillar 5 */}
+              <div className="p-5 rounded-2xl bg-slate-800/70 border border-slate-700/80 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-sm">
+                    5
+                  </div>
+                  <h3 className="font-bold text-white text-sm sm:text-base">Acesso Direto por Conta Própria</h3>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Aplicativo web moderno para celular e desktop. Crie sua conta com seu e-mail e salve seus lançamentos na nuvem segura.
+                </p>
+              </div>
+
+              {/* Deliverables Summary Card */}
+              <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-700/50 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500 text-slate-900 flex items-center justify-center font-bold text-sm">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-bold text-emerald-300 text-sm sm:text-base">Pacote Completo Incluso</h3>
+                </div>
+                <ul className="text-xs text-slate-200 space-y-1 pt-1">
+                  <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" /> Aplicativo Web Bolso Blindado V1.1</li>
+                  <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" /> Planilha de Gestão Financeira 2026</li>
+                  <li className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" /> Guia Prático de Implementação (PDF)</li>
+                </ul>
+              </div>
+
+            </div>
+          </section>
+
+          {/* INCLUSIONS SECTION */}
+          <section className="bg-slate-800/50 border border-slate-700/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="text-center max-w-xl mx-auto space-y-2">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">
+                O Que Você Recebe Imediatamente
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300">
+                Tudo o que você precisa para assumir o controle financeiro sem complicações.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              
+              <div className="p-4 bg-slate-900/80 border border-slate-700 rounded-xl space-y-2 text-center">
+                <div className="h-10 w-10 mx-auto rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <div className="font-bold text-white text-sm">Web App Bolso Blindado</div>
+                <p className="text-xs text-slate-400">Acesso contínuo pelo celular ou navegador para registrar seus lançamentos.</p>
+              </div>
+
+              <div className="p-4 bg-slate-900/80 border border-slate-700 rounded-xl space-y-2 text-center">
+                <div className="h-10 w-10 mx-auto rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <div className="font-bold text-white text-sm">Planilha de Controle 2026</div>
+                <p className="text-xs text-slate-400">Arquivo estruturado em Excel/Sheets para projeções e acompanhamento anual.</p>
+              </div>
+
+              <div className="p-4 bg-slate-900/80 border border-slate-700 rounded-xl space-y-2 text-center">
+                <div className="h-10 w-10 mx-auto rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="font-bold text-white text-sm">Guia Prático em PDF</div>
+                <p className="text-xs text-slate-400">Manual passo a passo para organizar contas, cortar desperdícios e guardar dinheiro.</p>
+              </div>
+
+            </div>
+          </section>
+
+          {/* FINAL BOTTOM CALL TO ACTION */}
+          <section className="p-6 sm:p-10 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-emerald-900/80 via-slate-900 to-teal-950/80 border border-emerald-700/40 text-white text-center space-y-4 shadow-2xl">
+            <div className="max-w-xl mx-auto space-y-2">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight">
+                Assuma o Controle do Seu Dinheiro Hoje Mesmo
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Sem mensalidades, sem complicação. Pagamento único com liberação imediata via Pix.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              {existingSession && existingSession.status === 'PAID' ? (
+                <button
+                  onClick={handleOpenCheckout}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/30 flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Acessar Meu Aplicativo</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleOpenCheckout}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/40 flex items-center justify-center gap-2"
+                >
+                  <span>Quero acessar o Método Bolso Blindado (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </section>
+
+        </main>
+
+        {/* Public Footer */}
+        <footer className="border-t border-slate-800 bg-slate-950 py-6 sm:py-8 text-slate-400 text-xs mt-8">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+            <div className="space-y-0.5">
+              <p className="font-bold text-white text-sm">BOLSO BLINDADO</p>
+              <p className="text-slate-500 text-[11px]">NORQVA Intelligence • Unidade de Tecnologia & Finanças Pessoais</p>
+            </div>
+            <div className="text-[11px] text-slate-500 space-y-0.5 sm:text-right">
+              <p>Atendimento & Suporte: <a href="mailto:suporte@norqva.com" className="text-emerald-400 underline">suporte@norqva.com</a></p>
+              <p>© {new Date().getFullYear()} NORQVA Intelligence Ltda. Todos os direitos reservados.</p>
+            </div>
+          </div>
+        </footer>
+
+        {/* Step 1: Checkout Form Modal */}
+        {showCheckout && (
+          <CheckoutView
+            offer={offer as any}
+            isDemo={offer.is_demo}
+            initialCustomer={customerDraft}
+            onCustomerChange={setCustomerDraft}
+            onOrderCreated={(order) => {
+              setShowCheckout(false);
+              if (order?.id && order?.checkout_token) {
+                savePurchaseSession({
+                  orderId: order.id,
+                  checkoutToken: order.checkout_token,
+                  offerHumanId: offer?.human_id || 'OFF-BOLSO-BLINDADO-2990',
+                  status: 'PENDING',
+                  offerName: offer?.name
+                });
+              }
+              setActivePaymentOrder(order);
+            }}
+            onCancel={() => setShowCheckout(false)}
+            showError={showError}
+            showSuccess={showSuccess}
+          />
+        )}
+
+        {/* Step 2: Payment / Pix Status Modal */}
+        {activePaymentOrder && !activeDeliveryOrder && (
+          <PaymentStatus
+            orderId={activePaymentOrder.id}
+            checkoutToken={activePaymentOrder.checkout_token}
+            amount={activePaymentOrder.total_amount || activePrice}
+            isDemo={offer.is_demo}
+            onPaymentConfirmed={() => {
+              updatePurchaseSessionStatus(activePaymentOrder.id, 'PAID');
+              navigate(`/pedido/${activePaymentOrder.id}/entrega#token=${activePaymentOrder.checkout_token}`);
+            }}
+            onBackToCheckout={() => {
+              setActivePaymentOrder(null);
+              setShowCheckout(true);
+            }}
+            onClose={() => {
+              setActivePaymentOrder(null);
+            }}
+            showError={showError}
+            showSuccess={showSuccess}
+          />
+        )}
+
+        {/* Step 3: Digital Delivery View Modal */}
+        {activeDeliveryOrder && (
+          <DigitalDelivery
+            orderId={activeDeliveryOrder.id}
+            checkoutToken={activeDeliveryOrder.checkout_token}
+            isDemo={offer.is_demo}
+            onClose={() => {
+              setActiveDeliveryOrder(null);
+              setActivePaymentOrder(null);
+            }}
+            showError={showError}
+            showSuccess={showSuccess}
+          />
+        )}
+
+        {/* Recovery Request Modal */}
+        {showRecoveryModal && (
+          <RecoveryRequestModal
+            offerHumanId={offer?.human_id || humanId}
+            onClose={() => setShowRecoveryModal(false)}
+            showError={showError}
+            showSuccess={showSuccess}
+          />
+        )}
+
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW: TRATTORIA CULINARY OFFER EXPERIENCE (PRESERVED)
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-stone-800 flex flex-col justify-between selection:bg-[#B83B1E]/20 selection:text-[#8F2810] font-sans antialiased">
       

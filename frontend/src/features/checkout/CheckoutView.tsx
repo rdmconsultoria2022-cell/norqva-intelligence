@@ -89,8 +89,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       return;
     }
 
+    const isBolso = Boolean(
+      offer?.human_id?.toUpperCase().includes('BOLSO') ||
+      offer?.name?.toLowerCase().includes('bolso')
+    );
+
     if (!emailValid) {
-      showError('Informe um e-mail válido para receber o livro digital.');
+      showError(isBolso ? 'Informe um e-mail válido para receber o acesso.' : 'Informe um e-mail válido para receber o livro digital.');
       return;
     }
 
@@ -239,36 +244,46 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         </div>
 
         {/* Product Summary Card */}
-        <div className="p-4 rounded-xl bg-white border border-stone-200/90 mb-6 shadow-sm space-y-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-900 shrink-0 border border-stone-300 shadow-sm">
-                <img 
-                  src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
-                  alt="Capa do Livro"
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#B83B1E] block">
-                  Livro Digital Oficial
-                </span>
-                <h4 className="text-sm font-serif font-bold text-stone-900 leading-tight">
-                  {offer.name}
-                </h4>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  28 Preparações • PDF de Alta Resolução
-                </p>
+        {(() => {
+          const isBolso = Boolean(
+            offer.human_id?.toUpperCase().includes('BOLSO') ||
+            offer.name?.toLowerCase().includes('bolso')
+          );
+          return (
+            <div className="p-4 rounded-xl bg-white border border-stone-200/90 mb-6 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  {!isBolso && (
+                    <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-900 shrink-0 border border-stone-300 shadow-sm">
+                      <img 
+                        src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
+                        alt="Capa do Livro"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#B83B1E] block">
+                      {isBolso ? 'Método & Aplicativo Web' : 'Livro Digital Oficial'}
+                    </span>
+                    <h4 className="text-sm font-serif font-bold text-stone-900 leading-tight">
+                      {offer.name}
+                    </h4>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      {isBolso ? 'Acesso ao Web App + Planilha + Guia Prático' : '28 Preparações • PDF de Alta Resolução'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xl font-serif font-bold text-[#B83B1E]">
+                    R${displayPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="text-right shrink-0">
-              <div className="text-xl font-serif font-bold text-[#B83B1E]">
-                R${displayPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </div>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Customer & Order Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -336,7 +351,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               </p>
             ) : (
               <span className="text-[11px] text-stone-500 mt-1 block">
-                Você receberá seu e-book e os links de acesso permanente neste e-mail.
+                {offer.human_id?.toUpperCase().includes('BOLSO') || offer.name?.toLowerCase().includes('bolso')
+                  ? 'Você receberá os links e dados de acesso neste e-mail.'
+                  : 'Você receberá seu e-book e os links de acesso permanente neste e-mail.'}
               </span>
             )}
           </div>

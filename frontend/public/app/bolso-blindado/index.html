@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NORQVA — Bolso Blindado V1.1</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Supabase JS Client v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.ENV = {
+      SUPABASE_URL: 'https://ikekbotxngcgqyojtwjb.supabase.co',
+      SUPABASE_ANON_KEY: 'sb_publishable_2Hj91wCQhD5efqcgWa-NSw_73DW5Pe9'
+    };
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-row">
+        <div class="brand-title-group">
+          <span class="brand-institutional">NORQVA</span>
+          <h1 class="brand-product">Bolso Blindado</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn-auth-header" id="btnHeaderAuth">Entrar</button>
+          <span class="user-badge" id="userProfileBadge" style="display: none;">Usuário</span>
+          <div class="period-badge" id="currentPeriodBadge">Janeiro 2026</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Views Container -->
+    <main class="app-main">
+      <!-- 1. INÍCIO (Home / Dashboard) -->
+      <section id="view-inicio" class="view-section active">
+        <!-- Greeting -->
+        <div class="card greeting-card">
+          <div class="greeting-text">Organização Financeira Pessoal</div>
+          <div class="greeting-headline">Vamos ver como está seu mês?</div>
+        </div>
+
+        <!-- 3 KPIs Principais -->
+        <div class="kpi-grid">
+          <div class="kpi-card income">
+            <span class="kpi-label">Entrou</span>
+            <span class="kpi-value" id="kpiIncome">R$ 0,00</span>
+          </div>
+          <div class="kpi-card expense">
+            <span class="kpi-label">Saiu</span>
+            <span class="kpi-value" id="kpiExpense">R$ 0,00</span>
+          </div>
+          <div class="kpi-card balance">
+            <span class="kpi-label">Disponível</span>
+            <span class="kpi-value" id="kpiBalance">R$ 0,00</span>
+          </div>
+        </div>
+
+        <!-- DYNAMIC FINANCIAL GOAL PROGRESS -->
+        <div class="card goal-card" id="homeGoalCard">
+          <div class="goal-header-row">
+            <div>
+              <h2 class="card-title" style="margin-bottom: 2px;">Como está seu objetivo este mês?</h2>
+              <div style="font-size: 12px; color: var(--text-muted);" id="goalTargetSublabel">Meta de economia: R$ 3.000,00</div>
+            </div>
+            <div class="goal-status-badge state-achieved" id="goalStatusBadge">
+              ● <span id="goalStatusLabel">Objetivo alcançado</span>
+            </div>
+          </div>
+
+          <div class="goal-progress-wrap">
+            <div class="goal-progress-bar-bg">
+              <div class="goal-progress-bar-fill state-achieved" id="goalProgressBarFill" style="width: 100%;"></div>
+            </div>
+            <div class="goal-stats-row">
+              <span class="goal-pct-text" id="goalPctText">118,7% do objetivo</span>
+              <span class="goal-current-text" id="goalCurrentText">Economizado: R$ 3.562,50</span>
+            </div>
+          </div>
+
+          <div class="goal-message-box state-achieved" id="goalMessageBox">
+            Excelente. Você alcançou seu objetivo deste mês. Continue mantendo esse ritmo.
+          </div>
+        </div>
+
+        <!-- Primary Action -->
+        <div style="margin-bottom: 16px;">
+          <button class="btn-primary" id="btnOpenAddModal">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Adicionar lançamento
+          </button>
+        </div>
+
+        <!-- Onde você mais gastou -->
+        <div class="card">
+          <h2 class="card-title">Onde você mais gastou</h2>
+          <div class="card-subtitle">Maiores categorias de despesa no mês</div>
+          <div id="topCategoriesContainer">
+            <!-- Dynamic Category Progress Bars -->
+          </div>
+        </div>
+
+        <!-- Últimos Lançamentos -->
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 class="card-title" style="margin: 0;">Últimos lançamentos</h2>
+            <button class="btn-icon" style="font-size: 12px; font-weight: 600; color: var(--accent-olive);" id="btnViewAllHome">Ver todos</button>
+          </div>
+          <ul class="tx-list" id="recentTransactionsList">
+            <!-- Dynamic List -->
+          </ul>
+        </div>
+      </section>
+
+      <!-- 2. LANÇAMENTOS (Transactions List) -->
+      <section id="view-lancamentos" class="view-section">
+        <div style="margin-bottom: 16px;">
+          <button class="btn-primary" id="btnOpenAddModalList">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Adicionar lançamento
+          </button>
+        </div>
+
+        <div class="filter-bar">
+          <button class="filter-chip active" data-filter="all">Todos</button>
+          <button class="filter-chip" data-filter="Despesa">Despesas</button>
+          <button class="filter-chip" data-filter="Receita">Receitas</button>
+        </div>
+
+        <div class="card" style="padding: 12px 16px;">
+          <ul class="tx-list" id="allTransactionsList">
+            <!-- Dynamic Full Transaction List -->
+          </ul>
+        </div>
+      </section>
+
+      <!-- 3. PLANEJAMENTO (Goals & Pillars) -->
+      <section id="view-planejamento" class="view-section">
+        <!-- Meta Mensal de Economia Config -->
+        <div class="card">
+          <h2 class="card-title">Objetivo Mensal de Economia</h2>
+          <div class="card-subtitle">Defina quanto você deseja poupar a cada mês</div>
+          <form id="goalSettingForm" style="display: flex; gap: 10px; align-items: flex-end;">
+            <div style="flex: 1;">
+              <label class="form-label" for="inputMonthlyGoal">Meta Mensal (R$)</label>
+              <input type="number" step="50" min="0" class="form-input" id="inputMonthlyGoal" value="3000" required>
+            </div>
+            <button type="submit" class="btn-secondary" style="height: 46px;">Salvar Meta</button>
+          </form>
+        </div>
+
+        <!-- Reserva de Emergência -->
+        <div class="card">
+          <h2 class="card-title">Reserva de Emergência</h2>
+          <div class="card-subtitle">Blindagem para até 6 meses de segurança</div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+            <span>Acumulado: <b id="reserveCurrentVal">R$ 8.500,00</b></span>
+            <span style="color: var(--semantic-income);" id="reservePercent">42,5%</span>
+          </div>
+          <div class="progress-bar-bg" style="height: 10px; margin-bottom: 12px;">
+            <div class="progress-bar-fill" id="reserveProgressFill" style="width: 42.5%; background-color: var(--semantic-income);"></div>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted);">Meta Total Estabelecida: <b id="reserveGoalVal">R$ 20.000,00</b></div>
+        </div>
+
+        <!-- 4 Pilares -->
+        <div class="card">
+          <h2 class="card-title">Alocação dos 4 Pilares</h2>
+          <div class="card-subtitle">Divisão percentual calculada sobre a sua receita total</div>
+          
+          <div class="category-item">
+            <div class="category-header">
+              <span class="category-name">1. Custos Essenciais (Meta: 50%)</span>
+              <span class="category-amount" id="pillarEssencialVal">R$ 0,00 (0%)</span>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="pillarEssencialBar" style="width: 0%; background-color: var(--accent-olive);"></div></div>
+          </div>
+
+          <div class="category-item">
+            <div class="category-header">
+              <span class="category-name">2. Estilo de Vida (Meta: 30%)</span>
+              <span class="category-amount" id="pillarConfortoVal">R$ 0,00 (0%)</span>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="pillarConfortoBar" style="width: 0%; background-color: var(--semantic-warning);"></div></div>
+          </div>
+
+          <div class="category-item">
+            <div class="category-header">
+              <span class="category-name">3. Reserva & Blindagem (Meta: 20%)</span>
+              <span class="category-amount" id="pillarReservaVal">R$ 0,00 (0%)</span>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="pillarReservaBar" style="width: 0%; background-color: var(--semantic-income);"></div></div>
+          </div>
+
+          <div class="category-item">
+            <div class="category-header">
+              <span class="category-name">4. Dívidas & Ajustes</span>
+              <span class="category-amount" id="pillarDividasVal">R$ 0,00 (0%)</span>
+            </div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="pillarDividasBar" style="width: 0%; background-color: var(--semantic-expense);"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. AJUSTES (Settings) -->
+      <section id="view-ajustes" class="view-section">
+        <!-- Conta & Sincronização em Nuvem -->
+        <div class="card">
+          <h2 class="card-title">Conta & Nuvem Segura</h2>
+          <div class="card-subtitle">Sincronização multiusuário com isolamento de dados</div>
+          <div id="authStatusCard" style="margin-top: 8px;">
+            <!-- Dynamic Auth Status -->
+          </div>
+        </div>
+
+        <!-- Dados e Demonstração -->
+        <div class="card">
+          <h2 class="card-title">Dados e Demonstração</h2>
+          <div class="card-subtitle">Controle de armazenamento local e limpeza</div>
+          
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button class="btn-secondary" id="btnResetDemo">Restaurar Dados de Demonstração (Local)</button>
+            <button class="btn-danger" id="btnClearAll">Limpar Todos os Lançamentos</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">Categorias do Sistema</h2>
+          <div class="card-subtitle">Categorias ativas para classificação de lançamentos</div>
+          <ul class="tx-list" id="settingsCategoriesList">
+            <!-- Dynamic Categories List -->
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">Sobre o Produto</h2>
+          <div style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+            <b>NORQVA — Bolso Blindado</b><br>
+            Versão: 1.1.0 Commercial Multi-User Ready<br>
+            Arquitetura: PostgreSQL + Supabase Row Level Security (RLS)
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-view="inicio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+        Início
+      </button>
+      <button class="nav-btn" data-view="lancamentos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+        Lançamentos
+      </button>
+      <button class="nav-btn" data-view="planejamento">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+        Planejamento
+      </button>
+      <button class="nav-btn" data-view="ajustes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        Ajustes
+      </button>
+    </nav>
+
+    <!-- Modal: Adicionar / Editar Lançamento -->
+    <div class="modal-backdrop" id="txModalBackdrop">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title" id="txModalTitle">Adicionar Lançamento</h3>
+          <button class="btn-icon" id="btnCloseModal">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <form id="txForm" class="tx-form">
+          <input type="hidden" id="formTxId">
+          
+          <div class="type-toggle-group">
+            <button type="button" class="btn-type active" id="btnTypeExpense">Despesa</button>
+            <button type="button" class="btn-type" id="btnTypeIncome">Receita</button>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="formAmount">Valor (R$)</label>
+            <input type="number" step="0.01" class="form-input" id="formAmount" placeholder="0,00" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="formDesc">Descrição</label>
+            <input type="text" class="form-input" id="formDesc" placeholder="Ex: Supermercado, Salário, Internet" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="formCategory">Categoria</label>
+            <select class="form-select" id="formCategory" required></select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="formDate">Data</label>
+            <input type="date" class="form-input" id="formDate" required>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button type="button" class="btn-secondary" id="btnCancelForm" style="flex: 1;">Cancelar</button>
+            <button type="submit" class="btn-primary" id="btnSaveTx" style="flex: 1;">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Autenticação (Login / Registro / Recuperação) -->
+    <div class="modal-backdrop" id="authModalBackdrop">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title" id="authModalTitle">Entrar no Bolso Blindado</h3>
+          <button class="btn-icon" id="btnCloseAuthModal">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <form id="authForm" class="tx-form">
+          <div class="auth-error-box" id="authErrorBox" style="display: none;"></div>
+
+          <div class="form-group" id="authNameGroup" style="display: none;">
+            <label class="form-label" for="authName">Seu Nome Completo</label>
+            <input type="text" class="form-input" id="authName" placeholder="Ex: Maria Silva">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="authEmail">E-mail</label>
+            <input type="email" class="form-input" id="authEmail" placeholder="seuemail@exemplo.com" required>
+          </div>
+
+          <div class="form-group" id="authPasswordGroup">
+            <label class="form-label" for="authPassword">Senha</label>
+            <input type="password" class="form-input" id="authPassword" placeholder="••••••••" minlength="6">
+          </div>
+
+          <div style="margin-top: 16px;">
+            <button type="submit" class="btn-primary" id="authSubmitBtn" style="width: 100%;">Entrar</button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px; text-align: center; font-size: 13px;">
+            <a href="javascript:void(0)" id="authToggleRegister" style="color: var(--accent-olive); text-decoration: underline; font-weight: 500;">Não tem uma conta? Cadastre-se</a>
+            <a href="javascript:void(0)" id="authToggleForgot" style="color: var(--text-muted); font-size: 12px;">Esqueci minha senha</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
