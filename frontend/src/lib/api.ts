@@ -2,13 +2,24 @@ import { supabase } from '../supabase';
 import { UserObj } from '../types';
 
 const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-const envBase = (import.meta as any).env?.VITE_API_BASE_URL;
+const envBase = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL
+  ? String((import.meta as any).env.VITE_API_BASE_URL).trim()
+  : undefined;
+
+export function resolveApiBase(customUrl?: string, isTestEnv: boolean = isTest): string {
+  const url = (customUrl !== undefined ? customUrl : envBase)?.trim();
+  if (isTestEnv) {
+    return url || '/api';
+  }
+  if (!url) {
+    throw new Error('[API CONFIGURATION ERROR]: VITE_API_BASE_URL is not configured. Direct fallback to legacy backends is prohibited.');
+  }
+  return url.replace(/\/+$/, '');
+}
 
 export const API_BASE = isTest
   ? (envBase || '/api')
-  : (envBase && !envBase.includes('staging') 
-      ? envBase 
-      : 'https://norqva-production-backend.onrender.com/api');
+  : (envBase ? envBase.replace(/\/+$/, '') : '');
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt: number = 0;
@@ -55,7 +66,8 @@ export async function apiFetch(
     }
   }
 
-  const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
+  const base = isTest ? (API_BASE || '/api') : resolveApiBase();
+  const res = await fetch(`${base}${url}`, { ...options, headers });
   const data = await res.json();
 
   if (!res.ok) {
@@ -68,7 +80,7 @@ export async function apiFetch(
           ...headers,
           'Authorization': `Bearer ${refreshData.session.access_token}`
         };
-        const retryRes = await fetch(`${API_BASE}${url}`, { ...options, headers: retryHeaders });
+        const retryRes = await fetch(`${base}${url}`, { ...options, headers: retryHeaders });
         const retryData = await retryRes.json();
         if (retryRes.ok) {
           return retryData;
