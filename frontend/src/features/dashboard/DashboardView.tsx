@@ -199,46 +199,73 @@ export function DashboardView({
   const globalTruth = perf?.globalCommercialTruth || null;
   const mediaTruth = perf?.attributedMediaTruth || null;
   const funnel = perf?.funnelIntegrity || null;
-  const perfByCampaign = (Array.isArray(perf?.byCampaign) && perf.byCampaign.length > 0)
+  const rawCampaigns = (Array.isArray(perf?.byCampaign) && perf.byCampaign.length > 0)
     ? perf.byCampaign
-    : (finByCampaign.map((c: any) => ({
-        entityId: c.campaignId || c.id || c.metaCampaignId,
-        entityName: c.campaignName || c.name,
-        metaId: c.metaCampaignId || c.id,
-        status: c.effectiveStatus || c.status || 'ACTIVE',
-        spend: c.spend || 0,
-        clicks: c.clicks || 0,
-        impressions: c.impressions || 0,
-        ctr: c.ctr ?? null,
-        cpc: c.cpc ?? null,
-        attributedPaidOrders: c.attributedOrders ?? c.attributedPaidOrders ?? 0,
-        attributedGrossRevenue: c.attributedRevenue ?? c.attributedGrossRevenue ?? 0,
-        resultAfterMedia: c.resultAfterMedia ?? ((c.attributedRevenue || 0) - (c.spend || 0)),
-        cac: c.cac ?? null,
-        roas: c.roas ?? null,
-        performanceStatus: c.performanceStatus || 'OBSERVING'
-      })));
-  const perfByAdSet = Array.isArray(perf?.byAdSet) ? perf.byAdSet : [];
-  const perfByAd = (Array.isArray(perf?.byAd) && perf.byAd.length > 0)
+    : finByCampaign;
+
+  const perfByCampaign = rawCampaigns.map((c: any) => ({
+    ...c,
+    entityId: c.entityId || c.campaignId || c.id || c.metaCampaignId,
+    entityName: c.entityName || c.campaignName || c.name,
+    metaId: c.metaId || c.metaCampaignId || c.id,
+    status: c.status || c.effectiveStatus || 'ACTIVE',
+    spend: c.spend ?? 0,
+    clicks: c.clicks ?? 0,
+    impressions: c.impressions ?? 0,
+    ctr: c.ctr ?? null,
+    cpc: c.cpc ?? null,
+    attributedPaidOrders: c.attributedPaidOrders ?? c.attributedOrders ?? 0,
+    attributedGrossRevenue: c.attributedGrossRevenue ?? c.attributedRevenue ?? 0,
+    resultAfterMedia: c.resultAfterMedia ?? c.contributionAfterMedia ?? ((c.attributedRevenue || c.attributedGrossRevenue || 0) - (c.spend || 0)),
+    cac: c.cac ?? null,
+    roas: c.roas ?? null,
+    performanceStatus: c.performanceStatus || c.sampleStatus || 'OBSERVING'
+  }));
+
+  const rawAdSets = Array.isArray(perf?.byAdSet) ? perf.byAdSet : [];
+  const perfByAdSet = rawAdSets.map((as: any) => ({
+    ...as,
+    entityId: as.entityId || as.adsetId || as.id || as.metaAdsetId,
+    entityName: as.entityName || as.adsetName || as.name,
+    parentCampaignName: as.parentCampaignName || as.campaignName,
+    metaId: as.metaId || as.metaAdsetId || as.adsetId || as.id,
+    status: as.status || 'ACTIVE',
+    spend: as.spend ?? 0,
+    clicks: as.clicks ?? 0,
+    impressions: as.impressions ?? 0,
+    ctr: as.ctr ?? null,
+    cpc: as.cpc ?? null,
+    attributedPaidOrders: as.attributedPaidOrders ?? as.attributedOrders ?? 0,
+    attributedGrossRevenue: as.attributedGrossRevenue ?? as.attributedRevenue ?? 0,
+    resultAfterMedia: as.resultAfterMedia ?? as.contributionAfterMedia ?? ((as.attributedRevenue || as.attributedGrossRevenue || 0) - (as.spend || 0)),
+    cac: as.cac ?? null,
+    roas: as.roas ?? null,
+    performanceStatus: as.performanceStatus || as.sampleStatus || 'OBSERVING'
+  }));
+
+  const rawAds = (Array.isArray(perf?.byAd) && perf.byAd.length > 0)
     ? perf.byAd
-    : (finByCreative.map((ad: any) => ({
-        entityId: ad.adId || ad.id || ad.metaAdId,
-        entityName: ad.adName || ad.name,
-        parentCampaignName: ad.campaignName,
-        metaId: ad.metaAdId || ad.adId || ad.id,
-        status: ad.status || 'ACTIVE',
-        spend: ad.spend || 0,
-        clicks: ad.clicks || 0,
-        impressions: ad.impressions || 0,
-        ctr: ad.ctr ?? null,
-        cpc: ad.cpc ?? null,
-        attributedPaidOrders: ad.attributedOrders ?? ad.attributedPaidOrders ?? 0,
-        attributedGrossRevenue: ad.attributedRevenue ?? ad.attributedGrossRevenue ?? 0,
-        resultAfterMedia: ad.resultAfterMedia ?? ((ad.attributedRevenue || 0) - (ad.spend || 0)),
-        cac: ad.cac ?? null,
-        roas: ad.roas ?? null,
-        performanceStatus: ad.performanceStatus || 'OBSERVING'
-      })));
+    : finByCreative;
+
+  const perfByAd = rawAds.map((ad: any) => ({
+    ...ad,
+    entityId: ad.entityId || ad.adId || ad.id || ad.metaAdId,
+    entityName: ad.entityName || ad.adName || ad.name,
+    parentCampaignName: ad.parentCampaignName || ad.campaignName,
+    metaId: ad.metaId || ad.metaAdId || ad.adId || ad.id,
+    status: ad.status || 'ACTIVE',
+    spend: ad.spend ?? 0,
+    clicks: ad.clicks ?? 0,
+    impressions: ad.impressions ?? 0,
+    ctr: ad.ctr ?? null,
+    cpc: ad.cpc ?? null,
+    attributedPaidOrders: ad.attributedPaidOrders ?? ad.attributedOrders ?? 0,
+    attributedGrossRevenue: ad.attributedGrossRevenue ?? ad.attributedRevenue ?? 0,
+    resultAfterMedia: ad.resultAfterMedia ?? ad.contributionAfterMedia ?? ((ad.attributedRevenue || ad.attributedGrossRevenue || 0) - (ad.spend || 0)),
+    cac: ad.cac ?? null,
+    roas: ad.roas ?? null,
+    performanceStatus: ad.performanceStatus || ad.sampleStatus || 'OBSERVING'
+  }));
 
   if (activeSubView === 'executive' && loading && !execData) {
     return (
