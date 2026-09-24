@@ -75,7 +75,8 @@ import {
   uploadStorageAsset,
   reissueOrderDelivery,
   requestOrderRecovery,
-  claimOrderRecovery
+  claimOrderRecovery,
+  getCreativePerformance
 } from './controllers/api';
 
 import {
@@ -325,6 +326,9 @@ app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREAT
 app.get('/api/meta/insights', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaInsights);
 app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
 app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDestinationUrl);
+
+// Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
+app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
 
 // Market Discovery Core (Gate 07.7 - Read-Only Market Exploration)
 app.get('/api/market-discovery/probe', getMarketDiscoveryProbe);

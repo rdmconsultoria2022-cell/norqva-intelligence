@@ -5531,6 +5531,33 @@ export async function getAttributionAnalytics(req: AuthenticatedRequest, res: Re
   }
 }
 
+import { CreativePerformanceService } from '../services/intelligence/creativePerformanceService';
+
+export async function getCreativePerformance(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const campaign_id = req.query.campaign_id as string | undefined;
+    const adset_id = req.query.adset_id as string | undefined;
+    const date_from = req.query.date_from as string | undefined;
+    const date_to = req.query.date_to as string | undefined;
+
+    const service = new CreativePerformanceService();
+    const result = await service.getCreativePerformance(pool, {
+      is_demo: isDemo,
+      campaign_id,
+      adset_id,
+      date_from,
+      date_to
+    });
+
+    return res.status(200).json(result);
+  } catch (err: any) {
+    console.error('getCreativePerformance error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to retrieve creative performance intelligence.' });
+  }
+}
+
 
 
 
