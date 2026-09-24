@@ -12,6 +12,7 @@ import {
   User,
   LogOut,
   TrendingUp,
+  BarChart3,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -27,6 +28,8 @@ export interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   handleSignOut: () => void;
+  onNavigate?: () => void;
+  onClose?: () => void;
 }
 
 const navigationItems: NavigationItem[] = [
@@ -37,6 +40,7 @@ const navigationItems: NavigationItem[] = [
   { id: 'creatives', label: 'Creative Lab', icon: Film },
   { id: 'experiments', label: 'Experimentos', icon: FlaskConical },
   { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
+  { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
   { id: 'decisions', label: 'Decisões', icon: Scale },
   { id: 'team', label: 'Equipe', icon: Users },
   { id: 'config', label: 'Configurações', icon: Settings }
@@ -46,20 +50,35 @@ export function Sidebar({
   currentUser,
   activeTab,
   setActiveTab,
-  handleSignOut
+  handleSignOut,
+  onNavigate,
+  onClose
 }: SidebarProps) {
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
+    <aside className="w-64 h-full bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
       <div>
         {/* Brand Header */}
-        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          <svg viewBox="0 0 100 100" className="h-6 w-6">
-            <polygon points="50,15 90,85 10,85" className="fill-emerald-500" />
-          </svg>
-          <div>
-            <span className="text-lg font-black tracking-widest text-emerald-400 font-mono">NORQVA</span>
-            <div className="text-[9px] uppercase tracking-widest font-mono text-slate-500">Intelligence V1</div>
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <svg viewBox="0 0 100 100" className="h-6 w-6">
+              <polygon points="50,15 90,85 10,85" className="fill-emerald-500" />
+            </svg>
+            <div>
+              <span className="text-lg font-black tracking-widest text-emerald-400 font-mono">NORQVA</span>
+              <div className="text-[9px] uppercase tracking-widest font-mono text-slate-500">Intelligence V1</div>
+            </div>
           </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="md:hidden p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              aria-label="Fechar menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Navigation Links */}
@@ -69,7 +88,10 @@ export function Sidebar({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  onNavigate?.();
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-semibold uppercase tracking-wider transition ${
                   activeTab === item.id
                     ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-500/30'
