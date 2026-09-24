@@ -94,6 +94,7 @@ import {
 
 import { recordFunnelEvent, getFunnelEventsSummary } from './controllers/telemetryController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
+import { MetaSchedulerService } from './services/meta/metaSchedulerService';
 
 import { securityHeaders } from './middleware/securityHeaders';
 import { configureCors } from './middleware/cors';
@@ -362,6 +363,13 @@ async function startServer() {
     });
 
     setupGracefulShutdown(server, pool);
+
+    // Initialize Automated Meta Analytics Scheduler (Non-blocking / Isolated)
+    try {
+      MetaSchedulerService.getInstance().start(pool);
+    } catch (schedulerErr: any) {
+      console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
+    }
   } catch (err) {
     console.error('[Server] Initialization failed:', err);
     process.exit(1);

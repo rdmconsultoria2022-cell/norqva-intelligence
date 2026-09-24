@@ -4102,6 +4102,7 @@ export async function unlinkOfferDigitalAsset(req: AuthenticatedRequest, res: Re
 
 import { MetaClient } from '../services/meta/metaClient';
 import { MetaSyncService } from '../services/meta/metaSyncService';
+import { MetaSchedulerService } from '../services/meta/metaSchedulerService';
 
 export async function getMetaConnectionStatus(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
@@ -4115,6 +4116,7 @@ export async function getMetaConnectionStatus(req: AuthenticatedRequest, res: Re
   try {
     const client = new MetaClient();
     const liveStatus = await client.validateConnection(isDemo);
+    const schedulerStatus = MetaSchedulerService.getInstance().getStatus();
 
     // Read last recorded DB connection info
     const dbConnRes = await pool.query(
@@ -4137,6 +4139,11 @@ export async function getMetaConnectionStatus(req: AuthenticatedRequest, res: Re
       lastValidatedAt: liveStatus.lastValidatedAt || dbConn?.last_validated_at,
       tokenExpirationStatus: liveStatus.tokenExpirationStatus,
       apiVersion: client.getApiVersion(),
+      scheduler: schedulerStatus,
+      lastMetaSync: schedulerStatus.lastMetaSync,
+      lastMetaSyncStatus: schedulerStatus.lastMetaSyncStatus,
+      lastMetaSyncDurationMs: schedulerStatus.lastMetaSyncDurationMs,
+      nextMetaSync: schedulerStatus.nextMetaSync,
       error: liveStatus.error
     });
   } catch (err: any) {
@@ -4362,8 +4369,20 @@ export async function syncMetaData(req: AuthenticatedRequest, res: Response) {
   const isDemo = req.query.mode === 'demo';
 
   try {
-    const syncService = new MetaSyncService();
-    const result = await syncService.syncAll(pool, req.user?.id || null, isDemo);
+    const schedulerService = MetaSchedulerService.getInstance();
+    const result = await schedulerService.executeSyncCycle({
+      trigger: 'MANUAL',
+      userId: req.user?.id || null,
+      isDemo
+    });
+
+    if ('skipped' in result && result.skipped) {
+      return res.status(409).json({
+        error: 'A Meta synchronization cycle is already in progress. Please wait for it to complete.',
+        reason: result.reason
+      });
+    }
+
     return res.status(200).json({
       message: 'Meta acquisition data synchronized successfully.',
       result
