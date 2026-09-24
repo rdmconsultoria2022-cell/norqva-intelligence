@@ -20,6 +20,14 @@ declare global {
   }
 }
 
+export interface MetaViewContentParams {
+  contentName: string;
+  contentIds: string[];
+  contentType?: string;
+  value?: number;
+  currency?: 'BRL';
+}
+
 export interface MetaInitiateCheckoutParams {
   orderId: string;
   value: number;
@@ -41,8 +49,26 @@ let lastTrackedPath: string | null = null;
 let environmentOverrideForTesting: boolean | null = null;
 
 // In-memory deduplication sets for current browser tab session
+const sentViewContents = new Set<string>();
 const sentInitiateCheckouts = new Set<string>();
 const sentPurchases = new Set<string>();
+
+/**
+ * Checks whether a given pathname belongs to a public commercial route
+ * (/p/*, /pedido/*, /acesso/*). These routes must always initialize Meta Pixel
+ * independently of internal admin authentication or demo mode.
+ */
+export function isPublicCommercialRoute(pathname: string): boolean {
+  if (!pathname) return false;
+  return (
+    pathname.startsWith('/p/') ||
+    pathname.startsWith('/pedido/') ||
+    pathname.startsWith('/acesso/') ||
+    pathname === '/p' ||
+    pathname === '/pedido' ||
+    pathname === '/acesso'
+  );
+}
 
 /**
  * Retrieves the configured Meta Pixel ID from environment variables.
@@ -156,6 +182,64 @@ export function trackPageView(path?: string): void {
     }
   } catch (err) {
     console.error('[Meta Pixel]: Failed to track PageView safely:', err);
+  }
+}
+
+/**
+ * Tracks a ViewContent event when a customer views a public commercial offer.
+ * Deduplicated per content identifier to prevent duplicate fires during component re-renders.
+ * 
+ * @param params MetaViewContentParams
+ */
+export function trackViewContent(params: MetaViewContentParams): boolean {
+  if (!isPixelEnvironmentAllowed()) {
+    return false;
+  }
+
+  // Ensure Pixel is initialized
+  if (!isInitialized) {
+    initMetaPixel();
+  }
+
+  if (!params || !params.contentName) {
+    return false;
+  }
+
+  const contentIds = Array.isArray(params.contentIds) && params.contentIds.length > 0
+    ? params.contentIds.map(String)
+    : [params.contentName];
+  const dedupeKey = `${contentIds.join(',')}_${params.contentName}`;
+
+  // Deduplication guard
+  if (sentViewContents.has(dedupeKey)) {
+    return false;
+  }
+
+  try {
+    const rawVal = params.value !== undefined ? Number(params.value) : undefined;
+    const value = rawVal !== undefined && !isNaN(rawVal) && rawVal >= 0 ? Number(rawVal.toFixed(2)) : undefined;
+    const currency = params.currency || 'BRL';
+
+    const payload: Record<string, any> = {
+      content_name: params.contentName,
+      content_ids: contentIds,
+      content_type: params.contentType || 'product'
+    };
+
+    if (value !== undefined) {
+      payload.value = value;
+      payload.currency = currency;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+      window.fbq('track', 'ViewContent', payload);
+      sentViewContents.add(dedupeKey);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('[Meta Pixel]: Failed to track ViewContent safely:', err);
+    return false;
   }
 }
 
@@ -321,6 +405,7 @@ export function isMetaPixelInitialized(): boolean {
  * Resets the in-memory sets while preserving persistent storage (simulating new browser session).
  */
 export function clearInMemoryDeduplicationForTesting(): void {
+  sentViewContents.clear();
   sentInitiateCheckouts.clear();
   sentPurchases.clear();
 }
@@ -332,6 +417,7 @@ export function resetMetaPixelForTesting(): void {
   isInitialized = false;
   lastTrackedPath = null;
   environmentOverrideForTesting = null;
+  sentViewContents.clear();
   sentInitiateCheckouts.clear();
   sentPurchases.clear();
   if (typeof window !== 'undefined') {

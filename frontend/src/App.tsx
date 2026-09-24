@@ -48,11 +48,7 @@ import { apiFetch as apiFetchLib } from './lib/api';
 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './features/auth/useAuth';
-import { initMetaPixel, trackPageView } from './services/metaPixel';
-
-
-
-
+import { initMetaPixel, trackPageView, isPublicCommercialRoute } from './services/metaPixel';
 
 import { UserObj } from './types';
 
@@ -112,9 +108,14 @@ export default function App() {
     }
   }, [currentUser, location.pathname]);
 
-  // Meta Pixel Initialization & PageView Tracking (REAL Mode Only, after Auth Bootstrap settles)
+  // Meta Pixel Initialization & PageView Tracking
+  // - Public commercial routes (/p/*, /pedido/*, /acesso/*): initialized immediately regardless of admin auth/demo state
+  // - Administrative routes: gated to authenticated REAL mode after auth bootstrap settles
   useEffect(() => {
-    if (isAuthReady && !isDemoView && authMode !== 'demo') {
+    const isPublicCommercial = isPublicCommercialRoute(location.pathname);
+    const isRealAdminReady = isAuthReady && !isDemoView && authMode !== 'demo';
+
+    if (isPublicCommercial || isRealAdminReady) {
       initMetaPixel();
       trackPageView(location.pathname + location.search);
     }

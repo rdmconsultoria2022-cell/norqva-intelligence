@@ -29,6 +29,7 @@ import { DigitalDelivery } from '../delivery/DigitalDelivery';
 import { RecoveryRequestModal } from '../delivery/RecoveryRequestModal';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
+import { trackViewContent } from '../../services/metaPixel';
 
 export interface PublicOfferData {
   id: string;
@@ -114,6 +115,23 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           setOffer(data);
           // Emit first-party OFFER_VIEW telemetry event
           sendFunnelEvent('OFFER_VIEW', data.human_id || humanId, { offer_name: data.name }, data.is_demo);
+
+          // Track Meta Pixel ViewContent event
+          try {
+            const rawPrice = data.promotional_price !== null && data.promotional_price !== undefined
+              ? data.promotional_price
+              : data.price;
+            const offerPrice = Number(rawPrice);
+            trackViewContent({
+              contentName: data.name,
+              contentIds: [data.human_id || humanId],
+              contentType: 'product',
+              value: !isNaN(offerPrice) && offerPrice >= 0 ? offerPrice : undefined,
+              currency: 'BRL'
+            });
+          } catch (trackErr) {
+            console.warn('[Meta Pixel]: ViewContent tracking observer error:', trackErr);
+          }
         }
       } catch (err: any) {
         if (isMounted) {

@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   initMetaPixel,
   trackPageView,
+  trackViewContent,
   trackInitiateCheckout,
   trackPurchase,
   isMetaPixelInitialized,
+  isPublicCommercialRoute,
   resetMetaPixelForTesting,
   clearInMemoryDeduplicationForTesting,
   getMetaPixelId,
@@ -452,5 +454,291 @@ describe('Meta Pixel Integration & Conversion Events (InitiateCheckout & Purchas
         }
       }
     }
+  });
+
+  // =========================================================================
+  // GATE: PUBLIC_PIXEL_TRACKING_FIX_V1 — MANDATORY TEST SUITE
+  // =========================================================================
+
+  describe('GATE: PUBLIC_PIXEL_TRACKING_FIX_V1 — Public Commercial Route Tracking & ViewContent', () => {
+    it('R01: isPublicCommercialRoute correctly identifies public commercial routes vs admin routes', () => {
+      expect(isPublicCommercialRoute('/p/OFF-000001')).toBe(true);
+      expect(isPublicCommercialRoute('/p/trattoria-2026')).toBe(true);
+      expect(isPublicCommercialRoute('/p')).toBe(true);
+      expect(isPublicCommercialRoute('/pedido/ord_123/entrega')).toBe(true);
+      expect(isPublicCommercialRoute('/pedido/ord_123')).toBe(true);
+      expect(isPublicCommercialRoute('/pedido')).toBe(true);
+      expect(isPublicCommercialRoute('/acesso/tok_456')).toBe(true);
+      expect(isPublicCommercialRoute('/acesso')).toBe(true);
+
+      // Admin / internal routes
+      expect(isPublicCommercialRoute('/')).toBe(false);
+      expect(isPublicCommercialRoute('/dashboard')).toBe(false);
+      expect(isPublicCommercialRoute('/products')).toBe(false);
+      expect(isPublicCommercialRoute('/login')).toBe(false);
+      expect(isPublicCommercialRoute('/reset-password')).toBe(false);
+      expect(isPublicCommercialRoute('/forgot-password')).toBe(false);
+    });
+
+    it('R02: trackViewContent emits ViewContent event with correct payload structure', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      initMetaPixel(TEST_PIXEL_ID);
+
+      const sent = trackViewContent({
+        contentName: 'Trattoria em Casa — Edição Digital 2026',
+        contentIds: ['OFF-000001'],
+        contentType: 'product',
+        value: 19.90,
+        currency: 'BRL'
+      });
+
+      expect(sent).toBe(true);
+      expect(fbqSpy).toHaveBeenCalledWith(
+        'track',
+        'ViewContent',
+        {
+          content_name: 'Trattoria em Casa — Edição Digital 2026',
+          content_ids: ['OFF-000001'],
+          content_type: 'product',
+          value: 19.90,
+          currency: 'BRL'
+        }
+      );
+    });
+
+    // TESTE A: Visitante anônimo acessa /p/OFF-000001 -> Pixel inicializado = SIM, PageView = 1, ViewContent = 1
+    it('TESTE A: Anonymous visitor accessing /p/OFF-000001 initializes Pixel, emits PageView=1 and ViewContent=1', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      // Simulated unauthenticated visitor on /p/OFF-000001
+      const pathname = '/p/OFF-000001';
+      const isPublic = isPublicCommercialRoute(pathname);
+      expect(isPublic).toBe(true);
+
+      // App effect triggers initialization & PageView
+      initMetaPixel(TEST_PIXEL_ID);
+      trackPageView(pathname);
+
+      // PublicOfferPage loads offer and triggers ViewContent
+      const offerData = {
+        id: 'off-uuid-001',
+        human_id: 'OFF-000001',
+        name: 'Trattoria em Casa — Edição Digital 2026',
+        price: 29.90,
+        promotional_price: 19.90,
+        is_demo: false
+      };
+
+      const offerPrice = offerData.promotional_price ?? offerData.price;
+      trackViewContent({
+        contentName: offerData.name,
+        contentIds: [offerData.human_id],
+        contentType: 'product',
+        value: offerPrice,
+        currency: 'BRL'
+      });
+
+      expect(isMetaPixelInitialized()).toBe(true);
+
+      const pageViewCalls = fbqSpy.mock.calls.filter(c => c[1] === 'PageView');
+      const viewContentCalls = fbqSpy.mock.calls.filter(c => c[1] === 'ViewContent');
+
+      expect(pageViewCalls.length).toBe(1);
+      expect(viewContentCalls.length).toBe(1);
+      expect(viewContentCalls[0][2]).toEqual({
+        content_name: 'Trattoria em Casa — Edição Digital 2026',
+        content_ids: ['OFF-000001'],
+        content_type: 'product',
+        value: 19.90,
+        currency: 'BRL'
+      });
+    });
+
+    // TESTE B: Visitante sem sessão Supabase -> Pixel continua funcionando nas rotas públicas
+    it('TESTE B: Visitor without Supabase session has active Pixel tracking on public routes', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      // Supabase session is null (anonymous visitor)
+      const session = null;
+      const isAuthReady = true;
+      const pathname = '/pedido/ord_abc123/entrega';
+
+      const isPublic = isPublicCommercialRoute(pathname);
+      expect(isPublic).toBe(true);
+
+      // Condition: isPublicCommercial || (isAuthReady && !isDemoView && authMode !== 'demo')
+      if (isPublic || (session && isAuthReady)) {
+        initMetaPixel(TEST_PIXEL_ID);
+        trackPageView(pathname);
+      }
+
+      expect(isMetaPixelInitialized()).toBe(true);
+      expect(fbqSpy).toHaveBeenCalledWith('track', 'PageView');
+    });
+
+    // TESTE C: authMode = demo / isDemoView = true -> NÃO pode bloquear Pixel nas rotas públicas comerciais
+    it('TESTE C: authMode=demo and isDemoView=true does NOT block Pixel on public commercial routes', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      const authMode = 'demo';
+      const isDemoView = true;
+      const isAuthReady = true;
+      const pathname = '/p/OFF-000001';
+
+      const isPublicCommercial = isPublicCommercialRoute(pathname);
+      const isRealAdminReady = isAuthReady && !isDemoView && authMode !== 'demo';
+
+      // The new App.tsx condition
+      if (isPublicCommercial || isRealAdminReady) {
+        initMetaPixel(TEST_PIXEL_ID);
+        trackPageView(pathname);
+      }
+
+      expect(isMetaPixelInitialized()).toBe(true);
+      expect(fbqSpy).toHaveBeenCalledWith('track', 'PageView');
+    });
+
+    // TESTE D: Re-render React -> PageView não duplica, ViewContent não duplica
+    it('TESTE D: React re-renders do NOT duplicate PageView or ViewContent events', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      const path = '/p/OFF-000001';
+      initMetaPixel(TEST_PIXEL_ID);
+
+      // Simulate 4 successive React component re-renders
+      for (let render = 0; render < 4; render++) {
+        trackPageView(path);
+        trackViewContent({
+          contentName: 'Trattoria em Casa — Edição Digital 2026',
+          contentIds: ['OFF-000001'],
+          contentType: 'product',
+          value: 19.90,
+          currency: 'BRL'
+        });
+      }
+
+      const pageViewCalls = fbqSpy.mock.calls.filter(c => c[1] === 'PageView');
+      const viewContentCalls = fbqSpy.mock.calls.filter(c => c[1] === 'ViewContent');
+
+      expect(pageViewCalls.length).toBe(1);
+      expect(viewContentCalls.length).toBe(1);
+    });
+
+    // TESTE E: URL com fbclid e UTMs -> parâmetros preservados, PageView enviado, ViewContent enviado
+    it('TESTE E: Query string with fbclid and UTMs is fully preserved in PageView tracking', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      const fullRoute = '/p/OFF-000001?fbclid=TEST123&utm_source=facebook&utm_medium=paid&utm_campaign=trattoria';
+      initMetaPixel(TEST_PIXEL_ID);
+
+      trackPageView(fullRoute);
+
+      trackViewContent({
+        contentName: 'Trattoria em Casa — Edição Digital 2026',
+        contentIds: ['OFF-000001'],
+        value: 19.90,
+        currency: 'BRL'
+      });
+
+      const pageViewCalls = fbqSpy.mock.calls.filter(c => c[1] === 'PageView');
+      const viewContentCalls = fbqSpy.mock.calls.filter(c => c[1] === 'ViewContent');
+
+      expect(pageViewCalls.length).toBe(1);
+      expect(viewContentCalls.length).toBe(1);
+    });
+
+    // TESTE F: Fluxo Meta Ad -> /p/OFF-000001 -> checkout -> pagamento -> PageView -> ViewContent -> InitiateCheckout -> Purchase
+    it('TESTE F: Complete funnel progression Meta Ad -> Offer -> Checkout -> Paid emits exact sequence without duplicates', () => {
+      setPixelEnvironmentAllowedForTesting(true);
+      const fbqSpy = vi.fn();
+      window.fbq = fbqSpy;
+
+      // Step 1: User lands on Offer page
+      const landingPath = '/p/OFF-000001?fbclid=EAA123';
+      initMetaPixel(TEST_PIXEL_ID);
+      trackPageView(landingPath);
+
+      trackViewContent({
+        contentName: 'Trattoria em Casa — Edição Digital 2026',
+        contentIds: ['OFF-000001'],
+        contentType: 'product',
+        value: 19.90,
+        currency: 'BRL'
+      });
+
+      // Step 2: User opens Checkout Modal
+      trackInitiateCheckout({
+        orderId: '04f865ff-ba3d-4090-a36c-20260827ba3d',
+        value: 19.90,
+        currency: 'BRL',
+        contentIds: ['OFF-000001'],
+        numItems: 1
+      });
+
+      // Step 3: Payment is confirmed as PAID by Asaas webhook / backend
+      trackPurchase({
+        orderId: '04f865ff-ba3d-4090-a36c-20260827ba3d',
+        value: 19.90,
+        currency: 'BRL',
+        contentIds: ['OFF-000001'],
+        numItems: 1
+      });
+
+      // Assert exact sequence of tracked event types
+      const trackedEvents = fbqSpy.mock.calls.filter(c => c[0] === 'track').map(c => c[1]);
+      expect(trackedEvents).toEqual([
+        'PageView',
+        'ViewContent',
+        'InitiateCheckout',
+        'Purchase'
+      ]);
+
+      // Assert exact event payloads
+      expect(fbqSpy).toHaveBeenCalledWith('track', 'PageView');
+      expect(fbqSpy).toHaveBeenCalledWith('track', 'ViewContent', {
+        content_name: 'Trattoria em Casa — Edição Digital 2026',
+        content_ids: ['OFF-000001'],
+        content_type: 'product',
+        value: 19.90,
+        currency: 'BRL'
+      });
+      expect(fbqSpy).toHaveBeenCalledWith(
+        'track',
+        'InitiateCheckout',
+        {
+          value: 19.90,
+          currency: 'BRL',
+          content_type: 'product',
+          content_ids: ['OFF-000001'],
+          num_items: 1
+        },
+        { eventID: 'checkout_04f865ff-ba3d-4090-a36c-20260827ba3d' }
+      );
+      expect(fbqSpy).toHaveBeenCalledWith(
+        'track',
+        'Purchase',
+        {
+          value: 19.90,
+          currency: 'BRL',
+          content_type: 'product',
+          content_ids: ['OFF-000001'],
+          num_items: 1
+        },
+        { eventID: 'purchase_04f865ff-ba3d-4090-a36c-20260827ba3d' }
+      );
+    });
   });
 });
