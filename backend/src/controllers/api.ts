@@ -38,6 +38,10 @@ import {
   resolveEntitlementProductId,
   provisionProductEntitlement
 } from '../services/entitlements/entitlementService';
+import {
+  getCommercialTimeBoundaries,
+  COMMERCIAL_TIMEZONE
+} from '../utils/commercialTimezone';
 
 export const aiProvider = new MockAIProvider();
 
@@ -5021,16 +5025,22 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     const isDemo = req.query.mode === 'demo';
     const period = (req.query.period as string) || 'all';
 
-    let startDate: Date | null = null;
-    if (period === '7d') {
-      startDate = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-    } else if (period === '30d') {
-      startDate = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-    } else if (period === '90d') {
-      startDate = new Date(Date.now() - 90 * 24 * 3600 * 1000);
-    }
+    let startDateParam: string | null = null;
+    let endDateParam: string | null = null;
+    let metaStartDateParam: string | null = null;
+    let metaEndDateParam: string | null = null;
 
-    const dateFilterParam = startDate ? startDate.toISOString() : null;
+    if (period !== 'all') {
+      const boundaries = getCommercialTimeBoundaries(
+        period,
+        req.query.startDate as string,
+        req.query.endDate as string
+      );
+      startDateParam = boundaries.startDateIso;
+      endDateParam = boundaries.endDateIso;
+      metaStartDateParam = boundaries.dateStartMeta;
+      metaEndDateParam = boundaries.dateStopMeta;
+    }
 
     // Fail-Closed Provenance Filters:
     // 1. Inbound Commercial Revenue & Orders: Strictly COMMERCIAL_PRODUCTION
@@ -5057,6 +5067,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
         )`;
 
     // 1. Meta Ad Spend & Insights Aggregation
+    // Double counting protection: when filtering by period, only aggregate daily records (date_start = date_stop)
     const accountSpendRes = await pool.query(
       `SELECT 
          COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
@@ -5068,8 +5079,10 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
        LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
        WHERE ${mediaSpendProvenanceClause}
          AND mi.entity_level = 'ACCOUNT'
-         AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)`,
-      [dateFilterParam]
+         AND ($1::date IS NULL OR mi.date_start >= $1::date)
+         AND ($2::date IS NULL OR mi.date_stop <= $2::date)
+         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)`,
+      [metaStartDateParam, metaEndDateParam]
     );
 
     let totalSpend = parseFloat(accountSpendRes.rows[0]?.total_spend || '0');
@@ -5089,8 +5102,10 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
          WHERE ${mediaSpendProvenanceClause}
            AND mi.entity_level = 'CAMPAIGN'
-           AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)`,
-        [dateFilterParam]
+           AND ($1::date IS NULL OR mi.date_start >= $1::date)
+           AND ($2::date IS NULL OR mi.date_stop <= $2::date)
+           AND ($1::date IS NULL OR mi.date_start = mi.date_stop)`,
+        [metaStartDateParam, metaEndDateParam]
       );
       totalSpend = parseFloat(campaignSpendRes.rows[0]?.total_spend || '0');
       totalImpressions = parseInt(campaignSpendRes.rows[0]?.total_impressions || '0', 10);
@@ -5117,8 +5132,9 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          COALESCE(SUM(CASE WHEN o.status = 'REFUNDED' THEN o.total_amount ELSE 0 END), 0)::numeric as refund_principal
        FROM orders o
        WHERE ${orderProvenanceClause}
-         AND ($1::timestamptz IS NULL OR o.created_at >= $1)`,
-      [dateFilterParam]
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+         AND ($2::timestamptz IS NULL OR o.created_at <= $2)`,
+      [startDateParam, endDateParam]
     );
 
     const orderRow = ordersAggRes.rows[0] || {};
@@ -5146,8 +5162,9 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
        FROM payments p
        WHERE ${paymentProvenanceClause}
          AND p.status = 'CONFIRMED'
-         AND ($1::timestamptz IS NULL OR p.created_at >= $1)`,
-      [dateFilterParam]
+         AND ($1::timestamptz IS NULL OR p.created_at >= $1)
+         AND ($2::timestamptz IS NULL OR p.created_at <= $2)`,
+      [startDateParam, endDateParam]
     );
 
     const payRow = paymentsAggRes.rows[0] || {};
@@ -5205,12 +5222,15 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          COUNT(CASE WHEN o.status = 'PAID' AND pay.status = 'CONFIRMED' AND pay.provider_fee IS NULL THEN pay.id END)::int as null_fees_count
        FROM products p
        LEFT JOIN order_items oi ON oi.product_id = p.id
-       LEFT JOIN orders o ON o.id = oi.order_id AND ${isDemo ? `(o.data_provenance != 'COMMERCIAL_PRODUCTION' OR o.is_demo = TRUE)` : `(o.data_provenance = 'COMMERCIAL_PRODUCTION')`} AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+       LEFT JOIN orders o ON o.id = oi.order_id 
+         AND ${isDemo ? `(o.data_provenance != 'COMMERCIAL_PRODUCTION' OR o.is_demo = TRUE)` : `(o.data_provenance = 'COMMERCIAL_PRODUCTION')`} 
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+         AND ($2::timestamptz IS NULL OR o.created_at <= $2)
        LEFT JOIN payments pay ON pay.order_id = o.id
        WHERE ${productProvenanceClause}
        GROUP BY p.id, p.human_id, p.name
        ORDER BY gross_revenue DESC, units_sold DESC`,
-      [dateFilterParam]
+      [startDateParam, endDateParam]
     );
 
     const byProduct = productBreakdownRes.rows.map(row => {
@@ -5262,12 +5282,14 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
        LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
        LEFT JOIN meta_insights mi ON mi.campaign_id = mc.id 
          AND mi.entity_level = 'CAMPAIGN' 
-         AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)
+         AND ($1::date IS NULL OR mi.date_start >= $1::date)
+         AND ($2::date IS NULL OR mi.date_stop <= $2::date)
+         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)
          AND ${mediaSpendProvenanceClause}
        WHERE ${mediaCampaignClause}
        GROUP BY mc.id, mc.meta_campaign_id, mc.name, mc.status, mc.effective_status
        ORDER BY spend DESC`,
-      [dateFilterParam]
+      [metaStartDateParam, metaEndDateParam]
     );
 
     // 6. Individualized View: By Creative / Ad
@@ -5306,12 +5328,14 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
        LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
        LEFT JOIN meta_insights mi ON mi.ad_id = ma.id 
          AND mi.entity_level = 'AD' 
-         AND ($1::timestamptz IS NULL OR mi.date_start >= $1::date)
+         AND ($1::date IS NULL OR mi.date_start >= $1::date)
+         AND ($2::date IS NULL OR mi.date_stop <= $2::date)
+         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)
          AND ${mediaSpendProvenanceClause}
        WHERE ${mediaAdClause}
        GROUP BY ma.id, ma.meta_ad_id, ma.name, ma.status, ma.effective_status, mas.id, mas.meta_adset_id, mas.name, mc.id, mc.meta_campaign_id, mc.name
        ORDER BY spend DESC`,
-      [dateFilterParam]
+      [metaStartDateParam, metaEndDateParam]
     );
 
     // Fetch all paid orders in period for attribution matching
@@ -5328,8 +5352,9 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
        FROM orders o
        WHERE ${orderProvenanceClause}
          AND o.status = 'PAID'
-         AND ($1::timestamptz IS NULL OR o.created_at >= $1)`,
-      [dateFilterParam]
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+         AND ($2::timestamptz IS NULL OR o.created_at <= $2)`,
+      [startDateParam, endDateParam]
     );
 
     const hierarchy: MetaHierarchyContext = {

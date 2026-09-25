@@ -469,6 +469,11 @@ export class MetaClient {
     timeIncrement?: string | number
   ): Promise<MetaInsightPayload[]> {
     if (isDemo) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isDaily = timeIncrement === 1 || timeIncrement === '1' || datePreset === 'today';
+      const dStart = isDaily ? todayStr : new Date(Date.now() - 86400000 * 30).toISOString().split('T')[0];
+      const dStop = todayStr;
+
       if (level === 'ad') {
         return [
           {
@@ -477,8 +482,8 @@ export class MetaClient {
             campaign_meta_id: 'cmp_demo_001',
             adset_meta_id: 'adset_demo_001',
             ad_meta_id: 'ad_demo_001',
-            date_start: new Date(Date.now() - 86400000 * 30).toISOString().split('T')[0],
-            date_stop: new Date().toISOString().split('T')[0],
+            date_start: dStart,
+            date_stop: dStop,
             spend: 1450.50,
             impressions: 48500,
             reach: 32400,
@@ -497,8 +502,8 @@ export class MetaClient {
           entity_level: 'CAMPAIGN',
           entity_meta_id: 'cmp_demo_001',
           campaign_meta_id: 'cmp_demo_001',
-          date_start: new Date(Date.now() - 86400000 * 30).toISOString().split('T')[0],
-          date_stop: new Date().toISOString().split('T')[0],
+          date_start: dStart,
+          date_stop: dStop,
           spend: 1450.50,
           impressions: 48500,
           reach: 32400,

@@ -49,7 +49,7 @@ export class MetaSyncService {
 
     const datePresetToUse = options?.datePreset || (options?.timeRange ? undefined : 'last_30d');
     const timeRangeToUse = options?.timeRange;
-    const timeIncrementToUse = options?.timeIncrement;
+    const timeIncrementToUse = options?.timeIncrement ?? 1;
 
     try {
       // 1. Fetch Ad Accounts

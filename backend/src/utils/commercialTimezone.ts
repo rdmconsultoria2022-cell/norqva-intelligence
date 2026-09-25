@@ -5,7 +5,7 @@
 
 export const COMMERCIAL_TIMEZONE = process.env.COMMERCIAL_TIMEZONE || 'America/Sao_Paulo';
 
-export type AttributionPeriod = 'today' | '7d' | '30d' | 'custom';
+export type AttributionPeriod = 'today' | 'yesterday' | '7d' | '30d' | '90d' | 'custom' | 'all';
 
 export interface CommercialTimeBoundaries {
   period: AttributionPeriod;
@@ -122,9 +122,25 @@ export function getCommercialTimeBoundaries(
     endDate = createDateInTimezone(currentLocal.year, currentLocal.month, currentLocal.day, 23, 59, 59, 999, timeZone);
     dateStartMeta = currentLocal.dateStr;
     dateStopMeta = currentLocal.dateStr;
+  } else if (requestedPeriod === 'yesterday') {
+    period = 'yesterday';
+    const startBase = new Date(baseDate.getTime() - 24 * 3600 * 1000);
+    const yesterdayLocal = getLocalComponentsInTimezone(startBase, timeZone);
+    startDate = createDateInTimezone(yesterdayLocal.year, yesterdayLocal.month, yesterdayLocal.day, 0, 0, 0, 0, timeZone);
+    endDate = createDateInTimezone(yesterdayLocal.year, yesterdayLocal.month, yesterdayLocal.day, 23, 59, 59, 999, timeZone);
+    dateStartMeta = yesterdayLocal.dateStr;
+    dateStopMeta = yesterdayLocal.dateStr;
   } else if (requestedPeriod === '7d') {
     period = '7d';
     const startBase = new Date(baseDate.getTime() - 6 * 24 * 3600 * 1000);
+    const startLocal = getLocalComponentsInTimezone(startBase, timeZone);
+    startDate = createDateInTimezone(startLocal.year, startLocal.month, startLocal.day, 0, 0, 0, 0, timeZone);
+    endDate = createDateInTimezone(currentLocal.year, currentLocal.month, currentLocal.day, 23, 59, 59, 999, timeZone);
+    dateStartMeta = startLocal.dateStr;
+    dateStopMeta = currentLocal.dateStr;
+  } else if (requestedPeriod === '90d') {
+    period = '90d';
+    const startBase = new Date(baseDate.getTime() - 89 * 24 * 3600 * 1000);
     const startLocal = getLocalComponentsInTimezone(startBase, timeZone);
     startDate = createDateInTimezone(startLocal.year, startLocal.month, startLocal.day, 0, 0, 0, 0, timeZone);
     endDate = createDateInTimezone(currentLocal.year, currentLocal.month, currentLocal.day, 23, 59, 59, 999, timeZone);

@@ -390,6 +390,7 @@ export async function getAttributionAnalyticsReport(
   const financialTimestampUnavailableRevenue = Math.round(parseFloat(unconfRow.unavailable_revenue || '0') * 100) / 100;
 
   // 4. Ingested Media Spend & Account Metrics (ACCOUNT Level) using Meta date boundaries
+  // Double counting protection: strictly aggregate daily records (date_start = date_stop)
   const accountMediaRes = await pool.query(
     `SELECT 
        COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
@@ -403,7 +404,8 @@ export async function getAttributionAnalyticsReport(
      WHERE ${mediaSpendProvenanceClause}
        AND mi.entity_level = 'ACCOUNT'
        AND mi.date_start >= $1::date
-       AND mi.date_stop <= $2::date`,
+       AND mi.date_stop <= $2::date
+       AND mi.date_start = mi.date_stop`,
     [metaStartDate, metaEndDate]
   );
 
@@ -428,7 +430,8 @@ export async function getAttributionAnalyticsReport(
        WHERE ${mediaSpendProvenanceClause}
          AND mi.entity_level = 'CAMPAIGN'
          AND mi.date_start >= $1::date
-         AND mi.date_stop <= $2::date`,
+         AND mi.date_stop <= $2::date
+         AND mi.date_start = mi.date_stop`,
       [metaStartDate, metaEndDate]
     );
     accountSpend = parseFloat(campaignRollupRes.rows[0]?.total_spend || '0');
@@ -514,6 +517,7 @@ export async function getAttributionAnalyticsReport(
        AND mi.entity_level = 'CAMPAIGN' 
        AND mi.date_start >= $1::date 
        AND mi.date_stop <= $2::date
+       AND mi.date_start = mi.date_stop
        AND ${mediaSpendProvenanceClause}
      WHERE ${mediaCampaignClause}
      GROUP BY mc.id, mc.meta_campaign_id, mc.name, mc.status, mc.effective_status
@@ -542,6 +546,7 @@ export async function getAttributionAnalyticsReport(
        AND mi.entity_level = 'ADSET' 
        AND mi.date_start >= $1::date 
        AND mi.date_stop <= $2::date
+       AND mi.date_start = mi.date_stop
        AND ${mediaSpendProvenanceClause}
      WHERE ${mediaAdsetClause}
      GROUP BY mas.id, mas.meta_adset_id, mas.name, mc.id, mc.meta_campaign_id, mc.name
@@ -576,6 +581,7 @@ export async function getAttributionAnalyticsReport(
        AND mi.entity_level = 'AD' 
        AND mi.date_start >= $1::date 
        AND mi.date_stop <= $2::date
+       AND mi.date_start = mi.date_stop
        AND ${mediaSpendProvenanceClause}
      WHERE ${mediaAdClause}
      GROUP BY ma.id, ma.meta_ad_id, ma.name, ma.status, ma.effective_status, mas.id, mas.meta_adset_id, mas.name, mc.id, mc.meta_campaign_id, mc.name
