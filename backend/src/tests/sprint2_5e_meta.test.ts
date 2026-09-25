@@ -483,4 +483,45 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
     const countRes2 = await pool.query('SELECT COUNT(*)::int as cnt FROM meta_insights WHERE is_demo = true');
     expect(countRes2.rows[0].cnt).toBe(initialCount);
   });
+
+  // M39 — GATE: META_AD_INSIGHTS_INGESTION_FIX_V1: Ingests AD-level insights and maps ad_id
+  it('M39: Ingests AD-level insights and correctly binds ad_id UUID to meta_ads', async () => {
+    const syncService = new MetaSyncService();
+    const res = await syncService.syncAll(pool, null, true);
+    expect(res.success).toBe(true);
+    expect(res.adInsightsCount).toBeGreaterThan(0);
+    expect(res.campaignInsightsCount).toBeGreaterThan(0);
+    expect(res.syncStatusSummary).toBe('SUCCESS_WITH_DATA');
+
+    const adInsights = await pool.query(
+      `SELECT mi.*, ma.name as ad_name, ma.meta_ad_id
+       FROM meta_insights mi
+       JOIN meta_ads ma ON ma.id = mi.ad_id
+       WHERE mi.is_demo = true AND mi.entity_level = 'AD'`
+    );
+
+    expect(adInsights.rows.length).toBeGreaterThan(0);
+    const row = adInsights.rows[0];
+    expect(row.entity_level).toBe('AD');
+    expect(row.entity_meta_id).toBe('ad_demo_001');
+    expect(row.meta_ad_id).toBe('ad_demo_001');
+    expect(row.ad_id).not.toBeNull();
+    expect(parseFloat(row.spend)).toBeGreaterThan(0);
+    expect(parseInt(row.impressions, 10)).toBeGreaterThan(0);
+    expect(parseInt(row.clicks, 10)).toBeGreaterThan(0);
+  });
+
+  // M40 — Endpoint POST /api/meta/sync returns updated telemetry with adInsightsCount
+  it('M40: POST /api/meta/sync returns telemetry with adInsightsCount and syncStatusSummary', async () => {
+    const res = await request(app)
+      .post('/api/meta/sync?mode=demo')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success !== undefined || res.body.message !== undefined).toBe(true);
+    const result = res.body.result;
+    expect(result.adInsightsCount).toBeGreaterThan(0);
+    expect(result.campaignInsightsCount).toBeGreaterThan(0);
+    expect(result.syncStatusSummary).toBe('SUCCESS_WITH_DATA');
+  });
 });

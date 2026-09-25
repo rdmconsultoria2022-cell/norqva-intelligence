@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Pool } from 'pg';
 import { MetaSchedulerService, MetaSyncLock } from '../services/meta/metaSchedulerService';
 import { MetaSyncService, MetaSyncResult } from '../services/meta/metaSyncService';
+import { MetaClient } from '../services/meta/metaClient';
 
 describe('GATE: META_AUTOMATED_SYNC_V1 — Automated Analytics Sync Suite', () => {
   let mockPool: any;
@@ -14,9 +15,13 @@ describe('GATE: META_AUTOMATED_SYNC_V1 — Automated Analytics Sync Suite', () =
     MetaSchedulerService.resetInstance();
 
     // Mock Pool
+    const mockClient = {
+      query: vi.fn().mockResolvedValue({ rows: [{ id: 'mock-id' }] }),
+      release: vi.fn()
+    };
     mockPool = {
       query: vi.fn().mockResolvedValue({ rows: [] }),
-      connect: vi.fn()
+      connect: vi.fn().mockResolvedValue(mockClient)
     };
 
     // Mock SyncService
@@ -208,5 +213,44 @@ describe('GATE: META_AUTOMATED_SYNC_V1 — Automated Analytics Sync Suite', () =
     expect(status.lastMetaSyncStatus).toBe('SUCCESS');
     expect(status.lastCounts?.ads).toBe(3);
     expect(MetaSyncLock.getStatus().isLocked).toBe(false);
+  });
+
+  it('11. GATE: META_AD_INSIGHTS_INGESTION_FIX_V1 — syncAll requests both campaign and ad level insights', async () => {
+    const mockClient = new MetaClient();
+    const getInsightsSpy = vi.spyOn(mockClient, 'getInsights');
+
+    const syncService = new MetaSyncService(mockClient);
+    const result = await syncService.syncAll(mockPool, null, true);
+
+    expect(result.success).toBe(true);
+    expect(result.syncStatusSummary).toBe('SUCCESS_WITH_DATA');
+    expect(getInsightsSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      'campaign',
+      expect.any(String),
+      true,
+      undefined,
+      undefined
+    );
+    expect(getInsightsSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      'ad',
+      expect.any(String),
+      true,
+      undefined,
+      undefined
+    );
+  });
+
+  it('12. GATE: META_AD_INSIGHTS_INGESTION_FIX_V1 — syncAll distinguishes SUCCESS_WITH_DATA vs SUCCESS_EMPTY', async () => {
+    const mockClient = new MetaClient();
+    vi.spyOn(mockClient, 'getInsights').mockResolvedValue([]);
+
+    const syncService = new MetaSyncService(mockClient);
+    const result = await syncService.syncAll(mockPool, null, true);
+
+    expect(result.success).toBe(true);
+    expect(result.insightsCount).toBe(0);
+    expect(result.syncStatusSummary).toBe('SUCCESS_EMPTY');
   });
 });

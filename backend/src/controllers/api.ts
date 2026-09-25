@@ -4367,13 +4367,24 @@ export async function syncMetaData(req: AuthenticatedRequest, res: Response) {
   }
 
   const isDemo = req.query.mode === 'demo';
+  const datePreset = (req.query.date_preset as string) || req.body?.date_preset;
+  const dateFrom = (req.query.date_from as string) || req.body?.date_from;
+  const dateTo = (req.query.date_to as string) || req.body?.date_to;
+
+  let syncOptions: { datePreset?: string; timeRange?: { since: string; until: string } } | undefined;
+  if (dateFrom && dateTo) {
+    syncOptions = { timeRange: { since: dateFrom, until: dateTo } };
+  } else if (datePreset) {
+    syncOptions = { datePreset };
+  }
 
   try {
     const schedulerService = MetaSchedulerService.getInstance();
     const result = await schedulerService.executeSyncCycle({
       trigger: 'MANUAL',
       userId: req.user?.id || null,
-      isDemo
+      isDemo,
+      syncOptions
     });
 
     if ('skipped' in result && result.skipped) {

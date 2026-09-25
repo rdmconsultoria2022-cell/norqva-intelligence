@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { MetaSyncService, MetaSyncResult } from './metaSyncService';
+import { MetaSyncService, MetaSyncResult, MetaSyncOptions } from './metaSyncService';
 import { writeAuditLog } from '../../db/audit';
 
 export interface MetaSchedulerStatus {
@@ -15,6 +15,8 @@ export interface MetaSchedulerStatus {
     campaigns: number;
     adSets: number;
     ads: number;
+    campaignInsights?: number;
+    adInsights?: number;
     insights: number;
   } | null;
   lastErrorCode?: string | null;
@@ -24,6 +26,7 @@ export interface SyncCycleExecutionOptions {
   trigger: 'AUTOMATIC' | 'MANUAL';
   userId?: string | null;
   isDemo?: boolean;
+  syncOptions?: MetaSyncOptions;
 }
 
 export class MetaSyncLock {
@@ -162,7 +165,11 @@ export class MetaSchedulerService {
 
     this.timer = setTimeout(async () => {
       try {
-        await this.executeSyncCycle({ trigger: 'AUTOMATIC', isDemo: false });
+        await this.executeSyncCycle({
+          trigger: 'AUTOMATIC',
+          isDemo: false,
+          syncOptions: { datePreset: 'last_3d' }
+        });
       } catch (err: any) {
         console.error('[MetaSchedulerService]: Unhandled error during scheduled cycle (isolated):', err.message);
       } finally {
@@ -215,7 +222,7 @@ export class MetaSchedulerService {
 
     try {
       // Execute sync with bounded retry
-      const result = await this.executeWithRetry(this.pool, userId, isDemo);
+      const result = await this.executeWithRetry(this.pool, userId, isDemo, options.syncOptions);
       
       const finishedAt = new Date().toISOString();
       const durationMs = Date.now() - startTime;
@@ -229,6 +236,8 @@ export class MetaSchedulerService {
         campaigns: result.campaignsCount,
         adSets: result.adSetsCount,
         ads: result.adsCount,
+        campaignInsights: result.campaignInsightsCount,
+        adInsights: result.adInsightsCount,
         insights: result.insightsCount
       };
 
@@ -268,14 +277,20 @@ export class MetaSchedulerService {
     }
   }
 
-  private async executeWithRetry(pool: Pool, userId: string | null, isDemo: boolean, maxRetries: number = 2): Promise<MetaSyncResult> {
+  private async executeWithRetry(
+    pool: Pool,
+    userId: string | null,
+    isDemo: boolean,
+    syncOptions?: MetaSyncOptions,
+    maxRetries: number = 2
+  ): Promise<MetaSyncResult> {
     let attempt = 0;
     let lastErr: any = null;
 
     while (attempt <= maxRetries) {
       attempt++;
       try {
-        return await this.syncService.syncAll(pool, userId, isDemo);
+        return await this.syncService.syncAll(pool, userId, isDemo, syncOptions);
       } catch (err: any) {
         lastErr = err;
         const isTransient = this.isTransientError(err);

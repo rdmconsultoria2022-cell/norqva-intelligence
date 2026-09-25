@@ -469,6 +469,29 @@ export class MetaClient {
     timeIncrement?: string | number
   ): Promise<MetaInsightPayload[]> {
     if (isDemo) {
+      if (level === 'ad') {
+        return [
+          {
+            entity_level: 'AD',
+            entity_meta_id: 'ad_demo_001',
+            campaign_meta_id: 'cmp_demo_001',
+            adset_meta_id: 'adset_demo_001',
+            ad_meta_id: 'ad_demo_001',
+            date_start: new Date(Date.now() - 86400000 * 30).toISOString().split('T')[0],
+            date_stop: new Date().toISOString().split('T')[0],
+            spend: 1450.50,
+            impressions: 48500,
+            reach: 32400,
+            clicks: 1240,
+            link_clicks: 980,
+            cpc: 1.17,
+            cpm: 29.90,
+            ctr: 2.56,
+            frequency: 1.5,
+            raw_actions: [{ action_type: 'link_click', value: 980 }, { action_type: 'landing_page_view', value: 850 }]
+          }
+        ];
+      }
       return [
         {
           entity_level: 'CAMPAIGN',

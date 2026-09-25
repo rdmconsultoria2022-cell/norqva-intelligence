@@ -2,6 +2,12 @@ import { Pool, PoolClient } from 'pg';
 import { MetaClient, MetaAdAccountPayload, MetaCampaignPayload, MetaAdSetPayload, MetaAdPayload, MetaInsightPayload } from './metaClient';
 import { writeAuditLog } from '../../db/audit';
 
+export interface MetaSyncOptions {
+  datePreset?: string;
+  timeRange?: { since: string; until: string };
+  timeIncrement?: string | number;
+}
+
 export interface MetaSyncResult {
   success: boolean;
   isDemo: boolean;
@@ -9,7 +15,10 @@ export interface MetaSyncResult {
   campaignsCount: number;
   adSetsCount: number;
   adsCount: number;
+  campaignInsightsCount: number;
+  adInsightsCount: number;
   insightsCount: number;
+  syncStatusSummary?: 'SUCCESS_WITH_DATA' | 'SUCCESS_EMPTY';
   syncedAt: string;
   error?: string;
 }
@@ -21,7 +30,12 @@ export class MetaSyncService {
     this.client = client || new MetaClient();
   }
 
-  public async syncAll(pool: Pool, userId: string | null, isDemo: boolean = false): Promise<MetaSyncResult> {
+  public async syncAll(
+    pool: Pool,
+    userId: string | null,
+    isDemo: boolean = false,
+    options?: MetaSyncOptions
+  ): Promise<MetaSyncResult> {
     const syncedAt = new Date().toISOString();
 
     // =========================================================================
@@ -32,6 +46,10 @@ export class MetaSyncService {
     const adSetsByAccount: Map<string, MetaAdSetPayload[]> = new Map();
     const adsByAccount: Map<string, MetaAdPayload[]> = new Map();
     const insightsByAccount: Map<string, MetaInsightPayload[]> = new Map();
+
+    const datePresetToUse = options?.datePreset || (options?.timeRange ? undefined : 'last_30d');
+    const timeRangeToUse = options?.timeRange;
+    const timeIncrementToUse = options?.timeIncrement;
 
     try {
       // 1. Fetch Ad Accounts
@@ -50,14 +68,27 @@ export class MetaSyncService {
         const ads = await this.client.getAds(act.id, isDemo);
         adsByAccount.set(act.id, ads);
 
-        // 5. Fetch Insights (Current Day Live Sync with deterministic daily upsert)
+        // 5. Fetch Campaign-Level Insights
         const campaignInsights = await this.client.getInsights(
           act.id,
           'campaign',
-          'today',
-          isDemo
+          datePresetToUse,
+          isDemo,
+          timeRangeToUse,
+          timeIncrementToUse
         );
-        insightsByAccount.set(act.id, campaignInsights);
+
+        // 6. Fetch Ad-Level Insights (Essential for Creative Performance Intelligence)
+        const adInsights = await this.client.getInsights(
+          act.id,
+          'ad',
+          datePresetToUse,
+          isDemo,
+          timeRangeToUse,
+          timeIncrementToUse
+        );
+
+        insightsByAccount.set(act.id, [...campaignInsights, ...adInsights]);
       }
     } catch (fetchErr: any) {
       console.error('[Meta Sync Fetch Error]:', fetchErr);
@@ -73,6 +104,8 @@ export class MetaSyncService {
       campaigns: 0,
       adSets: 0,
       ads: 0,
+      campaignInsights: 0,
+      adInsights: 0,
       insights: 0
     };
 
@@ -217,19 +250,26 @@ export class MetaSyncService {
             ]
           );
           counts.insights++;
+          if (ins.entity_level === 'CAMPAIGN') {
+            counts.campaignInsights++;
+          } else if (ins.entity_level === 'AD') {
+            counts.adInsights++;
+          }
         }
       }
 
       await dbClient.query('COMMIT');
+
+      const syncStatusSummary: 'SUCCESS_WITH_DATA' | 'SUCCESS_EMPTY' = counts.insights > 0 ? 'SUCCESS_WITH_DATA' : 'SUCCESS_EMPTY';
 
       // Post-commit audit log (Never logs secrets)
       await writeAuditLog(
         pool,
         userId,
         'META_SYNC_COMPLETED',
-        `Synced ${counts.adAccounts} ad accounts, ${counts.campaigns} campaigns, ${counts.adSets} ad sets, ${counts.ads} ads, ${counts.insights} insights.`,
+        `Synced ${counts.adAccounts} ad accounts, ${counts.campaigns} campaigns, ${counts.adSets} ad sets, ${counts.ads} ads, ${counts.campaignInsights} campaign insights, ${counts.adInsights} ad insights (Total insights: ${counts.insights}). Status: ${syncStatusSummary}.`,
         null,
-        JSON.stringify(counts),
+        JSON.stringify({ ...counts, syncStatusSummary }),
         isDemo,
         false
       );
@@ -241,7 +281,10 @@ export class MetaSyncService {
         campaignsCount: counts.campaigns,
         adSetsCount: counts.adSets,
         adsCount: counts.ads,
+        campaignInsightsCount: counts.campaignInsights,
+        adInsightsCount: counts.adInsights,
         insightsCount: counts.insights,
+        syncStatusSummary,
         syncedAt
       };
     } catch (dbErr: any) {
