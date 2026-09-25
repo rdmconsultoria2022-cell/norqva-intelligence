@@ -77,8 +77,8 @@ describe('GATE: CREATIVE_PERFORMANCE_ENGINE_HARDENING_V1 — Test Suite', () => 
       // Orders (Ad 3 has 2 paid orders)
       .mockResolvedValueOnce({
         rows: [
-          { id: 'o1', total_amount: '19.90', gross_amount_cents: 1990, status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: '120249419142850097' }) },
-          { id: 'o2', total_amount: '19.90', gross_amount_cents: 1990, status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: '120249419142850097' }) }
+          { id: 'o1', total_amount: '19.90', status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: '120249419142850097' }), created_at: '2026-09-24T12:00:00.000Z' },
+          { id: 'o2', total_amount: '19.90', status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: '120249419142850097' }), created_at: '2026-09-24T14:00:00.000Z' }
         ]
       });
 
@@ -175,10 +175,12 @@ describe('GATE: CREATIVE_PERFORMANCE_ENGINE_HARDENING_V1 — Test Suite', () => 
     expect(telSql).toContain('created_at >=');
     expect(telSql).toContain('created_at <');
 
-    // Orders query: checks TIMESTAMPTZ with >= start and < endExclusive
+    // Orders query: checks TIMESTAMPTZ with >= start and < endExclusive on created_at
     const ordSql = mockPool.query.mock.calls[3][0];
-    expect(ordSql).toContain('paid_at >=');
-    expect(ordSql).toContain('paid_at <');
+    expect(ordSql).toContain('created_at >=');
+    expect(ordSql).toContain('created_at <');
+    expect(ordSql).not.toContain('gross_amount_cents');
+    expect(ordSql).not.toContain('paid_at');
   });
 
   it('7. Confidence Engine: domain coverage for all click and conversion thresholds', () => {
@@ -210,8 +212,8 @@ describe('GATE: CREATIVE_PERFORMANCE_ENGINE_HARDENING_V1 — Test Suite', () => 
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [
-          { id: 'o1', total_amount: '19.90', gross_amount_cents: 1990, status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: 'ad_m1' }) },
-          { id: 'o2', total_amount: '19.90', gross_amount_cents: 1990, status: 'PAID', attribution_metadata: null } // Unattributed
+          { id: 'o1', total_amount: '19.90', status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: 'ad_m1' }), created_at: '2026-09-24T10:00:00.000Z' },
+          { id: 'o2', total_amount: '19.90', status: 'PAID', attribution_metadata: null, created_at: '2026-09-24T11:00:00.000Z' } // Unattributed
         ]
       });
 
@@ -228,5 +230,74 @@ describe('GATE: CREATIVE_PERFORMANCE_ENGINE_HARDENING_V1 — Test Suite', () => 
     // Sum creatives gross revenue + unattributed revenue == summary total_revenue
     const sumCreativesRevenue = res.creatives.reduce((acc, c) => acc + c.gross_revenue, 0);
     expect(sumCreativesRevenue + res.unattributed.unattributed_revenue).toBe(res.summary.total_revenue);
+  });
+
+  it('9. Production Schema Compatibility: queries orders without gross_amount_cents and correctly processes decimal BRL', async () => {
+    mockPool.query
+      .mockResolvedValueOnce({
+        rows: [
+          { db_ad_id: 'ad_a', meta_ad_id: 'meta_ad_a', ad_name: 'TRATTORIA_V1_AD_A_HOOK_SEPARACAO', db_adset_id: 's1', meta_adset_id: 'ms1', db_campaign_id: 'c1', meta_campaign_id: 'mc1' },
+          { db_ad_id: 'ad_b', meta_ad_id: 'meta_ad_b', ad_name: 'TRATTORIA_V1_AD_B_HOOK_EMULSAO', db_adset_id: 's1', meta_adset_id: 'ms1', db_campaign_id: 'c1', meta_campaign_id: 'mc1' },
+          { db_ad_id: 'ad_c', meta_ad_id: 'meta_ad_c', ad_name: 'TRATTORIA_V1_AD_C_HOOK_MASSA', db_adset_id: 's1', meta_adset_id: 'ms1', db_campaign_id: 'c1', meta_campaign_id: 'mc1' }
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { ad_id: 'ad_a', entity_meta_id: 'meta_ad_a', total_spend: '4.68', total_impressions: '150', total_clicks: '5' },
+          { ad_id: 'ad_b', entity_meta_id: 'meta_ad_b', total_spend: '4.75', total_impressions: '140', total_clicks: '4' },
+          { ad_id: 'ad_c', entity_meta_id: 'meta_ad_c', total_spend: '4.75', total_impressions: '142', total_clicks: '3' }
+        ]
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          // 1 order attributed to Ad A (R$ 19.90)
+          { id: 'ord_1', total_amount: '19.90', status: 'PAID', attribution_metadata: JSON.stringify({ ad_id: 'meta_ad_a' }), created_at: '2026-09-24T18:00:00.000Z' },
+          // 1 unattributed order (R$ 19.90)
+          { id: 'ord_2', total_amount: '19.90', status: 'PAID', attribution_metadata: null, created_at: '2026-09-24T19:00:00.000Z' }
+        ]
+      });
+
+    const res = await service.getCreativePerformance(mockPool, { is_demo: false });
+
+    // Assert query does not select gross_amount_cents, net_amount_cents, fee_cents, or paid_at
+    const ordersQuerySql = mockPool.query.mock.calls[3][0];
+    expect(ordersQuerySql).not.toContain('gross_amount_cents');
+    expect(ordersQuerySql).not.toContain('net_amount_cents');
+    expect(ordersQuerySql).not.toContain('fee_cents');
+    expect(ordersQuerySql).not.toContain('paid_at');
+    expect(ordersQuerySql).toContain('total_amount');
+    expect(ordersQuerySql).toContain('created_at');
+
+    // Revenue assertions
+    const adA = res.creatives.find(c => c.ad_id === 'meta_ad_a')!;
+    expect(adA.paid_orders).toBe(1);
+    expect(adA.gross_revenue).toBe(19.90);
+    expect(adA.spend).toBe(4.68);
+    expect(adA.cac).toBe(4.68);
+    expect(adA.roas).toBe(4.2521);
+
+    const adB = res.creatives.find(c => c.ad_id === 'meta_ad_b')!;
+    expect(adB.paid_orders).toBe(0);
+    expect(adB.gross_revenue).toBe(0);
+    expect(adB.cac).toBeNull();
+    expect(adB.roas).toBe(0);
+
+    const adC = res.creatives.find(c => c.ad_id === 'meta_ad_c')!;
+    expect(adC.paid_orders).toBe(0);
+    expect(adC.gross_revenue).toBe(0);
+    expect(adC.cac).toBeNull();
+    expect(adC.roas).toBe(0);
+
+    // Unattributed revenue
+    expect(res.unattributed.unattributed_paid_orders).toBe(1);
+    expect(res.unattributed.unattributed_revenue).toBe(19.90);
+
+    // Total summary
+    expect(res.summary.total_spend).toBe(14.18);
+    expect(res.summary.total_paid_orders).toBe(2);
+    expect(res.summary.total_revenue).toBe(39.80);
+    expect(res.summary.blended_cac).toBe(7.09);
+    expect(res.summary.blended_roas).toBe(2.8068);
   });
 });

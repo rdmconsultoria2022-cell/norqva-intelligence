@@ -172,11 +172,11 @@ export default function App() {
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState<any | null>(null);
 
   // Fetch helper wrapper using centralized client
-  const apiFetch = async (url: string, options: RequestInit = {}) => {
+  const apiFetch = React.useCallback(async (url: string, options: RequestInit = {}) => {
     return apiFetchLib(url, options, authMode, currentUser, () => {
       setCurrentUser(null);
     });
-  };
+  }, [authMode, currentUser]);
 
 
 

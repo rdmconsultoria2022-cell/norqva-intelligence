@@ -192,6 +192,11 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
     return {};
   }, [appliedCustomDates]);
 
+  const apiFetchRef = React.useRef(apiFetch);
+  apiFetchRef.current = apiFetch;
+  const showErrorRef = React.useRef(showError);
+  showErrorRef.current = showError;
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -204,7 +209,7 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
       if (range.from) params.set('date_from', range.from);
       if (range.to) params.set('date_to', range.to);
 
-      const res = await apiFetch(`/intelligence/creative-performance?${params.toString()}`);
+      const res = await apiFetchRef.current(`/intelligence/creative-performance?${params.toString()}`);
       if (res && res.summary) {
         setData(res);
       } else {
@@ -213,11 +218,11 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
     } catch (err: any) {
       const errorMsg = 'Não foi possível carregar os dados de performance.';
       setError(errorMsg);
-      showError(errorMsg);
+      showErrorRef.current(errorMsg);
     } finally {
       setLoading(false);
     }
-  }, [isDemoView, period, calculateDateRange, apiFetch, showError]);
+  }, [isDemoView, period, calculateDateRange]);
 
   useEffect(() => {
     loadData();

@@ -345,21 +345,16 @@ export class CreativePerformanceService {
     let ordersQuery = `
       SELECT id,
              total_amount,
-             gross_amount_cents,
-             net_amount_cents,
-             fee_cents,
              status,
              utm_source,
              utm_medium,
              utm_campaign,
              utm_content,
-             utm_term,
              fbclid,
              visitor_id,
              session_id,
              attribution_metadata,
-             created_at,
-             paid_at
+             created_at
       FROM orders
       WHERE status = 'PAID' AND ${orderProvClause}
     `;
@@ -367,12 +362,12 @@ export class CreativePerformanceService {
 
     if (startIso) {
       ordersParams.push(startIso);
-      ordersQuery += ` AND (paid_at >= $${ordersParams.length} OR (paid_at IS NULL AND created_at >= $${ordersParams.length}))`;
+      ordersQuery += ` AND created_at >= $${ordersParams.length}`;
     }
 
     if (endExclusiveIso) {
       ordersParams.push(endExclusiveIso);
-      ordersQuery += ` AND (paid_at < $${ordersParams.length} OR (paid_at IS NULL AND created_at < $${ordersParams.length}))`;
+      ordersQuery += ` AND created_at < $${ordersParams.length}`;
     }
 
     const ordersRes = await pool.query(ordersQuery, ordersParams);
@@ -384,14 +379,13 @@ export class CreativePerformanceService {
     let latestOrderTimestamp: string | null = null;
 
     for (const order of paidOrders) {
-      const orderTime = order.paid_at || order.created_at;
+      const orderTime = typeof order.created_at === 'string' ? order.created_at : (order.created_at ? order.created_at.toISOString() : null);
       if (orderTime && (!latestOrderTimestamp || orderTime > latestOrderTimestamp)) {
         latestOrderTimestamp = orderTime;
       }
 
-      const gross = parseFloat(order.total_amount || '0') || ((order.gross_amount_cents || 0) / 100);
-      const fee = (order.fee_cents || 0) / 100;
-      const net = (order.net_amount_cents ? order.net_amount_cents / 100 : gross - fee);
+      const gross = parseFloat(order.total_amount || '0');
+      const net = gross;
 
       let parsedMeta: any = {};
       if (typeof order.attribution_metadata === 'object' && order.attribution_metadata !== null) {
