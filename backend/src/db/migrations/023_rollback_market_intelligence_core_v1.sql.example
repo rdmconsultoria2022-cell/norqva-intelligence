@@ -1,0 +1,10 @@
+-- Rollback Migration 023: NORQVA Market Intelligence Core V1
+-- Ordem estrita respeitando dependências de Foreign Keys (SEM CASCADE)
+
+DROP TABLE IF EXISTS market_hypotheses;
+DROP TABLE IF EXISTS market_creatives;
+DROP TABLE IF EXISTS market_observations;
+DROP TABLE IF EXISTS market_ads;
+DROP TABLE IF EXISTS market_offers;
+DROP TABLE IF EXISTS market_advertisers;
+DROP TABLE IF EXISTS market_evidence;

@@ -5,13 +5,16 @@ import { isDbInMemory } from './db';
 
 export async function runMigrations(pool: Pool) {
   // Create schema_migrations table if not exists
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(255) UNIQUE NOT NULL,
-      executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+  const checkSchemaTable = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations'");
+  if (checkSchemaTable.rows.length === 0) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL,
+        executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+  }
 
   // If not running in pg-mem, ensure Supabase mock roles and schemas exist on local databases
   if (!isDbInMemory() && process.env.NODE_ENV !== 'production') {
