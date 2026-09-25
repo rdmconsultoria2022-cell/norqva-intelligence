@@ -113,6 +113,8 @@ export class MetaSyncService {
     try {
       await dbClient.query('BEGIN');
 
+      const provenance = isDemo ? 'DEMO_SEED' : 'COMMERCIAL_PRODUCTION';
+
       // 1. Connection metadata UPSERT
       await dbClient.query(
         `INSERT INTO meta_connections (is_demo, status, token_reference, last_validated_at, updated_at)
@@ -130,13 +132,15 @@ export class MetaSyncService {
 
       for (const act of adAccounts) {
         const actRes = await dbClient.query(
-          `INSERT INTO meta_ad_accounts (meta_account_id, connection_id, name, currency, timezone_name, account_status, is_demo, last_synced_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+          `INSERT INTO meta_ad_accounts (meta_account_id, connection_id, name, currency, timezone_name, account_status, is_demo, data_provenance, last_synced_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
            ON CONFLICT (meta_account_id, is_demo)
            DO UPDATE SET name = EXCLUDED.name, currency = EXCLUDED.currency, timezone_name = EXCLUDED.timezone_name,
-                         account_status = EXCLUDED.account_status, last_synced_at = NOW(), updated_at = NOW()
+                         account_status = EXCLUDED.account_status,
+                         data_provenance = CASE WHEN meta_ad_accounts.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_ad_accounts.data_provenance END,
+                         last_synced_at = NOW(), updated_at = NOW()
            RETURNING id`,
-          [act.id, connectionId, act.name, act.currency, act.timezone_name, act.account_status, isDemo]
+          [act.id, connectionId, act.name, act.currency, act.timezone_name, act.account_status, isDemo, provenance]
         );
         accountDbIdMap.set(act.id, actRes.rows[0].id);
         counts.adAccounts++;
@@ -147,13 +151,15 @@ export class MetaSyncService {
 
         for (const cmp of campaigns) {
           const cmpRes = await dbClient.query(
-            `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo, last_synced_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo, data_provenance, last_synced_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
              ON CONFLICT (meta_campaign_id, is_demo)
              DO UPDATE SET name = EXCLUDED.name, objective = EXCLUDED.objective, status = EXCLUDED.status,
-                           effective_status = EXCLUDED.effective_status, last_synced_at = NOW(), updated_at = NOW()
+                           effective_status = EXCLUDED.effective_status,
+                           data_provenance = CASE WHEN meta_campaigns.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_campaigns.data_provenance END,
+                           last_synced_at = NOW(), updated_at = NOW()
              RETURNING id`,
-            [cmp.id, actRes.rows[0].id, cmp.name, cmp.objective || null, cmp.status, cmp.effective_status, isDemo]
+            [cmp.id, actRes.rows[0].id, cmp.name, cmp.objective || null, cmp.status, cmp.effective_status, isDemo, provenance]
           );
           campaignDbIdMap.set(cmp.id, cmpRes.rows[0].id);
           counts.campaigns++;
@@ -168,18 +174,19 @@ export class MetaSyncService {
           if (!parentCmpDbId) continue;
 
           const setRes = await dbClient.query(
-            `INSERT INTO meta_ad_sets (meta_adset_id, campaign_id, name, status, effective_status, optimization_goal, billing_event, daily_budget, lifetime_budget, is_demo, last_synced_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+            `INSERT INTO meta_ad_sets (meta_adset_id, campaign_id, name, status, effective_status, optimization_goal, billing_event, daily_budget, lifetime_budget, is_demo, data_provenance, last_synced_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
              ON CONFLICT (meta_adset_id, is_demo)
              DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, effective_status = EXCLUDED.effective_status,
                            optimization_goal = EXCLUDED.optimization_goal, billing_event = EXCLUDED.billing_event,
                            daily_budget = EXCLUDED.daily_budget, lifetime_budget = EXCLUDED.lifetime_budget,
+                           data_provenance = CASE WHEN meta_ad_sets.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_ad_sets.data_provenance END,
                            last_synced_at = NOW(), updated_at = NOW()
              RETURNING id`,
             [
               set.id, parentCmpDbId, set.name, set.status, set.effective_status,
               set.optimization_goal || null, set.billing_event || null,
-              set.daily_budget || null, set.lifetime_budget || null, isDemo
+              set.daily_budget || null, set.lifetime_budget || null, isDemo, provenance
             ]
           );
           adSetDbIdMap.set(set.id, setRes.rows[0].id);
@@ -195,13 +202,15 @@ export class MetaSyncService {
           if (!parentSetDbId) continue;
 
           const adRes = await dbClient.query(
-            `INSERT INTO meta_ads (meta_ad_id, adset_id, name, status, effective_status, meta_creative_id, is_demo, last_synced_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            `INSERT INTO meta_ads (meta_ad_id, adset_id, name, status, effective_status, meta_creative_id, is_demo, data_provenance, last_synced_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
              ON CONFLICT (meta_ad_id, is_demo)
              DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, effective_status = EXCLUDED.effective_status,
-                           meta_creative_id = EXCLUDED.meta_creative_id, last_synced_at = NOW(), updated_at = NOW()
+                           meta_creative_id = EXCLUDED.meta_creative_id,
+                           data_provenance = CASE WHEN meta_ads.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_ads.data_provenance END,
+                           last_synced_at = NOW(), updated_at = NOW()
              RETURNING id`,
-            [ad.id, parentSetDbId, ad.name, ad.status, ad.effective_status, ad.creative?.id || null, isDemo]
+            [ad.id, parentSetDbId, ad.name, ad.status, ad.effective_status, ad.creative?.id || null, isDemo, provenance]
           );
           adDbIdMap.set(ad.id, adRes.rows[0].id);
           counts.ads++;
@@ -219,9 +228,9 @@ export class MetaSyncService {
             `INSERT INTO meta_insights (
                ad_account_id, campaign_id, adset_id, ad_id, entity_level, entity_meta_id,
                date_start, date_stop, spend, impressions, reach, clicks, link_clicks,
-               cpc, cpm, ctr, frequency, raw_actions, is_demo, synced_at
+               cpc, cpm, ctr, frequency, raw_actions, is_demo, data_provenance, synced_at
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW())
              ON CONFLICT (ad_account_id, entity_level, entity_meta_id, date_start, is_demo)
              DO UPDATE SET
                campaign_id = EXCLUDED.campaign_id,
@@ -238,6 +247,7 @@ export class MetaSyncService {
                ctr = EXCLUDED.ctr,
                frequency = EXCLUDED.frequency,
                raw_actions = EXCLUDED.raw_actions,
+               data_provenance = CASE WHEN meta_insights.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_insights.data_provenance END,
                synced_at = NOW()`,
             [
               actRes.rows[0].id, cmpDbId, setDbId, adDbId,
@@ -246,7 +256,7 @@ export class MetaSyncService {
               ins.spend, ins.impressions, ins.reach || null, ins.clicks, ins.link_clicks || null,
               ins.cpc || null, ins.cpm || null, ins.ctr || null, ins.frequency || null,
               ins.raw_actions ? JSON.stringify(ins.raw_actions) : null,
-              isDemo
+              isDemo, provenance
             ]
           );
           counts.insights++;
