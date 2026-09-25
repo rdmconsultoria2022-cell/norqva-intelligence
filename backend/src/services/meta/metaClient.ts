@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { getCommercialTimeBoundaries } from '../../utils/commercialTimezone';
 
 export interface MetaConnectionStatus {
   connected: boolean;
@@ -469,10 +470,10 @@ export class MetaClient {
     timeIncrement?: string | number
   ): Promise<MetaInsightPayload[]> {
     if (isDemo) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const isDaily = timeIncrement === 1 || timeIncrement === '1' || datePreset === 'today';
-      const dStart = isDaily ? todayStr : new Date(Date.now() - 86400000 * 30).toISOString().split('T')[0];
-      const dStop = todayStr;
+      const todayStr = getCommercialTimeBoundaries('today').dateStartMeta;
+      const isDaily = timeIncrement === 1 || timeIncrement === '1' || datePreset === 'today' || (timeRange && timeRange.since === timeRange.until);
+      const dStart = isDaily ? todayStr : (timeRange?.since || getCommercialTimeBoundaries('30d').dateStartMeta);
+      const dStop = isDaily ? todayStr : (timeRange?.until || todayStr);
 
       if (level === 'ad') {
         return [

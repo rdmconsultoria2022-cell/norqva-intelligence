@@ -2,6 +2,8 @@ import { Pool, PoolClient } from 'pg';
 import { MetaClient, MetaAdAccountPayload, MetaCampaignPayload, MetaAdSetPayload, MetaAdPayload, MetaInsightPayload } from './metaClient';
 import { writeAuditLog } from '../../db/audit';
 
+import { getCommercialTimeBoundaries } from '../../utils/commercialTimezone';
+
 export interface MetaSyncOptions {
   datePreset?: string;
   timeRange?: { since: string; until: string };
@@ -47,8 +49,9 @@ export class MetaSyncService {
     const adsByAccount: Map<string, MetaAdPayload[]> = new Map();
     const insightsByAccount: Map<string, MetaInsightPayload[]> = new Map();
 
-    const datePresetToUse = options?.datePreset || (options?.timeRange ? undefined : 'last_30d');
-    const timeRangeToUse = options?.timeRange;
+    const defaultBoundaries = getCommercialTimeBoundaries('30d');
+    const timeRangeToUse = options?.timeRange || (options?.datePreset ? undefined : { since: defaultBoundaries.dateStartMeta, until: defaultBoundaries.dateStopMeta });
+    const datePresetToUse = options?.datePreset;
     const timeIncrementToUse = options?.timeIncrement ?? 1;
 
     try {

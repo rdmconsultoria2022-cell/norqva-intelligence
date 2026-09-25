@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { MetaSyncService, MetaSyncResult, MetaSyncOptions } from './metaSyncService';
 import { writeAuditLog } from '../../db/audit';
+import { getDB } from '../../db/db';
 
 export interface MetaSchedulerStatus {
   enabled: boolean;
@@ -189,6 +190,10 @@ export class MetaSchedulerService {
     const { trigger, userId = null, isDemo = false } = options;
     const startTime = Date.now();
     const startedAt = new Date(startTime).toISOString();
+
+    if (!this.pool) {
+      this.pool = await getDB();
+    }
 
     if (!this.pool) {
       const err = new Error('Database pool is not initialized in MetaSchedulerService.');
