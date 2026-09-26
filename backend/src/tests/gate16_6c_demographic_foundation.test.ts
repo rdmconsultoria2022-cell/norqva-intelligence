@@ -5,6 +5,7 @@ import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { getFinancialDashboard } from '../controllers/api';
 import { getAttributionAnalyticsReport } from '../services/attribution/attributionAnalyticsService';
+import { getCommercialTimeBoundaries } from '../utils/commercialTimezone';
 import express, { Express } from 'express';
 import request from 'supertest';
 
@@ -369,6 +370,8 @@ describe('GATE 16.6C: Demographic Intelligence Database Foundation', () => {
   });
 
   it('7. FINANCIAL ISOLATION: Demographic table population causes ZERO double counting in Financial Dashboard / DRE', async () => {
+    const todayStr = getCommercialTimeBoundaries('today').dateStartMeta;
+
     // Insert canonical core meta_insights (Account Level: R$ 55.59 spend)
     await pool.query(
       `INSERT INTO meta_insights (
@@ -378,11 +381,11 @@ describe('GATE 16.6C: Demographic Intelligence Database Foundation', () => {
         is_demo, data_provenance
       ) VALUES (
         $1, 'ACCOUNT', 'act_demo_test_01',
-        '2026-09-25', '2026-09-25',
+        $2, $2,
         55.59, 1200, 95,
         false, 'COMMERCIAL_PRODUCTION'
       )`,
-      [testAdAccountId]
+      [testAdAccountId, todayStr]
     );
 
     // Insert demographic slices in meta_demographic_insights (summing to R$ 55.59)
@@ -395,10 +398,10 @@ describe('GATE 16.6C: Demographic Intelligence Database Foundation', () => {
         spend, impressions, clicks,
         is_demo, data_provenance
       ) VALUES 
-        ($1, $2, $3, $4, 'AD', 'ad_demo_test_01', '2026-09-25', '2026-09-25', '45-54', 'female', 35.59, 800, 60, false, 'COMMERCIAL_PRODUCTION'),
-        ($1, $2, $3, $4, 'AD', 'ad_demo_test_01', '2026-09-25', '2026-09-25', '55-64', 'female', 20.00, 400, 35, false, 'COMMERCIAL_PRODUCTION')
+        ($1, $2, $3, $4, 'AD', 'ad_demo_test_01', $5, $5, '45-54', 'female', 35.59, 800, 60, false, 'COMMERCIAL_PRODUCTION'),
+        ($1, $2, $3, $4, 'AD', 'ad_demo_test_01', $5, $5, '55-64', 'female', 20.00, 400, 35, false, 'COMMERCIAL_PRODUCTION')
       `,
-      [testAdAccountId, testCampaignId, testAdsetId, testAdId]
+      [testAdAccountId, testCampaignId, testAdsetId, testAdId, todayStr]
     );
 
     // Query Financial Dashboard

@@ -27,7 +27,7 @@ export interface AttributionContext {
   site_source_name: string | null;
 }
 
-export type FunnelEventType = 'LANDING_PAGE_VIEW' | 'OFFER_VIEW' | 'CHECKOUT_STARTED';
+export type FunnelEventType = 'LANDING_PAGE_VIEW' | 'OFFER_VIEW' | 'CHECKOUT_MODAL_OPENED' | 'CHECKOUT_STARTED';
 
 const sentFunnelEvents = new Set<string>();
 

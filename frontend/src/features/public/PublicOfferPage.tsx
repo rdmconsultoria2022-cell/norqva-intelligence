@@ -77,6 +77,9 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
       navigate(`/pedido/${existingSession.orderId}/entrega#token=${existingSession.checkoutToken}`);
       return;
     }
+    if (offer) {
+      sendFunnelEvent('CHECKOUT_MODAL_OPENED', offer.human_id || humanId, { offer_name: offer.name }, offer.is_demo);
+    }
     setShowCheckout(true);
   };
 

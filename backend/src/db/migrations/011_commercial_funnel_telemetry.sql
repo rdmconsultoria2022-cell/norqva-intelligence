@@ -16,7 +16,7 @@ ALTER TABLE orders
 CREATE TABLE IF NOT EXISTS commercial_funnel_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id VARCHAR(255) NOT NULL,
-  event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('LANDING_PAGE_VIEW', 'OFFER_VIEW', 'CHECKOUT_STARTED')),
+  event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('LANDING_PAGE_VIEW', 'OFFER_VIEW', 'CHECKOUT_MODAL_OPENED', 'CHECKOUT_STARTED')),
   visitor_id VARCHAR(100) NOT NULL,
   session_id VARCHAR(100),
   offer_id UUID REFERENCES offers(id) ON DELETE SET NULL,

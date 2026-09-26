@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Pool } from 'pg';
 
-const ALLOWED_EVENT_TYPES = ['LANDING_PAGE_VIEW', 'OFFER_VIEW', 'CHECKOUT_STARTED'] as const;
+const ALLOWED_EVENT_TYPES = ['LANDING_PAGE_VIEW', 'OFFER_VIEW', 'CHECKOUT_MODAL_OPENED', 'CHECKOUT_STARTED'] as const;
 type AllowedEventType = typeof ALLOWED_EVENT_TYPES[number];
 
 export async function recordFunnelEvent(req: Request, res: Response) {
