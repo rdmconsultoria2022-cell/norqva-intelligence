@@ -5595,6 +5595,7 @@ export async function getCreativePerformance(req: AuthenticatedRequest, res: Res
 }
 
 import { DemographicAnalyticsService } from '../services/intelligence/demographicAnalyticsService';
+import { MetaDemographicIngestionService } from '../services/meta/metaDemographicIngestionService';
 
 export async function getDemographicsAnalytics(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
@@ -5626,6 +5627,40 @@ export async function getDemographicsAnalytics(req: AuthenticatedRequest, res: R
     return res.status(500).json({ error: err.message || 'Failed to retrieve demographic analytics.' });
   }
 }
+
+export async function syncDemographicsData(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const role = req.user?.role;
+  if (role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: ADMIN role required to perform demographic synchronization.' });
+  }
+
+  const isDemo = req.query.mode === 'demo';
+  const datePreset = (req.query.date_preset as string) || req.body?.date_preset;
+  const dateFrom = (req.query.date_from as string) || req.body?.date_from;
+  const dateTo = (req.query.date_to as string) || req.body?.date_to;
+
+  let syncOptions: { datePreset?: string; timeRange?: { since: string; until: string } } | undefined;
+  if (dateFrom && dateTo) {
+    syncOptions = { timeRange: { since: dateFrom, until: dateTo } };
+  } else if (datePreset) {
+    syncOptions = { datePreset };
+  }
+
+  try {
+    const service = new MetaDemographicIngestionService();
+    const result = await service.ingestDemographics(pool, req.user?.id || null, isDemo, syncOptions);
+
+    return res.status(200).json({
+      message: 'Demographic insights synchronized successfully.',
+      result
+    });
+  } catch (err: any) {
+    console.error('syncDemographicsData error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to synchronize demographic data.' });
+  }
+}
+
 
 
 

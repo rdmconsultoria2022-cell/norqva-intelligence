@@ -77,7 +77,8 @@ import {
   requestOrderRecovery,
   claimOrderRecovery,
   getCreativePerformance,
-  getDemographicsAnalytics
+  getDemographicsAnalytics,
+  syncDemographicsData
 } from './controllers/api';
 
 import {
@@ -333,6 +334,8 @@ app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLI
 
 // Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
 app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);
+app.post('/api/intelligence/demographics/sync', requireRole(['ADMIN']), syncDemographicsData);
+app.post('/api/meta/demographics/sync', requireRole(['ADMIN']), syncDemographicsData);
 
 // Market Discovery Core (Gate 07.7 - Read-Only Market Exploration)
 app.get('/api/market-discovery/probe', getMarketDiscoveryProbe);
