@@ -227,18 +227,18 @@ describe('GATE: META_AUTOMATED_SYNC_V1 — Automated Analytics Sync Suite', () =
     expect(getInsightsSpy).toHaveBeenCalledWith(
       expect.any(String),
       'campaign',
-      expect.any(String),
-      true,
       undefined,
-      undefined
+      true,
+      expect.objectContaining({ since: expect.any(String), until: expect.any(String) }),
+      1
     );
     expect(getInsightsSpy).toHaveBeenCalledWith(
       expect.any(String),
       'ad',
-      expect.any(String),
-      true,
       undefined,
-      undefined
+      true,
+      expect.objectContaining({ since: expect.any(String), until: expect.any(String) }),
+      1
     );
   });
 

@@ -75,6 +75,28 @@ export interface MetaInsightPayload {
   raw_actions?: any[] | null;
 }
 
+export interface MetaDemographicInsightPayload {
+  ad_meta_id: string;
+  ad_name?: string;
+  campaign_meta_id?: string;
+  campaign_name?: string;
+  adset_meta_id?: string;
+  adset_name?: string;
+  date_start: string;
+  date_stop: string;
+  age: string;
+  gender: string;
+  spend: number;
+  impressions: number;
+  reach?: number;
+  clicks: number;
+  link_clicks?: number;
+  cpc?: number;
+  cpm?: number;
+  ctr?: number;
+  raw_actions?: any[] | null;
+}
+
 export class MetaClient {
   private apiVersion: string;
   private accessToken?: string;
@@ -562,6 +584,123 @@ export class MetaClient {
         cpm: this.normalizeNumeric(row.cpm, undefined),
         ctr: this.normalizeNumeric(row.ctr, undefined),
         frequency: this.normalizeNumeric(row.frequency, undefined),
+        raw_actions: this.sanitizeRawActions(row.actions)
+      };
+    });
+  }
+
+  /**
+   * Dedicated READ-ONLY Demographic Insights method (Age + Gender breakdowns at Ad level).
+   * Strictly isolated from core financial insights ingestion.
+   */
+  public async getDemographicInsights(
+    adAccountId: string,
+    options?: {
+      datePreset?: string;
+      timeRange?: { since: string; until: string };
+      timeIncrement?: string | number;
+    },
+    isDemo: boolean = false
+  ): Promise<MetaDemographicInsightPayload[]> {
+    if (isDemo) {
+      const todayStr = getCommercialTimeBoundaries('today').dateStartMeta;
+      const dStart = options?.timeRange?.since || todayStr;
+      const dStop = options?.timeRange?.until || todayStr;
+
+      return [
+        {
+          ad_meta_id: 'ad_demo_001',
+          ad_name: 'Anúncio Vídeo Pitch V1',
+          campaign_meta_id: 'cmp_demo_001',
+          campaign_name: 'NORQVA Intelligence Launch Campaign',
+          adset_meta_id: 'adset_demo_001',
+          adset_name: 'Conjunto Brasil - Interesses Tech 25-45',
+          date_start: dStart,
+          date_stop: dStop,
+          age: '45-54',
+          gender: 'female',
+          spend: 35.50,
+          impressions: 1200,
+          reach: 950,
+          clicks: 40,
+          link_clicks: 32,
+          cpc: 0.89,
+          cpm: 29.58,
+          ctr: 3.33,
+          raw_actions: [{ action_type: 'link_click', value: 32 }]
+        },
+        {
+          ad_meta_id: 'ad_demo_001',
+          ad_name: 'Anúncio Vídeo Pitch V1',
+          campaign_meta_id: 'cmp_demo_001',
+          campaign_name: 'NORQVA Intelligence Launch Campaign',
+          adset_meta_id: 'adset_demo_001',
+          adset_name: 'Conjunto Brasil - Interesses Tech 25-45',
+          date_start: dStart,
+          date_stop: dStop,
+          age: '45-54',
+          gender: 'male',
+          spend: 25.00,
+          impressions: 900,
+          reach: 700,
+          clicks: 25,
+          link_clicks: 20,
+          cpc: 1.00,
+          cpm: 27.78,
+          ctr: 2.78,
+          raw_actions: [{ action_type: 'link_click', value: 20 }]
+        }
+      ];
+    }
+
+    const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+    const params: Record<string, string> = {
+      level: 'ad',
+      breakdowns: 'age,gender',
+      fields: 'ad_id,ad_name,campaign_id,campaign_name,adset_id,adset_name,date_start,date_stop,spend,impressions,reach,clicks,cpc,cpm,ctr,actions,inline_link_clicks'
+    };
+
+    if (options?.timeRange) {
+      params.time_range = JSON.stringify(options.timeRange);
+    } else if (options?.datePreset) {
+      params.date_preset = options.datePreset;
+    } else {
+      params.date_preset = 'today';
+    }
+
+    params.time_increment = options?.timeIncrement !== undefined ? String(options.timeIncrement) : '1';
+
+    const data = await this.paginateGraphApi(`/${formatted}/insights`, params);
+
+    return data.map(row => {
+      // Extract link_clicks from inline_link_clicks or actions
+      let linkClicks = this.normalizeInteger(row.inline_link_clicks, undefined);
+      if (linkClicks === undefined && Array.isArray(row.actions)) {
+        const linkAct = row.actions.find((a: any) => a.action_type === 'link_click');
+        if (linkAct && linkAct.value !== undefined) {
+          linkClicks = this.normalizeInteger(linkAct.value, undefined);
+        }
+      }
+
+      return {
+        ad_meta_id: String(row.ad_id),
+        ad_name: row.ad_name,
+        campaign_meta_id: row.campaign_id,
+        campaign_name: row.campaign_name,
+        adset_meta_id: row.adset_id,
+        adset_name: row.adset_name,
+        date_start: row.date_start,
+        date_stop: row.date_stop,
+        age: String(row.age || 'unknown'),
+        gender: String(row.gender || 'unknown'),
+        spend: this.normalizeNumeric(row.spend, 0),
+        impressions: this.normalizeInteger(row.impressions, 0),
+        reach: this.normalizeInteger(row.reach, undefined),
+        clicks: this.normalizeInteger(row.clicks, 0),
+        link_clicks: linkClicks,
+        cpc: this.normalizeNumeric(row.cpc, undefined),
+        cpm: this.normalizeNumeric(row.cpm, undefined),
+        ctr: this.normalizeNumeric(row.ctr, undefined),
         raw_actions: this.sanitizeRawActions(row.actions)
       };
     });

@@ -76,7 +76,8 @@ import {
   reissueOrderDelivery,
   requestOrderRecovery,
   claimOrderRecovery,
-  getCreativePerformance
+  getCreativePerformance,
+  getDemographicsAnalytics
 } from './controllers/api';
 
 import {
@@ -329,6 +330,9 @@ app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDes
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
+
+// Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
+app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);
 
 // Market Discovery Core (Gate 07.7 - Read-Only Market Exploration)
 app.get('/api/market-discovery/probe', getMarketDiscoveryProbe);

@@ -5594,6 +5594,40 @@ export async function getCreativePerformance(req: AuthenticatedRequest, res: Res
   }
 }
 
+import { DemographicAnalyticsService } from '../services/intelligence/demographicAnalyticsService';
+
+export async function getDemographicsAnalytics(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const period = (req.query.period as string) || '30d';
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const campaign_id = req.query.campaign_id as string | undefined;
+    const ad_id = req.query.ad_id as string | undefined;
+    const gender = req.query.gender as string | undefined;
+    const age_group = req.query.age_group as string | undefined;
+
+    const service = new DemographicAnalyticsService();
+    const result = await service.getDemographicAnalytics(pool, {
+      mode: isDemo ? 'demo' : 'real',
+      period,
+      startDate,
+      endDate,
+      campaign_id,
+      ad_id,
+      gender,
+      age_group
+    });
+
+    return res.status(200).json(result);
+  } catch (err: any) {
+    console.error('getDemographicsAnalytics error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to retrieve demographic analytics.' });
+  }
+}
+
+
 
 
 

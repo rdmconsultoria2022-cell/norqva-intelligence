@@ -41,6 +41,7 @@ import { OrderDeliveryView } from './features/delivery/OrderDeliveryView';
 import { AccessRecoveryView } from './features/delivery/AccessRecoveryView';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
+import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
@@ -697,6 +698,16 @@ export default function App() {
 
           {activeTab === 'creative-performance' && (
             <CreativePerformanceView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+            />
+          )}
+
+          {activeTab === 'demographics' && (
+            <DemographicIntelligenceView
               currentUser={currentUser}
               isDemoView={isDemoView}
               apiFetch={apiFetch}

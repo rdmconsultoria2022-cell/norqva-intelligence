@@ -581,6 +581,165 @@ export async function seedDemoData(pool: Pool) {
       );
     }
 
+    // 12. Insert Demo Meta Entities & Demographic Insights
+    const adAccountId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO meta_ad_accounts (id, meta_account_id, name, currency, timezone_name, account_status, is_demo, data_provenance)
+       VALUES ($1, 'act_demo_norqva_01', 'NORQVA Demo Ad Account', 'BRL', 'America/Sao_Paulo', 1, TRUE, 'DEMO_SEED')`,
+      [adAccountId]
+    );
+    const resolvedAccountId = adAccountId;
+
+    const campaignId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO meta_campaigns (id, ad_account_id, meta_campaign_id, name, objective, status, effective_status, is_demo, data_provenance)
+       VALUES ($1, $2, 'cmp_demo_trattoria_01', 'NORQVA_TRATTORIA_REVENUE_V1', 'OUTCOME_SALES', 'ACTIVE', 'ACTIVE', TRUE, 'DEMO_SEED')`,
+      [campaignId, resolvedAccountId]
+    );
+    const resolvedCampaignId = campaignId;
+
+    const adsetId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO meta_ad_sets (id, campaign_id, meta_adset_id, name, status, effective_status, optimization_goal, billing_event, is_demo, data_provenance)
+       VALUES ($1, $2, 'adset_demo_trattoria_01', 'TRATTORIA_V1_ADSET', 'ACTIVE', 'ACTIVE', 'OFFSITE_CONVERSIONS', 'IMPRESSIONS', TRUE, 'DEMO_SEED')`,
+      [adsetId, resolvedCampaignId]
+    );
+    const resolvedAdsetId = adsetId;
+
+    const demoAds = [
+      { meta_id: 'ad_demo_trattoria_A', name: 'TRATTORIA_V1_AD_A_HOOK_SEPARACAO' },
+      { meta_id: 'ad_demo_trattoria_B', name: 'TRATTORIA_V1_AD_B_HOOK_EMULSAO' },
+      { meta_id: 'ad_demo_trattoria_C', name: 'TRATTORIA_V1_AD_C_HOOK_MASSA_CASEIRA' }
+    ];
+
+    const resolvedAds: { id: string; meta_id: string; name: string }[] = [];
+    for (const ad of demoAds) {
+      const adId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO meta_ads (id, adset_id, meta_ad_id, name, status, effective_status, is_demo, data_provenance)
+         VALUES ($1, $2, $3, $4, 'ACTIVE', 'ACTIVE', TRUE, 'DEMO_SEED')`,
+        [adId, resolvedAdsetId, ad.meta_id, ad.name]
+      );
+      resolvedAds.push({ id: adId, meta_id: ad.meta_id, name: ad.name });
+    }
+
+    // Helper for Sao Paulo dates
+    function getSaoPauloDateStr(daysAgo = 0): string {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(d);
+    }
+
+    // Demographic slices templates per ad
+    const adTemplates = [
+      {
+        adIndex: 0, // Ad A
+        slices: [
+          { age_group: '18-24', gender: 'female', spend: 1.20, impressions: 50, reach: 45, clicks: 2, link_clicks: 2 },
+          { age_group: '18-24', gender: 'male', spend: 0.80, impressions: 35, reach: 30, clicks: 1, link_clicks: 1 },
+          { age_group: '25-34', gender: 'female', spend: 2.50, impressions: 100, reach: 90, clicks: 4, link_clicks: 3 },
+          { age_group: '25-34', gender: 'male', spend: 1.80, impressions: 75, reach: 65, clicks: 3, link_clicks: 2 },
+          { age_group: '35-44', gender: 'female', spend: 3.20, impressions: 130, reach: 115, clicks: 5, link_clicks: 4 },
+          { age_group: '35-44', gender: 'male', spend: 2.20, impressions: 90, reach: 80, clicks: 3, link_clicks: 3 },
+          { age_group: '45-54', gender: 'female', spend: 11.50, impressions: 480, reach: 410, clicks: 20, link_clicks: 17 },
+          { age_group: '45-54', gender: 'male', spend: 6.80, impressions: 280, reach: 240, clicks: 11, link_clicks: 9 },
+          { age_group: '55-64', gender: 'female', spend: 8.50, impressions: 340, reach: 290, clicks: 15, link_clicks: 13 },
+          { age_group: '55-64', gender: 'male', spend: 4.80, impressions: 190, reach: 160, clicks: 8, link_clicks: 7 },
+          { age_group: '65+', gender: 'female', spend: 5.20, impressions: 200, reach: 170, clicks: 9, link_clicks: 8 },
+          { age_group: '65+', gender: 'male', spend: 3.00, impressions: 110, reach: 95, clicks: 4, link_clicks: 3 },
+          { age_group: 'unknown', gender: 'unknown', spend: 0.80, impressions: 30, reach: 25, clicks: 1, link_clicks: 1 }
+        ]
+      },
+      {
+        adIndex: 1, // Ad B
+        slices: [
+          { age_group: '18-24', gender: 'female', spend: 0.90, impressions: 40, reach: 35, clicks: 1, link_clicks: 1 },
+          { age_group: '18-24', gender: 'male', spend: 0.60, impressions: 25, reach: 20, clicks: 1, link_clicks: 1 },
+          { age_group: '25-34', gender: 'female', spend: 1.80, impressions: 75, reach: 65, clicks: 3, link_clicks: 2 },
+          { age_group: '25-34', gender: 'male', spend: 1.20, impressions: 50, reach: 45, clicks: 2, link_clicks: 1 },
+          { age_group: '35-44', gender: 'female', spend: 2.20, impressions: 90, reach: 80, clicks: 3, link_clicks: 3 },
+          { age_group: '35-44', gender: 'male', spend: 1.60, impressions: 65, reach: 55, clicks: 2, link_clicks: 2 },
+          { age_group: '45-54', gender: 'female', spend: 8.20, impressions: 340, reach: 290, clicks: 14, link_clicks: 12 },
+          { age_group: '45-54', gender: 'male', spend: 4.80, impressions: 200, reach: 170, clicks: 8, link_clicks: 7 },
+          { age_group: '55-64', gender: 'female', spend: 6.00, impressions: 240, reach: 205, clicks: 10, link_clicks: 9 },
+          { age_group: '55-64', gender: 'male', spend: 3.50, impressions: 140, reach: 120, clicks: 6, link_clicks: 5 },
+          { age_group: '65+', gender: 'female', spend: 3.80, impressions: 150, reach: 130, clicks: 6, link_clicks: 5 },
+          { age_group: '65+', gender: 'male', spend: 2.20, impressions: 85, reach: 75, clicks: 3, link_clicks: 2 },
+          { age_group: 'unknown', gender: 'unknown', spend: 0.50, impressions: 20, reach: 15, clicks: 1, link_clicks: 0 }
+        ]
+      },
+      {
+        adIndex: 2, // Ad C
+        slices: [
+          { age_group: '18-24', gender: 'female', spend: 0.80, impressions: 35, reach: 30, clicks: 1, link_clicks: 1 },
+          { age_group: '18-24', gender: 'male', spend: 0.50, impressions: 20, reach: 18, clicks: 1, link_clicks: 1 },
+          { age_group: '25-34', gender: 'female', spend: 1.50, impressions: 60, reach: 50, clicks: 2, link_clicks: 2 },
+          { age_group: '25-34', gender: 'male', spend: 1.00, impressions: 40, reach: 35, clicks: 1, link_clicks: 1 },
+          { age_group: '35-44', gender: 'female', spend: 1.80, impressions: 75, reach: 65, clicks: 3, link_clicks: 2 },
+          { age_group: '35-44', gender: 'male', spend: 1.30, impressions: 55, reach: 48, clicks: 2, link_clicks: 1 },
+          { age_group: '45-54', gender: 'female', spend: 6.80, impressions: 280, reach: 240, clicks: 12, link_clicks: 10 },
+          { age_group: '45-54', gender: 'male', spend: 4.00, impressions: 165, reach: 140, clicks: 7, link_clicks: 6 },
+          { age_group: '55-64', gender: 'female', spend: 5.00, impressions: 200, reach: 170, clicks: 9, link_clicks: 8 },
+          { age_group: '55-64', gender: 'male', spend: 2.90, impressions: 115, reach: 100, clicks: 5, link_clicks: 4 },
+          { age_group: '65+', gender: 'female', spend: 3.10, impressions: 125, reach: 105, clicks: 5, link_clicks: 4 },
+          { age_group: '65+', gender: 'male', spend: 1.80, impressions: 70, reach: 60, clicks: 3, link_clicks: 2 },
+          { age_group: 'unknown', gender: 'unknown', spend: 0.50, impressions: 20, reach: 15, clicks: 1, link_clicks: 1 }
+        ]
+      }
+    ];
+
+    // Seed across multiple days: today (0), yesterday (1), and days 2..6, 14, 21, 28
+    const daysList = [0, 1, 2, 3, 4, 5, 6, 14, 21, 28];
+
+    for (const daysAgo of daysList) {
+      const dateStr = getSaoPauloDateStr(daysAgo);
+
+      for (const t of adTemplates) {
+        const ad = resolvedAds[t.adIndex];
+
+        for (const slice of t.slices) {
+          const cpc = slice.clicks > 0 ? Number((slice.spend / slice.clicks).toFixed(4)) : null;
+          const ctr = slice.impressions > 0 ? Number(((slice.clicks / slice.impressions) * 100).toFixed(4)) : null;
+          const cpm = slice.impressions > 0 ? Number(((slice.spend / slice.impressions) * 1000).toFixed(4)) : null;
+
+          await client.query(
+            `INSERT INTO meta_demographic_insights (
+               id, ad_account_id, campaign_id, adset_id, ad_id, entity_level, entity_meta_id,
+               date_start, date_stop, age_group, gender, spend, impressions, reach, clicks, link_clicks,
+               cpc, cpm, ctr, data_provenance, is_demo, synced_at
+             ) VALUES (
+               gen_random_uuid(), $1, $2, $3, $4, 'AD', $5,
+               $6::date, $6::date, $7, $8, $9, $10, $11, $12, $13,
+               $14, $15, $16, 'DEMO_SEED', TRUE, NOW()
+             )`,
+            [
+              resolvedAccountId,
+              resolvedCampaignId,
+              resolvedAdsetId,
+              ad.id,
+              ad.meta_id,
+              dateStr,
+              slice.age_group,
+              slice.gender,
+              slice.spend,
+              slice.impressions,
+              slice.reach,
+              slice.clicks,
+              slice.link_clicks,
+              cpc,
+              cpm,
+              ctr
+            ]
+          );
+        }
+      }
+    }
+
     await client.query('COMMIT');
     console.log('Seeding Demo Data finished successfully.');
   } catch (err) {
