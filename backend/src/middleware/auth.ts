@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
 import { getDB } from '../db/db';
@@ -40,7 +39,7 @@ export function requireRole(allowedRoles: string[]) {
         let user;
 
         if (authHeader && authHeader.startsWith('Bearer ')) {
-          // If bearer token is provided in demo mode, try to verify it
+          // If bearer token is provided in demo mode, verify it
           const token = authHeader.substring(7);
           const decoded = await verifySupabaseToken(token);
           if (decoded && decoded.sub) {
@@ -49,16 +48,26 @@ export function requireRole(allowedRoles: string[]) {
               [decoded.sub]
             );
             if (userQuery.rows.length === 0 && decoded.email) {
-              userQuery = await pool.query(
+              const emailLookup = await pool.query(
                 'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE email = $1',
                 [decoded.email]
               );
+              if (emailLookup.rows.length > 0) {
+                const existingUser = emailLookup.rows[0];
+                if (!existingUser.auth_user_id) {
+                  await pool.query('UPDATE users SET auth_user_id = $1 WHERE id = $2', [decoded.sub, existingUser.id]).catch(() => {});
+                  existingUser.auth_user_id = decoded.sub;
+                }
+                userQuery = { rows: [existingUser] } as any;
+              }
             }
             if (userQuery.rows.length > 0) {
               user = userQuery.rows[0];
             } else {
               return res.status(403).json({ error: 'User profile does not exist in NORQVA.' });
             }
+          } else {
+            return res.status(401).json({ error: 'Session expired or invalid token.' });
           }
         }
 
@@ -109,46 +118,36 @@ export function requireRole(allowedRoles: string[]) {
           return res.status(401).json({ error: 'Session expired or invalid token.' });
         }
 
-        // Query profile from database
+        // 1. Query profile from database by auth_user_id
         let userQuery = await pool.query(
           'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE auth_user_id = $1',
           [decoded.sub]
         );
 
+        // 2. Safe Fallback by Email for PRE-PROVISIONED users only (Linking auth_user_id)
         if (userQuery.rows.length === 0 && decoded.email) {
-          userQuery = await pool.query(
+          const emailLookup = await pool.query(
             'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE email = $1',
             [decoded.email]
           );
-          if (userQuery.rows.length > 0 && !userQuery.rows[0].auth_user_id) {
-            await pool.query('UPDATE users SET auth_user_id = $1 WHERE id = $2', [decoded.sub, userQuery.rows[0].id]).catch(() => {});
+          if (emailLookup.rows.length > 0) {
+            const existingUser = emailLookup.rows[0];
+            if (!existingUser.auth_user_id) {
+              await pool.query('UPDATE users SET auth_user_id = $1 WHERE id = $2', [decoded.sub, existingUser.id]).catch(() => {});
+              existingUser.auth_user_id = decoded.sub;
+            }
+            userQuery = { rows: [existingUser] } as any;
           }
         }
 
-        if (userQuery.rows.length === 0 && decoded.sub) {
-          const autoRole = (decoded.email && (decoded.email.includes('admin') || decoded.email.includes('qa_user') || decoded.email.includes('rdmconsultoria'))) ? 'ADMIN' : 'INTELLIGENCE';
-          const newId = crypto.randomUUID();
-          const insertRes = await pool.query(
-            `INSERT INTO users (id, auth_user_id, name, email, role, status, is_demo)
-             VALUES ($1, $2, $3, $4, $5, 'ACTIVE', false)
-             ON CONFLICT (email) DO UPDATE SET auth_user_id = EXCLUDED.auth_user_id, status = 'ACTIVE'
-             RETURNING id, auth_user_id, name, email, role, status, is_demo`,
-            [newId, decoded.sub, decoded.user_metadata?.full_name || decoded.email?.split('@')[0] || 'Authenticated User', decoded.email || `${decoded.sub}@supabase.local`, autoRole]
-          ).catch((e) => {
-            console.error('Auto-provision user error:', e);
-            return null;
-          });
-          if (insertRes && insertRes.rows.length > 0) {
-            userQuery = insertRes;
-          }
-        }
-
+        // 3. Reject unprovisioned users (FAIL-CLOSED)
         if (userQuery.rows.length === 0) {
           return res.status(403).json({ error: 'User profile does not exist in NORQVA.' });
         }
 
         const user = userQuery.rows[0];
 
+        // 4. Validate user status
         if (user.status !== 'ACTIVE') {
           return res.status(403).json({ error: 'User account is inactive.' });
         }
