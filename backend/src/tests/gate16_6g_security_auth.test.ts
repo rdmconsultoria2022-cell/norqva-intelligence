@@ -38,8 +38,15 @@ describe('GATE 16.6G: Security Remediation & Authorization Matrix Suite', () => 
   });
 
   beforeEach(async () => {
-    // Reset users table
-    await pool.query('DELETE FROM users');
+    // Reset users table. On the shared CI Postgres, rows from other suites
+    // (e.g. capital_authorizations) reference users, so a plain DELETE fails
+    // on FK constraints. TRUNCATE ... CASCADE clears dependents; pg-mem
+    // may not support it, so fall back to DELETE there.
+    try {
+      await pool.query('TRUNCATE TABLE users CASCADE');
+    } catch (_) {
+      await pool.query('DELETE FROM users');
+    }
 
     // 1. Provision ACTIVE ADMIN user
     await pool.query(
