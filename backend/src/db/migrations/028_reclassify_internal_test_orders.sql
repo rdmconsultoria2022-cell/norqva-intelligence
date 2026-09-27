@@ -44,3 +44,6 @@ BEGIN
     '46743977-3029-41c9-8dfb-f69f6533627b'
   ) AND data_provenance = 'COMMERCIAL_PRODUCTION';
 END $$;
+
+-- Harmless statement so pg-mem has something to run after stripping the DO block.
+SELECT 1;
