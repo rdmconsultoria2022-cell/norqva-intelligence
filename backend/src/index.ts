@@ -78,8 +78,13 @@ import {
   claimOrderRecovery,
   getCreativePerformance,
   getDemographicsAnalytics,
-  syncDemographicsData
+  syncDemographicsData,
+  getOfferUnitEconomics,
+  updateOfferUnitEconomics,
+  getBusinessCostSettings,
+  updateBusinessCostSettings
 } from './controllers/api';
+import { startCapiRetryJob } from './services/meta/capiRetryJob';
 
 import {
   getMarketDiscoveryProbe,
@@ -263,6 +268,11 @@ app.put('/api/products/:id', requireRole(['PRODUCT', 'ADMIN']), updateProduct);
 app.get('/api/offers', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOffers);
 app.post('/api/offers', requireRole(['PRODUCT', 'ADMIN']), createOffer);
 app.put('/api/offers/:id', requireRole(['PRODUCT', 'ADMIN']), updateOffer);
+app.get('/api/offers/:id/unit-economics', requireRole(['ADMIN']), getOfferUnitEconomics);
+app.put('/api/offers/:id/unit-economics', requireRole(['ADMIN']), updateOfferUnitEconomics);
+
+app.get('/api/settings/business-costs', requireRole(['ADMIN']), getBusinessCostSettings);
+app.put('/api/settings/business-costs', requireRole(['ADMIN']), updateBusinessCostSettings);
 
 app.get('/api/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreatives);
 app.post('/api/creatives', requireRole(['CREATIVE', 'ADMIN']), createCreative);
@@ -380,6 +390,13 @@ async function startServer() {
       MetaSchedulerService.getInstance().start(pool);
     } catch (schedulerErr: any) {
       console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
+    }
+
+    // Initialize Automated CAPI Retry Job (Non-blocking / Isolated)
+    try {
+      startCapiRetryJob(pool);
+    } catch (retryErr: any) {
+      console.error('[Server] Failed to initialize startCapiRetryJob (non-fatal):', retryErr.message);
     }
   } catch (err) {
     console.error('[Server] Initialization failed:', err);

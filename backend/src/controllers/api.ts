@@ -216,7 +216,7 @@ export async function getOpportunities(req: AuthenticatedRequest, res: Response)
     const opps = await pool.query(
       `SELECT o.*, u.name as responsible_name,
               s.initial_product_score, s.critical_adjustment, s.final_product_score, s.confidence_score, s.is_human_override, s.human_override_score, s.override_reason,
-              s.id as score_id
+              s.id as score_id, s.is_simulated as score_is_simulated, s.ai_provider as score_ai_provider
        FROM opportunities o 
        LEFT JOIN users u ON o.responsible_id = u.id 
        LEFT JOIN opportunity_scores s ON o.id = s.opportunity_id
@@ -232,16 +232,20 @@ export async function getOpportunities(req: AuthenticatedRequest, res: Response)
     
     const isSimulated = (aiProvider instanceof MockAIProvider) || (process.env.NODE_ENV === 'production' && process.env.AGENTIC_AI_PROVIDER !== 'openai');
 
-    const formatted = opps.rows.map(o => ({
-      ...o,
-      is_simulated: isSimulated || o.is_demo,
-      ai_analysis_status: (isSimulated || o.is_demo) ? 'ANÁLISE SIMULADA' : 'ANÁLISE REAL',
-      score_type: (isSimulated || o.is_demo) ? 'SIMULADA' : 'REAL',
-      evidences: evidences.rows.filter((ev: any) => ev.opportunity_id === o.id),
-      risks: risks.rows.filter((r: any) => r.opportunity_id === o.id),
-      reviews: reviews.rows.filter((rev: any) => rev.opportunity_id === o.id),
-      score_components: allScoreComponents.rows.filter((c: any) => c.opportunity_score_id === o.score_id)
-    }));
+    const formatted = opps.rows.map(o => {
+      const scoreSimulated = o.score_id ? (o.score_is_simulated ?? true) : (isSimulated || o.is_demo);
+      const isSim = scoreSimulated || o.is_demo;
+      return {
+        ...o,
+        is_simulated: isSim,
+        ai_analysis_status: isSim ? 'ANÁLISE SIMULADA' : 'ANÁLISE REAL',
+        score_type: isSim ? 'SIMULADA' : 'REAL',
+        evidences: evidences.rows.filter((ev: any) => ev.opportunity_id === o.id),
+        risks: risks.rows.filter((r: any) => r.opportunity_id === o.id),
+        reviews: reviews.rows.filter((rev: any) => rev.opportunity_id === o.id),
+        score_components: allScoreComponents.rows.filter((c: any) => c.opportunity_score_id === o.score_id)
+      };
+    });
 
     return res.status(200).json({
       opportunities: formatted,
@@ -1867,17 +1871,18 @@ export async function analyzeOpportunity(req: AuthenticatedRequest, res: Respons
     const analysisId = analysisInsert.rows[0].id;
 
     const isSimulated = (aiProvider instanceof MockAIProvider) || (process.env.NODE_ENV === 'production' && process.env.AGENTIC_AI_PROVIDER !== 'openai');
+    const aiProviderName = (aiProvider instanceof MockAIProvider) ? 'MOCK' : (process.env.AGENTIC_AI_PROVIDER || 'MOCK');
     const scoreIsDemo = isDemo || isSimulated;
 
     // Save Opportunity Score (strictly not recorded as REAL when simulated)
     const scoreInsertId = crypto.randomUUID();
     const scoreInsert = await client.query(
       `INSERT INTO opportunity_scores (
-        id, opportunity_id, ai_analysis_id, score_model_id, initial_product_score, critical_adjustment, final_product_score, confidence_score, is_demo
+        id, opportunity_id, ai_analysis_id, score_model_id, initial_product_score, critical_adjustment, final_product_score, confidence_score, is_demo, is_simulated, ai_provider
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id`,
-      [scoreInsertId, id, analysisId, activeModel.id, scoreResult.initial_product_score, scoreResult.critical_adjustment, scoreResult.final_product_score, scoreResult.confidence_score, scoreIsDemo]
+      [scoreInsertId, id, analysisId, activeModel.id, scoreResult.initial_product_score, scoreResult.critical_adjustment, scoreResult.final_product_score, scoreResult.confidence_score, scoreIsDemo, isSimulated, aiProviderName]
     );
     const scoreId = scoreInsert.rows[0].id;
 
@@ -3023,6 +3028,31 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
       localStatus = 'EXPIRED';
       // Funnel Telemetry: PIX_EXPIRED
       try {
+        let visitorId = 'unknown_visitor';
+        let sessionId: string | null = null;
+        let fbclid: string | null = null;
+        let utmSource: string | null = null;
+        let utmMedium: string | null = null;
+        let utmCampaign: string | null = null;
+        let utmContent: string | null = null;
+
+        if (payment.order_id) {
+          const ordRes = await pool.query(
+            'SELECT visitor_id, session_id, fbclid, utm_source, utm_medium, utm_campaign, utm_content FROM orders WHERE id = $1',
+            [payment.order_id]
+          );
+          if (ordRes.rows.length > 0) {
+            const ord = ordRes.rows[0];
+            visitorId = ord.visitor_id || 'unknown_visitor';
+            sessionId = ord.session_id || null;
+            fbclid = ord.fbclid || null;
+            utmSource = ord.utm_source || null;
+            utmMedium = ord.utm_medium || null;
+            utmCampaign = ord.utm_campaign || null;
+            utmContent = ord.utm_content || null;
+          }
+        }
+
         await pool.query(
           `INSERT INTO commercial_funnel_events (
              event_id, event_type, visitor_id, session_id, offer_id,
@@ -3032,15 +3062,15 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
            ON CONFLICT (event_id, is_demo) DO NOTHING`,
           [
             `pix_exp_${payment.id}`,
-            'unknown_visitor',
-            null,
+            visitorId,
+            sessionId,
             payment.order_id,
             '/checkout',
-            null,
-            null,
-            null,
-            null,
-            null,
+            fbclid,
+            utmSource,
+            utmMedium,
+            utmCampaign,
+            utmContent,
             payment.is_demo
           ]
         );
@@ -3149,10 +3179,12 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
 
       // Meta Conversions API (CAPI): Purchase event (Deduplicated with event_id = 'purchase_' + orderId)
       try {
+        const eventTime = Math.floor(new Date(pRow.paid_at || pRow.updated_at || Date.now()).getTime() / 1000);
         MetaCapiService.sendEvent(pool, {
           orderId: pRow.order_id,
           eventName: 'Purchase',
           eventId: `purchase_${pRow.order_id}`,
+          eventTime,
           value: parseFloat(pRow.amount),
           currency: 'BRL',
           email: pRow.customer_email,
@@ -3290,9 +3322,10 @@ export async function webhookAsaas(req: any, res: Response) {
     return res.status(500).json({ error: 'Internal database processing failure.' });
   }
 
-  // Process the webhook confirmation event
+  // Process the webhook confirmation / overdue event
   const isConfirmedEvent = event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_RECEIVED_IN_CASH';
-  if (isConfirmedEvent) {
+  const isOverdueEvent = event === 'PAYMENT_OVERDUE';
+  if (isConfirmedEvent || isOverdueEvent) {
     try {
       // Reconcile and Finalize Payment
       await reconcileAndFinalizePayment(payment.externalReference, pool);
@@ -5364,16 +5397,23 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       isCostKnown = false;
     }
 
+    // Read business cost settings for fixed costs
+    const businessCostRes = await pool.query(
+      `SELECT monthly_fixed_costs FROM business_cost_settings WHERE is_demo = $1`,
+      [isDemo]
+    );
+    const monthlyFixedCosts = businessCostRes.rows.length > 0 ? parseFloat(businessCostRes.rows[0].monthly_fixed_costs || '0') : 0.00;
+
     // Query offer unit economics and active offers for real costs & breakeven intelligence
     const offerEconRes = await pool.query(
       `SELECT o.id as offer_id, o.human_id as offer_human_id, o.name as offer_name,
               o.price, o.promotional_price,
+              ue.id as unit_econ_id,
               COALESCE(ue.tax_rate, 0.0000)::numeric as tax_rate,
               COALESCE(ue.gateway_fixed_fee, 0.00)::numeric as gateway_fixed_fee,
               COALESCE(ue.gateway_pct_fee, 0.0000)::numeric as gateway_pct_fee,
               COALESCE(ue.other_variable_cost, 0.00)::numeric as other_variable_cost,
               COALESCE(ue.target_net_margin, 0.2000)::numeric as target_net_margin,
-              COALESCE(ue.monthly_fixed_costs, 0.00)::numeric as monthly_fixed_costs,
               COUNT(CASE WHEN o_order.status = 'PAID' THEN oi.id END)::int as units_sold,
               COALESCE(SUM(CASE WHEN o_order.status = 'PAID' THEN oi.total_price ELSE 0 END), 0)::numeric as gross_revenue
        FROM offers o
@@ -5384,7 +5424,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND ($1::timestamptz IS NULL OR o_order.created_at >= $1)
          AND ($2::timestamptz IS NULL OR o_order.created_at <= $2)
        WHERE o.is_demo = $3 AND o.is_deleted = FALSE
-       GROUP BY o.id, o.human_id, o.name, o.price, o.promotional_price, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost, ue.target_net_margin, ue.monthly_fixed_costs
+       GROUP BY o.id, o.human_id, o.name, o.price, o.promotional_price, ue.id, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost, ue.target_net_margin
        ORDER BY gross_revenue DESC, units_sold DESC`,
       [startDateParam, endDateParam, isDemo]
     );
@@ -5403,47 +5443,51 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
 
     let calculatedTaxes = 0;
     let calculatedOtherVariable = 0;
-    let maxMonthlyFixed = 0;
 
     const byOffer = offerEconRes.rows.map(row => {
       const pPrice = row.promotional_price !== null ? parseFloat(row.promotional_price) : parseFloat(row.price);
-      const taxRate = parseFloat(row.tax_rate || '0');
-      const gwFixed = parseFloat(row.gateway_fixed_fee || '0');
-      const gwPct = parseFloat(row.gateway_pct_fee || '0');
-      const otherVar = parseFloat(row.other_variable_cost || '0');
-      const targetMargin = parseFloat(row.target_net_margin || '0.2000');
-      const monthlyFixed = parseFloat(row.monthly_fixed_costs || '0');
+      const isConfigured = Boolean(row.unit_econ_id);
+      const taxRate = isConfigured ? parseFloat(row.tax_rate || '0') : 0;
+      const gwFixed = isConfigured ? parseFloat(row.gateway_fixed_fee || '0') : 0;
+      const gwPct = isConfigured ? parseFloat(row.gateway_pct_fee || '0') : 0;
+      const otherVar = isConfigured ? parseFloat(row.other_variable_cost || '0') : 0;
+      const targetMargin = isConfigured ? parseFloat(row.target_net_margin || '0.2000') : 0.2000;
       const unitsSold = parseInt(row.units_sold || '0', 10);
       const offerRev = Math.round(parseFloat(row.gross_revenue || '0') * 100) / 100;
 
-      if (monthlyFixed > maxMonthlyFixed) {
-        maxMonthlyFixed = monthlyFixed;
+      if (isConfigured) {
+        calculatedTaxes += offerRev * taxRate;
+        calculatedOtherVariable += unitsSold * otherVar;
       }
 
-      calculatedTaxes += offerRev * taxRate;
-      calculatedOtherVariable += unitsSold * otherVar;
+      let breakeven_cpa: number | null = null;
+      let target_cpa: number | null = null;
+      let breakeven_roas: number | null = null;
+      let target_roas: number | null = null;
 
-      // Breakeven CPA = Price - (Price * tax_rate + gw_fixed + Price * gw_pct + other_variable)
-      const breakevenCpaVal = pPrice - (pPrice * taxRate + gwFixed + pPrice * gwPct + otherVar);
-      const breakeven_cpa = Math.round(breakevenCpaVal * 100) / 100;
-      const breakeven_roas = breakeven_cpa > 0 ? Math.round((pPrice / breakeven_cpa) * 100) / 100 : null;
+      if (isConfigured) {
+        // Breakeven CPA = Price - (Price * tax_rate + gw_fixed + Price * gw_pct + other_variable)
+        const breakevenCpaVal = pPrice - (pPrice * taxRate + gwFixed + pPrice * gwPct + otherVar);
+        breakeven_cpa = Math.round(breakevenCpaVal * 100) / 100;
+        breakeven_roas = breakeven_cpa > 0 ? Math.round((pPrice / breakeven_cpa) * 100) / 100 : null;
 
-      // Target CPA = breakeven_cpa - (pPrice * target_net_margin)
-      const targetCpaVal = breakevenCpaVal - (pPrice * targetMargin);
-      const target_cpa = Math.round(targetCpaVal * 100) / 100;
-      const target_roas = target_cpa > 0 ? Math.round((pPrice / target_cpa) * 100) / 100 : null;
+        // Target CPA = breakeven_cpa - (pPrice * target_net_margin)
+        const targetCpaVal = breakevenCpaVal - (pPrice * targetMargin);
+        target_cpa = Math.round(targetCpaVal * 100) / 100;
+        target_roas = target_cpa > 0 ? Math.round((pPrice / target_cpa) * 100) / 100 : null;
+      }
 
       return {
         offerId: row.offer_id,
         offerHumanId: row.offer_human_id,
         offerName: row.offer_name,
         price: pPrice,
-        taxRate,
-        gatewayFixedFee: gwFixed,
-        gatewayPctFee: gwPct,
-        otherVariableCost: otherVar,
-        targetNetMargin: targetMargin,
-        monthlyFixedCosts: monthlyFixed,
+        unit_economics_status: (isConfigured ? 'CONFIGURED' : 'UNCONFIGURED') as 'CONFIGURED' | 'UNCONFIGURED',
+        taxRate: isConfigured ? taxRate : null,
+        gatewayFixedFee: isConfigured ? gwFixed : null,
+        gatewayPctFee: isConfigured ? gwPct : null,
+        otherVariableCost: isConfigured ? otherVar : null,
+        targetNetMargin: isConfigured ? targetMargin : null,
         unitsSold,
         grossRevenue: offerRev,
         breakeven_cpa,
@@ -5453,9 +5497,9 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       };
     });
 
-    const proratedFixedCosts = Math.round(((maxMonthlyFixed / 30) * periodDays) * 100) / 100;
+    const proratedFixedCosts = Math.round(((monthlyFixedCosts / 30) * periodDays) * 100) / 100;
     const otherCosts = Math.round((calculatedTaxes + calculatedOtherVariable + proratedFixedCosts) * 100) / 100;
-    const totalCosts = isCostKnown ? Math.round((totalKnownGatewayFees + otherCosts) * 100) / 100 : totalKnownGatewayFees;
+    const totalCosts = Math.round((totalKnownGatewayFees + otherCosts) * 100) / 100;
     const resultAfterMedia = Math.round((grossRevenue - totalSpend) * 100) / 100;
     const netProfit = Math.round((resultAfterMedia - totalCosts) * 100) / 100;
     const netMargin = grossRevenue > 0 ? Math.round((netProfit / grossRevenue) * 10000) / 100 : null;
@@ -5919,6 +5963,211 @@ export async function syncDemographicsData(req: AuthenticatedRequest, res: Respo
     return res.status(500).json({ error: err.message || 'Failed to synchronize demographic data.' });
   }
 }
+
+// -------------------------------------------------------------
+// NORQVA-0001: Offer Unit Economics & Business Cost Settings
+// -------------------------------------------------------------
+
+export async function getOfferUnitEconomics(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const { id } = req.params;
+
+    const offerRes = await pool.query(
+      `SELECT id, human_id, name, price, promotional_price, is_demo FROM offers WHERE (id::text = $1 OR human_id = $1) AND is_demo = $2`,
+      [id, isDemo]
+    );
+
+    if (offerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Oferta não encontrada.' });
+    }
+
+    const offer = offerRes.rows[0];
+
+    const ueRes = await pool.query(
+      `SELECT id, offer_id, tax_rate, gateway_fixed_fee, gateway_pct_fee, other_variable_cost, target_net_margin, updated_at
+       FROM offer_unit_economics
+       WHERE offer_id = $1 AND is_demo = $2`,
+      [offer.id, isDemo]
+    );
+
+    if (ueRes.rows.length === 0) {
+      return res.status(200).json({
+        status: 'UNCONFIGURED',
+        offer_id: offer.id,
+        is_demo: isDemo,
+        unit_economics: null
+      });
+    }
+
+    const row = ueRes.rows[0];
+    return res.status(200).json({
+      status: 'CONFIGURED',
+      offer_id: offer.id,
+      is_demo: isDemo,
+      unit_economics: {
+        id: row.id,
+        offer_id: row.offer_id,
+        tax_rate: parseFloat(row.tax_rate),
+        gateway_fixed_fee: parseFloat(row.gateway_fixed_fee),
+        gateway_pct_fee: parseFloat(row.gateway_pct_fee),
+        other_variable_cost: parseFloat(row.other_variable_cost),
+        target_net_margin: parseFloat(row.target_net_margin),
+        updated_at: row.updated_at
+      }
+    });
+  } catch (err: any) {
+    console.error('getOfferUnitEconomics error:', err);
+    return res.status(500).json({ error: 'Erro ao buscar unit economics da oferta.' });
+  }
+}
+
+export async function updateOfferUnitEconomics(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const { id } = req.params;
+    const {
+      tax_rate,
+      gateway_pct_fee,
+      gateway_fixed_fee,
+      other_variable_cost,
+      target_net_margin
+    } = req.body;
+
+    // Validate: tax_rate 0–0,5; gateway_pct_fee 0–0,2; gateway_fixed_fee 0–50; other_variable_cost >= 0; target_net_margin 0–0,9
+    if (typeof tax_rate !== 'number' || isNaN(tax_rate) || tax_rate < 0 || tax_rate > 0.5) {
+      return res.status(400).json({ error: 'tax_rate inválido. Deve ser um número entre 0 e 0.5.' });
+    }
+    if (typeof gateway_pct_fee !== 'number' || isNaN(gateway_pct_fee) || gateway_pct_fee < 0 || gateway_pct_fee > 0.2) {
+      return res.status(400).json({ error: 'gateway_pct_fee inválido. Deve ser um número entre 0 e 0.2.' });
+    }
+    if (typeof gateway_fixed_fee !== 'number' || isNaN(gateway_fixed_fee) || gateway_fixed_fee < 0 || gateway_fixed_fee > 50) {
+      return res.status(400).json({ error: 'gateway_fixed_fee inválido. Deve ser um número entre 0 e 50.' });
+    }
+    if (typeof other_variable_cost !== 'number' || isNaN(other_variable_cost) || other_variable_cost < 0) {
+      return res.status(400).json({ error: 'other_variable_cost inválido. Deve ser um número maior ou igual a 0.' });
+    }
+    if (typeof target_net_margin !== 'number' || isNaN(target_net_margin) || target_net_margin < 0 || target_net_margin > 0.9) {
+      return res.status(400).json({ error: 'target_net_margin inválido. Deve ser um número entre 0 e 0.9.' });
+    }
+
+    const offerRes = await pool.query(
+      `SELECT id FROM offers WHERE (id::text = $1 OR human_id = $1) AND is_demo = $2`,
+      [id, isDemo]
+    );
+
+    if (offerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Oferta não encontrada.' });
+    }
+
+    const offerId = offerRes.rows[0].id;
+
+    const upsertRes = await pool.query(
+      `INSERT INTO offer_unit_economics (
+         offer_id, tax_rate, gateway_fixed_fee, gateway_pct_fee, other_variable_cost, target_net_margin, is_demo, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (offer_id, is_demo) DO UPDATE SET
+         tax_rate = EXCLUDED.tax_rate,
+         gateway_fixed_fee = EXCLUDED.gateway_fixed_fee,
+         gateway_pct_fee = EXCLUDED.gateway_pct_fee,
+         other_variable_cost = EXCLUDED.other_variable_cost,
+         target_net_margin = EXCLUDED.target_net_margin,
+         updated_at = NOW()
+       RETURNING id, offer_id, tax_rate, gateway_fixed_fee, gateway_pct_fee, other_variable_cost, target_net_margin, updated_at`,
+      [offerId, tax_rate, gateway_fixed_fee, gateway_pct_fee, other_variable_cost, target_net_margin, isDemo]
+    );
+
+    const row = upsertRes.rows[0];
+    return res.status(200).json({
+      status: 'CONFIGURED',
+      offer_id: offerId,
+      is_demo: isDemo,
+      unit_economics: {
+        id: row.id,
+        offer_id: row.offer_id,
+        tax_rate: parseFloat(row.tax_rate),
+        gateway_fixed_fee: parseFloat(row.gateway_fixed_fee),
+        gateway_pct_fee: parseFloat(row.gateway_pct_fee),
+        other_variable_cost: parseFloat(row.other_variable_cost),
+        target_net_margin: parseFloat(row.target_net_margin),
+        updated_at: row.updated_at
+      }
+    });
+  } catch (err: any) {
+    console.error('updateOfferUnitEconomics error:', err);
+    return res.status(500).json({ error: 'Erro ao salvar unit economics da oferta.' });
+  }
+}
+
+export async function getBusinessCostSettings(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const settingsRes = await pool.query(
+      `SELECT id, monthly_fixed_costs, is_demo, updated_at FROM business_cost_settings WHERE is_demo = $1`,
+      [isDemo]
+    );
+
+    if (settingsRes.rows.length === 0) {
+      return res.status(200).json({
+        monthly_fixed_costs: 0.0,
+        is_demo: isDemo,
+        updated_at: null
+      });
+    }
+
+    const row = settingsRes.rows[0];
+    return res.status(200).json({
+      id: row.id,
+      monthly_fixed_costs: parseFloat(row.monthly_fixed_costs),
+      is_demo: isDemo,
+      updated_at: row.updated_at
+    });
+  } catch (err: any) {
+    console.error('getBusinessCostSettings error:', err);
+    return res.status(500).json({ error: 'Erro ao buscar configurações de custos fixos.' });
+  }
+}
+
+export async function updateBusinessCostSettings(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const { monthly_fixed_costs } = req.body;
+
+    if (typeof monthly_fixed_costs !== 'number' || isNaN(monthly_fixed_costs) || monthly_fixed_costs < 0) {
+      return res.status(400).json({ error: 'monthly_fixed_costs inválido. Deve ser um número maior ou igual a 0.' });
+    }
+
+    const upsertRes = await pool.query(
+      `INSERT INTO business_cost_settings (monthly_fixed_costs, is_demo, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (is_demo) DO UPDATE SET
+         monthly_fixed_costs = EXCLUDED.monthly_fixed_costs,
+         updated_at = NOW()
+       RETURNING id, monthly_fixed_costs, is_demo, updated_at`,
+      [monthly_fixed_costs, isDemo]
+    );
+
+    const row = upsertRes.rows[0];
+    return res.status(200).json({
+      success: true,
+      settings: {
+        id: row.id,
+        monthly_fixed_costs: parseFloat(row.monthly_fixed_costs),
+        is_demo: isDemo,
+        updated_at: row.updated_at
+      }
+    });
+  } catch (err: any) {
+    console.error('updateBusinessCostSettings error:', err);
+    return res.status(500).json({ error: 'Erro ao atualizar configurações de custos fixos.' });
+  }
+}
+
 
 
 
