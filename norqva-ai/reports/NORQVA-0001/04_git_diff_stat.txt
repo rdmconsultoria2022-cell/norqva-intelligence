@@ -1,6 +1,6 @@
  .gitignore                                         |    2 +
  backend/.env.test.example                          |   17 +
- backend/scripts/run-ci-tests.js                    |   31 +
+ backend/scripts/run-ci-tests.js                    |   32 +
  backend/src/controllers/api.ts                     |  591 +-
  ...commercial_phase1_real_metrics_and_security.sql |   94 +
  .../027_norqva_0001_capi_costs_honesty.sql         |   34 +
@@ -9,8 +9,8 @@
  backend/src/services/meta/capiRetryJob.ts          |  191 +
  backend/src/services/meta/metaCapiService.ts       |  279 +
  .../tests/financial_intelligence_dashboard.test.ts |    8 +-
- backend/src/tests/gate_sec03_phase1.test.ts        |  379 ++
- backend/src/tests/norqva_0001.test.ts              |  494 ++
+ backend/src/tests/gate_sec03_phase1.test.ts        |  379 +
+ backend/src/tests/norqva_0001.test.ts              |  494 +
  backend/src/tests/production_payment_lock.test.ts  |   15 +-
  backend/src/utils/envValidation.ts                 |    3 +-
  backend/src/utils/shutdown.ts                      |   15 +
@@ -21,11 +21,16 @@
  norqva-ai/reports/NORQVA-0001/00_baseline.txt      |    8 +
  .../NORQVA-0001/01_baseline_backend_tests.txt      |  Bin 0 -> 881446 bytes
  .../NORQVA-0001/01_baseline_frontend_tests.txt     |  Bin 0 -> 42050 bytes
- .../reports/NORQVA-0001/02_final_backend_tests.txt | 6142 ++++++++++++++++++++
+ .../reports/NORQVA-0001/02_final_backend_tests.txt | 6142 +++++++++++++
  .../NORQVA-0001/02_final_frontend_tests.txt        |  279 +
- norqva-ai/reports/NORQVA-0001/04_git_diff_stat.txt |  Bin 0 -> 7098 bytes
- norqva-ai/reports/NORQVA-0001/05_git_diff.patch    |  Bin 0 -> 2880880 bytes
- .../reports/NORQVA-0001/06_git_status_final.txt    |  Bin 0 -> 916 bytes
+ norqva-ai/reports/NORQVA-0001/04_git_diff_stat.txt |   31 +
+ norqva-ai/reports/NORQVA-0001/05_git_diff.patch    | 9696 ++++++++++++++++++++
+ .../reports/NORQVA-0001/06_git_status_final.txt    |   19 +
+ norqva-ai/reports/NORQVA-0001/08_builds_raw.txt    |   21 +
+ .../reports/NORQVA-0001/08_full_backend_ci_env.txt | 6516 +++++++++++++
+ norqva-ai/reports/NORQVA-0001/08_full_frontend.txt |  205 +
+ norqva-ai/reports/NORQVA-0001/09_scope_check.txt   |   30 +
  norqva-ai/reviews/NORQVA-0001_review.md            |   39 +
+ norqva-ai/reviews/NORQVA-0001_review_r2.md         |   42 +
  norqva-ai/tasks/NORQVA-0001.md                     |  219 +
- 30 files changed, 9124 insertions(+), 77 deletions(-)
+ 35 files changed, 25685 insertions(+), 77 deletions(-)

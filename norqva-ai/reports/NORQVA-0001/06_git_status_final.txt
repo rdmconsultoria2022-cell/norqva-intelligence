@@ -2,18 +2,21 @@ On branch ai/NORQVA-0001
 Changes not staged for commit:
   (use "git add <file>..." to update what will be committed)
   (use "git restore <file>..." to discard changes in working directory)
-	modified:   backend/scripts/run-ci-tests.js
+	modified:   backend/package.json
+	modified:   backend/vitest.config.ts
 	modified:   norqva-ai/reports/NORQVA-0001/04_git_diff_stat.txt
 	modified:   norqva-ai/reports/NORQVA-0001/05_git_diff.patch
 	modified:   norqva-ai/reports/NORQVA-0001/06_git_status_final.txt
+	modified:   norqva-ai/reports/NORQVA-0001/08_builds_raw.txt
+	modified:   norqva-ai/reports/NORQVA-0001/08_full_backend_ci_env.txt
+	modified:   norqva-ai/reports/NORQVA-0001/09_scope_check.txt
+	modified:   package-lock.json
 
 Untracked files:
   (use "git add <file>..." to include in what will be committed)
 	NORQVA_CLAUDE_AUDIT_PACKAGE/
-	norqva-ai/reports/NORQVA-0001/08_builds_raw.txt
-	norqva-ai/reports/NORQVA-0001/08_full_backend_ci_env.txt
-	norqva-ai/reports/NORQVA-0001/08_full_frontend.txt
-	norqva-ai/reports/NORQVA-0001/09_scope_check.txt
-	norqva-ai/reviews/NORQVA-0001_review_r2.md
+	backend/src/tests/setup/
+	norqva-ai/reviews/NORQVA-0001_review_r3.md
+	norqva-ai/reviews/NORQVA-0001_review_r4.md
 
 no changes added to commit (use "git add" and/or "git commit -a")

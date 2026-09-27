@@ -26,5 +26,10 @@ norqva-ai/reports/NORQVA-0001/02_final_frontend_tests.txt
 norqva-ai/reports/NORQVA-0001/04_git_diff_stat.txt
 norqva-ai/reports/NORQVA-0001/05_git_diff.patch
 norqva-ai/reports/NORQVA-0001/06_git_status_final.txt
+norqva-ai/reports/NORQVA-0001/08_builds_raw.txt
+norqva-ai/reports/NORQVA-0001/08_full_backend_ci_env.txt
+norqva-ai/reports/NORQVA-0001/08_full_frontend.txt
+norqva-ai/reports/NORQVA-0001/09_scope_check.txt
 norqva-ai/reviews/NORQVA-0001_review.md
+norqva-ai/reviews/NORQVA-0001_review_r2.md
 norqva-ai/tasks/NORQVA-0001.md
