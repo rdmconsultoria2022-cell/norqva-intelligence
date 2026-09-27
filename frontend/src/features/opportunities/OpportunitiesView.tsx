@@ -403,7 +403,14 @@ export function OpportunitiesView({
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <span className="font-mono text-emerald-400 font-bold text-[10px]">{opp.human_id}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-emerald-400 font-bold text-[10px]">{opp.human_id}</span>
+                        {(opp.is_simulated || opp.ai_analysis_status === 'ANÁLISE SIMULADA' || opp.score_type === 'SIMULADA') && (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-950/40 text-amber-300 border border-amber-500/30 font-bold">
+                            ANÁLISE SIMULADA
+                          </span>
+                        )}
+                      </div>
                       <h4 className="font-bold text-slate-200 mt-0.5 line-clamp-1">{opp.title}</h4>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
@@ -447,8 +454,13 @@ export function OpportunitiesView({
               {/* Header Panel */}
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-850 pb-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-emerald-400 font-bold text-xs">{selectedOpp.human_id}</span>
+                    {(selectedOpp.is_simulated || selectedOpp.ai_analysis_status === 'ANÁLISE SIMULADA' || selectedOpp.score_type === 'SIMULADA') && (
+                      <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-amber-950/40 text-amber-300 border border-amber-500/30 font-bold">
+                        ANÁLISE SIMULADA
+                      </span>
+                    )}
                     {selectedOpp.is_human_override && (
                       <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-amber-950/30 text-amber-400 border border-amber-500/20 font-bold">
                         SOBRESCRO ADMIN

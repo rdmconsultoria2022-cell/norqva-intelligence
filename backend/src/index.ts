@@ -338,17 +338,17 @@ app.post('/api/intelligence/demographics/sync', requireRole(['ADMIN']), syncDemo
 app.post('/api/meta/demographics/sync', requireRole(['ADMIN']), syncDemographicsData);
 
 // Market Discovery Core (Gate 07.7 - Read-Only Market Exploration)
-app.get('/api/market-discovery/probe', getMarketDiscoveryProbe);
-app.get('/api/market-discovery/search', searchMarketDiscoveryAds);
-app.get('/api/market-discovery/clusters', getMarketDiscoveryClusters);
-app.get('/api/market-discovery/ad/:id', getMarketDiscoveryAdById);
-app.get('/api/market-discovery/queue', getMarketDiscoveryTestQueue);
-app.post('/api/market-discovery/queue', addToMarketDiscoveryTestQueue);
-app.delete('/api/market-discovery/queue/:id', removeFromMarketDiscoveryTestQueue);
-app.post('/api/market-discovery/ingest-live', ingestOperatorLiveAd);
-app.get('/api/market-discovery/live-ads', getLiveIngestedAds);
-app.post('/api/market-discovery/resolve-source', resolveSourceUrlOrId);
-app.post('/api/market-discovery/probe-landing-page', probeLandingPage);
+app.get('/api/market-discovery/probe', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryProbe);
+app.get('/api/market-discovery/search', requireRole(['ADMIN', 'INTELLIGENCE']), searchMarketDiscoveryAds);
+app.get('/api/market-discovery/clusters', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryClusters);
+app.get('/api/market-discovery/ad/:id', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryAdById);
+app.get('/api/market-discovery/queue', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryTestQueue);
+app.post('/api/market-discovery/queue', requireRole(['ADMIN', 'INTELLIGENCE']), addToMarketDiscoveryTestQueue);
+app.delete('/api/market-discovery/queue/:id', requireRole(['ADMIN', 'INTELLIGENCE']), removeFromMarketDiscoveryTestQueue);
+app.post('/api/market-discovery/ingest-live', requireRole(['ADMIN', 'INTELLIGENCE']), ingestOperatorLiveAd);
+app.get('/api/market-discovery/live-ads', requireRole(['ADMIN', 'INTELLIGENCE']), getLiveIngestedAds);
+app.post('/api/market-discovery/resolve-source', requireRole(['ADMIN', 'INTELLIGENCE']), resolveSourceUrlOrId);
+app.post('/api/market-discovery/probe-landing-page', requireRole(['ADMIN', 'INTELLIGENCE']), probeLandingPage);
 
 // Agentic Orchestration Foundation 1.0 (Level 0 Read-Only / Fail-Closed)
 app.post('/api/orchestration/sessions', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'PERFORMANCE', 'OPERATIONS']), createOrchestrationSession);

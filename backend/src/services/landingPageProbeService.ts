@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import dns from 'dns';
+import net from 'net';
 
 export interface NetworkEvidence {
   requested_url: string;
@@ -49,11 +51,121 @@ export interface LandingPageProbeResult {
   };
 }
 
+export function isPrivateOrRestrictedIp(ip: string): boolean {
+  if (!ip) return true;
+
+  // IPv4-mapped IPv6 check
+  let cleanIp = ip.trim();
+  if (cleanIp.startsWith('::ffff:')) {
+    cleanIp = cleanIp.substring(7);
+  }
+
+  const isV4 = net.isIPv4(cleanIp);
+  const isV6 = net.isIPv6(cleanIp);
+
+  if (!isV4 && !isV6) return true;
+
+  if (isV4) {
+    const parts = cleanIp.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return true;
+
+    const [a, b, c, d] = parts;
+
+    // 0.0.0.0/8 (Unspecified)
+    if (a === 0) return true;
+    // 127.0.0.0/8 (Loopback)
+    if (a === 127) return true;
+    // 10.0.0.0/8 (Private RFC 1918)
+    if (a === 10) return true;
+    // 172.16.0.0/12 (Private RFC 1918)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.168.0.0/16 (Private RFC 1918)
+    if (a === 192 && b === 168) return true;
+    // 169.254.0.0/16 (Link-local RFC 3927 & AWS/Cloud Metadata 169.254.169.254)
+    if (a === 169 && b === 254) return true;
+    // 100.64.0.0/10 (Shared Address Space / CGNAT RFC 6598)
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    // 192.0.0.0/24 (IETF Protocol Assignments)
+    if (a === 192 && b === 0 && c === 0) return true;
+    // 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 (Documentation RFC 5737)
+    if (a === 192 && b === 0 && c === 2) return true;
+    if (a === 198 && b === 51 && c === 100) return true;
+    if (a === 203 && b === 0 && c === 113) return true;
+    // Multicast & Broadcast (224.0.0.0/4 and above)
+    if (a >= 224) return true;
+
+    return false;
+  }
+
+  if (isV6) {
+    const lower = cleanIp.toLowerCase();
+    // Unspecified & Loopback
+    if (lower === '::' || lower === '::1' || lower === '0:0:0:0:0:0:0:0' || lower === '0:0:0:0:0:0:0:1') return true;
+    // Link-local: fe80::/10 (fe80: - febf:)
+    if (/^fe[89ab]/i.test(lower)) return true;
+    // Unique Local: fc00::/7 (fc00: - fdff:)
+    if (/^f[cd]/i.test(lower)) return true;
+    // Discard prefix / documentation: 100::/64, 2001:db8::/32
+    if (lower.startsWith('100::') || lower.startsWith('2001:db8:')) return true;
+
+    return false;
+  }
+
+  return true;
+}
+
+export async function validateSecurityDestination(urlString: string): Promise<URL> {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch (err) {
+    throw new Error("URL inválida: informe uma URL completa iniciando com http:// ou https://.");
+  }
+
+  const protocol = parsed.protocol.toLowerCase();
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error(`Protocolo '${parsed.protocol}' não autorizado. Apenas http:// e https:// são permitidos.`);
+  }
+
+  const hostname = parsed.hostname;
+  if (!hostname || hostname.toLowerCase() === 'localhost') {
+    throw new Error(`Acesso bloqueado: Hostname '${hostname}' não é permitido.`);
+  }
+
+  if (net.isIP(hostname)) {
+    if (isPrivateOrRestrictedIp(hostname)) {
+      throw new Error(`Acesso bloqueado: IP '${hostname}' pertence a faixa privada, loopback ou restrita.`);
+    }
+  } else {
+    try {
+      const addresses = await dns.promises.lookup(hostname, { all: true });
+      if (!addresses || addresses.length === 0) {
+        throw new Error(`Falha na resolução de DNS para ${hostname}`);
+      }
+      for (const addr of addresses) {
+        if (isPrivateOrRestrictedIp(addr.address)) {
+          throw new Error(`Acesso bloqueado: ${hostname} resolve para IP restrito (${addr.address}).`);
+        }
+      }
+    } catch (err: any) {
+      if (err.message && err.message.startsWith('Acesso bloqueado:')) {
+        throw err;
+      }
+      throw new Error(`Falha na resolução de DNS para ${hostname}: ${err.message}`);
+    }
+  }
+
+  return parsed;
+}
+
 export class LandingPageProbeService {
   public static async probeUrl(rawUrl: string): Promise<LandingPageProbeResult> {
-    if (!rawUrl || !rawUrl.startsWith('http')) {
+    if (!rawUrl || typeof rawUrl !== 'string') {
       throw new Error("URL inválida: informe uma URL completa iniciando com http:// ou https://.");
     }
+
+    // SSRF validation on the initial URL
+    await validateSecurityDestination(rawUrl);
 
     let domain = '';
     try {
@@ -79,18 +191,48 @@ export class LandingPageProbeService {
     let accessStatus: 'PASS' | 'BLOCKED' | 'FAIL' = 'FAIL';
 
     try {
-      const response = await fetch(rawUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 NORQVA-PublicProbe/1.0',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-        },
-        redirect: 'follow',
-        signal: AbortSignal.timeout(6000)
-      });
+      let currentUrl = rawUrl;
+      let redirectCount = 0;
+      const maxRedirects = 3;
+      let response: Response | null = null;
 
-      networkEvidence.http_status = response.status;
-      networkEvidence.final_url = response.url;
-      networkEvidence.content_type = response.headers.get('content-type');
+      while (redirectCount <= maxRedirects) {
+        // Re-validate every destination hop in redirect chain
+        await validateSecurityDestination(currentUrl);
+
+        response = await fetch(currentUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 NORQVA-PublicProbe/1.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(6000)
+        });
+
+        networkEvidence.http_status = response.status;
+        networkEvidence.final_url = currentUrl;
+        networkEvidence.content_type = response.headers.get('content-type');
+
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          const location = response.headers.get('location');
+          if (!location) {
+            break;
+          }
+          const nextUrl = new URL(location, currentUrl).toString();
+          networkEvidence.redirect_chain.push(nextUrl);
+          redirectCount++;
+          if (redirectCount > maxRedirects) {
+            throw new Error("Limite de redirecionamentos excedido (máximo 3).");
+          }
+          currentUrl = nextUrl;
+        } else {
+          break;
+        }
+      }
+
+      if (!response) {
+        throw new Error("No response received");
+      }
 
       if (response.status === 403 || response.status === 401) {
         accessStatus = 'BLOCKED';
@@ -110,7 +252,10 @@ export class LandingPageProbeService {
       accessStatus = 'FAIL';
       deliveryType = 'UNAVAILABLE';
       html = '';
-      networkEvidence.http_status = null;
+      networkEvidence.http_status = networkEvidence.http_status || null;
+      if (err.message && (err.message.startsWith('Acesso bloqueado:') || err.message.startsWith('URL inválida:') || err.message.startsWith('Protocolo ') || err.message.startsWith('Limite de redirecionamentos'))) {
+        throw err;
+      }
     }
 
     // If access failed, ALL fields are strictly UNKNOWN
