@@ -1,0 +1,8 @@
+=== GIT STATUS ===
+On branch main Your branch is up to date with 'origin/main'.  Changes not staged for commit:   (use "git add <file>..." to update what will be committed)   (use "git restore <file>..." to discard changes in working directory) 	modified:   backend/src/controllers/api.ts 	modified:   backend/src/index.ts 	modified:   backend/src/services/landingPageProbeService.ts 	modified:   backend/src/utils/envValidation.ts 	modified:   frontend/src/components/layout/AppShell.tsx 	modified:   frontend/src/components/layout/Header.tsx 	modified:   frontend/src/components/layout/Sidebar.tsx 	modified:   frontend/src/features/dashboard/DashboardView.tsx 	modified:   frontend/src/features/opportunities/OpportunitiesView.tsx 	modified:   frontend/src/lib/api.ts  Untracked files:   (use "git add <file>..." to include in what will be committed) 	NORQVA_CLAUDE_AUDIT_PACKAGE/ 	backend/src/db/migrations/026_commercial_phase1_real_metrics_and_security.sql 	backend/src/services/meta/metaCapiService.ts 	backend/src/tests/gate_sec03_phase1.test.ts 	frontend/src/theme/ 	norqva-ai/  no changes added to commit (use "git add" and/or "git commit -a")
+
+=== GIT BRANCH ===
+* main
+
+=== GIT REV-PARSE HEAD ===
+e689c8893b35ac90a2abab70201a0675a04f4ae0

@@ -5,6 +5,12 @@ export interface ShutdownOptions {
   timeoutMs?: number;
 }
 
+const registeredHooks: Array<() => Promise<void> | void> = [];
+
+export function registerShutdownHook(hook: () => Promise<void> | void): void {
+  registeredHooks.push(hook);
+}
+
 let isShuttingDown = false;
 
 export function getIsShuttingDown(): boolean {
@@ -24,6 +30,15 @@ export async function gracefulShutdown(
   let timedOut = false;
 
   const shutdownWork = async () => {
+    // Execute registered cleanup hooks first (e.g. stopping interval timers/schedulers)
+    for (const hook of registeredHooks) {
+      try {
+        await hook();
+      } catch (hookErr) {
+        console.error('[Shutdown] Error executing shutdown hook:', hookErr);
+      }
+    }
+
     if (server) {
       await new Promise<void>((resolve) => {
         server.close((err) => {

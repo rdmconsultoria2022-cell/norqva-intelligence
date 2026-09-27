@@ -5,13 +5,24 @@ import { AsaasPaymentProvider } from '../utils/payment';
 describe('NORQVA Production Payment Lock Boot Remediation Suite V1', () => {
   const originalEnv = { ...process.env };
 
+  const resetEnv = () => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) {
+        delete process.env[key];
+      }
+    }
+    for (const [key, value] of Object.entries(originalEnv)) {
+      process.env[key] = value;
+    }
+  };
+
   beforeEach(() => {
-    process.env = { ...originalEnv };
+    resetEnv();
     delete process.env.ALLOW_DESTRUCTIVE_TESTS;
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
+    resetEnv();
   });
 
   it('TEST 1: APP_ENV=production, ASAAS_ENV=production, ALLOW_PRODUCTION_PAYMENTS=false, ASAAS_API_KEY absent => environment validation PASS', () => {
@@ -25,6 +36,7 @@ describe('NORQVA Production Payment Lock Boot Remediation Suite V1', () => {
     process.env.ASAAS_ENV = 'production';
     process.env.ASAAS_BASE_URL = 'https://api.asaas.com/v3';
     process.env.ALLOW_PRODUCTION_PAYMENTS = 'false';
+    process.env.CPF_CNPJ_HASH_SECRET = 'test_cpf_cnpj_hash_secret_for_boot_validation';
     delete process.env.ASAAS_API_KEY;
     delete process.env.ASAAS_WEBHOOK_AUTH_TOKEN;
 

@@ -708,10 +708,10 @@ describe('DASHBOARD FINANCIAL INTELLIGENCE V1 — Comprehensive Data Integrity &
       expect(res2.body.summary.grossRevenue).toBe(19.90);
       expect(res2.body.summary.paidOrdersCount).toBe(1);
     } finally {
-      process.env.NODE_ENV = originalNodeEnv;
-      process.env.APP_ENV = originalAppEnv;
-      process.env.ASAAS_ENV = originalAsaasEnv;
-      process.env.ALLOW_PRODUCTION_PAYMENTS = originalAllowProd;
+      if (originalNodeEnv !== undefined) process.env.NODE_ENV = originalNodeEnv; else delete process.env.NODE_ENV;
+      if (originalAppEnv !== undefined) process.env.APP_ENV = originalAppEnv; else delete process.env.APP_ENV;
+      if (originalAsaasEnv !== undefined) process.env.ASAAS_ENV = originalAsaasEnv; else delete process.env.ASAAS_ENV;
+      if (originalAllowProd !== undefined) process.env.ALLOW_PRODUCTION_PAYMENTS = originalAllowProd; else delete process.env.ALLOW_PRODUCTION_PAYMENTS;
     }
   });
 

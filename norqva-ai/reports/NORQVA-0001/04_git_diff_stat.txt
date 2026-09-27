@@ -1,0 +1,42 @@
+ .gitignore                                         |     2 +
+ backend/.env.test.example                          |    17 +
+ backend/package.json                               |     4 +-
+ backend/scripts/run-ci-tests.js                    |    32 +
+ backend/src/controllers/api.ts                     |   591 +-
+ ...commercial_phase1_real_metrics_and_security.sql |    94 +
+ .../027_norqva_0001_capi_costs_honesty.sql         |    34 +
+ backend/src/index.ts                               |    47 +-
+ backend/src/services/landingPageProbeService.ts    |   171 +-
+ backend/src/services/meta/capiRetryJob.ts          |   191 +
+ backend/src/services/meta/metaCapiService.ts       |   279 +
+ .../tests/financial_intelligence_dashboard.test.ts |     8 +-
+ backend/src/tests/gate_sec03_phase1.test.ts        |   379 +
+ backend/src/tests/norqva_0001.test.ts              |   494 +
+ backend/src/tests/production_payment_lock.test.ts  |    15 +-
+ backend/src/tests/setup/envIsolation.ts            |    43 +
+ backend/src/utils/envValidation.ts                 |     3 +-
+ backend/src/utils/shutdown.ts                      |    15 +
+ backend/vitest.config.ts                           |     1 +
+ frontend/src/features/checkout/CheckoutView.tsx    |     3 +
+ .../features/opportunities/OpportunitiesView.tsx   |    16 +-
+ frontend/src/services/attribution.ts               |    33 +-
+ frontend/src/tests/norqva_0001_attribution.test.ts |    91 +
+ norqva-ai/reports/NORQVA-0001/00_baseline.txt      |     8 +
+ .../NORQVA-0001/01_baseline_backend_tests.txt      |   Bin 0 -> 881446 bytes
+ .../NORQVA-0001/01_baseline_frontend_tests.txt     |   Bin 0 -> 42050 bytes
+ .../reports/NORQVA-0001/02_final_backend_tests.txt |  6142 +++++
+ .../NORQVA-0001/02_final_frontend_tests.txt        |   279 +
+ norqva-ai/reports/NORQVA-0001/04_git_diff_stat.txt |    36 +
+ norqva-ai/reports/NORQVA-0001/05_git_diff.patch    | 26293 +++++++++++++++++++
+ .../reports/NORQVA-0001/06_git_status_final.txt    |    22 +
+ norqva-ai/reports/NORQVA-0001/08_builds_raw.txt    |    21 +
+ .../reports/NORQVA-0001/08_full_backend_ci_env.txt |  7118 +++++
+ norqva-ai/reports/NORQVA-0001/08_full_frontend.txt |   205 +
+ norqva-ai/reports/NORQVA-0001/09_scope_check.txt   |    35 +
+ norqva-ai/reviews/NORQVA-0001_review.md            |    39 +
+ norqva-ai/reviews/NORQVA-0001_review_r2.md         |    42 +
+ norqva-ai/reviews/NORQVA-0001_review_r3.md         |    34 +
+ norqva-ai/reviews/NORQVA-0001_review_r4.md         |    36 +
+ norqva-ai/tasks/NORQVA-0001.md                     |   219 +
+ package-lock.json                                  |   223 +-
+ 41 files changed, 43043 insertions(+), 272 deletions(-)

@@ -78,8 +78,13 @@ import {
   claimOrderRecovery,
   getCreativePerformance,
   getDemographicsAnalytics,
-  syncDemographicsData
+  syncDemographicsData,
+  getOfferUnitEconomics,
+  updateOfferUnitEconomics,
+  getBusinessCostSettings,
+  updateBusinessCostSettings
 } from './controllers/api';
+import { startCapiRetryJob } from './services/meta/capiRetryJob';
 
 import {
   getMarketDiscoveryProbe,
@@ -113,7 +118,7 @@ import {
   recoveryRequestRateLimiter
 } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
-import { setupGracefulShutdown } from './utils/shutdown';
+import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
 
 dotenv.config();
@@ -263,6 +268,11 @@ app.put('/api/products/:id', requireRole(['PRODUCT', 'ADMIN']), updateProduct);
 app.get('/api/offers', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOffers);
 app.post('/api/offers', requireRole(['PRODUCT', 'ADMIN']), createOffer);
 app.put('/api/offers/:id', requireRole(['PRODUCT', 'ADMIN']), updateOffer);
+app.get('/api/offers/:id/unit-economics', requireRole(['ADMIN']), getOfferUnitEconomics);
+app.put('/api/offers/:id/unit-economics', requireRole(['ADMIN']), updateOfferUnitEconomics);
+
+app.get('/api/settings/business-costs', requireRole(['ADMIN']), getBusinessCostSettings);
+app.put('/api/settings/business-costs', requireRole(['ADMIN']), updateBusinessCostSettings);
 
 app.get('/api/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreatives);
 app.post('/api/creatives', requireRole(['CREATIVE', 'ADMIN']), createCreative);
@@ -338,17 +348,17 @@ app.post('/api/intelligence/demographics/sync', requireRole(['ADMIN']), syncDemo
 app.post('/api/meta/demographics/sync', requireRole(['ADMIN']), syncDemographicsData);
 
 // Market Discovery Core (Gate 07.7 - Read-Only Market Exploration)
-app.get('/api/market-discovery/probe', getMarketDiscoveryProbe);
-app.get('/api/market-discovery/search', searchMarketDiscoveryAds);
-app.get('/api/market-discovery/clusters', getMarketDiscoveryClusters);
-app.get('/api/market-discovery/ad/:id', getMarketDiscoveryAdById);
-app.get('/api/market-discovery/queue', getMarketDiscoveryTestQueue);
-app.post('/api/market-discovery/queue', addToMarketDiscoveryTestQueue);
-app.delete('/api/market-discovery/queue/:id', removeFromMarketDiscoveryTestQueue);
-app.post('/api/market-discovery/ingest-live', ingestOperatorLiveAd);
-app.get('/api/market-discovery/live-ads', getLiveIngestedAds);
-app.post('/api/market-discovery/resolve-source', resolveSourceUrlOrId);
-app.post('/api/market-discovery/probe-landing-page', probeLandingPage);
+app.get('/api/market-discovery/probe', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryProbe);
+app.get('/api/market-discovery/search', requireRole(['ADMIN', 'INTELLIGENCE']), searchMarketDiscoveryAds);
+app.get('/api/market-discovery/clusters', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryClusters);
+app.get('/api/market-discovery/ad/:id', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryAdById);
+app.get('/api/market-discovery/queue', requireRole(['ADMIN', 'INTELLIGENCE']), getMarketDiscoveryTestQueue);
+app.post('/api/market-discovery/queue', requireRole(['ADMIN', 'INTELLIGENCE']), addToMarketDiscoveryTestQueue);
+app.delete('/api/market-discovery/queue/:id', requireRole(['ADMIN', 'INTELLIGENCE']), removeFromMarketDiscoveryTestQueue);
+app.post('/api/market-discovery/ingest-live', requireRole(['ADMIN', 'INTELLIGENCE']), ingestOperatorLiveAd);
+app.get('/api/market-discovery/live-ads', requireRole(['ADMIN', 'INTELLIGENCE']), getLiveIngestedAds);
+app.post('/api/market-discovery/resolve-source', requireRole(['ADMIN', 'INTELLIGENCE']), resolveSourceUrlOrId);
+app.post('/api/market-discovery/probe-landing-page', requireRole(['ADMIN', 'INTELLIGENCE']), probeLandingPage);
 
 // Agentic Orchestration Foundation 1.0 (Level 0 Read-Only / Fail-Closed)
 app.post('/api/orchestration/sessions', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'PERFORMANCE', 'OPERATIONS']), createOrchestrationSession);
@@ -378,8 +388,19 @@ async function startServer() {
     // Initialize Automated Meta Analytics Scheduler (Non-blocking / Isolated)
     try {
       MetaSchedulerService.getInstance().start(pool);
+      registerShutdownHook(() => MetaSchedulerService.getInstance().stop());
     } catch (schedulerErr: any) {
       console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
+    }
+
+    // Initialize Automated CAPI Retry Job (Non-blocking / Isolated)
+    if (process.env.NODE_ENV !== 'test') {
+      try {
+        const capiJob = startCapiRetryJob(pool);
+        registerShutdownHook(() => capiJob.stop());
+      } catch (retryErr: any) {
+        console.error('[Server] Failed to initialize startCapiRetryJob (non-fatal):', retryErr.message);
+      }
     }
   } catch (err) {
     console.error('[Server] Initialization failed:', err);

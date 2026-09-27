@@ -582,6 +582,10 @@ export async function seedDemoData(pool: Pool) {
     }
 
     // 12. Insert Demo Meta Entities & Demographic Insights
+    // Idempotent re-seed: clearDemoData() removes demo users but not demo Meta entities,
+    // so a re-seed would collide on uq_meta_ad_accounts_id_demo. Remove only DEMO Meta rows
+    // (campaigns, ad sets, ads, insights and demographic insights cascade from the account).
+    await client.query('DELETE FROM meta_ad_accounts WHERE is_demo = TRUE');
     const adAccountId = crypto.randomUUID();
     await client.query(
       `INSERT INTO meta_ad_accounts (id, meta_account_id, name, currency, timezone_name, account_status, is_demo, data_provenance)

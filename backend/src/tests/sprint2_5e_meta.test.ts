@@ -118,7 +118,8 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
 
     const accounts = await pool.query('SELECT * FROM meta_ad_accounts WHERE is_demo = TRUE');
     expect(accounts.rows.length).toBeGreaterThan(0);
-    expect(accounts.rows[0].meta_account_id).toBe('act_demo_12345678');
+    // Shared test DB may also hold seeded demo accounts; assert the synced one exists.
+    expect(accounts.rows.map((r: any) => r.meta_account_id)).toContain('act_demo_12345678');
   });
 
   // M07 — Campaign UPSERT idempotente
@@ -202,8 +203,9 @@ describe('NORQVA — META ACQUISITION CORE PHASE A (M01 – M30)', () => {
   // M15 — Meta IDs externos não substituem IDs internos
   it('M15: Meta external IDs are stored in separate columns and do not overwrite primary UUIDs', async () => {
     await request(app).post('/api/meta/sync?mode=demo').set('Authorization', `Bearer ${adminToken}`);
-    const campaigns = await pool.query('SELECT * FROM meta_campaigns WHERE is_demo = TRUE');
+    const campaigns = await pool.query("SELECT * FROM meta_campaigns WHERE is_demo = TRUE AND meta_campaign_id = 'cmp_demo_001'");
 
+    expect(campaigns.rows.length).toBe(1);
     expect(campaigns.rows[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(campaigns.rows[0].meta_campaign_id).toBe('cmp_demo_001');
   });

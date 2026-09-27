@@ -1,0 +1,205 @@
+
+> frontend@1.0.0 test
+> vitest run
+
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90mC:/Users/Siber Mayrink/.gemini/antigravity/scratch/norqva-intelligence/frontend[39m
+
+[90mstderr[2m | src/tests/meta_pixel.test.ts[2m > [22m[2mMeta Pixel Integration & Conversion Events (InitiateCheckout & Purchase)[2m > [22m[2mC12: adblocker / broken fbq fails gracefully without throwing errors[22m[39m
+[Meta Pixel]: Failed to initialize safely: Error: Blocked by adblocker
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:369:13
+    at mockCall (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/spy[24m/dist/index.js:50:17)
+    at spy (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mtinyspy[24m/dist/index.js:42:80)
+    at initMetaPixel [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:148:14[90m)[39m
+    at Module.trackInitiateCheckout [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:259:5[90m)[39m
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:373:7
+    at Proxy.assertThrows (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\core\assertions.js:2644:7)
+    at Proxy.methodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\addMethod.js:57:25)
+    at Proxy.<anonymous> (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/expect[24m/dist/index.js:850:16)
+    at Proxy.overwritingMethodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\overwriteMethod.js:78:33)
+[Meta Pixel]: Failed to track InitiateCheckout safely: Error: Blocked by adblocker
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:369:13
+    at mockCall (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/spy[24m/dist/index.js:50:17)
+    at spy (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mtinyspy[24m/dist/index.js:42:80)
+    at Module.trackInitiateCheckout [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:295:14[90m)[39m
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:373:7
+    at Proxy.assertThrows (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\core\assertions.js:2644:7)
+    at Proxy.methodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\addMethod.js:57:25)
+    at Proxy.<anonymous> (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/expect[24m/dist/index.js:850:16)
+    at Proxy.overwritingMethodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\overwriteMethod.js:78:33)
+    at Proxy.<anonymous> (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/expect[24m/dist/index.js:1324:19)
+[Meta Pixel]: Failed to initialize safely: Error: Blocked by adblocker
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:369:13
+    at mockCall (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/spy[24m/dist/index.js:50:17)
+    at spy (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mtinyspy[24m/dist/index.js:42:80)
+    at initMetaPixel [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:148:14[90m)[39m
+    at Module.trackPurchase [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:319:5[90m)[39m
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:378:7
+    at Proxy.assertThrows (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\core\assertions.js:2644:7)
+    at Proxy.methodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\addMethod.js:57:25)
+    at Proxy.<anonymous> (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/expect[24m/dist/index.js:850:16)
+    at Proxy.overwritingMethodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\overwriteMethod.js:78:33)
+[Meta Pixel]: Failed to track Purchase safely: Error: Blocked by adblocker
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:369:13
+    at mockCall (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/spy[24m/dist/index.js:50:17)
+    at spy (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mtinyspy[24m/dist/index.js:42:80)
+    at Module.trackPurchase [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:373:14[90m)[39m
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_pixel.test.ts:378:7
+    at Proxy.assertThrows (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\core\assertions.js:2644:7)
+    at Proxy.methodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\addMethod.js:57:25)
+    at Proxy.<anonymous> (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/expect[24m/dist/index.js:850:16)
+    at Proxy.overwritingMethodWrapper (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\node_modules\[4mchai[24m\lib\chai\utils\overwriteMethod.js:78:33)
+    at Proxy.<anonymous> (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/expect[24m/dist/index.js:1324:19)
+
+ [32m✓[39m src/tests/meta_pixel.test.ts [2m ([22m[2m24 tests[22m[2m)[22m[90m 237[2mms[22m[39m
+[90mstderr[2m | src/tests/creative_performance_view.test.tsx[2m > [22m[2mCreative Performance Dashboard View (Read-Only UI)[2m > [22m[2mrenders loading state initially before data resolves[22m[39m
+Warning: An update to CreativePerformanceView inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at CreativePerformanceView (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\src\features\intelligence\CreativePerformanceView.tsx:115:3)
+Warning: An update to CreativePerformanceView inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at CreativePerformanceView (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\src\features\intelligence\CreativePerformanceView.tsx:115:3)
+
+[90mstderr[2m | src/tests/meta_purchase_redundant_trigger.test.tsx[2m > [22m[2mNORQVA — Meta Purchase Redundant Observational Trigger & Deduplication (M01 - M12)[2m > [22m[2mM01: PENDING order accessing delivery does not trigger Purchase[22m[39m
+Fetch delivery data error: Error: Forbidden: Order is not paid yet.
+    at fetchDeliveryData [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\delivery\DigitalDelivery.tsx:64:17[90m)[39m
+
+[90mstderr[2m | src/tests/meta_purchase_redundant_trigger.test.tsx[2m > [22m[2mNORQVA — Meta Purchase Redundant Observational Trigger & Deduplication (M01 - M12)[2m > [22m[2mM02: delivery endpoint rejecting request produces 0 Purchase events[22m[39m
+Fetch delivery data error: Error: Unauthorized checkout token
+    at fetchDeliveryData [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\delivery\DigitalDelivery.tsx:64:17[90m)[39m
+
+ [32m✓[39m src/tests/meta_commerce_payload_consistency.test.tsx [2m ([22m[2m14 tests[22m[2m)[22m[33m 4062[2mms[22m[39m
+[90mstderr[2m | src/tests/auth.test.tsx[2m > [22m[2mAuth System Regression[2m > [22m[2mR21: network/auth initialization failure transitions to RECOVERY_INVALID[22m[39m
+PKCE exchange error: Error: Network error
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\auth.test.tsx:158:73
+    at runTest (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:781:11)
+    at runSuite (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:909:15)
+    at runSuite (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:909:15)
+    at runFiles (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:958:5)
+    at startTests (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:967:3)
+    at file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:116:7
+    at withEnv (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:83:5)
+    at run (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mvitest[24m/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:105:3)
+    at runBaseTests (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4mvitest[24m/dist/vendor/base.Ybri3C14.js:30:3)
+
+ [32m✓[39m src/tests/gate16_6f_demographic_intelligence_ui.test.tsx [2m ([22m[2m19 tests[22m[2m)[22m[33m 6028[2mms[22m[39m
+ [32m✓[39m src/tests/creative_performance_view.test.tsx [2m ([22m[2m17 tests[22m[2m)[22m[33m 5021[2mms[22m[39m
+[90mstderr[2m | src/tests/meta_purchase_redundant_trigger.test.tsx[2m > [22m[2mNORQVA — Meta Purchase Redundant Observational Trigger & Deduplication (M01 - M12)[2m > [22m[2mM09: adblocker or fbq exception does not interrupt digital delivery[22m[39m
+[Meta Pixel]: Failed to initialize safely: Error: Blocked by adblocker
+    at window.fbq [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_purchase_redundant_trigger.test.tsx:417:13[90m)[39m
+    at Module.initMetaPixel [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:148:14[90m)[39m
+    at [90mC:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_purchase_redundant_trigger.test.tsx:419:22
+    at file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:135:14
+    at file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:60:26
+    at runTest (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:781:17)
+    at runSuite (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:909:15)
+    at runSuite (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:909:15)
+    at runFiles (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:958:5)
+    at startTests (file:///C:/Users/Siber%20Mayrink/.gemini/antigravity/scratch/norqva-intelligence/node_modules/[4m@vitest/runner[24m/dist/index.js:967:3)
+[Meta Pixel]: Failed to initialize safely: Error: Blocked by adblocker
+    at window.fbq [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_purchase_redundant_trigger.test.tsx:417:13[90m)[39m
+    at initMetaPixel [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:148:14[90m)[39m
+    at Module.trackPurchase [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:319:5[90m)[39m
+    at fetchDeliveryData [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\delivery\DigitalDelivery.tsx:81:15[90m)[39m
+[Meta Pixel]: Failed to track Purchase safely: Error: Blocked by adblocker
+    at window.fbq [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\tests\meta_purchase_redundant_trigger.test.tsx:417:13[90m)[39m
+    at Module.trackPurchase [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\services\metaPixel.ts:373:14[90m)[39m
+    at fetchDeliveryData [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\delivery\DigitalDelivery.tsx:81:15[90m)[39m
+
+ [32m✓[39m src/tests/meta_purchase_redundant_trigger.test.tsx [2m ([22m[2m12 tests[22m[2m)[22m[33m 5413[2mms[22m[39m
+[90mstderr[2m | src/tests/paid_order_recovery.test.tsx[2m > [22m[2mNORQVA — Paid Order Recovery & Refresh Persistence (Scenarios A - J)[2m > [22m[2mScenario F: Invalid customer access credential fails closed with safe error message[22m[39m
+Order recovery fetch error: Error: Acesso não autorizado para este pedido.
+    at fetchOrderDetails [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\delivery\OrderDeliveryView.tsx:102:17[90m)[39m
+
+ [32m✓[39m src/tests/dashboard.test.tsx [2m ([22m[2m3 tests[22m[2m)[22m[33m 1699[2mms[22m[39m
+ [32m✓[39m src/tests/paid_order_recovery.test.tsx [2m ([22m[2m7 tests[22m[2m)[22m[33m 2359[2mms[22m[39m
+ [32m✓[39m src/tests/polling_rate_limit_resilience.test.tsx [2m ([22m[2m7 tests[22m[2m)[22m[33m 701[2mms[22m[39m
+ [32m✓[39m src/tests/public_commerce_entry.test.tsx [2m ([22m[2m4 tests[22m[2m)[22m[33m 4406[2mms[22m[39m
+ [32m✓[39m src/tests/checkout_data_contract.test.tsx [2m ([22m[2m9 tests[22m[2m)[22m[33m 3303[2mms[22m[39m
+[90mstderr[2m | src/tests/commercial_phase6b.test.tsx[2m > [22m[2mGate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architecture[2m > [22m[2mPix Creation Failure State and Error Presentation Regression (F01 - F05)[2m > [22m[2mF01, F02, F03 & F04: createPix HTTP failure transitions to FAILED, disables awaiting-payment UI, prevents polling, and shows no Pix QR/copy UI[22m[39m
+Create Pix error: Error: Informe um CPF válido para continuar.
+    at createPix [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\payment\PaymentStatus.tsx:92:17[90m)[39m
+
+ [32m✓[39m src/tests/auth.test.tsx [2m ([22m[2m17 tests[22m[2m)[22m[33m 22089[2mms[22m[39m
+[90mstderr[2m | src/tests/commercial_phase6b.test.tsx[2m > [22m[2mGate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architecture[2m > [22m[2mSecure Digital Delivery Token Reissuance & UI Resilience (D24 - D25)[2m > [22m[2mD25: no entitlement vs exhausted vs issuance-error states render distinctly[22m[39m
+Fetch delivery data error: Error: Database connection failed
+    at fetchDeliveryData [90m(C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\[39msrc\features\delivery\DigitalDelivery.tsx:64:17[90m)[39m
+
+ [32m✓[39m src/tests/commercial_phase6b.test.tsx [2m ([22m[2m21 tests[22m[2m)[22m[33m 22552[2mms[22m[39m
+ [32m✓[39m src/tests/bolso_blindado_journey.test.tsx [2m ([22m[2m4 tests[22m[2m)[22m[33m 2644[2mms[22m[39m
+[90mstderr[2m | src/tests/access_recovery_view.test.tsx[2m > [22m[2mNORQVA — AccessRecoveryView & Magic Link Route Contract (A - F)[2m > [22m[2mA & B: URL /acesso/test-token-123 extracts token and invokes GET /api/checkout/recovery/:recoveryToken[22m[39m
+Claim recovery error: RequestInit: Expected signal ("AbortSignal {}") to be an instance of AbortSignal.
+
+[90mstderr[2m | src/tests/access_recovery_view.test.tsx[2m > [22m[2mNORQVA — AccessRecoveryView & Magic Link Route Contract (A - F)[2m > [22m[2mE: Claim 410 returns and presents friendly invalid or expired message[22m[39m
+Claim recovery error: Este link de acesso não é mais válido. Solicite um novo link.
+
+ [32m✓[39m src/tests/access_recovery_view.test.tsx [2m ([22m[2m5 tests[22m[2m)[22m[33m 1122[2mms[22m[39m
+ [32m✓[39m src/tests/recovery_modal_ui_contract.test.tsx [2m ([22m[2m5 tests[22m[2m)[22m[33m 2453[2mms[22m[39m
+ [32m✓[39m src/tests/meta_phase_a.test.tsx [2m ([22m[2m5 tests[22m[2m)[22m[33m 2577[2mms[22m[39m
+ [32m✓[39m src/tests/gate17_0b_public_offer_cta.test.tsx [2m ([22m[2m3 tests[22m[2m)[22m[33m 4901[2mms[22m[39m
+ [32m✓[39m src/tests/experiments.test.tsx [2m ([22m[2m2 tests[22m[2m)[22m[33m 1530[2mms[22m[39m
+ [32m✓[39m src/tests/attribution_context.test.ts [2m ([22m[2m5 tests[22m[2m)[22m[90m 80[2mms[22m[39m
+[90mstderr[2m | src/tests/opportunities.test.tsx[2m > [22m[2mOpportunitiesView Component Regression[2m > [22m[2mrenders opportunities and handles selection & history fetch with abort logic[22m[39m
+Warning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `OpportunitiesView`. See https://reactjs.org/link/warning-keys for more information.
+    at div
+    at OpportunitiesView (C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend\src\features\opportunities\OpportunitiesView.tsx:10:3)
+
+ [32m✓[39m src/tests/creative.test.tsx [2m ([22m[2m2 tests[22m[2m)[22m[33m 1826[2mms[22m[39m
+ [32m✓[39m src/tests/opportunities.test.tsx [2m ([22m[2m2 tests[22m[2m)[22m[33m 2190[2mms[22m[39m
+ [32m✓[39m src/tests/norqva_0001_attribution.test.ts [2m ([22m[2m5 tests[22m[2m)[22m[90m 82[2mms[22m[39m
+ [33m❯[39m src/tests/api_base_hardening.test.ts [2m ([22m[2m4 tests[22m [2m|[22m [31m1 failed[39m[2m)[22m[90m 34[2mms[22m[39m
+[31m   [33m❯[31m src/tests/api_base_hardening.test.ts[2m > [22mFrontend API Base Routing Hardening[2m > [22mfails closed and throws error when VITE_API_BASE_URL is missing in production mode[39m
+[31m     → expected [Function] to throw an error[39m
+ [32m✓[39m src/tests/router.test.tsx [2m ([22m[2m3 tests[22m[2m)[22m[90m 233[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/tests/api_base_hardening.test.ts[2m > [22mFrontend API Base Routing Hardening[2m > [22mfails closed and throws error when VITE_API_BASE_URL is missing in production mode
+[31m[1mAssertionError[22m: expected [Function] to throw an error[39m
+
+[32m- Expected:[39m 
+null
+
+[31m+ Received:[39m 
+undefined
+
+[36m [2m❯[22m src/tests/api_base_hardening.test.ts:[2m22:52[22m[39m
+    [90m 20| [39m
+    [90m 21| [39m  [34mit[39m([32m'fails closed and throws error when VITE_API_BASE_URL is missing [39m…
+    [90m 22| [39m    [34mexpect[39m(() [33m=>[39m [34mresolveApiBase[39m(undefined[33m,[39m [35mfalse[39m))[33m.[39m[34mtoThrow[39m([36m/API CONFIG[39m…
+    [90m   | [39m                                                   [31m^[39m
+    [90m 23| [39m    [34mexpect[39m(() [33m=>[39m [34mresolveApiBase[39m([32m''[39m[33m,[39m [35mfalse[39m))[33m.[39m[34mtoThrow[39m([36m/API CONFIGURATION[39m…
+    [90m 24| [39m    [34mexpect[39m(() [33m=>[39m [34mresolveApiBase[39m([32m'   '[39m[33m,[39m [35mfalse[39m))[33m.[39m[34mtoThrow[39m([36m/API CONFIGURAT[39m…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m23 passed[39m[22m[90m (24)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m198 passed[39m[22m[90m (199)[39m
+[2m   Start at [22m 17:18:22
+[2m   Duration [22m 56.55s[2m (transform 7.72s, setup 25.51s, collect 30.37s, tests 97.54s, environment 163.10s, prepare 23.47s)[22m
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend
+npm error workspace frontend@1.0.0
+npm error location C:\Users\Siber Mayrink\.gemini\antigravity\scratch\norqva-intelligence\frontend
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c vitest run

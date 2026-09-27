@@ -5,6 +5,7 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
+    setupFiles: ['./src/tests/setup/envIsolation.ts'],
     pool: 'forks',
     poolOptions: {
       forks: {

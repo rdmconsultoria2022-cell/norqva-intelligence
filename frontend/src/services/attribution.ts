@@ -15,6 +15,8 @@ export interface AttributionContext {
   visitor_id: string;
   session_id: string;
   fbclid: string | null;
+  fbc: string | null;
+  fbp: string | null;
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
@@ -69,11 +71,21 @@ export function getSessionId(): string {
   }
 }
 
+export function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  try {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * Captures attribution query parameters from current URL and stores in session context.
  * Backward-compatible, fail-safe, and non-blocking.
  */
-export function captureUrlAttribution(): Partial<AttributionContext> {
+export function captureUrlAttribution(): Partial<AttributionContext & { fbclid_ts?: string }> {
   if (typeof window === 'undefined') return {};
   try {
     const params = new URLSearchParams(window.location.search);
@@ -90,7 +102,14 @@ export function captureUrlAttribution(): Partial<AttributionContext> {
     const site_source_name = params.get('site_source_name');
 
     const ctx: Record<string, string> = {};
-    if (fbclid) ctx.fbclid = fbclid;
+    const existing = JSON.parse(sessionStorage.getItem('norqva_attribution_ctx') || '{}');
+
+    if (fbclid) {
+      ctx.fbclid = fbclid;
+      if (!existing.fbclid || existing.fbclid !== fbclid || !existing.fbclid_ts) {
+        ctx.fbclid_ts = Date.now().toString();
+      }
+    }
     if (utm_source) ctx.utm_source = utm_source;
     if (utm_medium) ctx.utm_medium = utm_medium;
     if (utm_campaign) ctx.utm_campaign = utm_campaign;
@@ -103,7 +122,6 @@ export function captureUrlAttribution(): Partial<AttributionContext> {
     if (site_source_name) ctx.site_source_name = site_source_name;
 
     if (Object.keys(ctx).length > 0) {
-      const existing = JSON.parse(sessionStorage.getItem('norqva_attribution_ctx') || '{}');
       sessionStorage.setItem('norqva_attribution_ctx', JSON.stringify({ ...existing, ...ctx }));
     }
 
@@ -128,10 +146,19 @@ export function getAttributionContext(): AttributionContext {
   const live = captureUrlAttribution();
   const merged = { ...stored, ...live };
 
+  const fbp = getCookie('_fbp') || null;
+  let fbc = getCookie('_fbc') || null;
+  if (!fbc && merged.fbclid) {
+    const ts = merged.fbclid_ts || Date.now().toString();
+    fbc = `fb.1.${ts}.${merged.fbclid}`;
+  }
+
   return {
     visitor_id,
     session_id,
     fbclid: merged.fbclid || null,
+    fbc,
+    fbp,
     utm_source: merged.utm_source || null,
     utm_medium: merged.utm_medium || null,
     utm_campaign: merged.utm_campaign || null,

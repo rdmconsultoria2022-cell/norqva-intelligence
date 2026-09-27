@@ -21,7 +21,8 @@ export function validateProductionEnvironment(): EnvValidationResult {
     'SUPABASE_URL',
     'SUPABASE_JWKS_URL',
     'SUPABASE_PUBLISHABLE_KEY',
-    'CORS_ALLOWED_ORIGINS'
+    'CORS_ALLOWED_ORIGINS',
+    'CPF_CNPJ_HASH_SECRET'
   ];
 
   const missing = requiredVars.filter(varName => !process.env[varName] || process.env[varName]!.trim() === '');

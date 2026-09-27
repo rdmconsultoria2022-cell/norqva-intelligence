@@ -11,6 +11,8 @@ build/
 .env
 .env.*
 !.env.example
+!*.example
+!backend/.env.test.example
 *.local
 
 # Logs
