@@ -5288,7 +5288,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     const mediaSpendProvenanceClause = getMediaSpendProvenanceClause(isDemo);
 
     // 1. Meta Ad Spend & Insights Aggregation
-    // Double counting protection: when filtering by period, only aggregate daily records (date_start = date_stop)
+    // Double counting protection: always aggregate daily records only (date_start = date_stop), with or without a period filter (NORQVA-0003)
     const accountSpendRes = await pool.query(
       `SELECT 
          COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
@@ -5302,7 +5302,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND mi.entity_level = 'ACCOUNT'
          AND ($1::date IS NULL OR mi.date_start >= $1::date)
          AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)`,
+         AND mi.date_start = mi.date_stop`,
       [metaStartDateParam, metaEndDateParam]
     );
 
@@ -5325,7 +5325,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
            AND mi.entity_level = 'CAMPAIGN'
            AND ($1::date IS NULL OR mi.date_start >= $1::date)
            AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-           AND ($1::date IS NULL OR mi.date_start = mi.date_stop)`,
+           AND mi.date_start = mi.date_stop`,
         [metaStartDateParam, metaEndDateParam]
       );
       totalSpend = parseFloat(campaignSpendRes.rows[0]?.total_spend || '0');
@@ -5606,7 +5606,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND mi.entity_level = 'CAMPAIGN' 
          AND ($1::date IS NULL OR mi.date_start >= $1::date)
          AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)
+         AND mi.date_start = mi.date_stop
          AND ${mediaSpendProvenanceClause}
        WHERE ${mediaCampaignClause}
        GROUP BY mc.id, mc.meta_campaign_id, mc.name, mc.status, mc.effective_status
@@ -5652,7 +5652,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND mi.entity_level = 'AD' 
          AND ($1::date IS NULL OR mi.date_start >= $1::date)
          AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)
+         AND mi.date_start = mi.date_stop
          AND ${mediaSpendProvenanceClause}
        WHERE ${mediaAdClause}
        GROUP BY ma.id, ma.meta_ad_id, ma.name, ma.status, ma.effective_status, mas.id, mas.meta_adset_id, mas.name, mc.id, mc.meta_campaign_id, mc.name
