@@ -1,21 +1,33 @@
-﻿
-> backend@1.0.0 build
-> tsc -p tsconfig.build.json && node copy-migrations.js
+================================================================================
+NORQVA PRODUCTION ARTIFACT BUILDS REPORT
+Executed: 2026-09-27
+================================================================================
 
+1. BACKEND BUILD:
+Command: npm run build --workspace=backend
+Status: SUCCESS (Exit Code 0)
+Output:
+> tsc -p tsconfig.build.json && node copy-migrations.js
 [Migration Assets]: Successfully copied 27 SQL migration files to dist/db/migrations/
 
-> frontend@1.0.0 build
+2. FRONTEND BUILD:
+Command: npm run build --workspace=frontend
+Status: SUCCESS (Exit Code 0)
+Output:
 > tsc && vite build
-
-[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+vite v5.4.21 building for production...
 transforming...
-[32mÔ£ô[39m 1585 modules transformed.
+✓ 1585 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                          [39m[1m[2m  0.94 kB[22m[1m[22m[2m Ôöé gzip:  0.52 kB[22m
-[2mdist/[22m[35massets/index-VUdp8Vf2.css           [39m[1m[2m 60.79 kB[22m[1m[22m[2m Ôöé gzip: 10.32 kB[22m
-[2mdist/[22m[36massets/vendor-icons-DTrTEflu.js     [39m[1m[2m 32.38 kB[22m[1m[22m[2m Ôöé gzip:  7.98 kB[22m
-[2mdist/[22m[36massets/vendor-react-BI9A_JOl.js     [39m[1m[2m133.93 kB[22m[1m[22m[2m Ôöé gzip: 43.13 kB[22m
-[2mdist/[22m[36massets/vendor-supabase-CyI6DAKv.js  [39m[1m[2m220.43 kB[22m[1m[22m[2m Ôöé gzip: 57.64 kB[22m
-[2mdist/[22m[36massets/index-C6gg0s9K.js            [39m[1m[2m366.74 kB[22m[1m[22m[2m Ôöé gzip: 76.99 kB[22m
-[32mÔ£ô built in 8.23s[39m
+dist/index.html                            0.94 kB │ gzip:  0.52 kB
+dist/assets/index-VUdp8Vf2.css            60.79 kB │ gzip: 10.32 kB
+dist/assets/vendor-icons-DTrTEflu.js      32.38 kB │ gzip:  7.98 kB
+dist/assets/vendor-react-BI9A_JOl.js     133.93 kB │ gzip: 43.13 kB
+dist/assets/vendor-supabase-CyI6DAKv.js  220.43 kB │ gzip: 57.64 kB
+dist/assets/index-CV2i9AWf.js            366.77 kB │ gzip: 77.00 kB
+✓ built in 20.59s
+
+================================================================================
+ALL PRODUCTION BUILDS PASSED WITH ZERO ERRORS.
+================================================================================
