@@ -2,8 +2,8 @@
 -- Approved by the operator on 2026-09-27. Nothing is deleted: 3 of these orders have real Pix
 -- payments in Asaas, so rows are kept for reconciliation and only leave production dashboards.
 -- Customers: Ricardo licas (4), Ricardo Andrade (1), QA User A (1), Qa Sandbox Buyer Test (2).
--- Idempotent: only rows still marked COMMERCIAL_PRODUCTION are touched; unknown ids are a no-op.
--- Wrapped in a DO block: the pg-mem test emulator strips DO blocks (it has no such data);
+-- Idempotent: only rows still marked COMMERCIAL_PRODUCTION are touched, unknown ids are a no-op.
+-- Wrapped in a DO block: the pg-mem test emulator strips DO blocks (it has no such data),
 -- PostgreSQL executes it normally.
 
 DO $$
