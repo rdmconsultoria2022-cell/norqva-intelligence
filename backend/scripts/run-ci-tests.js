@@ -6,7 +6,7 @@ const ciEnv = {
   ...process.env,
   NODE_ENV: 'test',
   ALLOW_DESTRUCTIVE_TESTS: 'true',
-  AUTH_MODE: process.env.AUTH_MODE || 'demo',
+  AUTH_MODE: 'real',
   SUPABASE_URL: 'https://mock.supabase.co',
   SUPABASE_JWKS_URL: 'https://mock.supabase.co/auth/v1/.well-known/jwks.json',
   SUPABASE_PUBLISHABLE_KEY: 'sb_pub_mock',
@@ -28,4 +28,5 @@ const result = spawnSync('npx', vitestArgs, {
   shell: true
 });
 
-process.exit(result.status || 0);
+process.exit(result.status ?? 1);
+
