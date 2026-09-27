@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { DEMO_MODE_ENABLED } from './lib/demoMode';
 import { supabase } from './supabase';
 import {
   LayoutDashboard,
@@ -1901,7 +1902,7 @@ function ConfigView({ isDemoView, currentUser, auditLogs, apiFetch, showError, s
             </div>
           )}
 
-          {isAdmin && (
+          {isAdmin && DEMO_MODE_ENABLED && (
             <div className="pt-4 border-t border-slate-850 space-y-3">
               <h4 className="font-bold text-xs uppercase text-red-400 font-mono">Zona de Perigo</h4>
               <button

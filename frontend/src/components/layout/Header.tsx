@@ -1,4 +1,5 @@
 import React from 'react';
+import { DEMO_MODE_ENABLED } from '../../lib/demoMode';
 import { RefreshCw, Shield, Menu, X } from 'lucide-react';
 
 export interface HeaderProps {
@@ -39,7 +40,8 @@ export function Header({
           {activeTab === 'dashboard' ? 'Visão Executiva' : activeTab}
         </h1>
         
-        {/* DEMO / REAL mode indicator toggle */}
+        {/* DEMO / REAL mode toggle: only in tests or local demo builds (NORQVA-0003) */}
+        {DEMO_MODE_ENABLED && (
         <div className="flex items-center bg-slate-950/80 border border-slate-800 p-0.5 rounded-md text-[11px] md:text-xs">
           <button
             onClick={() => setIsDemoView(true)}
@@ -62,6 +64,7 @@ export function Header({
             MODO REAL
           </button>
         </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 md:gap-4 text-xs font-mono">
