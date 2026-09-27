@@ -54,7 +54,7 @@ describe('GATE 16.6D: Meta Demographic Ingestion Engine', () => {
 
     // Insert admin user fixture
     await pool.query(
-      "INSERT INTO users (id, name, email, role) VALUES ($1, 'Admin User', 'admin@norqva.com', 'ADMIN') ON CONFLICT (id) DO NOTHING",
+      "INSERT INTO users (id, name, email, role) VALUES ($1, 'Admin User', 'admin+gate16-6d@norqva.test', 'ADMIN') ON CONFLICT (id) DO NOTHING",
       [adminUserId]
     );
 
@@ -99,7 +99,7 @@ describe('GATE 16.6D: Meta Demographic Ingestion Engine', () => {
     app.use(express.json());
     app.set('db', pool);
     app.use((req: any, _res: any, next: any) => {
-      req.user = { id: adminUserId, email: 'admin@norqva.com', role: 'ADMIN' };
+      req.user = { id: adminUserId, email: 'admin+gate16-6d@norqva.test', role: 'ADMIN' };
       next();
     });
     app.get('/api/financial/dashboard', getFinancialDashboard);
