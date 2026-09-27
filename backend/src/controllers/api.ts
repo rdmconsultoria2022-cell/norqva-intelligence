@@ -46,6 +46,14 @@ import { MetaCapiService } from '../services/meta/metaCapiService';
 
 export const aiProvider = new MockAIProvider();
 
+// Helper: CPF/CNPJ encryption key. Never falls back to a public key outside tests (NORQVA-0002).
+function getEncryptionKey(): string {
+  const key = (process.env.ENCRYPTION_KEY || '').trim();
+  if (key) return key;
+  if (process.env.NODE_ENV === 'test') return 'norqva-isolated-test-encryption-key-only';
+  throw new Error('[SECURITY ERROR]: ENCRYPTION_KEY is required.');
+}
+
 // Helper: safe math division
 function safeDivide(numerator: number, denominator: number): number | 'Dados insuficientes' {
   if (!denominator || denominator === 0) return 'Dados insuficientes';
@@ -1982,7 +1990,7 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
   if (cpf_cnpj) {
     const normalized = String(cpf_cnpj).replace(/\D/g, '');
     if (normalized) {
-      const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
+      const encKey = getEncryptionKey();
       const hashSecret = process.env.CPF_CNPJ_HASH_SECRET;
       if (!hashSecret) {
         throw new Error('[SECURITY ERROR]: CPF_CNPJ_HASH_SECRET is required.');
@@ -2605,7 +2613,7 @@ export async function checkoutPix(req: any, res: Response) {
   if (!hashSecret) {
     return res.status(500).json({ error: '[SECURITY ERROR]: CPF_CNPJ_HASH_SECRET is required.' });
   }
-  const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
+  const encKey = getEncryptionKey();
 
   if (env === 'production' && !allowProd) {
     return res.status(403).json({ error: '[PAYMENT SECURITY EXCEPTION]: PRODUCTION_PAYMENTS_LOCKED' });

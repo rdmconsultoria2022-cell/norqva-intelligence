@@ -37,6 +37,7 @@ describe('NORQVA Production Payment Lock Boot Remediation Suite V1', () => {
     process.env.ASAAS_BASE_URL = 'https://api.asaas.com/v3';
     process.env.ALLOW_PRODUCTION_PAYMENTS = 'false';
     process.env.CPF_CNPJ_HASH_SECRET = 'test_cpf_cnpj_hash_secret_for_boot_validation';
+    process.env.ENCRYPTION_KEY = 'test_encryption_key_for_boot_validation';
     delete process.env.ASAAS_API_KEY;
     delete process.env.ASAAS_WEBHOOK_AUTH_TOKEN;
 

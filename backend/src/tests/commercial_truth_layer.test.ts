@@ -61,7 +61,7 @@ describe('NORQVA Commercial Truth Layer V1 — Deterministic Verification Suite'
 
   beforeAll(async () => {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL_TEST || 'postgresql://postgres:RicardoAndradeLucas@localhost:5432/norqva_test'
+      connectionString: process.env.DATABASE_URL_TEST || 'postgresql://postgres:postgres@localhost:5432/norqva_test'
     });
 
     await runMigrations(pool);
