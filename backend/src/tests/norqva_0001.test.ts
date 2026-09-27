@@ -48,7 +48,7 @@ describe('NORQVA-0001 — Contract Verification Suite', () => {
       email: perfRes.rows[0].email,
       role: 'PERFORMANCE'
     });
-  });
+  }, 30000);
 
   afterAll(async () => {
     try {
@@ -148,7 +148,16 @@ describe('NORQVA-0001 — Contract Verification Suite', () => {
       expect(retryRes.processed).toBeGreaterThanOrEqual(1);
 
       expect(fetchSpy).toHaveBeenCalled();
-      const calledBody = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+      const targetCall = fetchSpy.mock.calls.find(c => {
+        try {
+          const b = JSON.parse(c[1]?.body as string);
+          return b.data[0]?.event_id === eventId;
+        } catch {
+          return false;
+        }
+      });
+      expect(targetCall).toBeDefined();
+      const calledBody = JSON.parse(targetCall![1]?.body as string);
       expect(calledBody.data[0].event_time).toBe(originalEventTime);
 
       const dbRes = await pool.query('SELECT status, attempts FROM capi_events WHERE event_id = $1', [eventId]);

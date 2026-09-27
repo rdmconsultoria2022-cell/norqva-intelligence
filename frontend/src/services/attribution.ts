@@ -106,7 +106,7 @@ export function captureUrlAttribution(): Partial<AttributionContext & { fbclid_t
 
     if (fbclid) {
       ctx.fbclid = fbclid;
-      if (!existing.fbclid_ts) {
+      if (!existing.fbclid || existing.fbclid !== fbclid || !existing.fbclid_ts) {
         ctx.fbclid_ts = Date.now().toString();
       }
     }

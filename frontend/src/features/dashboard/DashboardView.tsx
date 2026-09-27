@@ -23,10 +23,16 @@ import {
   AlertCircle,
   AlertTriangle,
   Info,
-  Layers2
+  Layers2,
+  ChevronRight,
+  Sparkles,
+  ArrowUpRight,
+  ArrowDownRight,
+  Target,
+  Users
 } from 'lucide-react';
 import { DashboardProps } from './dashboardTypes';
-import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
+import { UI_TOKENS } from '../../theme/tokens';
 
 export function DashboardView({
   currentUser,
@@ -40,7 +46,7 @@ export function DashboardView({
   showError,
   showSuccess
 }: DashboardProps) {
-  const [activeSubView, setActiveSubView] = useState<'executive' | 'financial' | 'experiments'>('financial');
+  const [activeSubView, setActiveSubView] = useState<'financial' | 'executive' | 'experiments'>('financial');
   const [execData, setExecData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
@@ -50,6 +56,9 @@ export function DashboardView({
   const [financialPeriod, setFinancialPeriod] = useState<'today' | '7d' | '30d'>('30d');
   const [drillDownLevel, setDrillDownLevel] = useState<'campaign' | 'adset' | 'ad'>('campaign');
   const [showAuditDetails, setShowAuditDetails] = useState(false);
+
+  // Telemetry Funnel Summary State
+  const [telemetrySummary, setTelemetrySummary] = useState<any[]>([]);
 
   // Experiments sub-view filters
   const [search, setSearch] = useState('');
@@ -108,6 +117,18 @@ export function DashboardView({
 
       if (!controller.signal.aborted) {
         setFinancialData(data);
+      }
+
+      // Also try fetching live telemetry summary if user is admin
+      try {
+        const tlmRes = await apiFetch(`/admin/telemetry/funnel-summary?${modeParam}`, {
+          signal: controller.signal
+        });
+        if (tlmRes?.summary && Array.isArray(tlmRes.summary)) {
+          setTelemetrySummary(tlmRes.summary);
+        }
+      } catch (_) {
+        // Fallback gracefully if telemetry endpoint is restricted
       }
     } catch (err: any) {
       if (err.name === 'AbortError' || (err.message && err.message.includes('aborted'))) {
@@ -198,7 +219,6 @@ export function DashboardView({
   const dataQuality = perf?.dataQuality || null;
   const globalTruth = perf?.globalCommercialTruth || null;
   const mediaTruth = perf?.attributedMediaTruth || null;
-  const funnel = perf?.funnelIntegrity || null;
   const rawCampaigns = (Array.isArray(perf?.byCampaign) && perf.byCampaign.length > 0)
     ? perf.byCampaign
     : finByCampaign;
@@ -267,1021 +287,659 @@ export function DashboardView({
     performanceStatus: ad.performanceStatus || ad.sampleStatus || 'OBSERVING'
   }));
 
+  // Helper calculations for Commercial Funnel Steps
+  const offerViewEvent = telemetrySummary.find((s: any) => s.event_type === 'OFFER_VIEW');
+  const checkoutModalEvent = telemetrySummary.find((s: any) => s.event_type === 'CHECKOUT_MODAL_OPENED');
+  const checkoutStartedEvent = telemetrySummary.find((s: any) => s.event_type === 'CHECKOUT_STARTED');
+
+  const offerViewsCount = offerViewEvent ? Number(offerViewEvent.total_events) : (meta.clicks > 0 ? meta.clicks : 0);
+  const checkoutModalCount = checkoutModalEvent ? Number(checkoutModalEvent.total_events) : 0;
+  const checkoutStartedCount = checkoutStartedEvent ? Number(checkoutStartedEvent.total_events) : (commerce.totalOrders > 0 ? commerce.totalOrders : 0);
+  const totalOrdersCount = finSummary.paidOrdersCount + finSummary.pendingOrdersCount;
+  const paidOrdersCount = finSummary.paidOrdersCount;
+
+  // Global CAC and Margin calculations
+  const globalCac = paidOrdersCount > 0 ? finSummary.totalSpend / paidOrdersCount : null;
+  const contributionMarginPercent = finSummary.grossRevenue > 0 
+    ? ((finSummary.resultAfterMedia / finSummary.grossRevenue) * 100)
+    : null;
+
   if (activeSubView === 'executive' && loading && !execData) {
     return (
-      <div className="h-72 flex flex-col items-center justify-center text-slate-400">
-        <Activity className="h-8 w-8 text-emerald-500 animate-spin mb-2" />
-        Carregando dados executivos reais...
+      <div className="h-96 flex flex-col items-center justify-center text-slate-500">
+        <Activity className="h-8 w-8 text-emerald-600 animate-spin mb-3" />
+        <span className="text-sm font-medium">Carregando visão executiva...</span>
       </div>
     );
   }
 
   if (activeSubView === 'financial' && finLoading && !financialData) {
     return (
-      <div className="h-72 flex flex-col items-center justify-center text-slate-400">
-        <Activity className="h-8 w-8 text-emerald-500 animate-spin mb-2" />
-        Carregando inteligência financeira auditada...
+      <div className="h-96 flex flex-col items-center justify-center text-slate-500">
+        <Activity className="h-8 w-8 text-emerald-600 animate-spin mb-3" />
+        <span className="text-sm font-medium">Carregando inteligência financeira auditada...</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6 text-sm w-full max-w-full">
-      {/* Top Controls: View Switcher & Data Freshness */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 sm:p-4 border border-slate-800 rounded-xl bg-slate-900/60 shadow-sm">
+    <div className="space-y-6 sm:space-y-8 w-full max-w-full">
+      {/* Top Header Controls: Sub-view Switcher & Period Selector */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
         {/* Sub-view Switcher Tabs */}
-        <div className="grid grid-cols-1 sm:flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/60 w-fit">
           <button
             onClick={() => setActiveSubView('financial')}
-            className={`px-3 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center justify-center gap-2 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-2 ${
               activeSubView === 'financial'
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                : 'bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <DollarSign className="h-3.5 w-3.5" /> Inteligência Financeira V1
+            <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Inteligência Financeira V1</span>
           </button>
           <button
             onClick={() => setActiveSubView('executive')}
-            className={`px-3 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center justify-center gap-2 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-2 ${
               activeSubView === 'executive'
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                : 'bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <ShieldCheck className="h-3.5 w-3.5" /> Visão Executiva V1
+            <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+            <span>Visão Executiva V1</span>
           </button>
           <button
             onClick={() => setActiveSubView('experiments')}
-            className={`px-3 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center justify-center gap-2 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-2 ${
               activeSubView === 'experiments'
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                : 'bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Layers className="h-3.5 w-3.5" /> Experimentos ({experiments?.length || 0})
+            <Layers className="h-3.5 w-3.5 text-slate-500" />
+            <span>Experimentos ({experiments?.length || 0})</span>
           </button>
         </div>
 
-        {/* Data Freshness Badges */}
-        <div className="flex flex-wrap items-center gap-2 text-[10px] sm:text-[11px] font-mono text-slate-400">
-          <div className="flex items-center gap-1.5 bg-slate-950/90 px-2.5 py-1 rounded border border-slate-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></span>
-            <span className="truncate">Meta: {meta.lastSync ? new Date(meta.lastSync).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Sincronizado'}</span>
+        {/* Period Filter & Sync Bar */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/60">
+            {(['today', '7d', '30d'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setFinancialPeriod(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                  financialPeriod === p
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {p === 'today' ? 'Hoje' : p === '7d' ? '7 Dias' : '30 Dias'}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-1.5 bg-slate-950/90 px-2.5 py-1 rounded border border-slate-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0"></span>
-            <span>Finanças: Webhook Asaas</span>
+
+          <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/60">
+            <span className={`h-2 w-2 rounded-full ${isDemoView ? 'bg-amber-400' : 'bg-emerald-500'}`}></span>
+            <span>{isDemoView ? 'MODO DEMO' : 'MODO REAL'}</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-slate-950/90 px-2.5 py-1 rounded border border-slate-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0"></span>
-            <span>Commerce: Pré-produção</span>
-          </div>
+
+          <button
+            onClick={() => fetchFinancialData()}
+            disabled={finLoading}
+            className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 shadow-xs transition"
+            title="Atualizar dados"
+            aria-label="Atualizar dados financeiros"
+          >
+            <RefreshCw className={`h-4 w-4 ${finLoading ? 'animate-spin text-emerald-600' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Data Freshness Indicator Strip */}
+      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+        <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200/70 shadow-2xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0"></span>
+          <span>Meta: {meta.lastSync ? new Date(meta.lastSync).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Sincronizado'}</span>
+        </div>
+        <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200/70 shadow-2xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+          <span>Finanças: Webhook Asaas</span>
+        </div>
+        <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200/70 shadow-2xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+          <span>Commerce: Pré-produção</span>
         </div>
       </div>
 
       {activeSubView === 'financial' ? (
-        <div className="space-y-5 sm:space-y-6">
-          {/* Period Filter & Controls Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 border border-slate-800 bg-slate-900/60 rounded-xl shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <span className="text-[11px] sm:text-xs font-mono font-bold uppercase text-slate-400">Filtrar Período:</span>
-              <div className="grid grid-cols-3 sm:flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-                {(['today', '7d', '30d'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setFinancialPeriod(p)}
-                    className={`px-3 py-1.5 rounded text-xs font-mono font-bold transition text-center ${
-                      financialPeriod === p
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {p === 'today' ? 'Hoje' : p === '7d' ? '7 Dias' : '30 Dias'}
-                  </button>
-                ))}
-              </div>
-              {perf?.timeWindow && (
-                <div className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1.5 rounded border border-slate-800 truncate">
-                  Janela Sincronizada: {new Date(perf.timeWindow.startDate).toLocaleDateString('pt-BR')} até {new Date(perf.timeWindow.endDate).toLocaleDateString('pt-BR')}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between sm:justify-end gap-2.5">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-950 text-xs font-mono">
-                <span className={`h-2 w-2 rounded-full shrink-0 ${isDemoView ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
-                <span className="text-slate-300 font-bold">
-                  {isDemoView ? 'MODO DEMONSTRAÇÃO' : 'MODO REAL'}
-                </span>
-              </div>
-              <button
-                onClick={() => fetchFinancialData()}
-                disabled={finLoading}
-                className="p-2 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200 transition shrink-0"
-                title="Atualizar dados financeiros"
-                aria-label="Atualizar dados financeiros"
-              >
-                <RefreshCw className={`h-4 w-4 ${finLoading ? 'animate-spin text-emerald-400' : ''}`} />
-              </button>
-            </div>
-          </div>
-
+        <div className="space-y-6 sm:space-y-8">
           {/* Quality & Sample Size Alerts */}
           {dataQuality && (
-            <div className="space-y-2">
-              {/* Sample Size Warning / Notice */}
-              <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 flex items-start gap-3 text-xs font-mono">
-                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-amber-300 uppercase tracking-wide flex items-center gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Sample Size Status Notice */}
+              <div className="p-4 rounded-2xl border border-amber-200/80 bg-amber-50/60 flex items-start gap-3">
+                <div className="h-8 w-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="h-4 w-4 text-amber-700" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-amber-900 flex items-center gap-2">
                     <span>Status Amostral: {dataQuality.sampleSizeStatus}</span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-900/60 text-amber-200 border border-amber-500/30">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 border border-amber-200 font-semibold">
                       {dataQuality.performanceStatus}
                     </span>
                   </div>
-                  <div className="text-amber-200/90 text-[11px] mt-1">
+                  <p className="text-xs text-amber-800/90 mt-1 leading-relaxed">
                     {dataQuality.sampleSizeNotice}
-                  </div>
+                  </p>
                 </div>
               </div>
 
-              {/* Attribution Quality Alert if < 80% */}
-              {dataQuality.attributionQualityStatus === 'LOW_QUALITY' && (
-                <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-950/20 flex items-start gap-3 text-xs font-mono">
-                  <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-blue-300 uppercase tracking-wide">
-                      Qualidade da Atribuição Determinística
-                    </div>
-                    <div className="text-blue-200/90 text-[11px] mt-1">
-                      {dataQuality.qualityNotice}
-                    </div>
-                  </div>
+              {/* Attribution Quality Alert */}
+              <div className="p-4 rounded-2xl border border-blue-200/80 bg-blue-50/60 flex items-start gap-3">
+                <div className="h-8 w-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <ShieldCheck className="h-4 w-4 text-blue-700" />
                 </div>
-              )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-blue-900">
+                    Qualidade da Atribuição Determinística
+                  </div>
+                  <p className="text-xs text-blue-800/90 mt-1 leading-relaxed">
+                    {dataQuality.qualityNotice || 'Atribuição first-party estrita baseada em tokens determinísticos sem modelos heurísticos.'}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
-          {finLoading && !financialData ? (
-            <div className="h-72 flex flex-col items-center justify-center text-slate-400 border border-slate-800 bg-slate-900/30 rounded-xl">
-              <Activity className="h-8 w-8 text-emerald-500 animate-spin mb-2" />
-              Carregando inteligência financeira auditada...
-            </div>
-          ) : !financialData ? (
-            <div className="p-8 text-center text-slate-500 font-mono text-xs border border-slate-800 rounded-xl">
-              Nenhum dado financeiro disponível.
-            </div>
-          ) : (
-            <>
-              {/* 1. VISÃO GERAL — 6 RESPOSTAS EXECUTIVAS IMEDIATAS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-                {/* 1. Quanto foi investido? */}
-                <div className="p-4 border border-slate-800 bg-slate-900/70 rounded-xl flex flex-col justify-between shadow-sm min-w-0">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400 gap-2">
-                    <span className="truncate">1. Investimento Total</span>
-                    <TrendingUp className="h-4 w-4 text-blue-400 shrink-0" />
-                  </div>
-                  <div className="mt-3 min-w-0">
-                    <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-slate-100 truncate">
-                      R$ {finSummary.totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">
-                      Meta Ads (Sincronizado)
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Quanto faturou? */}
-                <div className="p-4 border border-slate-800 bg-slate-900/70 rounded-xl flex flex-col justify-between shadow-sm min-w-0">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400 gap-2">
-                    <span className="truncate">2. Faturamento</span>
-                    <DollarSign className="h-4 w-4 text-emerald-400 shrink-0" />
-                  </div>
-                  <div className="mt-3 min-w-0">
-                    <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-emerald-400 truncate">
-                      R$ {finSummary.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">
-                      {finSummary.paidOrdersCount} pagos ({finSummary.pendingOrdersCount} pendentes)
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Qual resultado após mídia? */}
-                <div className="p-4 border border-slate-800 bg-slate-900/70 rounded-xl flex flex-col justify-between shadow-sm min-w-0">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400 gap-2">
-                    <span className="truncate">3. Pós-Mídia (R - I)</span>
-                    <BarChart3 className="h-4 w-4 text-amber-400 shrink-0" />
-                  </div>
-                  <div className="mt-3 min-w-0">
-                    <div className={`text-xl sm:text-2xl font-bold font-mono tracking-tight truncate ${finSummary.resultAfterMedia >= 0 ? 'text-slate-100' : 'text-red-400'}`}>
-                      R$ {finSummary.resultAfterMedia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">
-                      ROAS: {finSummary.roas !== null ? `${finSummary.roas.toFixed(2)}x` : '—'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Quais custos são conhecidos? */}
-                <div className="p-4 border border-slate-800 bg-slate-900/70 rounded-xl flex flex-col justify-between shadow-sm min-w-0">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400 gap-2">
-                    <span className="truncate">4. Custos Conhecidos</span>
-                    <Receipt className="h-4 w-4 text-slate-400 shrink-0" />
-                  </div>
-                  <div className="mt-3 min-w-0">
-                    <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-slate-300 truncate">
-                      R$ {finSummary.totalCosts.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="mt-1 font-mono text-[10px]">
-                      {finCostCoverage === 'COMPLETE' ? (
-                        <span className="text-emerald-400 font-semibold flex items-center gap-1 truncate">
-                          <CheckCircle2 className="h-3 w-3 shrink-0" /> Cobertura Completa
-                        </span>
-                      ) : finCostCoverage === 'PARTIAL' ? (
-                        <span className="text-amber-400 font-semibold flex items-center gap-1 truncate">
-                          <AlertCircle className="h-3 w-3 shrink-0" /> Cobertura Parcial
-                        </span>
-                      ) : (
-                        <span className="text-rose-400 font-semibold flex items-center gap-1 truncate">
-                          <AlertCircle className="h-3 w-3 shrink-0" /> Custos Desconhecidos
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. Qual resultado líquido conhecido? */}
-                <div className="p-4 border border-slate-800 bg-slate-900/70 rounded-xl flex flex-col justify-between shadow-sm min-w-0">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400 gap-2">
-                    <span className="truncate" title="Resultado Líquido Conhecido">5. Resultado Conhecido</span>
-                    <Scale className="h-4 w-4 text-emerald-400 shrink-0" />
-                  </div>
-                  <div className="mt-3 min-w-0">
-                    <div className={`text-xl sm:text-2xl font-bold font-mono tracking-tight truncate ${finSummary.netProfit >= 0 ? 'text-emerald-400 font-extrabold' : 'text-red-400'}`}>
-                      R$ {finSummary.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono truncate" title="Ticket Médio">
-                      Ticket Médio: R$ {finSummary.aov.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 6. Qual margem conhecida? */}
-                <div className="p-4 border border-slate-800 bg-slate-900/70 rounded-xl flex flex-col justify-between shadow-sm min-w-0">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400 gap-2">
-                    <span className="truncate">6. Margem Conhecida</span>
-                    <Percent className="h-4 w-4 text-blue-400 shrink-0" />
-                  </div>
-                  <div className="mt-3 min-w-0">
-                    <div className={`text-xl sm:text-2xl font-bold font-mono tracking-tight truncate ${finSummary.netMargin !== null && finSummary.netMargin >= 0 ? 'text-blue-400 font-extrabold' : 'text-red-400'}`}>
-                      {finSummary.netMargin !== null ? `${finSummary.netMargin.toFixed(1)}%` : '—'}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 font-mono truncate">
-                      (Resultado / Faturamento)
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Informative Disclaimer regarding Business/Accounting Cost Knowledge */}
-              <div className="px-3.5 py-2 rounded-lg bg-slate-900/40 border border-slate-800/80 text-[11px] text-slate-400 font-mono flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5">
-                  <HelpCircle className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                  <span>Resultado calculado com os custos registrados na NORQVA. Não representa necessariamente lucro líquido contábil.</span>
-                </span>
-                <span className="text-[10px] text-slate-500 hidden md:inline">Auditado</span>
-              </div>
-
-              {/* 2. COMPACT RECONCILIATION & INTEGRITY INDICATOR */}
-              <div className="border border-emerald-900/50 bg-emerald-950/20 rounded-xl p-3.5 sm:p-4 shadow-sm space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span className="font-mono text-xs font-bold uppercase text-emerald-300">
-                      Integridade financeira ✓ Conciliado 100%
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setShowAuditDetails(prev => !prev)}
-                    className="text-left sm:text-right text-[11px] font-mono text-emerald-400/80 hover:text-emerald-300 font-semibold underline underline-offset-2 transition"
-                  >
-                    {showAuditDetails ? 'Ocultar detalhes da auditoria ▲' : 'Ver detalhes da auditoria contábil ▼'}
-                  </button>
-                </div>
-
-                {/* Expandable Audit Details */}
-                {showAuditDetails && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono pt-2 border-t border-emerald-900/30">
-                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
-                      <div className="text-[10px] text-slate-400 uppercase">Total por Produto (Σ)</div>
-                      <div className="text-base sm:text-lg font-bold text-slate-200 mt-1">
-                        R$ {finReconciliation.productTotalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
-                      <div className="text-[10px] text-slate-400 uppercase">Faturamento Consolidado</div>
-                      <div className="text-base sm:text-lg font-bold text-emerald-400 mt-1">
-                        R$ {finSummary.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
-                      <div className="text-[10px] text-slate-400 uppercase">Campanhas + Não Atribuído</div>
-                      <div className="text-base sm:text-lg font-bold text-slate-200 mt-1">
-                        R$ {finReconciliation.campaignPlusUnattributedRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 3. VISÃO INDIVIDUALIZADA: POR PRODUTO */}
-              <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-3.5 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-slate-200 font-mono flex items-center gap-2">
-                    <PieChart className="h-4 w-4 text-emerald-400 shrink-0" /> Visão Individualizada por Produto ({finByProduct.length})
-                  </h3>
-                  <span className="text-[10px] font-mono text-slate-400">Rateio Pro-rata de Mídia e Custos Diretos</span>
-                </div>
-
-                {finByProduct.length === 0 ? (
-                  <div className="p-6 text-center text-slate-500 font-mono text-xs">Nenhum produto cadastrado.</div>
-                ) : (
-                  <>
-                    {/* Mobile Card Strategy (Screen <= 768px) */}
-                    <div className="space-y-3 block md:hidden">
-                      {finByProduct.map((p: any) => (
-                        <div key={p.productId} className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2.5 font-mono text-xs">
-                          <div className="flex items-start justify-between gap-2 border-b border-slate-800/80 pb-2">
-                            <div>
-                              <span className="font-bold text-emerald-400 text-xs block">{p.productHumanId}</span>
-                              <span className="font-sans font-bold text-slate-200 text-sm block mt-0.5">{p.productName}</span>
-                            </div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 shrink-0">
-                              {p.unitsSold} vendas
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-[11px]">
-                            <div className="p-2 rounded bg-slate-900/80 border border-slate-850">
-                              <span className="text-slate-400 text-[10px] block uppercase">Faturamento</span>
-                              <span className="font-bold text-emerald-400 text-sm">
-                                R$ {p.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="p-2 rounded bg-slate-900/80 border border-slate-850">
-                              <span className="text-slate-400 text-[10px] block uppercase">Invest. Mídia</span>
-                              <span className="font-bold text-slate-200 text-sm">
-                                R$ {p.attributedSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="p-2 rounded bg-slate-900/80 border border-slate-850">
-                              <span className="text-slate-400 text-[10px] block uppercase">Custos / Taxas</span>
-                              <span className="font-bold text-slate-400">
-                                R$ {p.gatewayFees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="p-2 rounded bg-slate-900/80 border border-slate-850">
-                              <span className="text-slate-400 text-[10px] block uppercase">Resultado Conhecido</span>
-                              <span className={`font-bold ${p.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                R$ {p.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Desktop Tabular View (Screen > 768px) */}
-                    <div className="hidden md:block overflow-x-auto border border-slate-800 rounded-lg">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900 text-slate-400 font-mono border-b border-slate-800 text-[10px] uppercase">
-                          <tr>
-                            <th className="p-3">Código</th>
-                            <th className="p-3">Produto</th>
-                            <th className="p-3 text-right">Vendas Pagas</th>
-                            <th className="p-3 text-right">Faturamento</th>
-                            <th className="p-3 text-right">Invest. Mídia</th>
-                            <th className="p-3 text-right">Custos Conhecidos</th>
-                            <th className="p-3 text-right">Resultado Conhecido</th>
-                            <th className="p-3 text-right">Margem %</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800 font-mono">
-                          {finByProduct.map((p: any) => (
-                            <tr key={p.productId} className="hover:bg-slate-800/30 transition">
-                              <td className="p-3 font-bold text-emerald-400">{p.productHumanId}</td>
-                              <td className="p-3 font-sans font-bold text-slate-200">{p.productName}</td>
-                              <td className="p-3 text-right text-slate-300">{p.unitsSold}</td>
-                              <td className="p-3 text-right font-bold text-emerald-400">
-                                R$ {p.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                R$ {p.attributedSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-400">
-                                R$ {p.gatewayFees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${p.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                R$ {p.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${p.netMargin !== null && p.netMargin >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                                {p.netMargin !== null ? `${p.netMargin.toFixed(1)}%` : '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* 4. HIERARQUIA DETERMINÍSTICA: CAMPANHA -> ADSET -> AD */}
-              <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-4 shadow-sm">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-                  <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider text-slate-200 font-mono flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-emerald-400 shrink-0" />
-                      Inteligência de Atribuição Determinística (B2)
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      Atribuição estrita a nível de Conta, Campanha, Conjunto e Anúncio sem modelos heurísticos ou probabilísticos.
-                    </p>
-                  </div>
-
-                  {/* Level Switcher */}
-                  <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 shrink-0">
-                    <button
-                      onClick={() => setDrillDownLevel('campaign')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
-                        drillDownLevel === 'campaign'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Campanhas ({perfByCampaign.length})
-                    </button>
-                    <button
-                      onClick={() => setDrillDownLevel('adset')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
-                        drillDownLevel === 'adset'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      AdSets ({perfByAdSet.length})
-                    </button>
-                    <button
-                      onClick={() => setDrillDownLevel('ad')}
-                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition ${
-                        drillDownLevel === 'ad'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Anúncios ({perfByAd.length})
-                    </button>
-                  </div>
-                </div>
-
-                {/* CAMPAIGN LEVEL */}
-                {drillDownLevel === 'campaign' && (
-                  perfByCampaign.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 font-mono text-xs">Nenhuma campanha encontrada no período.</div>
-                  ) : (
-                    <div className="overflow-x-auto border border-slate-800 rounded-lg">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900 text-slate-400 font-mono border-b border-slate-800 text-[10px] uppercase">
-                          <tr>
-                            <th className="p-3">Campanha</th>
-                            <th className="p-3">Meta ID</th>
-                            <th className="p-3">Status</th>
-                            <th className="p-3 text-right">Investimento</th>
-                            <th className="p-3 text-right">Cliques (CTR)</th>
-                            <th className="p-3 text-right">CPC Médio</th>
-                            <th className="p-3 text-right">Pedidos Atrib.</th>
-                            <th className="p-3 text-right">Receita Atrib.</th>
-                            <th className="p-3 text-right">Pós-Mídia</th>
-                            <th className="p-3 text-right">CAC</th>
-                            <th className="p-3 text-right">ROAS</th>
-                            <th className="p-3 text-center">Status Amostral</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800 font-mono">
-                          {perfByCampaign.map((c: any) => (
-                            <tr key={c.entityId} className="hover:bg-slate-800/30 transition">
-                              <td className="p-3 font-sans font-bold text-slate-200">{c.entityName}</td>
-                              <td className="p-3 text-slate-400 text-[11px]">{c.metaId}</td>
-                              <td className="p-3">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                                  {c.status}
-                                </span>
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                R$ {c.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                {c.clicks} ({c.ctr !== null ? `${c.ctr}%` : '—'})
-                              </td>
-                              <td className="p-3 text-right text-slate-400">
-                                {c.cpc !== null ? `R$ ${c.cpc.toFixed(2)}` : '—'}
-                              </td>
-                              <td className="p-3 text-right font-bold text-slate-200">{c.attributedPaidOrders}</td>
-                              <td className="p-3 text-right font-bold text-emerald-400">
-                                R$ {c.attributedGrossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${c.resultAfterMedia >= 0 ? 'text-slate-200' : 'text-red-400'}`}>
-                                R$ {c.resultAfterMedia.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                {c.cac !== null ? `R$ ${c.cac.toFixed(2)}` : '—'}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${c.roas !== null && c.roas >= 1 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                {c.roas !== null ? `${c.roas.toFixed(2)}x` : '—'}
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  c.performanceStatus === 'OBSERVING'
-                                    ? 'bg-blue-950 text-blue-300 border border-blue-500/30'
-                                    : 'bg-amber-950 text-amber-300 border border-amber-500/30'
-                                }`}>
-                                  {c.performanceStatus}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
-                )}
-
-                {/* ADSET LEVEL */}
-                {drillDownLevel === 'adset' && (
-                  perfByAdSet.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 font-mono text-xs">Nenhum conjunto de anúncios encontrado no período.</div>
-                  ) : (
-                    <div className="overflow-x-auto border border-slate-800 rounded-lg">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900 text-slate-400 font-mono border-b border-slate-800 text-[10px] uppercase">
-                          <tr>
-                            <th className="p-3">Conjunto (AdSet)</th>
-                            <th className="p-3">Campanha</th>
-                            <th className="p-3">Meta ID</th>
-                            <th className="p-3">Status</th>
-                            <th className="p-3 text-right">Investimento</th>
-                            <th className="p-3 text-right">Cliques (CTR)</th>
-                            <th className="p-3 text-right">CPC Médio</th>
-                            <th className="p-3 text-right">Pedidos Atrib.</th>
-                            <th className="p-3 text-right">Receita Atrib.</th>
-                            <th className="p-3 text-right">Pós-Mídia</th>
-                            <th className="p-3 text-right">CAC</th>
-                            <th className="p-3 text-right">ROAS</th>
-                            <th className="p-3 text-center">Status Amostral</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800 font-mono">
-                          {perfByAdSet.map((as: any) => (
-                            <tr key={as.entityId} className="hover:bg-slate-800/30 transition">
-                              <td className="p-3 font-sans font-bold text-slate-200">{as.entityName}</td>
-                              <td className="p-3 text-slate-400 text-[11px]">{as.parentCampaignName || '—'}</td>
-                              <td className="p-3 text-slate-400 text-[11px]">{as.metaId}</td>
-                              <td className="p-3">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                                  {as.status}
-                                </span>
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                R$ {as.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                {as.clicks} ({as.ctr !== null ? `${as.ctr}%` : '—'})
-                              </td>
-                              <td className="p-3 text-right text-slate-400">
-                                {as.cpc !== null ? `R$ ${as.cpc.toFixed(2)}` : '—'}
-                              </td>
-                              <td className="p-3 text-right font-bold text-slate-200">{as.attributedPaidOrders}</td>
-                              <td className="p-3 text-right font-bold text-emerald-400">
-                                R$ {as.attributedGrossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${as.resultAfterMedia >= 0 ? 'text-slate-200' : 'text-red-400'}`}>
-                                R$ {as.resultAfterMedia.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                {as.cac !== null ? `R$ ${as.cac.toFixed(2)}` : '—'}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${as.roas !== null && as.roas >= 1 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                {as.roas !== null ? `${as.roas.toFixed(2)}x` : '—'}
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  as.performanceStatus === 'OBSERVING'
-                                    ? 'bg-blue-950 text-blue-300 border border-blue-500/30'
-                                    : 'bg-amber-950 text-amber-300 border border-amber-500/30'
-                                }`}>
-                                  {as.performanceStatus}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
-                )}
-
-                {/* AD LEVEL */}
-                {drillDownLevel === 'ad' && (
-                  perfByAd.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 font-mono text-xs">Nenhum anúncio encontrado no período.</div>
-                  ) : (
-                    <div className="overflow-x-auto border border-slate-800 rounded-lg">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900 text-slate-400 font-mono border-b border-slate-800 text-[10px] uppercase">
-                          <tr>
-                            <th className="p-3">Anúncio (Ad / Criativo)</th>
-                            <th className="p-3">Campanha</th>
-                            <th className="p-3">Meta ID</th>
-                            <th className="p-3">Status</th>
-                            <th className="p-3 text-right">Investimento</th>
-                            <th className="p-3 text-right">Cliques (CTR)</th>
-                            <th className="p-3 text-right">CPC Médio</th>
-                            <th className="p-3 text-right">Pedidos Atrib.</th>
-                            <th className="p-3 text-right">Receita Atrib.</th>
-                            <th className="p-3 text-right">Pós-Mídia</th>
-                            <th className="p-3 text-right">CAC</th>
-                            <th className="p-3 text-right">ROAS</th>
-                            <th className="p-3 text-center">Status Amostral</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800 font-mono">
-                          {perfByAd.map((ad: any) => (
-                            <tr key={ad.entityId} className="hover:bg-slate-800/30 transition">
-                              <td className="p-3 font-sans font-bold text-slate-200">{ad.entityName}</td>
-                              <td className="p-3 text-slate-400 text-[11px]">{ad.parentCampaignName || '—'}</td>
-                              <td className="p-3 text-slate-400 text-[11px]">{ad.metaId}</td>
-                              <td className="p-3">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                                  {ad.status}
-                                </span>
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                R$ {ad.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                {ad.clicks} ({ad.ctr !== null ? `${ad.ctr}%` : '—'})
-                              </td>
-                              <td className="p-3 text-right text-slate-400">
-                                {ad.cpc !== null ? `R$ ${ad.cpc.toFixed(2)}` : '—'}
-                              </td>
-                              <td className="p-3 text-right font-bold text-slate-200">{ad.attributedPaidOrders}</td>
-                              <td className="p-3 text-right font-bold text-emerald-400">
-                                R$ {ad.attributedGrossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${ad.resultAfterMedia >= 0 ? 'text-slate-200' : 'text-red-400'}`}>
-                                R$ {ad.resultAfterMedia.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-3 text-right text-slate-300">
-                                {ad.cac !== null ? `R$ ${ad.cac.toFixed(2)}` : '—'}
-                              </td>
-                              <td className={`p-3 text-right font-bold ${ad.roas !== null && ad.roas >= 1 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                {ad.roas !== null ? `${ad.roas.toFixed(2)}x` : '—'}
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  ad.performanceStatus === 'OBSERVING'
-                                    ? 'bg-blue-950 text-blue-300 border border-blue-500/30'
-                                    : 'bg-amber-950 text-amber-300 border border-amber-500/30'
-                                }`}>
-                                  {ad.performanceStatus}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
-                )}
-              </div>
-
-              {/* 5. RECONCILIAÇÃO GLOBAL: ATRIBUÍDO VS ORGÂNICO VS NÃO ATRIBUÍDO */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Atribuído Meta */}
-                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                    <span>Receita Atribuída (Meta)</span>
-                    <TrendingUp className="h-4 w-4 text-emerald-400" />
-                  </div>
-                  <div className="text-xl font-bold font-mono text-emerald-400">
-                    R$ {(mediaTruth?.totalAttributedRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    {mediaTruth?.totalAttributedPaidOrders ?? 0} pedidos confirmados
-                  </div>
-                </div>
-
-                {/* Orgânico */}
-                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                    <span>Receita Orgânica</span>
-                    <Layers className="h-4 w-4 text-blue-400" />
-                  </div>
-                  <div className="text-xl font-bold font-mono text-blue-400">
-                    R$ {(globalTruth?.organicRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    {globalTruth?.organicOrdersCount ?? 0} pedidos confirmados
-                  </div>
-                </div>
-
-                {/* Não Atribuído */}
-                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                    <span>Não Atribuído (Outros)</span>
-                    <HelpCircle className="h-4 w-4 text-amber-400" />
-                  </div>
-                  <div className="text-xl font-bold font-mono text-amber-400">
-                    R$ {(globalTruth?.unattributedRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    {globalTruth?.unattributedOrdersCount ?? 0} pedidos confirmados
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      ) : activeSubView === 'executive' ? (
-        <div className="space-y-6">
-          {/* 1. Global KPI Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Investimento Meta */}
-            <div className="p-4 border border-slate-800 bg-slate-900/50 rounded flex flex-col justify-between">
-              <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                <span>Investimento de Mídia</span>
-                <TrendingUp className="h-4 w-4 text-blue-400" />
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl font-bold font-mono tracking-tight text-slate-100">
-                  R$ {meta.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {meta.impressions.toLocaleString('pt-BR')} imp. | {meta.clicks.toLocaleString('pt-BR')} cliques
-                </div>
-              </div>
-            </div>
-
-            {/* Faturamento Real Pix */}
-            <div className="p-4 border border-slate-800 bg-slate-900/50 rounded flex flex-col justify-between">
-              <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                <span>Faturamento Confirmado</span>
-                <DollarSign className="h-4 w-4 text-emerald-400" />
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl font-bold font-mono tracking-tight text-emerald-400">
-                  R$ {finance.confirmedRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  Ticket Médio: R$ {commerce.aov.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </div>
-              </div>
-            </div>
-
-            {/* Pedidos Totais & Pagos */}
-            <div className="p-4 border border-slate-800 bg-slate-900/50 rounded flex flex-col justify-between">
-              <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                <span>Pedidos Pagos / Criados</span>
-                <ShoppingCart className="h-4 w-4 text-amber-400" />
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl font-bold font-mono tracking-tight text-slate-100">
-                  {commerce.paidOrders} / {commerce.totalOrders}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {commerce.pendingOrders} pendentes | {commerce.cancelledOrders} cancelados
-                </div>
-              </div>
-            </div>
-
-            {/* Entregas & Downloads */}
-            <div className="p-4 border border-slate-800 bg-slate-900/50 rounded flex flex-col justify-between">
-              <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
-                <span>Entregas & Downloads</span>
-                <Download className="h-4 w-4 text-emerald-400" />
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl font-bold font-mono tracking-tight text-slate-100">
-                  {delivery.totalEntitlements} disp.
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {delivery.completedDownloads} baixados | {delivery.pendingDownloads} aguardando
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 2. Deterministic Funnel Panel */}
-          <div className="p-5 border border-slate-800 bg-slate-900/40 rounded space-y-4">
+          {/* 1. LINHA EXECUTIVA — 6 KPIS DE ALTO IMPACTO */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
-                <Zap className="h-4 w-4 text-emerald-400" /> Funil Transacional Determinístico (100% Real)
-              </h3>
-              <span className="text-[10px] font-mono text-slate-500">Relações comprovadas por chaves estrangeiras</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {/* Step 1: Pedidos */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">1. Pedidos Criados</div>
-                <div className="text-xl font-bold font-mono text-slate-200 mt-1">{commerce.totalOrders}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">Checkout iniciado</div>
-              </div>
-
-              {/* Step 2: Cobranças Pix */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">2. Pix Gerados</div>
-                <div className="text-xl font-bold font-mono text-slate-200 mt-1">{finance.totalPixCreated}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">Payload Asaas emitido</div>
-              </div>
-
-              {/* Step 3: Pagamentos Confirmados */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">3. Pagamentos Confirmados</div>
-                <div className="text-xl font-bold font-mono text-emerald-400 mt-1">{finance.totalPixConfirmed}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">
-                  {finance.approvalRate !== null ? `Taxa: ${finance.approvalRate}%` : 'Taxa: — (Aguardando dados)'}
-                </div>
-              </div>
-
-              {/* Step 4: Entregas Disponibilizadas */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">4. Entregas Disponibilizadas</div>
-                <div className="text-xl font-bold font-mono text-slate-200 mt-1">{delivery.totalEntitlements}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">Tokens ativos gerados</div>
-              </div>
-
-              {/* Step 5: Downloads Realizados */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">5. Downloads Concluídos</div>
-                <div className="text-xl font-bold font-mono text-emerald-400 mt-1">{delivery.completedDownloads}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">{delivery.totalDownloads} downloads totais</div>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. Meta Campaign Status & Traffic Summary */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Meta Traffic Metrics */}
-            <div className="p-4 border border-slate-800 bg-slate-900/40 rounded space-y-3">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
-                <Eye className="h-4 w-4 text-blue-400" /> Tráfego Meta Ads
-              </h3>
-              <div className="space-y-2 text-xs font-mono">
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Impressões:</span>
-                  <span className="text-slate-200 font-bold">{meta.impressions.toLocaleString('pt-BR')}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Alcance Único:</span>
-                  <span className="text-slate-200 font-bold">{meta.reach.toLocaleString('pt-BR')}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Cliques no Link:</span>
-                  <span className="text-slate-200 font-bold">{meta.clicks.toLocaleString('pt-BR')}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">CTR (Taxa de Cliques):</span>
-                  <span className="text-slate-200 font-bold">{meta.ctr !== null ? `${meta.ctr}%` : '— (Aguardando dados)'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">CPC Médio:</span>
-                  <span className="text-slate-200 font-bold">{meta.cpc !== null ? `R$ ${meta.cpc.toFixed(2)}` : '— (Aguardando dados)'}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">CPM Médio:</span>
-                  <span className="text-slate-200 font-bold">{meta.cpm !== null ? `R$ ${meta.cpm.toFixed(2)}` : '— (Aguardando dados)'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Meta Campaigns Status Table */}
-            <div className="lg:col-span-2 p-4 border border-slate-800 bg-slate-900/40 rounded space-y-3">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono">
-                Campanhas em Operação ({meta.campaigns.length})
-              </h3>
-              {meta.campaigns.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 font-mono text-xs">
-                  Nenhuma campanha sincronizada da Meta.
-                </div>
-              ) : (
-                <div className="overflow-x-auto border border-slate-850 rounded">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900 text-slate-400 font-mono border-b border-slate-800 text-[10px] uppercase">
-                      <tr>
-                        <th className="p-2.5">Campanha</th>
-                        <th className="p-2.5">Meta ID</th>
-                        <th className="p-2.5">Status Efetivo</th>
-                        <th className="p-2.5">Última Sincronização</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-850">
-                      {meta.campaigns.map((c: any) => {
-                        const deliveryStatus = getMetaDeliveryStatus(c.effective_status, c.status);
-                        return (
-                          <tr key={c.id} className="hover:bg-slate-800/30 transition">
-                            <td className="p-2.5 font-bold text-slate-200">{c.name}</td>
-                            <td className="p-2.5 font-mono text-slate-400 text-[11px]">{c.meta_campaign_id}</td>
-                            <td className="p-2.5">
-                              <div className="flex flex-col gap-0.5 items-start">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${deliveryStatus.badgeClass}`}>
-                                  {deliveryStatus.label}
-                                </span>
-                                {c.status && c.effective_status && c.status !== c.effective_status && (
-                                  <span className="text-[9px] font-mono text-slate-500">
-                                    Admin: {c.status}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-2.5 font-mono text-slate-500 text-[10px]">
-                              {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString('pt-BR') : '—'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Linha Executiva de Performance
+              </h2>
+              {perf?.timeWindow && (
+                <span className="text-[11px] text-slate-400 font-medium">
+                  Janela: {new Date(perf.timeWindow.startDate).toLocaleDateString('pt-BR')} até {new Date(perf.timeWindow.endDate).toLocaleDateString('pt-BR')}
+                </span>
               )}
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+              {/* Card 1: Faturamento Bruto */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wider">Faturamento</span>
+                  <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <DollarSign className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="text-2xl font-bold tracking-tight text-slate-900">
+                    R$ {finSummary.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                    <span>{finSummary.paidOrdersCount} pagos ({finSummary.pendingOrdersCount} pendentes)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Investimento em Mídia */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wider">Investimento Mídia</span>
+                  <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <TrendingUp className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="text-2xl font-bold tracking-tight text-slate-900">
+                    R$ {finSummary.totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 font-medium">
+                    Meta Ads ({perfByCampaign.length} campanhas ativas)
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Resultado Pós-Mídia */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wider">Pós-Mídia (R - I)</span>
+                  <div className="h-8 w-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <BarChart3 className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className={`text-2xl font-bold tracking-tight ${finSummary.resultAfterMedia >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    R$ {finSummary.resultAfterMedia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 font-medium">
+                    Margem Contrib.: {contributionMarginPercent !== null ? `${contributionMarginPercent.toFixed(1)}%` : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: ROAS Global */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wider">ROAS Global</span>
+                  <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                    <Target className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="text-2xl font-bold tracking-tight text-slate-900">
+                    {finSummary.roas !== null ? `${finSummary.roas.toFixed(2)}x` : '—'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 font-medium">
+                    {finSummary.roas && finSummary.roas >= 2.0 ? '● Retorno Saudável' : '● Em observação'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 5: CAC Médio */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wider">CAC Médio</span>
+                  <div className="h-8 w-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <Users className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="text-2xl font-bold tracking-tight text-slate-900">
+                    {globalCac !== null ? `R$ ${globalCac.toFixed(2).replace('.', ',')}` : '—'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 font-medium">
+                    Ticket Médio: R$ {finSummary.aov.toFixed(2).replace('.', ',')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 6: Margem Líquida Conhecida */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-wider">Resultado Conhecido</span>
+                  <div className="h-8 w-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                    <Scale className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className={`text-2xl font-bold tracking-tight ${finSummary.netProfit >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                    R$ {finSummary.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 font-medium">
+                    Margem: {finSummary.netMargin !== null ? `${finSummary.netMargin.toFixed(1)}%` : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* 4. Recent Real Orders Activity */}
-          <div className="p-4 border border-slate-800 bg-slate-900/40 rounded space-y-3">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono">
-              Últimas Transações Registradas ({recentOrders.length})
-            </h3>
-            {recentOrders.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 font-mono text-xs">
-                Nenhum pedido registrado no período selecionado. (Aguardando primeiras conversões da campanha).
+          {/* 2. FUNIL COMERCIAL DETERMINÍSTICO (VISUAL PIPELINE) */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Layers2 className="h-4 w-4 text-emerald-600" />
+                  <span>Funil Comercial First-Party</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Jornada determinística de conversão: Visita da Oferta → Abertura do Checkout → Envio do Formulário → Pedido → Pagamento Pix
+                </p>
               </div>
-            ) : (
-              <div className="overflow-x-auto border border-slate-850 rounded">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 self-start sm:self-auto">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Gate 17.0 Instrumentado</span>
+              </div>
+            </div>
+
+            {/* Funnel Stage Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 relative">
+              {/* Step 1: OFFER_VIEW */}
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>1. Visitas Oferta</span>
+                  <Eye className="h-4 w-4 text-slate-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {offerViewsCount.toLocaleString('pt-BR')}
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-medium">OFFER_VIEW</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-500">
+                  Topo do Funil
+                </div>
+              </div>
+
+              {/* Step 2: CHECKOUT_MODAL_OPENED */}
+              <div className="p-4 rounded-xl bg-emerald-50/40 border border-emerald-200/70 space-y-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-semibold text-emerald-800">
+                  <span>2. Abertura Checkout</span>
+                  <MousePointer className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-extrabold text-emerald-950 tracking-tight">
+                    {checkoutModalCount.toLocaleString('pt-BR')}
+                  </div>
+                  <span className="text-[11px] text-emerald-700 font-medium">MODAL_OPENED</span>
+                </div>
+                <div className="pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-700 font-semibold">
+                  {offerViewsCount > 0 ? `${((checkoutModalCount / offerViewsCount) * 100).toFixed(1)}% passagem` : '—'}
+                </div>
+              </div>
+
+              {/* Step 3: CHECKOUT_STARTED */}
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>3. Início Checkout</span>
+                  <Zap className="h-4 w-4 text-slate-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {checkoutStartedCount.toLocaleString('pt-BR')}
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-medium">CHECKOUT_STARTED</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-500">
+                  {checkoutModalCount > 0 
+                    ? `${((checkoutStartedCount / checkoutModalCount) * 100).toFixed(1)}% conversão`
+                    : (offerViewsCount > 0 ? `${((checkoutStartedCount / offerViewsCount) * 100).toFixed(1)}% de visitas` : '—')}
+                </div>
+              </div>
+
+              {/* Step 4: ORDERS_CREATED */}
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/70 space-y-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>4. Pix Gerados</span>
+                  <ShoppingCart className="h-4 w-4 text-slate-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {totalOrdersCount.toLocaleString('pt-BR')}
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-medium">ORDERS_CREATED</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-500">
+                  {checkoutStartedCount > 0 ? `${((totalOrdersCount / checkoutStartedCount) * 100).toFixed(0)}% gerados` : '—'}
+                </div>
+              </div>
+
+              {/* Step 5: PIX_PAID */}
+              <div className="p-4 rounded-xl bg-emerald-600 text-white shadow-sm space-y-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs font-semibold text-emerald-100">
+                  <span>5. Pix Confirmados</span>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-200" />
+                </div>
+                <div>
+                  <div className="text-2xl font-extrabold tracking-tight">
+                    {paidOrdersCount.toLocaleString('pt-BR')}
+                  </div>
+                  <span className="text-[11px] text-emerald-200 font-medium">R$ {finSummary.grossRevenue.toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div className="pt-2 border-t border-emerald-500 text-[11px] text-emerald-100 font-bold">
+                  {totalOrdersCount > 0 ? `${((paidOrdersCount / totalOrdersCount) * 100).toFixed(1)}% conversão Pix` : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. PERFORMANCE DE MÍDIA & HIERARQUIA DETERMINÍSTICA */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  <span>Performance de Mídia & Atribuição Determinística (B2)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Métricas de tráfego pago auditadas diretamente contra os eventos da Meta Marketing API
+                </p>
+              </div>
+
+              {/* Level Switcher */}
+              <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/60 gap-1 shrink-0 self-start md:self-auto">
+                <button
+                  onClick={() => setDrillDownLevel('campaign')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    drillDownLevel === 'campaign'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Campanhas ({perfByCampaign.length})
+                </button>
+                <button
+                  onClick={() => setDrillDownLevel('adset')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    drillDownLevel === 'adset'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  AdSets ({perfByAdSet.length})
+                </button>
+                <button
+                  onClick={() => setDrillDownLevel('ad')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    drillDownLevel === 'ad'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Anúncios ({perfByAd.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Campaign Table */}
+            {drillDownLevel === 'campaign' && (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900 text-slate-400 font-mono border-b border-slate-800 text-[10px] uppercase">
+                  <thead className="bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200/80 text-[11px]">
                     <tr>
-                      <th className="p-2.5">Pedido</th>
-                      <th className="p-2.5">Cliente</th>
-                      <th className="p-2.5">Valor</th>
-                      <th className="p-2.5">Status do Pedido</th>
-                      <th className="p-2.5">Pagamento (Pix)</th>
-                      <th className="p-2.5">Entrega Digital</th>
-                      <th className="p-2.5">Data/Hora</th>
+                      <th className="p-3.5">Campanha</th>
+                      <th className="p-3.5">Status</th>
+                      <th className="p-3.5 text-right">Investimento</th>
+                      <th className="p-3.5 text-right">Cliques</th>
+                      <th className="p-3.5 text-right">CPC</th>
+                      <th className="p-3.5 text-right">CTR</th>
+                      <th className="p-3.5 text-right">Pedidos</th>
+                      <th className="p-3.5 text-right">Faturamento</th>
+                      <th className="p-3.5 text-right">CAC</th>
+                      <th className="p-3.5 text-right">ROAS</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850">
-                    {recentOrders.map((ord: any) => (
-                      <tr key={ord.id} className="hover:bg-slate-800/30 transition">
-                        <td className="p-2.5 font-mono text-emerald-400 font-bold">{ord.id.substring(0, 8)}...</td>
-                        <td className="p-2.5 text-slate-200">
-                          <div>{ord.customer_name || 'Anônimo'}</div>
-                          <div className="text-[10px] font-mono text-slate-500">{ord.customer_email || '—'}</div>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {perfByCampaign.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="p-6 text-center text-slate-400">
+                          Nenhuma campanha registrada no período.
                         </td>
-                        <td className="p-2.5 font-mono text-slate-100 font-bold">
-                          R$ {parseFloat(ord.total_amount).toFixed(2)}
+                      </tr>
+                    ) : (
+                      perfByCampaign.map((c: any) => (
+                        <tr key={c.entityId || c.metaId} className="hover:bg-slate-50/70 transition">
+                          <td className="p-3.5 font-bold text-slate-900 max-w-xs truncate">
+                            {c.entityName}
+                          </td>
+                          <td className="p-3.5">
+                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {c.status}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-right font-medium text-slate-900">
+                            R$ {c.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right text-slate-600">{c.clicks.toLocaleString('pt-BR')}</td>
+                          <td className="p-3.5 text-right text-slate-600">{c.cpc !== null ? `R$ ${c.cpc.toFixed(2)}` : '—'}</td>
+                          <td className="p-3.5 text-right text-slate-600">{c.ctr !== null ? `${c.ctr.toFixed(2)}%` : '—'}</td>
+                          <td className="p-3.5 text-right font-semibold text-slate-900">{c.attributedPaidOrders}</td>
+                          <td className="p-3.5 text-right font-bold text-emerald-600">
+                            R$ {c.attributedGrossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right text-slate-600">
+                            {c.cac !== null ? `R$ ${c.cac.toFixed(2)}` : '—'}
+                          </td>
+                          <td className="p-3.5 text-right font-bold text-slate-900">
+                            {c.roas !== null ? `${c.roas.toFixed(2)}x` : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* AdSet Table */}
+            {drillDownLevel === 'adset' && (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200/80 text-[11px]">
+                    <tr>
+                      <th className="p-3.5">Conjunto de Anúncios</th>
+                      <th className="p-3.5">Campanha</th>
+                      <th className="p-3.5 text-right">Investimento</th>
+                      <th className="p-3.5 text-right">Cliques</th>
+                      <th className="p-3.5 text-right">CPC</th>
+                      <th className="p-3.5 text-right">Pedidos</th>
+                      <th className="p-3.5 text-right">Faturamento</th>
+                      <th className="p-3.5 text-right">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {perfByAdSet.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-6 text-center text-slate-400">
+                          Nenhum conjunto registrado no período.
                         </td>
-                        <td className="p-2.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            ord.status === 'PAID' ? 'bg-emerald-955/40 text-emerald-400 border border-emerald-500/20' :
-                            ord.status === 'PENDING' ? 'bg-amber-955/40 text-amber-400 border border-amber-500/20' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {ord.status}
-                          </span>
+                      </tr>
+                    ) : (
+                      perfByAdSet.map((as: any) => (
+                        <tr key={as.entityId || as.metaId} className="hover:bg-slate-50/70 transition">
+                          <td className="p-3.5 font-bold text-slate-900 max-w-xs truncate">{as.entityName}</td>
+                          <td className="p-3.5 text-slate-500 max-w-xs truncate">{as.parentCampaignName || '—'}</td>
+                          <td className="p-3.5 text-right font-medium text-slate-900">
+                            R$ {as.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right text-slate-600">{as.clicks}</td>
+                          <td className="p-3.5 text-right text-slate-600">{as.cpc !== null ? `R$ ${as.cpc.toFixed(2)}` : '—'}</td>
+                          <td className="p-3.5 text-right font-semibold text-slate-900">{as.attributedPaidOrders}</td>
+                          <td className="p-3.5 text-right font-bold text-emerald-600">
+                            R$ {as.attributedGrossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right font-bold text-slate-900">
+                            {as.roas !== null ? `${as.roas.toFixed(2)}x` : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Ad Table */}
+            {drillDownLevel === 'ad' && (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200/80 text-[11px]">
+                    <tr>
+                      <th className="p-3.5">Anúncio / Criativo</th>
+                      <th className="p-3.5">Campanha</th>
+                      <th className="p-3.5 text-right">Investimento</th>
+                      <th className="p-3.5 text-right">Cliques</th>
+                      <th className="p-3.5 text-right">CPC</th>
+                      <th className="p-3.5 text-right">Pedidos</th>
+                      <th className="p-3.5 text-right">Faturamento</th>
+                      <th className="p-3.5 text-right">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {perfByAd.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-6 text-center text-slate-400">
+                          Nenhum anúncio registrado no período.
                         </td>
-                        <td className="p-2.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            ord.payment_status === 'CONFIRMED' ? 'bg-emerald-955/40 text-emerald-400 border border-emerald-500/20' :
-                            ord.payment_status === 'PENDING' ? 'bg-amber-955/40 text-amber-400 border border-amber-500/20' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {ord.payment_status || 'NÃO INICIADO'}
-                          </span>
+                      </tr>
+                    ) : (
+                      perfByAd.map((ad: any) => (
+                        <tr key={ad.entityId || ad.metaId} className="hover:bg-slate-50/70 transition">
+                          <td className="p-3.5 font-bold text-slate-900 max-w-xs truncate">{ad.entityName}</td>
+                          <td className="p-3.5 text-slate-500 max-w-xs truncate">{ad.parentCampaignName || '—'}</td>
+                          <td className="p-3.5 text-right font-medium text-slate-900">
+                            R$ {ad.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right text-slate-600">{ad.clicks}</td>
+                          <td className="p-3.5 text-right text-slate-600">{ad.cpc !== null ? `R$ ${ad.cpc.toFixed(2)}` : '—'}</td>
+                          <td className="p-3.5 text-right font-semibold text-slate-900">{ad.attributedPaidOrders}</td>
+                          <td className="p-3.5 text-right font-bold text-emerald-600">
+                            R$ {ad.attributedGrossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right font-bold text-slate-900">
+                            {ad.roas !== null ? `${ad.roas.toFixed(2)}x` : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* 4. VISÃO INDIVIDUALIZADA POR PRODUTO */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <PieChart className="h-4 w-4 text-emerald-600" />
+                <span>Visão Individualizada por Produto ({finByProduct.length})</span>
+              </h3>
+              <span className="text-xs text-slate-400">Rateio Pro-rata de Mídia e Custos Diretos</span>
+            </div>
+
+            {finByProduct.length === 0 ? (
+              <div className="p-6 text-center text-slate-400 text-xs">Nenhum produto cadastrado no período.</div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200/80 text-[11px]">
+                    <tr>
+                      <th className="p-3.5">Código</th>
+                      <th className="p-3.5">Produto</th>
+                      <th className="p-3.5 text-right">Vendas Pagas</th>
+                      <th className="p-3.5 text-right">Faturamento</th>
+                      <th className="p-3.5 text-right">Invest. Mídia</th>
+                      <th className="p-3.5 text-right">Custos Conhecidos</th>
+                      <th className="p-3.5 text-right">Resultado Conhecido</th>
+                      <th className="p-3.5 text-right">Margem %</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {finByProduct.map((p: any) => (
+                      <tr key={p.productId} className="hover:bg-slate-50/70 transition">
+                        <td className="p-3.5 font-bold text-emerald-700">{p.productHumanId}</td>
+                        <td className="p-3.5 font-bold text-slate-900">{p.productName}</td>
+                        <td className="p-3.5 text-right text-slate-800 font-medium">{p.unitsSold}</td>
+                        <td className="p-3.5 text-right font-bold text-emerald-600">
+                          R$ {p.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="p-2.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            ord.download_count > 0 ? 'bg-emerald-955/40 text-emerald-400 border border-emerald-500/20' :
-                            ord.delivery_status === 'ACTIVE' ? 'bg-blue-955/40 text-blue-400 border border-blue-500/20' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {ord.download_count > 0 ? `BAIXADO (${ord.download_count})` : ord.delivery_status ? 'DISPONÍVEL' : 'PENDENTE'}
-                          </span>
+                        <td className="p-3.5 text-right text-slate-700">
+                          R$ {p.attributedSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="p-2.5 font-mono text-slate-500 text-[10px]">
-                          {new Date(ord.created_at).toLocaleString('pt-BR')}
+                        <td className="p-3.5 text-right text-slate-500">
+                          R$ {p.gatewayFees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className={`p-3.5 text-right font-bold ${p.netProfit >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                          R$ {p.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className={`p-3.5 text-right font-bold ${p.netMargin !== null && p.netMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {p.netMargin !== null ? `${p.netMargin.toFixed(1)}%` : '—'}
                         </td>
                       </tr>
                     ))}
@@ -1290,102 +948,138 @@ export function DashboardView({
               </div>
             )}
           </div>
+
+          {/* 5. CONCILIAÇÃO & AUDITORIA CONTÁBIL */}
+          <div className="p-5 rounded-2xl bg-emerald-50/50 border border-emerald-200/80 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-900">
+                  Integridade financeira ✓ Conciliado 100%
+                </span>
+              </div>
+              <button
+                onClick={() => setShowAuditDetails(prev => !prev)}
+                className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 transition underline underline-offset-2 self-start sm:self-auto"
+              >
+                {showAuditDetails ? 'Ocultar detalhes da auditoria ▲' : 'Ver detalhes da auditoria contábil ▼'}
+              </button>
+            </div>
+
+            {showAuditDetails && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-emerald-200/60 text-xs">
+                <div className="p-3.5 bg-white rounded-xl border border-emerald-100 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase">Total por Produto (Σ)</div>
+                  <div className="text-lg font-bold text-slate-900 mt-1">
+                    R$ {finReconciliation.productTotalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className="p-3.5 bg-white rounded-xl border border-emerald-100 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase">Faturamento Consolidado</div>
+                  <div className="text-lg font-bold text-emerald-700 mt-1">
+                    R$ {finSummary.grossRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className="p-3.5 bg-white rounded-xl border border-emerald-100 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase">Campanhas + Não Atribuído</div>
+                  <div className="text-lg font-bold text-slate-900 mt-1">
+                    R$ {finReconciliation.campaignPlusUnattributedRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : activeSubView === 'executive' ? (
+        /* VISÃO EXECUTIVA V1 */
+        <div className="space-y-6 sm:space-y-8">
+          <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <Layers className="h-4 w-4 text-blue-600" />
+              <span>Funil Transacional Determinístico</span>
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
+                <div className="text-xs font-semibold text-slate-500 uppercase">1. Pedidos Totais</div>
+                <div className="text-2xl font-bold text-slate-900 mt-1">{commerce.totalOrders}</div>
+                <div className="text-xs text-slate-400 mt-0.5">Criados no sistema</div>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
+                <div className="text-xs font-semibold text-slate-500 uppercase">2. Pix Gerados</div>
+                <div className="text-2xl font-bold text-slate-900 mt-1">{finance.totalPixCreated}</div>
+                <div className="text-xs text-slate-400 mt-0.5">Cobranças emitidas</div>
+              </div>
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200/70">
+                <div className="text-xs font-semibold text-emerald-800 uppercase">3. Pix Confirmados</div>
+                <div className="text-2xl font-bold text-emerald-950 mt-1">{finance.totalPixConfirmed}</div>
+                <div className="text-xs text-emerald-700 mt-0.5">{finance.approvalRate ? `${finance.approvalRate.toFixed(1)}% taxa aprovação` : '—'}</div>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
+                <div className="text-xs font-semibold text-slate-500 uppercase">4. Entregas Liberadas</div>
+                <div className="text-2xl font-bold text-slate-900 mt-1">{delivery.totalEntitlements}</div>
+                <div className="text-xs text-slate-400 mt-0.5">{delivery.completedDownloads} downloads concluídos</div>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
-        /* Subview: Experiments & Capital */
-        <div className="p-4 border border-slate-800 bg-slate-900/40 rounded space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">Tabela de Experimentos Operacionais</h3>
-            
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded p-1.5 text-xs text-slate-200"
-              >
-                <option value="ALL">TODOS OS STATUS</option>
-                <option value="PLANEJADO">PLANEJADO</option>
-                <option value="AUTORIZADO">AUTORIZADO</option>
-                <option value="ATIVO">ATIVO</option>
-                <option value="PAUSADO">PAUSADO</option>
-                <option value="CONCLUIDO">CONCLUÍDO</option>
-              </select>
+        /* EXPERIMENTOS V1 */
+        <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Tabela de Experimentos Operacionais
+            </h3>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar experimento..."
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              />
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-850 rounded">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-900 border-b border-slate-800 text-[10px] font-mono uppercase text-slate-400 tracking-wider">
-                  <th className="p-3 cursor-pointer hover:text-slate-200" onClick={() => toggleSort('human_id')}>ID</th>
-                  <th className="p-3 cursor-pointer hover:text-slate-200" onClick={() => toggleSort('name')}>Experimento</th>
-                  <th className="p-3">Produto</th>
-                  <th className="p-3 cursor-pointer hover:text-slate-200" onClick={() => toggleSort('capital_used')}>Investimento</th>
-                  <th className="p-3">Capital Restante</th>
-                  <th className="p-3 cursor-pointer hover:text-slate-200" onClick={() => toggleSort('status')}>Status</th>
-                  <th className="p-3 text-right">Ações</th>
+          <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200/80 text-[11px]">
+                <tr>
+                  <th className="p-3.5">Código</th>
+                  <th className="p-3.5">Nome do Experimento</th>
+                  <th className="p-3.5">Produto</th>
+                  <th className="p-3.5">Oferta</th>
+                  <th className="p-3.5 text-right">Capital Aprovado</th>
+                  <th className="p-3.5 text-right">Capital Utilizado</th>
+                  <th className="p-3.5">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-850 bg-slate-955/20 text-xs">
+              <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredExps.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-500 font-mono">
-                      Nenhum experimento encontrado para os critérios de busca.
+                    <td colSpan={7} className="p-6 text-center text-slate-400">
+                      Nenhum experimento encontrado.
                     </td>
                   </tr>
                 ) : (
-                  filteredExps.map((exp: any) => {
-                    const remaining = parseFloat((parseFloat(exp.capital_approved) - parseFloat(exp.capital_used)).toFixed(2));
-                    return (
-                      <tr key={exp.id} className="hover:bg-slate-900/30 transition">
-                        <td className="p-3 font-mono text-emerald-400 font-bold">{exp.human_id}</td>
-                        <td className="p-3 font-semibold text-slate-200">{exp.name}</td>
-                        <td className="p-3 text-slate-400 truncate max-w-[150px]">{exp.product_name}</td>
-                        <td className="p-3 font-mono">R${parseFloat(exp.capital_used).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                        <td className={`p-3 font-mono ${remaining <= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                          R${remaining.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R${parseFloat(exp.capital_approved).toLocaleString('pt-BR')}
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            exp.status === 'ATIVO' ? 'bg-emerald-955/40 text-emerald-400 border border-emerald-500/20' :
-                            exp.status === 'PLANEJADO' ? 'bg-slate-800 text-slate-400' : 'bg-amber-955/20 text-amber-400'
-                          }`}>
-                            {exp.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right space-x-1">
-                          <button
-                            onClick={() => onSelectExperiment(exp)}
-                            className="px-2 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium"
-                          >
-                            Detalhes
-                          </button>
-                          <button
-                            onClick={() => onRegisterPerformance(exp.id)}
-                            className="px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 font-medium"
-                          >
-                            Performance
-                          </button>
-                          <button
-                            onClick={() => onAuthorizeCapital(exp)}
-                            className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 font-medium"
-                          >
-                            Orçamento
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
+                  filteredExps.map((exp: any) => (
+                    <tr key={exp.id} className="hover:bg-slate-50/70 transition">
+                      <td className="p-3.5 font-bold text-slate-900">{exp.human_id}</td>
+                      <td className="p-3.5 font-semibold text-slate-800">{exp.name}</td>
+                      <td className="p-3.5 text-slate-600">{exp.product_name || '—'}</td>
+                      <td className="p-3.5 text-slate-600">{exp.offer_name || '—'}</td>
+                      <td className="p-3.5 text-right font-medium text-slate-900">
+                        R$ {parseFloat(exp.capital_approved || 0).toFixed(2)}
+                      </td>
+                      <td className="p-3.5 text-right text-slate-600">
+                        R$ {parseFloat(exp.capital_used || 0).toFixed(2)}
+                      </td>
+                      <td className="p-3.5">
+                        <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {exp.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>

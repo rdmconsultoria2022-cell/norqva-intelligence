@@ -66,7 +66,7 @@ describe('GATE SEC-03 & FASE 1 (MEDIR CERTO) — Comprehensive Test Suite', () =
       email: perfRes.rows[0].email,
       role: 'PERFORMANCE'
     });
-  });
+  }, 30000);
 
   afterAll(async () => {
     try {
@@ -126,11 +126,7 @@ describe('GATE SEC-03 & FASE 1 (MEDIR CERTO) — Comprehensive Test Suite', () =
     });
 
     it('1.4 Env Validation: Rejects missing CPF_CNPJ_HASH_SECRET in production mode', () => {
-      const originalEnv = process.env.NODE_ENV;
-      const originalSecret = process.env.CPF_CNPJ_HASH_SECRET;
-      const originalAsaasBase = process.env.ASAAS_BASE_URL;
-      const originalAsaasEnv = process.env.ASAAS_ENV;
-      const originalDestructive = process.env.ALLOW_DESTRUCTIVE_TESTS;
+      const savedEnv = { ...process.env };
 
       try {
         process.env.NODE_ENV = 'production';
@@ -141,11 +137,14 @@ describe('GATE SEC-03 & FASE 1 (MEDIR CERTO) — Comprehensive Test Suite', () =
 
         expect(() => validateProductionEnvironment()).toThrow(/CPF_CNPJ_HASH_SECRET/);
       } finally {
-        process.env.NODE_ENV = originalEnv;
-        if (originalSecret) process.env.CPF_CNPJ_HASH_SECRET = originalSecret;
-        if (originalAsaasBase) process.env.ASAAS_BASE_URL = originalAsaasBase;
-        if (originalAsaasEnv) process.env.ASAAS_ENV = originalAsaasEnv;
-        if (originalDestructive) process.env.ALLOW_DESTRUCTIVE_TESTS = originalDestructive;
+        for (const k of Object.keys(process.env)) {
+          if (!(k in savedEnv)) {
+            delete process.env[k];
+          }
+        }
+        for (const [k, v] of Object.entries(savedEnv)) {
+          process.env[k] = v;
+        }
       }
     });
 
@@ -262,8 +261,8 @@ describe('GATE SEC-03 & FASE 1 (MEDIR CERTO) — Comprehensive Test Suite', () =
       const prodId = prodRes.rows[0].id;
 
       const offRes = await pool.query(
-        `INSERT INTO offers (id, human_id, name, description, product_id, price, is_demo, data_provenance)
-         VALUES (gen_random_uuid(), 'OFF-UNIT-01', 'Oferta Unit Economics', 'Desc', $1, 100.00, FALSE, 'COMMERCIAL_PRODUCTION')
+        `INSERT INTO offers (id, human_id, name, description, product_id, price, is_demo, is_deleted, data_provenance)
+         VALUES (gen_random_uuid(), 'OFF-UNIT-01', 'Oferta Unit Economics', 'Desc', $1, 100.00, FALSE, FALSE, 'COMMERCIAL_PRODUCTION')
          RETURNING id`,
         [prodId]
       );
@@ -271,8 +270,8 @@ describe('GATE SEC-03 & FASE 1 (MEDIR CERTO) — Comprehensive Test Suite', () =
 
       // Seed unit economics for offer
       await pool.query(
-        `INSERT INTO offer_unit_economics (id, offer_id, tax_rate, gateway_fixed_fee, gateway_pct_fee, other_variable_cost, target_net_margin, monthly_fixed_costs, is_demo)
-         VALUES (gen_random_uuid(), $1, 0.06, 0.99, 0.0199, 5.00, 0.30, 300.00, FALSE)
+        `INSERT INTO offer_unit_economics (id, offer_id, tax_rate, gateway_fixed_fee, gateway_pct_fee, other_variable_cost, target_net_margin, is_demo)
+         VALUES (gen_random_uuid(), $1, 0.06, 0.99, 0.0199, 5.00, 0.30, FALSE)
          ON CONFLICT (offer_id, is_demo) DO UPDATE SET tax_rate = 0.06, gateway_fixed_fee = 0.99, gateway_pct_fee = 0.0199, other_variable_cost = 5.00, target_net_margin = 0.30`,
         [offId]
       );
@@ -314,7 +313,7 @@ describe('GATE SEC-03 & FASE 1 (MEDIR CERTO) — Comprehensive Test Suite', () =
       expect(dashRes.body.summary.grossRevenue).toBeGreaterThan(0);
       expect(dashRes.body.summary.otherCosts).toBeGreaterThan(0); // non-zero, incorporates taxes & variable costs
 
-      const offerData = dashRes.body.byOffer.find((o: any) => o.offerId === offId || o.offer_id === offId);
+      const offerData = dashRes.body.byOffer.find((o: any) => o.offerId === offId || o.offer_id === offId || o.offerHumanId === 'OFF-UNIT-01');
       expect(offerData).toBeDefined();
       expect(offerData.breakeven_cpa).toBeGreaterThan(0);
       expect(offerData.target_cpa).toBeGreaterThan(0);

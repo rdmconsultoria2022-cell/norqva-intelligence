@@ -118,7 +118,7 @@ import {
   recoveryRequestRateLimiter
 } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
-import { setupGracefulShutdown } from './utils/shutdown';
+import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
 
 dotenv.config();
@@ -388,15 +388,19 @@ async function startServer() {
     // Initialize Automated Meta Analytics Scheduler (Non-blocking / Isolated)
     try {
       MetaSchedulerService.getInstance().start(pool);
+      registerShutdownHook(() => MetaSchedulerService.getInstance().stop());
     } catch (schedulerErr: any) {
       console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
     }
 
     // Initialize Automated CAPI Retry Job (Non-blocking / Isolated)
-    try {
-      startCapiRetryJob(pool);
-    } catch (retryErr: any) {
-      console.error('[Server] Failed to initialize startCapiRetryJob (non-fatal):', retryErr.message);
+    if (process.env.NODE_ENV !== 'test') {
+      try {
+        const capiJob = startCapiRetryJob(pool);
+        registerShutdownHook(() => capiJob.stop());
+      } catch (retryErr: any) {
+        console.error('[Server] Failed to initialize startCapiRetryJob (non-fatal):', retryErr.message);
+      }
     }
   } catch (err) {
     console.error('[Server] Initialization failed:', err);

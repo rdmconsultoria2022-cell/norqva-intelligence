@@ -22,13 +22,16 @@ export async function processCapiRetries(pool: Pool): Promise<CapiRetryResult> {
   try {
     await client.query('BEGIN');
 
-    // Select pending/failed events respecting exponential backoff and 6-day TTL
+    // Select pending/failed/skipped events respecting exponential backoff and 6-day TTL
     const lockClause = isDbInMemory() ? '' : 'FOR UPDATE SKIP LOCKED';
     const query = `
       SELECT id, event_id, pixel_id, payload, attempts, max_attempts, is_demo, response_status
       FROM capi_events
-      WHERE status IN ('PENDING', 'FAILED')
-        AND attempts < max_attempts
+      WHERE (
+        (status = 'FAILED' AND attempts < max_attempts)
+        OR (status = 'PENDING' AND created_at <= NOW() - INTERVAL '2 minutes' AND attempts < max_attempts)
+        OR (status = 'SKIPPED' AND $1::text IS NOT NULL)
+      )
         AND created_at > NOW() - INTERVAL '6 days'
         AND (response_status IS NULL OR response_status = 429 OR response_status < 400 OR response_status >= 500)
         AND (
@@ -49,7 +52,7 @@ export async function processCapiRetries(pool: Pool): Promise<CapiRetryResult> {
       ${lockClause}
     `;
 
-    const candidateRows = await client.query(query);
+    const candidateRows = await client.query(query, [process.env.META_ACCESS_TOKEN || null]);
     await client.query('COMMIT');
 
     const accessToken = process.env.META_ACCESS_TOKEN;
@@ -160,6 +163,10 @@ export async function processCapiRetries(pool: Pool): Promise<CapiRetryResult> {
 }
 
 export function startCapiRetryJob(pool: Pool, intervalMs: number = 300000): { stop: () => void } {
+  if (process.env.NODE_ENV === 'test') {
+    return { stop: () => {} };
+  }
+
   let isRunning = false;
 
   const runTick = async () => {

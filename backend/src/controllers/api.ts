@@ -3117,7 +3117,8 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   // Any exception here is non-fatal to the payment / delivery.
   try {
     const postPay = await pool.query(
-      `SELECT p.id as payment_id, p.order_id, p.amount, c.email as customer_email, c.phone as customer_phone,
+      `SELECT p.id as payment_id, p.order_id, p.amount, p.confirmed_at as paid_at, p.updated_at,
+              c.email as customer_email, c.phone as customer_phone,
               o.visitor_id, o.session_id, o.fbclid, o.utm_source, o.utm_medium, o.utm_campaign, o.utm_content,
               o.fbc, o.fbp, o.client_ip_address, o.client_user_agent, o.event_source_url, o.is_demo
        FROM payments p
@@ -5423,7 +5424,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND ${isDemo ? `(o_order.data_provenance != 'COMMERCIAL_PRODUCTION' OR o_order.is_demo = TRUE)` : `(o_order.data_provenance = 'COMMERCIAL_PRODUCTION')`}
          AND ($1::timestamptz IS NULL OR o_order.created_at >= $1)
          AND ($2::timestamptz IS NULL OR o_order.created_at <= $2)
-       WHERE o.is_demo = $3 AND o.is_deleted = FALSE
+       WHERE o.is_demo = $3 AND (o.is_deleted IS FALSE OR o.is_deleted IS NULL)
        GROUP BY o.id, o.human_id, o.name, o.price, o.promotional_price, ue.id, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost, ue.target_net_margin
        ORDER BY gross_revenue DESC, units_sold DESC`,
       [startDateParam, endDateParam, isDemo]
@@ -5782,11 +5783,15 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       endDate: req.query.endDate as string
     });
 
+    const configuredCount = byOffer.filter(o => o.unit_economics_status === 'CONFIGURED').length;
+    const cost_config_status = byOffer.length === 0 ? 'UNCONFIGURED' : (configuredCount === byOffer.length ? 'COMPLETE' : (configuredCount > 0 ? 'PARTIAL' : 'UNCONFIGURED'));
+
     return res.status(200).json({
       period,
       mode: isDemo ? 'demo' : 'real',
       dataProvenanceAuthority: isDemo ? 'DEMO_SEED_FIXTURE' : 'COMMERCIAL_PRODUCTION_ONLY',
       costCoverage,
+      cost_config_status,
       gatewayCostState,
       netResultSemantic,
       summary: {
