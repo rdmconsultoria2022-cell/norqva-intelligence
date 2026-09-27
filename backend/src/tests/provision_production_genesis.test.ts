@@ -164,6 +164,12 @@ describe('NORQVA Production Genesis Provisioner Hardening Suite V1', () => {
       await client.query('DROP TABLE IF EXISTS schema_migrations CASCADE;');
 
       await runMigrations(pool);
+
+      // Migrations 020-022 seed the Bolso Blindado catalog rows; genesis expects an empty baseline.
+      await client.query('DELETE FROM offer_digital_assets');
+      await client.query('DELETE FROM digital_assets');
+      await client.query('DELETE FROM offers');
+      await client.query('DELETE FROM products');
     });
 
     afterEach(async () => {

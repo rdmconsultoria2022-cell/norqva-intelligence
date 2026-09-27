@@ -309,6 +309,7 @@ describe('NORQVA Market Intelligence V1 - Migration 023 Test Suite', () => {
     await pool.query('DROP TABLE IF EXISTS market_offers;');
     await pool.query('DROP TABLE IF EXISTS market_advertisers;');
     await pool.query('DROP TABLE IF EXISTS market_evidence;');
+    await pool.query("DELETE FROM schema_migrations WHERE name = '023_market_intelligence_core_v1.sql'");
 
     // Verify all 7 tables are dropped
     const tables = [

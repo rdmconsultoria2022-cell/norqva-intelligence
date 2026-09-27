@@ -124,6 +124,9 @@ describe('NORQVA-0001 — Contract Verification Suite', () => {
 
       const originalEventTime = 1680000000;
       const eventId = `test_capi_retry_${Date.now()}`;
+      // Other suites leave capi_events behind on the shared test DB; the job picks the
+      // 50 oldest eligible rows, so clear them to make this test deterministic.
+      await pool.query('DELETE FROM capi_events');
       const payload = {
         event_name: 'Purchase',
         event_time: originalEventTime,
