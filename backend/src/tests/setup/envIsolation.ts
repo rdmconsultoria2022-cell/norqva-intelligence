@@ -1,43 +1,25 @@
-import { afterEach, beforeAll, afterAll } from 'vitest';
+import { beforeAll } from 'vitest';
 
 declare global {
   // eslint-disable-next-line no-var
-  var __NORQVA_ENV_SNAPSHOT__: NodeJS.ProcessEnv | undefined;
+  var __NORQVA_ENV_SNAPSHOT__: Record<string, string> | undefined;
 }
 
+// Snapshot tirado uma única vez, no primeiro arquivo carregado pelo fork.
 if (!globalThis.__NORQVA_ENV_SNAPSHOT__) {
-  globalThis.__NORQVA_ENV_SNAPSHOT__ = { ...process.env };
+  globalThis.__NORQVA_ENV_SNAPSHOT__ = Object.fromEntries(
+    Object.entries(process.env).filter(([, v]) => v !== undefined)
+  ) as Record<string, string>;
 }
 
-function restoreEnv() {
-  const snapshot = globalThis.__NORQVA_ENV_SNAPSHOT__;
-  if (!snapshot) return;
-
-  // Delete any keys added that were not in original snapshot
-  for (const key of Object.keys(process.env)) {
-    if (!(key in snapshot)) {
-      delete process.env[key];
-    }
-  }
-
-  // Restore original snapshot values
-  for (const [key, value] of Object.entries(snapshot)) {
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
-}
-
+// Cada ARQUIVO de teste começa com o ambiente original.
+// Sem afterEach/afterAll: o arquivo pode configurar o que quiser dentro dele.
 beforeAll(() => {
-  restoreEnv();
-});
-
-afterAll(() => {
-  restoreEnv();
-});
-
-afterEach(() => {
-  restoreEnv();
+  const snapshot = globalThis.__NORQVA_ENV_SNAPSHOT__!;
+  for (const key of Object.keys(process.env)) {
+    if (!(key in snapshot)) delete process.env[key];
+  }
+  for (const [key, value] of Object.entries(snapshot)) {
+    process.env[key] = value;
+  }
 });

@@ -1,5 +1,6 @@
 .gitignore
 backend/.env.test.example
+backend/package.json
 backend/scripts/run-ci-tests.js
 backend/src/controllers/api.ts
 backend/src/db/migrations/026_commercial_phase1_real_metrics_and_security.sql
@@ -12,8 +13,10 @@ backend/src/tests/financial_intelligence_dashboard.test.ts
 backend/src/tests/gate_sec03_phase1.test.ts
 backend/src/tests/norqva_0001.test.ts
 backend/src/tests/production_payment_lock.test.ts
+backend/src/tests/setup/envIsolation.ts
 backend/src/utils/envValidation.ts
 backend/src/utils/shutdown.ts
+backend/vitest.config.ts
 frontend/src/features/checkout/CheckoutView.tsx
 frontend/src/features/opportunities/OpportunitiesView.tsx
 frontend/src/services/attribution.ts
@@ -32,4 +35,7 @@ norqva-ai/reports/NORQVA-0001/08_full_frontend.txt
 norqva-ai/reports/NORQVA-0001/09_scope_check.txt
 norqva-ai/reviews/NORQVA-0001_review.md
 norqva-ai/reviews/NORQVA-0001_review_r2.md
+norqva-ai/reviews/NORQVA-0001_review_r3.md
+norqva-ai/reviews/NORQVA-0001_review_r4.md
 norqva-ai/tasks/NORQVA-0001.md
+package-lock.json
