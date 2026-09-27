@@ -46,6 +46,8 @@ export async function runMigrations(pool: Pool) {
       // pg-mem parser fallback: strip RLS / Policies / DO blocks which pg-mem cannot parse
       if (isDbInMemory()) {
         sqlContent = sqlContent.replace(/DO\s*\$\$[\s\S]*?\$\$;/gi, '');
+        // pg-mem does not support NOT VALID on CHECK constraints
+        sqlContent = sqlContent.replace(/\s+NOT VALID/gi, '');
         sqlContent = sqlContent
           .split(';')
           .filter(statement => {
