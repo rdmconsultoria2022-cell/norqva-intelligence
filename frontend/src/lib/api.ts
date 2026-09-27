@@ -7,8 +7,7 @@ const envBase = typeof import.meta !== 'undefined' && (import.meta as any).env?.
   : undefined;
 
 export function resolveApiBase(customUrl?: string, isTestEnv: boolean = isTest): string {
-  const rawUrl = arguments.length > 0 ? customUrl : envBase;
-  const url = typeof rawUrl === 'string' ? rawUrl.trim() : undefined;
+  const url = (customUrl !== undefined ? customUrl : envBase)?.trim();
   if (isTestEnv) {
     return url || '/api';
   }

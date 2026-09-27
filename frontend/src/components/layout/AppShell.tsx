@@ -23,22 +23,18 @@ export function AppShell({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex font-sans w-full overflow-x-hidden antialiased selection:bg-emerald-500/20 selection:text-emerald-900">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans w-full overflow-x-hidden">
       {/* Global Toast Error & Success */}
       {globalError && (
-        <div className="fixed top-4 right-4 z-50 bg-white border border-rose-200 text-rose-800 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 max-w-md animate-in slide-in-from-top-2 duration-200">
-          <div className="h-8 w-8 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
-            <AlertTriangle className="h-4 w-4 text-rose-600" />
-          </div>
-          <span className="text-xs font-semibold">{globalError}</span>
+        <div className="fixed top-4 right-4 z-50 bg-red-950 border border-red-500 text-red-200 px-4 py-3 rounded-md shadow-lg flex items-center gap-2 max-w-md animate-bounce">
+          <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" />
+          <span className="text-sm font-medium">{globalError}</span>
         </div>
       )}
       {globalSuccess && (
-        <div className="fixed top-4 right-4 z-50 bg-white border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 max-w-md animate-in slide-in-from-top-2 duration-200">
-          <div className="h-8 w-8 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-            <CheckCircle className="h-4 w-4 text-emerald-600" />
-          </div>
-          <span className="text-xs font-semibold">{globalSuccess}</span>
+        <div className="fixed top-4 right-4 z-50 bg-emerald-950 border border-emerald-500 text-emerald-200 px-4 py-3 rounded-md shadow-lg flex items-center gap-2 max-w-md">
+          <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0" />
+          <span className="text-sm font-medium">{globalSuccess}</span>
         </div>
       )}
 
@@ -52,11 +48,11 @@ export function AppShell({
         <div className="fixed inset-0 z-50 md:hidden flex">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
             onClick={() => setIsMobileMenuOpen(false)}
           />
           {/* Drawer Panel */}
-          <div className="relative flex flex-col w-64 max-w-xs h-full bg-white z-50 shadow-2xl border-r border-slate-200 animate-in slide-in-from-left duration-200">
+          <div className="relative flex flex-col w-64 max-w-xs h-full bg-slate-900 z-50 shadow-2xl border-r border-slate-800 animate-in slide-in-from-left duration-200">
             <Sidebar
               {...sidebarProps}
               onNavigate={() => setIsMobileMenuOpen(false)}
@@ -69,9 +65,9 @@ export function AppShell({
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {isDemoView && (
-          <div className="bg-amber-50 text-amber-900 border-b border-amber-200/80 px-4 py-1.5 text-center text-xs font-medium z-20 flex items-center justify-center gap-2 shadow-xs">
-            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
-            <span>Ambiente Demo Ativo • Operando sobre dados de demonstração e simulação de vendas</span>
+          <div className="bg-amber-500 text-slate-950 px-4 py-1 text-center text-xs font-mono font-bold tracking-wider z-20 flex items-center justify-center gap-2 border-b border-amber-600">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-slate-950" />
+            ⚠️ AMBIENTE DEMO ATIVO: OPERANDO SOBRE DADOS DE DEMONSTRAÇÃO E ACESSO SIMULADO.
           </div>
         )}
 
@@ -83,7 +79,7 @@ export function AppShell({
         />
 
         {/* Child Screen Contents */}
-        <section className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar max-w-[1600px] w-full mx-auto">
+        <section className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 custom-scrollbar">
           {children}
         </section>
       </main>
