@@ -142,9 +142,10 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
 
   const submitLink = () => {
     if (!linking) return;
+    const { id, meta_ad_id } = linking;
     return run(
-      `link-${linking.id}`,
-      () => post(`/creative-factory/creatives/${linking.id}/link-ad?mode=${mode}`, { meta_ad_id: linking.meta_ad_id.trim() }),
+      `link-${id}`,
+      () => post(`/creative-factory/creatives/${id}/link-ad?mode=${mode}`, { meta_ad_id: meta_ad_id.trim() }),
       'Anúncio ligado ao criativo.'
     ).then(() => setLinking(null));
   };
@@ -444,7 +445,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   />
                   <div className="flex gap-2">
                     <button onClick={submitReview} className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 text-xs font-bold">
-                      Confirmar {rejecting.decision === 'REJECTED' ? 'rejeição' : 'pedido de ajuste'}
+                      Confirmar {rejecting?.decision === 'REJECTED' ? 'rejeição' : 'pedido de ajuste'}
                     </button>
                     <button onClick={() => setRejecting(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs">
                       Cancelar
@@ -460,21 +461,21 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   </p>
                   <input
                     aria-label="Título"
-                    value={editing.headline}
-                    onChange={e => setEditing({ ...editing, headline: e.target.value })}
+                    value={editing?.headline || ''}
+                    onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, headline: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
                   />
                   <textarea
                     aria-label="Texto principal"
-                    value={editing.primary_text}
-                    onChange={e => setEditing({ ...editing, primary_text: e.target.value })}
+                    value={editing?.primary_text || ''}
+                    onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, primary_text: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded h-20"
                   />
                   <input
                     aria-label="Link do arquivo"
                     placeholder="Link do vídeo/imagem produzido"
-                    value={editing.file_url}
-                    onChange={e => setEditing({ ...editing, file_url: e.target.value })}
+                    value={editing?.file_url || ''}
+                    onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, file_url: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
                   />
                   <div className="flex gap-2">
@@ -496,8 +497,8 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   <input
                     aria-label="ID do anúncio na Meta"
                     placeholder="ID do anúncio na Meta"
-                    value={linking.meta_ad_id}
-                    onChange={e => setLinking({ ...linking, meta_ad_id: e.target.value })}
+                    value={linking?.meta_ad_id || ''}
+                    onChange={e => { const v = e.target.value; setLinking(prev => (prev ? { ...prev, meta_ad_id: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
                   />
                   <div className="flex gap-2">
