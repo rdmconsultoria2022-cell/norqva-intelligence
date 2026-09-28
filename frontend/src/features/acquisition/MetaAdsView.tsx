@@ -7,6 +7,15 @@ import {
   MetaControlDialog,
   MetaControlPendingAction
 } from './MetaControl';
+import {
+  aggregateMetrics,
+  MetricHeaderCells,
+  MetricCells,
+  ResultsSummary,
+  AlertsPanel,
+  AdAlert,
+  PerfItem
+} from './MetaResults';
 import { 
   TrendingUp, 
   Layers, 
@@ -124,6 +133,33 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const control = useMetaControl({ apiFetch, currentUser, isDemoView, enabled: isAdmin });
   const [pendingControl, setPendingControl] = useState<MetaControlPendingAction | null>(null);
   const toBudget = (v: any) => (v === null || v === undefined || v === '' ? null : parseFloat(v));
+  // NORQVA-0009: results per campaign / ad set / ad (Meta spend + NORQVA funnel) and ad alerts
+  const [perf, setPerf] = useState<PerfItem[]>([]);
+  const [alerts, setAlerts] = useState<AdAlert[]>([]);
+  const [campaignFilter, setCampaignFilter] = useState<any | null>(null);
+  const [adsetFilter, setAdsetFilter] = useState<any | null>(null);
+  const metricsFor = (pred: (p: PerfItem) => boolean) => aggregateMetrics(perf.filter(pred));
+  const openAlertByAd = new Map(alerts.filter(a => a.status !== 'RESOLVED').map(a => [String(a.meta_ad_id), a]));
+
+  const loadAlerts = async () => {
+    const mode = isDemoView ? 'demo' : 'real';
+    try {
+      const r = await apiFetch(`/alerts?mode=${mode}`, {}, mode, currentUser);
+      setAlerts(Array.isArray(r?.alerts) ? r.alerts : []);
+    } catch {
+      setAlerts([]);
+    }
+  };
+
+  const ackAlert = async (a: AdAlert) => {
+    const mode = isDemoView ? 'demo' : 'real';
+    try {
+      await apiFetch(`/alerts/${a.id}/ack?mode=${mode}`, { method: 'POST' }, mode, currentUser);
+      await loadAlerts();
+    } catch (err: any) {
+      showError(err.message || 'Falha ao marcar o alerta.');
+    }
+  };
 
   const renderStatusBadge = (item: { status?: string; effective_status?: string }) => {
     const deliveryStatus = getMetaDeliveryStatus(item.effective_status, item.status);
@@ -165,12 +201,15 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
       }
 
       // Load campaigns, adsets, ads, insights
-      const [cmpRes, setRes, adRes, insRes] = await Promise.all([
+      const [cmpRes, setRes, adRes, insRes, perfRes] = await Promise.all([
         apiFetch(`/meta/campaigns?mode=${mode}`, {}, mode, currentUser).catch(() => []),
         apiFetch(`/meta/adsets?mode=${mode}`, {}, mode, currentUser).catch(() => []),
         apiFetch(`/meta/ads?mode=${mode}`, {}, mode, currentUser).catch(() => []),
-        apiFetch(`/meta/insights?mode=${mode}&${periodQs}`, {}, mode, currentUser).catch(() => [])
+        apiFetch(`/meta/insights?mode=${mode}&${periodQs}`, {}, mode, currentUser).catch(() => []),
+        apiFetch(`/intelligence/creative-performance?mode=${mode}&${periodQs}`, {}, mode, currentUser).catch(() => null)
       ]);
+      setPerf(Array.isArray(perfRes?.creatives) ? perfRes.creatives : []);
+      loadAlerts();
 
       setCampaigns(Array.isArray(cmpRes) ? cmpRes : []);
       setAdSets(Array.isArray(setRes) ? setRes : []);
@@ -231,7 +270,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-400">
-            Ingestão e leitura em tempo real de campanhas, conjuntos de anúncios e métricas de mídia
+            Resultados por campanha, conjunto e anúncio no período: gasto da Meta + visitas, checkouts e vendas do NORQVA
           </p>
         </div>
 
@@ -275,6 +314,20 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         }}
         onError={(msg) => showError(msg)}
       />
+
+      <AlertsPanel
+        alerts={alerts.filter(a => a.status !== 'RESOLVED')}
+        canPause={(a) => {
+          const ad = ads.find(x => String(x.meta_ad_id) === String(a.meta_ad_id));
+          return !!(isAdmin && control.status?.ready && ad && String(ad.status).toUpperCase() === 'ACTIVE');
+        }}
+        onPause={(a) =>
+          setPendingControl({ kind: 'status', target: { entityType: 'ad', id: a.meta_ad_id, name: a.ad_name, status: 'ACTIVE' }, next: 'PAUSED' })
+        }
+        onAck={ackAlert}
+      />
+
+      {perf.length > 0 && <ResultsSummary m={aggregateMetrics(perf)} />}
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
@@ -378,9 +431,25 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
+          {(campaignFilter || adsetFilter) && activeTab !== 'campaigns' && activeTab !== 'insights' && (
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono" data-testid="drill-filter">
+              <span className="text-slate-500">Filtrando:</span>
+              {campaignFilter && (
+                <button onClick={() => { setCampaignFilter(null); setAdsetFilter(null); }} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
+                  {campaignFilter.name} ✕
+                </button>
+              )}
+              {adsetFilter && activeTab === 'ads' && (
+                <button onClick={() => setAdsetFilter(null)} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
+                  {adsetFilter.name} ✕
+                </button>
+              )}
+            </div>
+          )}
+
           {/* TAB 1: CAMPAIGNS */}
           {activeTab === 'campaigns' && (
-            <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/20">
+            <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/20">
               {campaigns.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 font-mono text-xs">
                   Nenhuma campanha sincronizada. Clique em "Sincronizar Agora" para ingerir da Meta.
@@ -389,32 +458,36 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
                     <tr>
-                      <th className="p-3.5">Nome da Campanha</th>
-                      <th className="p-3.5">Meta ID</th>
-                      <th className="p-3.5">Objetivo</th>
-                      <th className="p-3.5">Orçamento Diário</th>
-                      <th className="p-3.5">Status</th>
-                      <th className="p-3.5">Última Sincronização</th>
-                      {isAdmin && <th className="p-3.5">Ações</th>}
+                      <th className="p-3">Campanha</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3 whitespace-nowrap">Orçamento/dia</th>
+                      <MetricHeaderCells />
+                      {isAdmin && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
-                    {campaigns.map((c) => (
+                    {[...campaigns]
+                      .map((c) => ({ c, m: metricsFor(p => String(p.campaign_id) === String(c.meta_campaign_id)) }))
+                      .sort((x, y) => y.m.spend - x.m.spend)
+                      .map(({ c, m }) => (
                       <tr key={c.id} className="hover:bg-slate-800/30 transition">
-                        <td className="p-3.5 font-bold text-slate-200">{c.name}</td>
-                        <td className="p-3.5 font-mono text-slate-400 text-[11px]">{c.meta_campaign_id}</td>
-                        <td className="p-3.5 font-mono text-slate-300 text-[11px]">{c.objective || '—'}</td>
-                        <td className="p-3.5 font-mono text-slate-200">
+                        <td className="p-3">
+                          <button
+                            onClick={() => { setCampaignFilter(c); setAdsetFilter(null); setActiveTab('adsets'); }}
+                            className="font-bold text-slate-200 hover:text-emerald-400 text-left underline-offset-2 hover:underline"
+                            title="Ver conjuntos desta campanha"
+                          >
+                            {c.name}
+                          </button>
+                          <div className="font-mono text-slate-500 text-[10px]">{c.meta_campaign_id}</div>
+                        </td>
+                        <td className="p-3">{renderStatusBadge(c)}</td>
+                        <td className="p-3 font-mono text-slate-200 whitespace-nowrap">
                           {c.daily_budget ? `R$ ${parseFloat(c.daily_budget).toFixed(2)}` : '—'}
                         </td>
-                        <td className="p-3.5">
-                          {renderStatusBadge(c)}
-                        </td>
-                        <td className="p-3.5 font-mono text-slate-500 text-[10px]">
-                          {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString('pt-BR') : '—'}
-                        </td>
+                        <MetricCells m={m} />
                         {isAdmin && (
-                          <td className="p-3.5">
+                          <td className="p-3">
                             <MetaControlActions
                               status={control.status}
                               onRequest={setPendingControl}
@@ -432,7 +505,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
           {/* TAB 2: ADSETS */}
           {activeTab === 'adsets' && (
-            <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/20">
+            <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/20">
               {adSets.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 font-mono text-xs">
                   Nenhum conjunto de anúncios sincronizado.
@@ -441,28 +514,37 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
                     <tr>
-                      <th className="p-3.5">Conjunto</th>
-                      <th className="p-3.5">Campanha</th>
-                      <th className="p-3.5">Meta ID</th>
-                      <th className="p-3.5">Orçamento Diário</th>
-                      <th className="p-3.5">Status</th>
-                      {isAdmin && <th className="p-3.5">Ações</th>}
+                      <th className="p-3">Conjunto</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3 whitespace-nowrap">Orçamento/dia</th>
+                      <MetricHeaderCells />
+                      {isAdmin && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
-                    {adSets.map((s) => (
+                    {adSets
+                      .filter((s) => !campaignFilter || String(s.campaign_id) === String(campaignFilter.id))
+                      .map((s) => ({ s, m: metricsFor(p => String(p.adset_id) === String(s.meta_adset_id)) }))
+                      .sort((x, y) => y.m.spend - x.m.spend)
+                      .map(({ s, m }) => (
                       <tr key={s.id} className="hover:bg-slate-800/30 transition">
-                        <td className="p-3.5 font-bold text-slate-200">{s.name}</td>
-                        <td className="p-3.5 text-slate-300">{s.campaign_name || '—'}</td>
-                        <td className="p-3.5 font-mono text-slate-400 text-[11px]">{s.meta_adset_id}</td>
-                        <td className="p-3.5 font-mono text-slate-200">
+                        <td className="p-3">
+                          <button
+                            onClick={() => { setAdsetFilter(s); setActiveTab('ads'); }}
+                            className="font-bold text-slate-200 hover:text-emerald-400 text-left underline-offset-2 hover:underline"
+                            title="Ver anúncios deste conjunto"
+                          >
+                            {s.name}
+                          </button>
+                          <div className="text-slate-500 text-[10px]">{s.campaign_name || '—'}</div>
+                        </td>
+                        <td className="p-3">{renderStatusBadge(s)}</td>
+                        <td className="p-3 font-mono text-slate-200 whitespace-nowrap">
                           {s.daily_budget ? `R$ ${parseFloat(s.daily_budget).toFixed(2)}` : '—'}
                         </td>
-                        <td className="p-3.5">
-                          {renderStatusBadge(s)}
-                        </td>
+                        <MetricCells m={m} />
                         {isAdmin && (
-                          <td className="p-3.5">
+                          <td className="p-3">
                             <MetaControlActions
                               status={control.status}
                               onRequest={setPendingControl}
@@ -480,7 +562,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
           {/* TAB 3: ADS */}
           {activeTab === 'ads' && (
-            <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/20">
+            <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/20">
               {ads.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 font-mono text-xs">
                   Nenhum anúncio sincronizado.
@@ -489,24 +571,41 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
                     <tr>
-                      <th className="p-3.5">Anúncio</th>
-                      <th className="p-3.5">Conjunto</th>
-                      <th className="p-3.5">Meta Ad ID</th>
-                      <th className="p-3.5">Status</th>
-                      {isAdmin && <th className="p-3.5">Ações</th>}
+                      <th className="p-3">Anúncio</th>
+                      <th className="p-3">Status</th>
+                      <MetricHeaderCells />
+                      {isAdmin && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
-                    {ads.map((a) => (
-                      <tr key={a.id} className="hover:bg-slate-800/30 transition">
-                        <td className="p-3.5 font-bold text-slate-200">{a.name}</td>
-                        <td className="p-3.5 text-slate-300">{a.adset_name || '—'}</td>
-                        <td className="p-3.5 font-mono text-slate-400 text-[11px]">{a.meta_ad_id}</td>
-                        <td className="p-3.5">
-                          {renderStatusBadge(a)}
+                    {ads
+                      .filter((a) => {
+                        if (adsetFilter) return String(a.adset_id) === String(adsetFilter.id);
+                        if (campaignFilter) {
+                          const setIds = new Set(adSets.filter(s => String(s.campaign_id) === String(campaignFilter.id)).map(s => String(s.id)));
+                          return setIds.has(String(a.adset_id));
+                        }
+                        return true;
+                      })
+                      .map((a) => ({ a, m: metricsFor(p => String(p.ad_id) === String(a.meta_ad_id)) }))
+                      .sort((x, y) => y.m.spend - x.m.spend)
+                      .map(({ a, m }) => {
+                        const alert = openAlertByAd.get(String(a.meta_ad_id));
+                        return (
+                      <tr key={a.id} className={`hover:bg-slate-800/30 transition ${alert ? 'bg-red-950/20' : ''}`}>
+                        <td className="p-3">
+                          <div className="font-bold text-slate-200">{a.name}</div>
+                          <div className="text-slate-500 text-[10px]">{a.adset_name || '—'}</div>
+                          {alert && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] font-bold" data-testid="ad-alert-badge">
+                              Pausar recomendado
+                            </span>
+                          )}
                         </td>
+                        <td className="p-3">{renderStatusBadge(a)}</td>
+                        <MetricCells m={m} />
                         {isAdmin && (
-                          <td className="p-3.5">
+                          <td className="p-3">
                             <MetaControlActions
                               status={control.status}
                               onRequest={setPendingControl}
@@ -515,7 +614,8 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                           </td>
                         )}
                       </tr>
-                    ))}
+                        );
+                      })}
                   </tbody>
                 </table>
               )}

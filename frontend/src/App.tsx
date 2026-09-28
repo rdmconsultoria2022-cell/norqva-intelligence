@@ -185,6 +185,27 @@ export default function App() {
     });
   }, [authMode, currentUser]);
 
+  // NORQVA-0009: open ad alerts → badge on "Meta Ads" (refreshed every 5 min and on tab change)
+  const [openAlertsCount, setOpenAlertsCount] = useState(0);
+  const alertsFetchRef = React.useRef(apiFetch);
+  alertsFetchRef.current = apiFetch;
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    const load = () =>
+      alertsFetchRef.current(`/alerts?mode=${isDemoView ? 'demo' : 'real'}`)
+        .then((r: any) => {
+          if (!cancelled) setOpenAlertsCount(Array.isArray(r?.alerts) ? r.alerts.filter((a: any) => a.status === 'OPEN').length : 0);
+        })
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [currentUser?.id, isDemoView, activeTab]);
+
 
 
 
@@ -584,7 +605,8 @@ export default function App() {
         currentUser: currentUser!,
         activeTab,
         setActiveTab,
-        handleSignOut
+        handleSignOut,
+        badges: { 'meta-ads': openAlertsCount }
       }}
       headerProps={{
         activeTab,
