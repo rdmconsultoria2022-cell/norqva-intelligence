@@ -46,6 +46,29 @@ import { MetaCapiService } from '../services/meta/metaCapiService';
 
 export const aiProvider = new MockAIProvider();
 
+// Helper: CPF/CNPJ encryption key. Never falls back to a public key outside tests (NORQVA-0002).
+function getEncryptionKey(): string {
+  const key = (process.env.ENCRYPTION_KEY || '').trim();
+  if (key) return key;
+  if (process.env.NODE_ENV === 'test') return 'norqva-isolated-test-encryption-key-only';
+  throw new Error('[SECURITY ERROR]: ENCRYPTION_KEY is required.');
+}
+
+// Helper: verified Meta spend source (aliases mi = meta_insights, mac = meta_ad_accounts, mconn = meta_connections)
+function getMediaSpendProvenanceClause(isDemo: boolean): string {
+  return isDemo
+    ? `(mi.is_demo = TRUE OR mi.data_provenance IN ('DEMO_SEED', 'QA_FIXTURE') OR mac.is_demo = TRUE OR mconn.is_demo = TRUE)`
+    : `(
+          mi.is_demo = FALSE 
+          AND mac.is_demo = FALSE 
+          AND mac.connection_id IS NOT NULL
+          AND mconn.id IS NOT NULL
+          AND mconn.is_demo = FALSE
+          AND mconn.status IN ('CONNECTED', 'EXPIRED')
+          AND mi.data_provenance IN ('COMMERCIAL_PRODUCTION', 'LEGACY_MIGRATION')
+        )`;
+}
+
 // Helper: safe math division
 function safeDivide(numerator: number, denominator: number): number | 'Dados insuficientes' {
   if (!denominator || denominator === 0) return 'Dados insuficientes';
@@ -1982,7 +2005,7 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
   if (cpf_cnpj) {
     const normalized = String(cpf_cnpj).replace(/\D/g, '');
     if (normalized) {
-      const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
+      const encKey = getEncryptionKey();
       const hashSecret = process.env.CPF_CNPJ_HASH_SECRET;
       if (!hashSecret) {
         throw new Error('[SECURITY ERROR]: CPF_CNPJ_HASH_SECRET is required.');
@@ -2605,7 +2628,7 @@ export async function checkoutPix(req: any, res: Response) {
   if (!hashSecret) {
     return res.status(500).json({ error: '[SECURITY ERROR]: CPF_CNPJ_HASH_SECRET is required.' });
   }
-  const encKey = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
+  const encKey = getEncryptionKey();
 
   if (env === 'production' && !allowProd) {
     return res.status(403).json({ error: '[PAYMENT SECURITY EXCEPTION]: PRODUCTION_PAYMENTS_LOCKED' });
@@ -4618,14 +4641,20 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
 
     // 1. Meta Insights & Connection Aggregation (Pure SELECT, no side effects)
     const metaInsightsRes = await pool.query(
+      // NORQVA-0003: the sync stores the SAME spend at ACCOUNT, CAMPAIGN, ADSET and AD level,
+      // plus period aggregates. Summing every row multiplied the spend (~4x). Aggregate only
+      // daily ACCOUNT rows from a verified source, the same rule as the financial dashboard.
       `SELECT 
-         COALESCE(SUM(spend), 0)::numeric as total_spend,
-         COALESCE(SUM(impressions), 0)::bigint as total_impressions,
-         COALESCE(SUM(reach), 0)::bigint as total_reach,
-         COALESCE(SUM(clicks), 0)::bigint as total_clicks
-       FROM meta_insights
-       WHERE is_demo = $1`,
-      [isDemo]
+         COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
+         COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
+         COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
+         COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
+       FROM meta_insights mi
+       JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
+       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+       WHERE ${getMediaSpendProvenanceClause(isDemo)}
+         AND mi.entity_level = 'ACCOUNT'
+         AND mi.date_start = mi.date_stop`
     );
     const metaStats = metaInsightsRes.rows[0];
     const totalSpend = parseFloat(metaStats.total_spend);
@@ -5256,20 +5285,10 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       : `(p.data_provenance = 'COMMERCIAL_PRODUCTION')`;
 
     // 3. Outbound Media Spend & Acquisition Evidence: Verified Real Meta Source Only via Positive Relational Chain
-    const mediaSpendProvenanceClause = isDemo
-      ? `(mi.is_demo = TRUE OR mi.data_provenance IN ('DEMO_SEED', 'QA_FIXTURE') OR mac.is_demo = TRUE OR mconn.is_demo = TRUE)`
-      : `(
-          mi.is_demo = FALSE 
-          AND mac.is_demo = FALSE 
-          AND mac.connection_id IS NOT NULL
-          AND mconn.id IS NOT NULL
-          AND mconn.is_demo = FALSE
-          AND mconn.status IN ('CONNECTED', 'EXPIRED')
-          AND mi.data_provenance IN ('COMMERCIAL_PRODUCTION', 'LEGACY_MIGRATION')
-        )`;
+    const mediaSpendProvenanceClause = getMediaSpendProvenanceClause(isDemo);
 
     // 1. Meta Ad Spend & Insights Aggregation
-    // Double counting protection: when filtering by period, only aggregate daily records (date_start = date_stop)
+    // Double counting protection: always aggregate daily records only (date_start = date_stop), with or without a period filter (NORQVA-0003)
     const accountSpendRes = await pool.query(
       `SELECT 
          COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
@@ -5283,7 +5302,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND mi.entity_level = 'ACCOUNT'
          AND ($1::date IS NULL OR mi.date_start >= $1::date)
          AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)`,
+         AND mi.date_start = mi.date_stop`,
       [metaStartDateParam, metaEndDateParam]
     );
 
@@ -5306,7 +5325,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
            AND mi.entity_level = 'CAMPAIGN'
            AND ($1::date IS NULL OR mi.date_start >= $1::date)
            AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-           AND ($1::date IS NULL OR mi.date_start = mi.date_stop)`,
+           AND mi.date_start = mi.date_stop`,
         [metaStartDateParam, metaEndDateParam]
       );
       totalSpend = parseFloat(campaignSpendRes.rows[0]?.total_spend || '0');
@@ -5587,7 +5606,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND mi.entity_level = 'CAMPAIGN' 
          AND ($1::date IS NULL OR mi.date_start >= $1::date)
          AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)
+         AND mi.date_start = mi.date_stop
          AND ${mediaSpendProvenanceClause}
        WHERE ${mediaCampaignClause}
        GROUP BY mc.id, mc.meta_campaign_id, mc.name, mc.status, mc.effective_status
@@ -5633,7 +5652,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND mi.entity_level = 'AD' 
          AND ($1::date IS NULL OR mi.date_start >= $1::date)
          AND ($2::date IS NULL OR mi.date_stop <= $2::date)
-         AND ($1::date IS NULL OR mi.date_start = mi.date_stop)
+         AND mi.date_start = mi.date_stop
          AND ${mediaSpendProvenanceClause}
        WHERE ${mediaAdClause}
        GROUP BY ma.id, ma.meta_ad_id, ma.name, ma.status, ma.effective_status, mas.id, mas.meta_adset_id, mas.name, mc.id, mc.meta_campaign_id, mc.name

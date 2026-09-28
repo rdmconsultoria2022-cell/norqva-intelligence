@@ -43,7 +43,7 @@ describe('NORQVA P0.1 Customer Delivery UX Remediation Tests', () => {
     });
 
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL_TEST || 'postgresql://postgres:RicardoAndradeLucas@localhost:5432/norqva_test'
+      connectionString: process.env.DATABASE_URL_TEST || 'postgresql://postgres:postgres@localhost:5432/norqva_test'
     });
 
     app = express();

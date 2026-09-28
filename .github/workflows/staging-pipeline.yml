@@ -2,7 +2,7 @@ name: NORQVA CI/CD Staging Pipeline
 
 on:
   push:
-    branches: [ main, staging ]
+    branches: [ main, staging, 'ai/**' ]
   pull_request:
     branches: [ main, staging ]
   workflow_dispatch:
@@ -30,6 +30,20 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard Applied Migrations (NORQVA-0002)
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git fetch --no-tags origin main
+          CHANGED=$(git diff --name-status origin/main...HEAD -- backend/src/db/migrations/ | grep -E '^(M|D|R)' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "::error::Migrations já aplicadas não podem ser alteradas, removidas ou renomeadas. Crie uma migration nova."
+            echo "$CHANGED"
+            exit 1
+          fi
+          echo "Nenhuma migration existente foi alterada."
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4

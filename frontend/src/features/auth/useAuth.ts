@@ -3,12 +3,16 @@ import { supabase } from '../../supabase';
 import { UserObj } from '../../types';
 
 import { API_BASE } from '../../lib/api';
+import { DEMO_MODE_ENABLED } from '../../lib/demoMode';
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserObj | null>(null);
   const [authMode, setAuthModeState] = useState<'demo' | 'real'>('demo');
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isDemoView, setIsDemoView] = useState(true);
+  const [isDemoViewState, setIsDemoViewState] = useState(DEMO_MODE_ENABLED);
+  // Outside tests/local demo builds, the DEMO view can never be switched on.
+  const isDemoView = DEMO_MODE_ENABLED ? isDemoViewState : false;
+  const setIsDemoView = (value: boolean) => setIsDemoViewState(DEMO_MODE_ENABLED ? value : false);
   const [introFinished, setIntroFinished] = useState(false);
   const [usersList, setUsersList] = useState<UserObj[]>([]);
   const [globalError, setGlobalError] = useState<string | null>(null);
