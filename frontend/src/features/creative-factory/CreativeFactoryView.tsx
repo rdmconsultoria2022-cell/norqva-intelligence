@@ -468,11 +468,11 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
               )}
               </div>
               {viewMode === 'list' && (
-                <div className="md:w-60 shrink-0">
+                <div className="md:w-[38%] lg:w-[34%] shrink-0 md:self-stretch flex flex-col">
                   {hasFile(c) ? (
-                    <CreativePreview url={c.file_url} format={c.format} title={c.human_id} />
+                    <CreativePreview url={c.file_url} format={c.format} title={c.human_id} fill className="flex-1" />
                   ) : (
-                    <div className="aspect-[4/5] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
+                    <div className="flex-1 min-h-[16rem] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
                       sem arquivo
                     </div>
                   )}
