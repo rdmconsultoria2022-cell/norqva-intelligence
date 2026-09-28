@@ -37,6 +37,7 @@ export interface CreativeItemPerformance {
   cpc: number;
   cpm: number;
   offer_views: number;
+  checkout_modal_opened: number;
   checkout_started: number;
   paid_orders: number;
   gross_revenue: number;
@@ -168,6 +169,29 @@ export function normalizeDateRangeBoundaries(dateFrom?: string, dateTo?: string,
   };
 }
 
+/**
+ * NORQVA-0005 / G0: maps a funnel event or order to a Meta ad without guessing.
+ * 1. ad_id from the click URL equals meta_ad_id
+ * 2. utm_content equals the ad name (case-insensitive, trimmed)
+ * 3. utm_content equals meta_ad_id
+ * Anything else stays unattributed.
+ */
+export function resolveAdDeterministically(
+  adIdFromUrl: string | null | undefined,
+  utmContent: string | null | undefined,
+  adByMetaIdMap: Map<string, any>,
+  adByNameMap: Map<string, any>
+): string | null {
+  const adId = adIdFromUrl ? String(adIdFromUrl).trim() : '';
+  if (adId && adByMetaIdMap.has(adId)) return adId;
+  const utm = utmContent ? String(utmContent).trim() : '';
+  if (!utm) return null;
+  const byName = adByNameMap.get(utm.toLowerCase());
+  if (byName) return byName.meta_ad_id;
+  if (adByMetaIdMap.has(utm)) return utm;
+  return null;
+}
+
 export class CreativePerformanceService {
   /**
    * Retrieves and computes correlated creative performance intelligence in a single consolidated query flow.
@@ -277,17 +301,19 @@ export class CreativePerformanceService {
       });
     }
 
-    // 3. Fetch First-Party Telemetry Events (TIMESTAMPTZ >= startIso AND < endExclusiveIso)
+    // 3. First-party funnel events (NORQVA-0005 / G0). The old query read a table that never
+    // existed (telemetry_events) and swallowed the error, so landing and checkout numbers per ad
+    // were always zero. commercial_funnel_events is the real telemetry table.
     let telemetryQuery = `
-      SELECT event_name,
+      SELECT event_type,
              utm_content,
              metadata->>'ad_id' as meta_ad_id,
-             metadata->>'ad_name' as ad_name_meta,
              COUNT(*)::int as count
-      FROM telemetry_events
-      WHERE (event_name = 'OFFER_VIEW' OR event_name = 'CHECKOUT_STARTED')
+      FROM commercial_funnel_events
+      WHERE is_demo = $1
+        AND event_type IN ('OFFER_VIEW', 'CHECKOUT_MODAL_OPENED', 'CHECKOUT_STARTED')
     `;
-    const telemetryParams: any[] = [];
+    const telemetryParams: any[] = [isDemo];
 
     if (startIso) {
       telemetryParams.push(startIso);
@@ -299,45 +325,26 @@ export class CreativePerformanceService {
       telemetryQuery += ` AND created_at < $${telemetryParams.length}`;
     }
 
-    telemetryQuery += ` GROUP BY event_name, utm_content, metadata->>'ad_id', metadata->>'ad_name'`;
-    
-    let telemetryRows: any[] = [];
-    try {
-      const telRes = await pool.query(telemetryQuery, telemetryParams);
-      telemetryRows = telRes.rows;
-    } catch (_) {
-      telemetryRows = [];
-    }
+    telemetryQuery += ` GROUP BY event_type, utm_content, metadata->>'ad_id'`;
+    const telemetryRows = (await pool.query(telemetryQuery, telemetryParams)).rows;
 
-    const telemetryByAd = new Map<string, { offer_views: number; checkout_started: number }>();
+    const telemetryByAd = new Map<string, { offer_views: number; checkout_modal_opened: number; checkout_started: number }>();
 
     for (const tel of telemetryRows) {
-      let matchedAdMetaId: string | null = null;
-
-      if (tel.meta_ad_id && adByMetaIdMap.has(tel.meta_ad_id)) {
-        matchedAdMetaId = tel.meta_ad_id;
-      } else if (tel.utm_content) {
-        const cleanContent = tel.utm_content.toLowerCase().trim();
-        for (const [nameKey, adRec] of adByNameMap.entries()) {
-          if (nameKey.includes(cleanContent) || cleanContent.includes(nameKey) || 
-              (cleanContent.includes('variant_a') && nameKey.includes('ad_a')) ||
-              (cleanContent.includes('variant_b') && nameKey.includes('ad_b')) ||
-              (cleanContent.includes('variant_c') && nameKey.includes('ad_c'))) {
-            matchedAdMetaId = adRec.meta_ad_id;
-            break;
-          }
-        }
+      const matchedAdMetaId = resolveAdDeterministically(tel.meta_ad_id, tel.utm_content, adByMetaIdMap, adByNameMap);
+      if (!matchedAdMetaId) continue;
+      const cur = telemetryByAd.get(matchedAdMetaId) || { offer_views: 0, checkout_modal_opened: 0, checkout_started: 0 };
+      const count = Number(tel.count) || 0;
+      // The public offer page emits OFFER_VIEW as its landing event; LANDING_PAGE_VIEW is not
+      // added on top of it to avoid double counting if both are ever emitted.
+      if (tel.event_type === 'OFFER_VIEW') {
+        cur.offer_views += count;
+      } else if (tel.event_type === 'CHECKOUT_MODAL_OPENED') {
+        cur.checkout_modal_opened += count;
+      } else if (tel.event_type === 'CHECKOUT_STARTED') {
+        cur.checkout_started += count;
       }
-
-      if (matchedAdMetaId) {
-        const cur = telemetryByAd.get(matchedAdMetaId) || { offer_views: 0, checkout_started: 0 };
-        if (tel.event_name === 'OFFER_VIEW') {
-          cur.offer_views += tel.count;
-        } else if (tel.event_name === 'CHECKOUT_STARTED') {
-          cur.checkout_started += tel.count;
-        }
-        telemetryByAd.set(matchedAdMetaId, cur);
-      }
+      telemetryByAd.set(matchedAdMetaId, cur);
     }
 
     // 4. Fetch PAID Orders & Perform Deterministic Attribution (TIMESTAMPTZ >= startIso AND < endExclusiveIso)
@@ -394,26 +401,8 @@ export class CreativePerformanceService {
         try { parsedMeta = JSON.parse(order.attribution_metadata); } catch (_) {}
       }
 
-      let matchedMetaAdId: string | null = null;
-
-      // Priority 1: Direct ad_id in metadata
-      if (parsedMeta.ad_id && adByMetaIdMap.has(parsedMeta.ad_id)) {
-        matchedMetaAdId = parsedMeta.ad_id;
-      }
-
-      // Priority 2: utm_content direct or partial match
-      if (!matchedMetaAdId && order.utm_content) {
-        const cleanUtm = order.utm_content.toLowerCase().trim();
-        for (const [nameKey, adRec] of adByNameMap.entries()) {
-          if (nameKey.includes(cleanUtm) || cleanUtm.includes(nameKey) ||
-              (cleanUtm.includes('variant_a') && nameKey.includes('ad_a')) ||
-              (cleanUtm.includes('variant_b') && nameKey.includes('ad_b')) ||
-              (cleanUtm.includes('variant_c') && nameKey.includes('ad_c'))) {
-            matchedMetaAdId = adRec.meta_ad_id;
-            break;
-          }
-        }
-      }
+      // Deterministic only: ad_id, exact ad name, or exact meta_ad_id (no substring guessing)
+      const matchedMetaAdId = resolveAdDeterministically(parsedMeta.ad_id, order.utm_content, adByMetaIdMap, adByNameMap);
 
       if (matchedMetaAdId) {
         const cur = ordersByAd.get(matchedMetaAdId) || { paid_orders: 0, gross_revenue: 0, net_revenue: 0 };
@@ -446,7 +435,7 @@ export class CreativePerformanceService {
         link_clicks: 0
       };
 
-      const tel = telemetryByAd.get(ad.meta_ad_id) || { offer_views: 0, checkout_started: 0 };
+      const tel = telemetryByAd.get(ad.meta_ad_id) || { offer_views: 0, checkout_modal_opened: 0, checkout_started: 0 };
       const ord = ordersByAd.get(ad.meta_ad_id) || { paid_orders: 0, gross_revenue: 0, net_revenue: 0 };
 
       const spend = ins.spend;
@@ -456,6 +445,7 @@ export class CreativePerformanceService {
       const link_clicks = ins.link_clicks || clicks;
       const offer_views = tel.offer_views;
       const checkout_started = tel.checkout_started;
+      const checkout_modal_opened = tel.checkout_modal_opened;
       const paid_orders = ord.paid_orders;
       const gross_revenue = Math.round(ord.gross_revenue * 100) / 100;
       const net_revenue = Math.round(ord.net_revenue * 100) / 100;
@@ -498,6 +488,7 @@ export class CreativePerformanceService {
         cpc,
         cpm,
         offer_views,
+        checkout_modal_opened,
         checkout_started,
         paid_orders,
         gross_revenue,

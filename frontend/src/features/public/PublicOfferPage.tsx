@@ -280,7 +280,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
                     <div>
                       <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 block">
-                        Acesso Completo e Vitalício
+                        Acesso Completo
                       </span>
                       <div className="flex items-baseline gap-2">
                         <span className="text-3xl sm:text-4xl font-black text-emerald-400">
@@ -808,7 +808,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] text-stone-500 block">
-                    Acesso vitalício • Sem mensalidades
+                    Pagamento único • Sem mensalidades
                   </span>
                 </div>
 

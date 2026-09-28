@@ -27,6 +27,7 @@ export interface CreativeItemPerformance {
   cpc: number;
   cpm: number;
   offer_views: number;
+  checkout_modal_opened?: number;
   checkout_started: number;
   paid_orders: number;
   gross_revenue: number;
