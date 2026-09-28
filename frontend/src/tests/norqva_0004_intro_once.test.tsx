@@ -4,7 +4,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 // NORQVA-0004: Supabase re-emits SIGNED_IN when the browser tab regains focus.
 // That must not replay the intro nor send the user back to the dashboard.
 
-let authCallback: ((event: string, session: any) => void) | null = null;
+// vi.mock is hoisted above plain declarations, so the captured callback lives in vi.hoisted.
+const authState = vi.hoisted(() => ({ cb: null as null | ((event: string, session: any) => void) }));
 
 vi.mock('../supabase', () => ({
   supabase: {
@@ -14,7 +15,7 @@ vi.mock('../supabase', () => ({
         error: null
       }),
       onAuthStateChange: vi.fn().mockImplementation((cb: any) => {
-        authCallback = cb;
+        authState.cb = cb;
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
@@ -37,7 +38,7 @@ import { useAuth } from '../features/auth/useAuth';
 describe('NORQVA-0004 — intro plays once per browser tab session', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
-    authCallback = null;
+    authState.cb = null;
     vi.mocked(global.fetch).mockClear();
   });
 
@@ -52,7 +53,7 @@ describe('NORQVA-0004 — intro plays once per browser tab session', () => {
 
     const meCallsBefore = vi.mocked(global.fetch).mock.calls.length;
     await act(async () => {
-      authCallback!('SIGNED_IN', { access_token: 'tok2', user: { id: 'auth-1' } });
+      authState.cb!('SIGNED_IN', { access_token: 'tok2', user: { id: 'auth-1' } });
     });
 
     expect(result.current.introFinished).toBe(true);
