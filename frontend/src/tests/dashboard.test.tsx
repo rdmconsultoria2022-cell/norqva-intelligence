@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { GlobalPeriodProvider, GlobalPeriodSelector } from '../lib/globalPeriod';
 import React from 'react';
 import { DashboardView } from '../features/dashboard/DashboardView';
 
@@ -280,6 +281,8 @@ describe('DashboardView Component — Financial Intelligence & Executive Views',
     });
 
     render(
+      <GlobalPeriodProvider>
+      <GlobalPeriodSelector />
       <DashboardView
         currentUser={mockCurrentUser}
         isDemoView={false}
@@ -292,6 +295,7 @@ describe('DashboardView Component — Financial Intelligence & Executive Views',
         showError={vi.fn()}
         showSuccess={vi.fn()}
       />
+      </GlobalPeriodProvider>
     );
 
     // Wait for financial dashboard to finish loading and render
@@ -311,7 +315,7 @@ describe('DashboardView Component — Financial Intelligence & Executive Views',
     expect(screen.getAllByText(/NORQVA E2E META TESTE 01/i).length).toBeGreaterThanOrEqual(1);
 
     // Check period switching
-    fireEvent.click(screen.getByText('7 Dias'));
+    fireEvent.click(screen.getByRole('button', { name: '7 dias' }));
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
         expect.stringContaining('period=7d'),

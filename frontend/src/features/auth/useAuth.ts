@@ -4,6 +4,7 @@ import { UserObj } from '../../types';
 
 import { API_BASE } from '../../lib/api';
 import { DEMO_MODE_ENABLED } from '../../lib/demoMode';
+import { clearGlobalPeriod } from '../../lib/globalPeriod';
 
 // NORQVA-0004: the intro and the open tab must survive tab switches. Supabase re-emits SIGNED_IN
 // when the browser tab regains focus; that used to reset the intro and replay it every time.
@@ -30,6 +31,7 @@ function writeSession(key: string, value: string | null) {
 export function clearNavigationSession() {
   writeSession(INTRO_SEEN_KEY, null);
   writeSession(ACTIVE_TAB_KEY, null);
+  clearGlobalPeriod();
 }
 
 export function useAuth() {

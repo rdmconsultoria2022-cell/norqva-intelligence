@@ -221,8 +221,10 @@ export class DemographicAnalyticsService {
     const isDemo = options.mode === 'demo';
     const period = options.period || '30d';
 
-    const boundaries = getCommercialTimeBoundaries(period, options.startDate, options.endDate);
-    const startDateMeta = boundaries.dateStartMeta;
+    // NORQVA-0004: 'all' = whole history (no lower bound) up to today.
+    const isAll = period.toLowerCase() === 'all';
+    const boundaries = getCommercialTimeBoundaries(isAll ? 'today' : period, options.startDate, options.endDate);
+    const startDateMeta = isAll ? '2000-01-01' : boundaries.dateStartMeta;
     const endDateMeta = boundaries.dateStopMeta;
 
     // 1. Build Query

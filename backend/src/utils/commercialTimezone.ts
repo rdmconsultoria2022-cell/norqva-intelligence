@@ -197,3 +197,33 @@ export function getCommercialTimeBoundaries(
     sameDateWindowEnforced: true
   };
 }
+
+/**
+ * NORQVA-0004 global period: one vocabulary for every screen.
+ * 'all' (or missing) means no date filter and returns null.
+ * Any other value uses getCommercialTimeBoundaries (today, yesterday, 7d, 30d, 90d, custom).
+ */
+export interface ResolvedPeriodFilter {
+  period: string;
+  startIso: string;
+  endIso: string;
+  metaStart: string; // YYYY-MM-DD (commercial timezone)
+  metaStop: string;
+}
+
+export function resolvePeriodFilter(
+  periodParam?: string,
+  startDateParam?: string,
+  endDateParam?: string
+): ResolvedPeriodFilter | null {
+  const requested = (periodParam || 'all').toLowerCase();
+  if (requested === 'all') return null;
+  const b = getCommercialTimeBoundaries(requested, startDateParam, endDateParam);
+  return {
+    period: b.period,
+    startIso: b.startDateIso,
+    endIso: b.endDateIso,
+    metaStart: b.dateStartMeta,
+    metaStop: b.dateStopMeta
+  };
+}
