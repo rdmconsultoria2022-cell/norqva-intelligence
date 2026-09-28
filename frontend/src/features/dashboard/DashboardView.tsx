@@ -192,6 +192,18 @@ export function DashboardView({
   };
   const finCostCoverage = financialData?.costCoverage || (finSummary.isCostKnown ? 'COMPLETE' : 'PARTIAL');
   const finByProduct = Array.isArray(financialData?.byProduct) ? financialData.byProduct : [];
+  // NORQVA-0008: show how much of the product's media is direct (its own campaigns) vs split by revenue
+  const renderSpendSplit = (p: any) => {
+    const direct = typeof p?.directSpend === 'number' ? p.directSpend : null;
+    const prorated = typeof p?.proratedSpend === 'number' ? p.proratedSpend : null;
+    if (direct === null || prorated === null || (direct === 0 && prorated === 0)) return null;
+    const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (
+      <span className="block text-[10px] font-normal text-slate-500" data-testid="product-spend-split">
+        direta R$ {fmt(direct)} · rateio R$ {fmt(prorated)}
+      </span>
+    );
+  };
   const finByCampaign = Array.isArray(financialData?.byCampaign) ? financialData.byCampaign : [];
   const finByCreative = Array.isArray(financialData?.byCreative) ? financialData.byCreative : [];
   const finUnattributed = financialData?.unattributed || { revenue: 0, ordersCount: 0 };
@@ -590,7 +602,7 @@ export function DashboardView({
                   <h3 className="font-bold text-xs uppercase tracking-wider text-slate-200 font-mono flex items-center gap-2">
                     <PieChart className="h-4 w-4 text-emerald-400 shrink-0" /> Visão Individualizada por Produto ({finByProduct.length})
                   </h3>
-                  <span className="text-[10px] font-mono text-slate-400">Rateio Pro-rata de Mídia e Custos Diretos</span>
+                  <span className="text-[10px] font-mono text-slate-400" title="Gasto de cada campanha vai para o produto dela (anúncio ligado a criativo ou visitas na oferta). Campanhas sem vínculo são rateadas pela receita.">Mídia direta por campanha · sem vínculo: rateio pela receita</span>
                 </div>
 
                 {finByProduct.length === 0 ? (
@@ -623,6 +635,7 @@ export function DashboardView({
                               <span className="font-bold text-slate-200 text-sm">
                                 R$ {p.attributedSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                               </span>
+                              {renderSpendSplit(p)}
                             </div>
                             <div className="p-2 rounded bg-slate-900/80 border border-slate-850">
                               <span className="text-slate-400 text-[10px] block uppercase">Custos / Taxas</span>
@@ -667,6 +680,7 @@ export function DashboardView({
                               </td>
                               <td className="p-3 text-right text-slate-300">
                                 R$ {p.attributedSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                {renderSpendSplit(p)}
                               </td>
                               <td className="p-3 text-right text-slate-400">
                                 R$ {p.gatewayFees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}

@@ -3,6 +3,7 @@ import { Pool, PoolClient } from 'pg';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { resolveCampaignProducts, allocateSpendToProducts } from '../services/finance/productMediaAllocation';
 import https from 'https';
 import http from 'http';
 import { emailService } from '../services/emailService';
@@ -5656,6 +5657,35 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       [metaStartDateParam, metaEndDateParam]
     );
 
+    // NORQVA-0008: media per product — campaign spend goes to its product when there is
+    // deterministic evidence; the rest is split by revenue share (previous behavior).
+    let productMediaAllocation: { mappedSpend: number; unmappedSpend: number } = { mappedSpend: 0, unmappedSpend: totalSpend };
+    try {
+      const campaignProduct = await resolveCampaignProducts(pool, isDemo);
+      const alloc = allocateSpendToProducts({
+        products: byProduct.map(p => ({ productId: String(p.productId), grossRevenue: p.grossRevenue })),
+        campaigns: campaignsRes.rows.map(c => ({
+          campaignDbId: String(c.campaign_id),
+          metaCampaignId: String(c.meta_campaign_id),
+          spend: Math.round(parseFloat(c.spend || '0') * 100) / 100
+        })),
+        campaignProduct,
+        totalSpend
+      });
+      for (const p of byProduct as any[]) {
+        const direct = alloc.directByProduct.get(String(p.productId)) || 0;
+        const prorated = alloc.proratedByProduct.get(String(p.productId)) || 0;
+        p.directSpend = direct;
+        p.proratedSpend = prorated;
+        p.attributedSpend = Math.round((direct + prorated) * 100) / 100;
+        p.netProfit = Math.round((p.grossRevenue - p.attributedSpend - p.gatewayFees) * 100) / 100;
+        p.netMargin = p.grossRevenue > 0 ? Math.round((p.netProfit / p.grossRevenue) * 10000) / 100 : null;
+      }
+      productMediaAllocation = { mappedSpend: alloc.mappedSpend, unmappedSpend: alloc.unmappedSpend };
+    } catch (allocErr) {
+      console.error('[FINANCIAL] product media allocation failed; keeping revenue-share split', allocErr);
+    }
+
     // 6. Individualized View: By Creative / Ad
     const mediaAdClause = isDemo
       ? `(ma.is_demo = TRUE OR ma.data_provenance IN ('DEMO_SEED', 'QA_FIXTURE') OR mac.is_demo = TRUE OR mconn.is_demo = TRUE)`
@@ -5884,6 +5914,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
         roas
       },
       byProduct,
+      productMediaAllocation,
       byOffer,
       byCampaign,
       byCreative,
