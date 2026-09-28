@@ -37,6 +37,8 @@ export interface CreativeBatch {
   description: string;
   claims: BatchClaim[];
   creatives: BatchCreative[];
+  // NORQVA-0007: files already produced for some creatives (key -> public http(s) URL)
+  producedAssets?: Record<string, string>;
 }
 
 const BB_CLAIMS: BatchClaim[] = [
@@ -130,6 +132,19 @@ function buildBbCreatives(): BatchCreative[] {
   return out;
 }
 
+// Round 1 files live on branch ai/assets-bb-b01 (public raw URLs, also used for the Meta upload).
+// Keep that branch while these links are in use.
+const BB_ASSETS_BASE =
+  'https://raw.githubusercontent.com/rdmconsultoria2022-cell/norqva-intelligence/ai/assets-bb-b01/norqva-ai/creative-batches/BB-B01-assets';
+
+const BB_PRODUCED_ASSETS: Record<string, string> = {
+  'BB-B01-H01-M1-C1': `${BB_ASSETS_BASE}/BB-B01-H01-M1-C1.mp4`,
+  'BB-B01-H03-M1-C1': `${BB_ASSETS_BASE}/BB-B01-H03-M1-C1.mp4`,
+  'BB-B01-H04-M1-C1': `${BB_ASSETS_BASE}/BB-B01-H04-M1-C1.mp4`,
+  'BB-B01-H05-M1-C1': `${BB_ASSETS_BASE}/BB-B01-H05-M1-C1_4x5.png`,
+  'BB-B01-H05-M2-C1': `${BB_ASSETS_BASE}/BB-B01-H05-M2-C1_4x5.png`
+};
+
 export const CREATIVE_BATCHES: Record<string, CreativeBatch> = {
   'BB-B01': {
     code: 'BB-B01',
@@ -138,6 +153,7 @@ export const CREATIVE_BATCHES: Record<string, CreativeBatch> = {
     offerHumanId: 'OFF-BOLSO-BLINDADO-2990',
     description: 'Método Bolso Blindado — 5 hooks × 2 mecanismos × 2 CTAs',
     claims: BB_CLAIMS,
-    creatives: buildBbCreatives()
+    creatives: buildBbCreatives(),
+    producedAssets: BB_PRODUCED_ASSETS
   }
 };

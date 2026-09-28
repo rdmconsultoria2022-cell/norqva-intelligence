@@ -107,7 +107,9 @@ import {
   updateFactoryClaim,
   reviewFactoryCreative,
   reviseFactoryCreative,
-  linkFactoryCreativeAd
+  linkFactoryCreativeAd,
+  attachFactoryCreativeFile,
+  attachFactoryBatchAssets
 } from './controllers/creativeFactoryController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
@@ -362,6 +364,8 @@ app.patch('/api/creative-factory/claims/:id', requireRole(['ADMIN']), updateFact
 app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), reviewFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CREATIVE']), reviseFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
+app.post('/api/creative-factory/creatives/:id/file', requireRole(['ADMIN', 'CREATIVE']), attachFactoryCreativeFile);
+app.post('/api/creative-factory/batches/:code/attach-assets', requireRole(['ADMIN']), attachFactoryBatchAssets);
 
 // Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
 app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);
