@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
+import {
+  useMetaControl,
+  MetaControlBanner,
+  MetaControlActions,
+  MetaControlDialog,
+  MetaControlPendingAction
+} from './MetaControl';
 import { 
   TrendingUp, 
   Layers, 
@@ -113,6 +120,10 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const [adSets, setAdSets] = useState<any[]>([]);
   const [ads, setAds] = useState<any[]>([]);
   const [insights, setInsights] = useState<any[]>([]);
+  // NORQVA-0006: campaign control (ADMIN)
+  const control = useMetaControl({ apiFetch, currentUser, isDemoView, enabled: isAdmin });
+  const [pendingControl, setPendingControl] = useState<MetaControlPendingAction | null>(null);
+  const toBudget = (v: any) => (v === null || v === undefined || v === '' ? null : parseFloat(v));
 
   const renderStatusBadge = (item: { status?: string; effective_status?: string }) => {
     const deliveryStatus = getMetaDeliveryStatus(item.effective_status, item.status);
@@ -238,13 +249,32 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         </div>
       </div>
 
-      {/* Mandatory Governance Banner */}
-      <div className="p-3.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-center gap-2.5">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-        <span>
-          <strong>Dados de mídia em modo somente leitura.</strong> Atribuição de vendas ainda não certificada (Phase A - Read-Only Ingestion).
-        </span>
-      </div>
+      {/* Governance banner: read-only for non-admins; control status for admins (NORQVA-0006) */}
+      {isAdmin && control.status ? (
+        <MetaControlBanner status={control.status} onRecheck={() => control.refresh(true)} />
+      ) : (
+        <div className="p-3.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-center gap-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          <span>
+            <strong>Dados de mídia em modo somente leitura.</strong> Atribuição de vendas ainda não certificada (Phase A - Read-Only Ingestion).
+          </span>
+        </div>
+      )}
+
+      <MetaControlDialog
+        action={pendingControl}
+        status={control.status}
+        isDemoView={isDemoView}
+        currentUser={currentUser}
+        apiFetch={apiFetch}
+        onClose={() => setPendingControl(null)}
+        onDone={(msg) => {
+          setPendingControl(null);
+          showSuccess(msg);
+          loadAllData();
+        }}
+        onError={(msg) => showError(msg)}
+      />
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
@@ -362,8 +392,10 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3.5">Nome da Campanha</th>
                       <th className="p-3.5">Meta ID</th>
                       <th className="p-3.5">Objetivo</th>
+                      <th className="p-3.5">Orçamento Diário</th>
                       <th className="p-3.5">Status</th>
                       <th className="p-3.5">Última Sincronização</th>
+                      {isAdmin && <th className="p-3.5">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
@@ -372,12 +404,24 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         <td className="p-3.5 font-bold text-slate-200">{c.name}</td>
                         <td className="p-3.5 font-mono text-slate-400 text-[11px]">{c.meta_campaign_id}</td>
                         <td className="p-3.5 font-mono text-slate-300 text-[11px]">{c.objective || '—'}</td>
+                        <td className="p-3.5 font-mono text-slate-200">
+                          {c.daily_budget ? `R$ ${parseFloat(c.daily_budget).toFixed(2)}` : '—'}
+                        </td>
                         <td className="p-3.5">
                           {renderStatusBadge(c)}
                         </td>
                         <td className="p-3.5 font-mono text-slate-500 text-[10px]">
                           {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString('pt-BR') : '—'}
                         </td>
+                        {isAdmin && (
+                          <td className="p-3.5">
+                            <MetaControlActions
+                              status={control.status}
+                              onRequest={setPendingControl}
+                              target={{ entityType: 'campaign', id: c.meta_campaign_id, name: c.name, status: c.status, dailyBudget: toBudget(c.daily_budget) }}
+                            />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -402,6 +446,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3.5">Meta ID</th>
                       <th className="p-3.5">Orçamento Diário</th>
                       <th className="p-3.5">Status</th>
+                      {isAdmin && <th className="p-3.5">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
@@ -416,6 +461,15 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         <td className="p-3.5">
                           {renderStatusBadge(s)}
                         </td>
+                        {isAdmin && (
+                          <td className="p-3.5">
+                            <MetaControlActions
+                              status={control.status}
+                              onRequest={setPendingControl}
+                              target={{ entityType: 'adset', id: s.meta_adset_id, name: s.name, status: s.status, dailyBudget: toBudget(s.daily_budget) }}
+                            />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -439,6 +493,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3.5">Conjunto</th>
                       <th className="p-3.5">Meta Ad ID</th>
                       <th className="p-3.5">Status</th>
+                      {isAdmin && <th className="p-3.5">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
@@ -450,6 +505,15 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         <td className="p-3.5">
                           {renderStatusBadge(a)}
                         </td>
+                        {isAdmin && (
+                          <td className="p-3.5">
+                            <MetaControlActions
+                              status={control.status}
+                              onRequest={setPendingControl}
+                              target={{ entityType: 'ad', id: a.meta_ad_id, name: a.name, status: a.status }}
+                            />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
