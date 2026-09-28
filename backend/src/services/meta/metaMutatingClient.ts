@@ -76,17 +76,43 @@ export type MetaTransportPostFunction = (
   payload: Record<string, any>
 ) => Promise<{ id: string; [key: string]: any }>;
 
+export type MetaTransportGetFunction = (
+  endpoint: string,
+  params: Record<string, string>
+) => Promise<any>;
+
+export interface PreflightOptions {
+  // Campaign control (status/budget) does not touch the pixel; creation flows do.
+  requirePixel?: boolean;
+}
+
+// NORQVA-0006: limits for budget changes made from NORQVA (BRL/day).
+export const META_MIN_DAILY_BUDGET_BRL = 5;
+export function getMaxDailyBudgetBRL(): number {
+  const raw = Number(process.env.META_MAX_DAILY_BUDGET_BRL);
+  return Number.isFinite(raw) && raw >= META_MIN_DAILY_BUDGET_BRL ? raw : 100;
+}
+
+const PREFLIGHT_OK_TTL_MS = 5 * 60 * 1000;
+const PREFLIGHT_FAIL_TTL_MS = 30 * 1000;
+let preflightCache: { status: MetaPreflightStatus; expiresAt: number } | null = null;
+export function resetMetaPreflightCacheForTesting() {
+  preflightCache = null;
+}
+
 export class MetaMutatingClient {
   private apiVersion: string;
   private accessToken?: string;
   private adAccountId?: string;
   private transportPost?: MetaTransportPostFunction;
+  private transportGet?: MetaTransportGetFunction;
 
-  constructor(customTransport?: MetaTransportPostFunction, explicitVersion?: string) {
+  constructor(customTransport?: MetaTransportPostFunction, explicitVersion?: string, customGet?: MetaTransportGetFunction) {
     this.apiVersion = explicitVersion || process.env.META_API_VERSION || 'v26.0';
     this.accessToken = process.env.META_ACCESS_TOKEN;
     this.adAccountId = process.env.META_AD_ACCOUNT_ID;
     this.transportPost = customTransport;
+    this.transportGet = customGet;
   }
 
   // =========================================================================
@@ -96,7 +122,7 @@ export class MetaMutatingClient {
   /**
    * 1. Feature Flag & Pre-flight Guard (Fail-Closed)
    */
-  public assertFeatureFlagAndPreflight(context: MetaMutatingSecurityContext): void {
+  public async assertFeatureFlagAndPreflight(context: MetaMutatingSecurityContext, options: PreflightOptions = {}): Promise<void> {
     const isFeatureFlagEnabled = process.env.META_MUTATION_ENABLED === 'true';
     if (!isFeatureFlagEnabled) {
       throw new Error('[SECURITY EXCEPTION]: BLOCKED_BY_META_WRITE_SAFETY_HOLD: Meta mutating operations are strictly disabled by feature flag (META_MUTATION_ENABLED is not true).');
@@ -106,23 +132,37 @@ export class MetaMutatingClient {
       return;
     }
 
-    const preflight = context.preflightOverrideForTesting || this.getLivePreflightStatus();
-    const failedChecks: string[] = [];
-
-    if (!preflight.tokenValid) failedChecks.push('TOKEN_VALID');
-    if (!preflight.adsRead) failedChecks.push('ADS_READ');
-    if (!preflight.adsManagement) failedChecks.push('ADS_MANAGEMENT');
-    if (!preflight.adAccountAccess) failedChecks.push('AD_ACCOUNT_ACCESS');
-    if (!preflight.pixelAccess) failedChecks.push('PIXEL_ACCESS');
-    if (!preflight.metaMutationCredentialReady) failedChecks.push('META_MUTATION_CREDENTIAL_READY');
+    const preflight = context.preflightOverrideForTesting || (await this.getLivePreflightStatus());
+    const failedChecks = MetaMutatingClient.failedPreflightChecks(preflight, options);
 
     if (failedChecks.length > 0) {
       throw new Error(`[SECURITY EXCEPTION]: BLOCKED_BY_META_WRITE_SAFETY_HOLD: Credential pre-flight checks failed (${failedChecks.join(', ')}).`);
     }
   }
 
-  private getLivePreflightStatus(): MetaPreflightStatus {
-    return {
+  public static failedPreflightChecks(preflight: MetaPreflightStatus, options: PreflightOptions = {}): string[] {
+    const requirePixel = options.requirePixel !== false;
+    const failed: string[] = [];
+    if (!preflight.tokenValid) failed.push('TOKEN_VALID');
+    if (!preflight.adsRead) failed.push('ADS_READ');
+    if (!preflight.adsManagement) failed.push('ADS_MANAGEMENT');
+    if (!preflight.adAccountAccess) failed.push('AD_ACCOUNT_ACCESS');
+    if (requirePixel && !preflight.pixelAccess) failed.push('PIXEL_ACCESS');
+    if (!preflight.metaMutationCredentialReady) failed.push('META_MUTATION_CREDENTIAL_READY');
+    return failed;
+  }
+
+  /**
+   * NORQVA-0006: real credential check against the Graph API (read-only calls), cached.
+   * Fail-closed: any error leaves the corresponding check false.
+   */
+  public async getLivePreflightStatus(forceRefresh = false): Promise<MetaPreflightStatus> {
+    const now = Date.now();
+    if (!forceRefresh && preflightCache && preflightCache.expiresAt > now) {
+      return preflightCache.status;
+    }
+
+    const status: MetaPreflightStatus = {
       tokenValid: false,
       adsRead: false,
       adsManagement: false,
@@ -130,6 +170,52 @@ export class MetaMutatingClient {
       pixelAccess: false,
       metaMutationCredentialReady: false
     };
+
+    if ((this.accessToken || this.transportGet) && this.adAccountId) {
+      try {
+        const me = await this.callTransportGet('/me', { fields: 'id' });
+        status.tokenValid = !!me?.id;
+      } catch {
+        status.tokenValid = false;
+      }
+
+      if (status.tokenValid) {
+        try {
+          const perms = await this.callTransportGet('/me/permissions', {});
+          const granted = new Set(
+            (Array.isArray(perms?.data) ? perms.data : [])
+              .filter((p: any) => p?.status === 'granted')
+              .map((p: any) => String(p.permission))
+          );
+          status.adsManagement = granted.has('ads_management');
+          status.adsRead = granted.has('ads_read') || status.adsManagement;
+        } catch {
+          // leave false
+        }
+
+        try {
+          const act = this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`;
+          const acct = await this.callTransportGet(`/${act}`, { fields: 'id,account_status' });
+          status.adAccountAccess = !!acct?.id;
+        } catch {
+          // leave false
+        }
+
+        try {
+          const pixel = await this.callTransportGet(`/${OFFICIAL_NORQVA_PIXEL_ID}`, { fields: 'id' });
+          status.pixelAccess = !!pixel?.id;
+        } catch {
+          // leave false
+        }
+      }
+    }
+
+    status.metaMutationCredentialReady = status.tokenValid && status.adsManagement && status.adAccountAccess;
+    preflightCache = {
+      status,
+      expiresAt: now + (status.metaMutationCredentialReady ? PREFLIGHT_OK_TTL_MS : PREFLIGHT_FAIL_TTL_MS)
+    };
+    return status;
   }
 
   /**
@@ -279,7 +365,7 @@ export class MetaMutatingClient {
     params: CreateCampaignParams,
     context: MetaMutatingSecurityContext
   ): Promise<MetaMutationResult> {
-    this.assertFeatureFlagAndPreflight(context);
+    await this.assertFeatureFlagAndPreflight(context);
     await this.assertHITLApproval(pool, context);
 
     const client = await pool.connect();
@@ -387,7 +473,7 @@ export class MetaMutatingClient {
     params: CreateAdSetParams,
     context: MetaMutatingSecurityContext
   ): Promise<MetaMutationResult> {
-    this.assertFeatureFlagAndPreflight(context);
+    await this.assertFeatureFlagAndPreflight(context);
     await this.assertHITLApproval(pool, context);
 
     const pixelId = params.pixelId || OFFICIAL_NORQVA_PIXEL_ID;
@@ -521,7 +607,7 @@ export class MetaMutatingClient {
     params: CreateAdCreativeParams,
     context: MetaMutatingSecurityContext
   ): Promise<MetaMutationResult> {
-    this.assertFeatureFlagAndPreflight(context);
+    await this.assertFeatureFlagAndPreflight(context);
     this.assertUrlWhitelisted(params.destinationUrl);
 
     const client = await pool.connect();
@@ -583,7 +669,7 @@ export class MetaMutatingClient {
     params: CreateAdParams,
     context: MetaMutatingSecurityContext
   ): Promise<MetaMutationResult> {
-    this.assertFeatureFlagAndPreflight(context);
+    await this.assertFeatureFlagAndPreflight(context);
     await this.assertHITLApproval(pool, context);
 
     const client = await pool.connect();
@@ -683,7 +769,7 @@ export class MetaMutatingClient {
     newDailyBudget: number,
     context: MetaMutatingSecurityContext
   ): Promise<{ success: boolean; newDailyBudget: number }> {
-    this.assertFeatureFlagAndPreflight(context);
+    await this.assertFeatureFlagAndPreflight(context);
 
     if (newDailyBudget <= 0) {
       throw new Error('[VALIDATION EXCEPTION]: Daily budget must be greater than 0.');
@@ -748,24 +834,40 @@ export class MetaMutatingClient {
     metaEntityId: string,
     newStatus: 'PAUSED' | 'ACTIVE',
     context: MetaMutatingSecurityContext
-  ): Promise<{ success: boolean; entityId: string; status: string }> {
+  ): Promise<{ success: boolean; entityId: string; status: string; previousStatus: string | null; name: string | null }> {
     // Unconditional fail-closed check: No mutation (even pause) can bypass the Global Safety Hold
-    this.assertFeatureFlagAndPreflight(context);
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
 
-    const table = entityType === 'CAMPAIGN' ? 'meta_campaigns' : entityType === 'ADSET' ? 'meta_ad_sets' : 'meta_ads';
-    const idCol = entityType === 'CAMPAIGN' ? 'meta_campaign_id' : entityType === 'ADSET' ? 'meta_adset_id' : 'meta_ad_id';
+    if (newStatus !== 'PAUSED' && newStatus !== 'ACTIVE') {
+      throw new Error('[VALIDATION EXCEPTION]: Status must be PAUSED or ACTIVE.');
+    }
+
+    const { table, idCol } = MetaMutatingClient.entityTable(entityType);
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
+      // NORQVA-0006: resolve the row first (by Meta ID or internal UUID, same DEMO/REAL scope)
+      // so the Graph call always targets the real Meta ID.
+      const rowRes = await client.query(
+        `SELECT id, ${idCol} AS meta_id, name, status FROM ${table}
+         WHERE (${idCol} = $1 OR id::text = $1) AND is_demo = $2
+         LIMIT 1 FOR UPDATE`,
+        [metaEntityId, context.isDemo]
+      );
+      if (rowRes.rows.length === 0) {
+        throw new Error(`[VALIDATION EXCEPTION]: ${entityType} '${metaEntityId}' not found. Sync Meta data first.`);
+      }
+      const row = rowRes.rows[0];
+
       if (!context.isDemo) {
-        await this.callTransportPost(`/${metaEntityId}`, { status: newStatus });
+        await this.callTransportPost(`/${row.meta_id}`, { status: newStatus });
       }
 
       await client.query(
-        `UPDATE ${table} SET status = $1, effective_status = $1, updated_at = NOW() WHERE ${idCol} = $2 OR id::text = $2`,
-        [newStatus, metaEntityId]
+        `UPDATE ${table} SET status = $1, effective_status = $1, updated_at = NOW() WHERE id = $2`,
+        [newStatus, row.id]
       );
 
       await client.query('COMMIT');
@@ -774,19 +876,171 @@ export class MetaMutatingClient {
         pool,
         context.userId,
         `META_${entityType}_STATUS_CHANGED`,
-        `Set ${entityType} '${metaEntityId}' status to ${newStatus}.`,
-        null,
+        `Set ${entityType} '${row.name}' (${row.meta_id}) status from ${row.status} to ${newStatus}.`,
+        row.status || null,
         newStatus,
         context.isDemo,
         false
       );
 
-      return { success: true, entityId: metaEntityId, status: newStatus };
+      return { success: true, entityId: row.meta_id, status: newStatus, previousStatus: row.status || null, name: row.name || null };
     } catch (err: any) {
       await client.query('ROLLBACK');
+      await writeAuditLog(
+        pool,
+        context.userId,
+        'META_MUTATION_FAILED',
+        `Failed to set ${entityType} '${metaEntityId}' to ${newStatus}: ${err.message}`,
+        null,
+        null,
+        context.isDemo,
+        false
+      );
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * NORQVA-0006: change the daily budget of a campaign (Advantage+/CBO) or ad set (ABO).
+   * Guards: feature flag + live preflight, min R$ 5, ceiling META_MAX_DAILY_BUDGET_BRL (default R$ 100),
+   * budget must live at the requested level, audit log on success and failure.
+   */
+  public async setDailyBudget(
+    pool: Pool,
+    entityType: 'CAMPAIGN' | 'ADSET',
+    metaEntityId: string,
+    newDailyBudget: number,
+    context: MetaMutatingSecurityContext
+  ): Promise<{ success: boolean; entityId: string; previousDailyBudget: number | null; newDailyBudget: number; name: string | null }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+
+    if (entityType !== 'CAMPAIGN' && entityType !== 'ADSET') {
+      throw new Error('[VALIDATION EXCEPTION]: Budget can only be changed on a campaign or an ad set.');
+    }
+    const amount = Math.round(Number(newDailyBudget) * 100) / 100;
+    const max = getMaxDailyBudgetBRL();
+    if (!Number.isFinite(amount) || amount < META_MIN_DAILY_BUDGET_BRL) {
+      throw new Error(`[VALIDATION EXCEPTION]: Daily budget must be at least R$ ${META_MIN_DAILY_BUDGET_BRL.toFixed(2)}.`);
+    }
+    if (amount > max) {
+      throw new Error(`[VALIDATION EXCEPTION]: Daily budget R$ ${amount.toFixed(2)} exceeds the NORQVA ceiling of R$ ${max.toFixed(2)} (META_MAX_DAILY_BUDGET_BRL).`);
+    }
+
+    const { table, idCol } = MetaMutatingClient.entityTable(entityType);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const rowRes = await client.query(
+        entityType === 'CAMPAIGN'
+          ? `SELECT id, ${idCol} AS meta_id, name, daily_budget, lifetime_budget FROM ${table}
+             WHERE (${idCol} = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1 FOR UPDATE`
+          : `SELECT s.id, s.${idCol} AS meta_id, s.name, s.daily_budget, s.lifetime_budget,
+                    c.daily_budget AS campaign_daily_budget, c.lifetime_budget AS campaign_lifetime_budget
+             FROM ${table} s JOIN meta_campaigns c ON c.id = s.campaign_id
+             WHERE (s.${idCol} = $1 OR s.id::text = $1) AND s.is_demo = $2 LIMIT 1 FOR UPDATE OF s`,
+        [metaEntityId, context.isDemo]
+      );
+      if (rowRes.rows.length === 0) {
+        throw new Error(`[VALIDATION EXCEPTION]: ${entityType} '${metaEntityId}' not found. Sync Meta data first.`);
+      }
+      const row = rowRes.rows[0];
+
+      if (row.lifetime_budget !== null && row.lifetime_budget !== undefined && row.daily_budget === null) {
+        throw new Error('[VALIDATION EXCEPTION]: This entity uses a lifetime budget; change it in Ads Manager.');
+      }
+      if (entityType === 'CAMPAIGN' && (row.daily_budget === null || row.daily_budget === undefined)) {
+        throw new Error('[VALIDATION EXCEPTION]: Campaign has no daily budget at campaign level (budget is on the ad sets, or data is not synced yet). Sync, or change the ad set budget.');
+      }
+      if (
+        entityType === 'ADSET' &&
+        ((row.campaign_daily_budget !== null && row.campaign_daily_budget !== undefined) ||
+          (row.campaign_lifetime_budget !== null && row.campaign_lifetime_budget !== undefined))
+      ) {
+        throw new Error('[VALIDATION EXCEPTION]: Budget is set at campaign level (Advantage+ campaign budget). Change the campaign budget instead.');
+      }
+
+      const previous = row.daily_budget === null || row.daily_budget === undefined ? null : parseFloat(row.daily_budget);
+
+      if (!context.isDemo) {
+        await this.callTransportPost(`/${row.meta_id}`, { daily_budget: Math.round(amount * 100) });
+      }
+
+      await client.query(`UPDATE ${table} SET daily_budget = $1, updated_at = NOW() WHERE id = $2`, [amount, row.id]);
+
+      await client.query('COMMIT');
+
+      await writeAuditLog(
+        pool,
+        context.userId,
+        'META_BUDGET_UPDATED',
+        `Updated ${entityType} '${row.name}' (${row.meta_id}) daily budget from ${previous === null ? '—' : `R$ ${previous.toFixed(2)}`} to R$ ${amount.toFixed(2)}.`,
+        previous === null ? null : String(previous),
+        String(amount),
+        context.isDemo,
+        false
+      );
+
+      return { success: true, entityId: row.meta_id, previousDailyBudget: previous, newDailyBudget: amount, name: row.name || null };
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      await writeAuditLog(
+        pool,
+        context.userId,
+        'META_MUTATION_FAILED',
+        `Failed to set ${entityType} '${metaEntityId}' daily budget to R$ ${Number.isFinite(amount) ? amount.toFixed(2) : String(newDailyBudget)}: ${err.message}`,
+        null,
+        null,
+        context.isDemo,
+        false
+      );
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  private static entityTable(entityType: 'CAMPAIGN' | 'ADSET' | 'AD'): { table: string; idCol: string } {
+    if (entityType === 'CAMPAIGN') return { table: 'meta_campaigns', idCol: 'meta_campaign_id' };
+    if (entityType === 'ADSET') return { table: 'meta_ad_sets', idCol: 'meta_adset_id' };
+    if (entityType === 'AD') return { table: 'meta_ads', idCol: 'meta_ad_id' };
+    throw new Error('[VALIDATION EXCEPTION]: Unknown Meta entity type.');
+  }
+
+  private async callTransportGet(endpoint: string, params: Record<string, string>): Promise<any> {
+    const path = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+    if (this.transportGet) {
+      return this.transportGet(path, params);
+    }
+    if (!this.accessToken) {
+      throw new Error('[META CONFIG EXCEPTION]: Missing META_ACCESS_TOKEN.');
+    }
+
+    const url = new URL(`https://graph.facebook.com/${this.apiVersion}${path}`);
+    for (const [k, v] of Object.entries(params)) url.searchParams.append(k, v);
+    url.searchParams.append('access_token', this.accessToken);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'GET',
+        headers: { Accept: 'application/json', 'User-Agent': 'NORQVA-MetaMutatingClient/1.0' },
+        signal: controller.signal
+      });
+      const data: any = await res.json();
+      if (!res.ok) {
+        throw new Error(`[META GRAPH API ERROR]: ${data?.error?.message || `HTTP ${res.status}`}`);
+      }
+      return data;
+    } catch (err: any) {
+      const msg = err?.name === 'AbortError' ? '[META TIMEOUT EXCEPTION]: Preflight request timed out.' : String(err?.message || 'Unknown error');
+      throw new Error(this.accessToken ? msg.split(this.accessToken).join('[REDACTED]') : msg);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

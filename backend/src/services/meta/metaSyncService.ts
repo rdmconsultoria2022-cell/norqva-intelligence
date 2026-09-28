@@ -154,15 +154,16 @@ export class MetaSyncService {
 
         for (const cmp of campaigns) {
           const cmpRes = await dbClient.query(
-            `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo, data_provenance, last_synced_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+            `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo, data_provenance, daily_budget, lifetime_budget, last_synced_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
              ON CONFLICT (meta_campaign_id, is_demo)
              DO UPDATE SET name = EXCLUDED.name, objective = EXCLUDED.objective, status = EXCLUDED.status,
                            effective_status = EXCLUDED.effective_status,
+                           daily_budget = EXCLUDED.daily_budget, lifetime_budget = EXCLUDED.lifetime_budget,
                            data_provenance = CASE WHEN meta_campaigns.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_campaigns.data_provenance END,
                            last_synced_at = NOW(), updated_at = NOW()
              RETURNING id`,
-            [cmp.id, actRes.rows[0].id, cmp.name, cmp.objective || null, cmp.status, cmp.effective_status, isDemo, provenance]
+            [cmp.id, actRes.rows[0].id, cmp.name, cmp.objective || null, cmp.status, cmp.effective_status, isDemo, provenance, cmp.daily_budget ?? null, cmp.lifetime_budget ?? null]
           );
           campaignDbIdMap.set(cmp.id, cmpRes.rows[0].id);
           counts.campaigns++;

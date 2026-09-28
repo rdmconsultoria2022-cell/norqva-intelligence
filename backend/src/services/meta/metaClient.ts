@@ -32,6 +32,8 @@ export interface MetaCampaignPayload {
   status: string;
   effective_status: string;
   account_id: string;
+  daily_budget?: number;
+  lifetime_budget?: number;
 }
 
 export interface MetaAdSetPayload {
@@ -407,7 +409,7 @@ export class MetaClient {
 
     const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
     const data = await this.paginateGraphApi(`/${formatted}/campaigns`, {
-      fields: 'id,name,objective,status,effective_status,account_id'
+      fields: 'id,name,objective,status,effective_status,account_id,daily_budget,lifetime_budget'
     });
 
     return data.map(c => ({
@@ -416,7 +418,9 @@ export class MetaClient {
       objective: c.objective,
       status: c.status,
       effective_status: c.effective_status,
-      account_id: c.account_id
+      account_id: c.account_id,
+      daily_budget: c.daily_budget ? parseFloat(c.daily_budget) / 100 : undefined,
+      lifetime_budget: c.lifetime_budget ? parseFloat(c.lifetime_budget) / 100 : undefined
     }));
   }
 
