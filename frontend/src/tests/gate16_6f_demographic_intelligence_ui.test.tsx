@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { GlobalPeriodProvider, GlobalPeriodSelector } from '../lib/globalPeriod';
 import {
   DemographicIntelligenceView,
   formatBRL,
@@ -352,7 +353,7 @@ describe('GATE 16.6F: Demographic Intelligence UI (Read-Only Presentation)', () 
 
   it('12, 13, 14, 15, 16. Period filter buttons trigger API requests with correct period parameters', async () => {
     const mockApiFetch = vi.fn().mockResolvedValue(mockPayload);
-    render(<DemographicIntelligenceView isDemoView={false} apiFetch={mockApiFetch} />);
+    render(<GlobalPeriodProvider initial={{ period: 'today' }}><GlobalPeriodSelector /><DemographicIntelligenceView isDemoView={false} apiFetch={mockApiFetch} /></GlobalPeriodProvider>);
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=real&period=today');
@@ -385,7 +386,7 @@ describe('GATE 16.6F: Demographic Intelligence UI (Read-Only Presentation)', () 
 
   it('17. Preserves DEMO vs REAL isolation in API call', async () => {
     const mockApiFetch = vi.fn().mockResolvedValue(mockPayload);
-    render(<DemographicIntelligenceView isDemoView={true} apiFetch={mockApiFetch} />);
+    render(<GlobalPeriodProvider initial={{ period: 'today' }}><DemographicIntelligenceView isDemoView={true} apiFetch={mockApiFetch} /></GlobalPeriodProvider>);
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=demo&period=today');

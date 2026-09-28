@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { 
   TrendingUp, 
   Layers, 
@@ -133,6 +134,10 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
     );
   };
 
+  // NORQVA-0004: insights follow the global period (campaign/ad lists are not dated)
+  const { globalPeriod } = useGlobalPeriod();
+  const periodQs = periodQuery(globalPeriod);
+
   const loadAllData = async () => {
     setLoading(true);
     try {
@@ -153,7 +158,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         apiFetch(`/meta/campaigns?mode=${mode}`, {}, mode, currentUser).catch(() => []),
         apiFetch(`/meta/adsets?mode=${mode}`, {}, mode, currentUser).catch(() => []),
         apiFetch(`/meta/ads?mode=${mode}`, {}, mode, currentUser).catch(() => []),
-        apiFetch(`/meta/insights?mode=${mode}`, {}, mode, currentUser).catch(() => [])
+        apiFetch(`/meta/insights?mode=${mode}&${periodQs}`, {}, mode, currentUser).catch(() => [])
       ]);
 
       setCampaigns(Array.isArray(cmpRes) ? cmpRes : []);
@@ -169,7 +174,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
   useEffect(() => {
     loadAllData();
-  }, [isDemoView]);
+  }, [isDemoView, periodQs]);
 
   const handleSync = async () => {
     if (syncing) return;

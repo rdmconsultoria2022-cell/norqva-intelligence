@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import {
   DollarSign,
   Eye,
@@ -159,38 +160,9 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Period filter states
-  const [period, setPeriod] = useState<PeriodFilterOption>('30d');
-  const [customDateFrom, setCustomDateFrom] = useState('');
-  const [customDateTo, setCustomDateTo] = useState('');
-  const [appliedCustomDates, setAppliedCustomDates] = useState<{ from?: string; to?: string }>({});
-
-  const calculateDateRange = useCallback((option: PeriodFilterOption): { from?: string; to?: string } => {
-    if (option === 'custom') {
-      return appliedCustomDates;
-    }
-
-    const today = new Date();
-    const toStr = today.toISOString().split('T')[0];
-
-    if (option === 'today') {
-      return { from: toStr, to: toStr };
-    }
-
-    if (option === '7d') {
-      const past7 = new Date();
-      past7.setDate(today.getDate() - 6);
-      return { from: past7.toISOString().split('T')[0], to: toStr };
-    }
-
-    if (option === '30d') {
-      const past30 = new Date();
-      past30.setDate(today.getDate() - 29);
-      return { from: past30.toISOString().split('T')[0], to: toStr };
-    }
-
-    return {};
-  }, [appliedCustomDates]);
+  // NORQVA-0004: global period shared by every screen
+  const { globalPeriod } = useGlobalPeriod();
+  const periodQs = periodQuery(globalPeriod);
 
   const apiFetchRef = React.useRef(apiFetch);
   apiFetchRef.current = apiFetch;
@@ -202,12 +174,8 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
     setError(null);
     try {
       const mode = isDemoView ? 'demo' : 'real';
-      const range = calculateDateRange(period);
-
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(periodQs);
       params.set('mode', mode);
-      if (range.from) params.set('date_from', range.from);
-      if (range.to) params.set('date_to', range.to);
 
       const res = await apiFetchRef.current(`/intelligence/creative-performance?${params.toString()}`);
       if (res && res.summary) {
@@ -222,25 +190,11 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
     } finally {
       setLoading(false);
     }
-  }, [isDemoView, period, calculateDateRange]);
+  }, [isDemoView, periodQs]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleApplyCustomFilter = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customDateFrom || !customDateTo) {
-      showError('Selecione as datas inicial e final para o filtro personalizado.');
-      return;
-    }
-    if (customDateFrom > customDateTo) {
-      showError('A data inicial não pode ser posterior à data final.');
-      return;
-    }
-    setAppliedCustomDates({ from: customDateFrom, to: customDateTo });
-    setPeriod('custom');
-  };
 
   // Safe accessor shortcuts
   const summary = data?.summary;
@@ -308,96 +262,6 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
           </button>
         </div>
       </div>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* PERIOD FILTER */}
-      {/* ----------------------------------------------------------------- */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-slate-900/40 border border-slate-800">
-        <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
-          <Filter className="h-3.5 w-3.5 text-emerald-400" />
-          <span className="uppercase font-semibold">Período:</span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setPeriod('today')}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition ${
-              period === 'today'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            Hoje
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('7d')}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition ${
-              period === '7d'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            Últimos 7 dias
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('30d')}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition ${
-              period === '30d'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            Últimos 30 dias
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('custom')}
-            className={`px-3 py-1.5 rounded text-xs font-mono font-semibold transition ${
-              period === 'custom'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            Personalizado
-          </button>
-        </div>
-      </div>
-
-      {/* Custom Date Range Picker */}
-      {period === 'custom' && (
-        <form
-          onSubmit={handleApplyCustomFilter}
-          className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-slate-900/60 border border-slate-800 text-xs font-mono"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">De:</span>
-            <input
-              type="date"
-              value={customDateFrom}
-              onChange={(e) => setCustomDateFrom(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-200 px-2.5 py-1.5 rounded focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">Até:</span>
-            <input
-              type="date"
-              value={customDateTo}
-              onChange={(e) => setCustomDateTo(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-200 px-2.5 py-1.5 rounded focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-3.5 py-1.5 bg-emerald-500 text-slate-950 font-bold rounded hover:bg-emerald-400 transition"
-          >
-            Filtrar
-          </button>
-        </form>
-      )}
 
       {/* ----------------------------------------------------------------- */}
       {/* DATA FRESHNESS ALERT (IF FAILED) */}

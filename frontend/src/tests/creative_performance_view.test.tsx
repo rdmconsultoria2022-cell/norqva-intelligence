@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { GlobalPeriodProvider, GlobalPeriodSelector } from '../lib/globalPeriod';
 import {
   CreativePerformanceView,
   formatBRL,
@@ -316,6 +317,8 @@ describe('Creative Performance Dashboard View (Read-Only UI)', () => {
 
   it('handles period filter changes and passes date parameters to API', async () => {
     render(
+      <GlobalPeriodProvider>
+      <GlobalPeriodSelector />
       <CreativePerformanceView
         currentUser={mockUser}
         isDemoView={false}
@@ -323,20 +326,23 @@ describe('Creative Performance Dashboard View (Read-Only UI)', () => {
         showError={mockShowError}
         showSuccess={mockShowSuccess}
       />
+      </GlobalPeriodProvider>
     );
 
-    const btn7d = await screen.findByRole('button', { name: /Últimos 7 dias/i });
+    const btn7d = await screen.findByRole('button', { name: '7 dias' });
     fireEvent.click(btn7d);
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('date_from=')
+        expect.stringContaining('period=7d')
       );
     });
   });
 
   it('validates custom date picker input and queries API', async () => {
     render(
+      <GlobalPeriodProvider>
+      <GlobalPeriodSelector />
       <CreativePerformanceView
         currentUser={mockUser}
         isDemoView={false}
@@ -344,6 +350,7 @@ describe('Creative Performance Dashboard View (Read-Only UI)', () => {
         showError={mockShowError}
         showSuccess={mockShowSuccess}
       />
+      </GlobalPeriodProvider>
     );
 
     const customBtn = await screen.findByRole('button', { name: /Personalizado/i });

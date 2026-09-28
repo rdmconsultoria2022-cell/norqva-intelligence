@@ -1,3 +1,4 @@
+import { useGlobalPeriod, periodQuery, periodLabel } from '../../lib/globalPeriod';
 import { useState, useEffect, useRef } from 'react';
 import { 
   Activity, 
@@ -47,7 +48,9 @@ export function DashboardView({
   // Financial Intelligence Sub-view State
   const [financialData, setFinancialData] = useState<any>(null);
   const [finLoading, setFinLoading] = useState(false);
-  const [financialPeriod, setFinancialPeriod] = useState<'today' | '7d' | '30d'>('30d');
+  // NORQVA-0004: global period shared by every screen (executive + financial use the same one)
+  const { globalPeriod } = useGlobalPeriod();
+  const periodQs = periodQuery(globalPeriod);
   const [drillDownLevel, setDrillDownLevel] = useState<'campaign' | 'adset' | 'ad'>('campaign');
   const [showAuditDetails, setShowAuditDetails] = useState(false);
 
@@ -69,7 +72,7 @@ export function DashboardView({
 
     setLoading(true);
     try {
-      const modeParam = `?mode=${isDemoView ? 'demo' : 'real'}`;
+      const modeParam = `?mode=${isDemoView ? 'demo' : 'real'}&${periodQs}`;
       const data = await apiFetch(`/executive/dashboard${modeParam}`, {
         signal: controller.signal
       });
@@ -101,7 +104,7 @@ export function DashboardView({
     setFinLoading(true);
     try {
       const modeParam = `mode=${isDemoView ? 'demo' : 'real'}`;
-      const periodParam = `period=${financialPeriod}`;
+      const periodParam = periodQs;
       const data = await apiFetch(`/financial/dashboard?${modeParam}&${periodParam}`, {
         signal: controller.signal
       });
@@ -130,7 +133,7 @@ export function DashboardView({
         activeControllerRef.current.abort();
       }
     };
-  }, [isDemoView, refreshTrigger, apiFetch]);
+  }, [isDemoView, periodQs, refreshTrigger, apiFetch]);
 
   useEffect(() => {
     fetchFinancialData();
@@ -139,7 +142,7 @@ export function DashboardView({
         activeFinControllerRef.current.abort();
       }
     };
-  }, [isDemoView, financialPeriod, refreshTrigger, apiFetch]);
+  }, [isDemoView, periodQs, refreshTrigger, apiFetch]);
 
   // Filter & sort experiments list (for experiments tab)
   const filteredExps = (experiments || [])
@@ -345,22 +348,7 @@ export function DashboardView({
           {/* Period Filter & Controls Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 border border-slate-800 bg-slate-900/60 rounded-xl shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <span className="text-[11px] sm:text-xs font-mono font-bold uppercase text-slate-400">Filtrar Período:</span>
-              <div className="grid grid-cols-3 sm:flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-                {(['today', '7d', '30d'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setFinancialPeriod(p)}
-                    className={`px-3 py-1.5 rounded text-xs font-mono font-bold transition text-center ${
-                      financialPeriod === p
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {p === 'today' ? 'Hoje' : p === '7d' ? '7 Dias' : '30 Dias'}
-                  </button>
-                ))}
-              </div>
+              <span className="text-[11px] sm:text-xs font-mono font-bold uppercase text-slate-400">Período: {periodLabel(globalPeriod)}</span>
               {perf?.timeWindow && (
                 <div className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1.5 rounded border border-slate-800 truncate">
                   Janela Sincronizada: {new Date(perf.timeWindow.startDate).toLocaleDateString('pt-BR')} até {new Date(perf.timeWindow.endDate).toLocaleDateString('pt-BR')}

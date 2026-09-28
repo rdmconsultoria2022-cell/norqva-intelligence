@@ -157,8 +157,19 @@ export function getCommercialTimeBoundaries(
         dateStartMeta = getLocalComponentsInTimezone(startDate, timeZone).dateStr;
         dateStopMeta = getLocalComponentsInTimezone(endDate, timeZone).dateStr;
       } else {
-        const startLocal = getLocalComponentsInTimezone(parsedStart, timeZone);
-        const endLocal = getLocalComponentsInTimezone(parsedEnd, timeZone);
+        // NORQVA-0004: a date-only string ('2026-09-01') is a calendar day in the commercial
+        // timezone. new Date('2026-09-01') is UTC midnight, i.e. the previous day in São Paulo,
+        // so read the components from the string itself.
+        const toLocal = (raw: string, fallback: Date) => {
+          const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+          if (!m) return getLocalComponentsInTimezone(fallback, timeZone);
+          const year = Number(m[1]);
+          const month = Number(m[2]);
+          const day = Number(m[3]);
+          return { ...getLocalComponentsInTimezone(fallback, timeZone), year, month, day, dateStr: `${m[1]}-${m[2]}-${m[3]}` };
+        };
+        const startLocal = toLocal(startDateParam, parsedStart);
+        const endLocal = toLocal(endDateParam, parsedEnd);
         startDate = createDateInTimezone(startLocal.year, startLocal.month, startLocal.day, 0, 0, 0, 0, timeZone);
         endDate = createDateInTimezone(endLocal.year, endLocal.month, endLocal.day, 23, 59, 59, 999, timeZone);
         dateStartMeta = startLocal.dateStr;
@@ -195,5 +206,35 @@ export function getCommercialTimeBoundaries(
     dateStartMeta,
     dateStopMeta,
     sameDateWindowEnforced: true
+  };
+}
+
+/**
+ * NORQVA-0004 global period: one vocabulary for every screen.
+ * 'all' (or missing) means no date filter and returns null.
+ * Any other value uses getCommercialTimeBoundaries (today, yesterday, 7d, 30d, 90d, custom).
+ */
+export interface ResolvedPeriodFilter {
+  period: string;
+  startIso: string;
+  endIso: string;
+  metaStart: string; // YYYY-MM-DD (commercial timezone)
+  metaStop: string;
+}
+
+export function resolvePeriodFilter(
+  periodParam?: string,
+  startDateParam?: string,
+  endDateParam?: string
+): ResolvedPeriodFilter | null {
+  const requested = (periodParam || 'all').toLowerCase();
+  if (requested === 'all') return null;
+  const b = getCommercialTimeBoundaries(requested, startDateParam, endDateParam);
+  return {
+    period: b.period,
+    startIso: b.startDateIso,
+    endIso: b.endDateIso,
+    metaStart: b.dateStartMeta,
+    metaStop: b.dateStopMeta
   };
 }

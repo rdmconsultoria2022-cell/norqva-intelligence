@@ -40,6 +40,7 @@ import {
 } from '../services/entitlements/entitlementService';
 import {
   getCommercialTimeBoundaries,
+  resolvePeriodFilter,
   COMMERCIAL_TIMEZONE
 } from '../utils/commercialTimezone';
 import { MetaCapiService } from '../services/meta/metaCapiService';
@@ -67,6 +68,35 @@ function getMediaSpendProvenanceClause(isDemo: boolean): string {
           AND mconn.status IN ('CONNECTED', 'EXPIRED')
           AND mi.data_provenance IN ('COMMERCIAL_PRODUCTION', 'LEGACY_MIGRATION')
         )`;
+}
+
+// Helper (NORQVA-0003b): all-time verified media spend, same semantics as the financial dashboard.
+// Daily rows only; ACCOUNT level when the sync stored it, otherwise CAMPAIGN level. Never both,
+// never ADSET/AD (those repeat the same spend). Production currently has no ACCOUNT rows.
+async function aggregateVerifiedMediaSpend(pool: Pool, isDemo: boolean, metaStart: string | null = null, metaStop: string | null = null) {
+  const provenance = getMediaSpendProvenanceClause(isDemo);
+  const run = (level: 'ACCOUNT' | 'CAMPAIGN') =>
+    pool.query(
+      `SELECT
+         COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
+         COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
+         COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
+         COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
+       FROM meta_insights mi
+       JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
+       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+       WHERE ${provenance}
+         AND mi.entity_level = $1
+         AND ($2::date IS NULL OR mi.date_start >= $2::date)
+         AND ($3::date IS NULL OR mi.date_stop <= $3::date)
+         AND mi.date_start = mi.date_stop`,
+      [level, metaStart, metaStop]
+    );
+  let row = (await run('ACCOUNT')).rows[0];
+  if (parseFloat(row?.total_spend || '0') === 0) {
+    row = (await run('CAMPAIGN')).rows[0];
+  }
+  return row;
 }
 
 // Helper: safe math division
@@ -4542,7 +4572,15 @@ export async function getMetaAds(req: AuthenticatedRequest, res: Response) {
 export async function getMetaInsights(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const isDemo = req.query.mode === 'demo';
-  const { level, campaign_id, date_start, date_stop } = req.query;
+  const { level, campaign_id } = req.query;
+  let date_start = req.query.date_start as string | undefined;
+  let date_stop = req.query.date_stop as string | undefined;
+  // NORQVA-0004: global period selector (?period=...); explicit dates still win.
+  if (req.query.period && !date_start && !date_stop) {
+    const range = resolvePeriodFilter(req.query.period as string, req.query.startDate as string, req.query.endDate as string);
+    date_start = range?.metaStart;
+    date_stop = range?.metaStop;
+  }
 
   try {
     let query = `
@@ -4638,26 +4676,17 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
   const pool: Pool = req.app.get('db');
   try {
     const isDemo = req.query.mode === 'demo';
+    // NORQVA-0004: global period (default 'all' keeps the historical behaviour).
+    const range = resolvePeriodFilter(req.query.period as string, req.query.startDate as string, req.query.endDate as string);
+    const startIso = range?.startIso ?? null;
+    const endIso = range?.endIso ?? null;
 
     // 1. Meta Insights & Connection Aggregation (Pure SELECT, no side effects)
-    const metaInsightsRes = await pool.query(
-      // NORQVA-0003: the sync stores the SAME spend at ACCOUNT, CAMPAIGN, ADSET and AD level,
-      // plus period aggregates. Summing every row multiplied the spend (~4x). Aggregate only
-      // daily ACCOUNT rows from a verified source, the same rule as the financial dashboard.
-      `SELECT 
-         COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
-         COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
-         COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
-         COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
-       FROM meta_insights mi
-       JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
-       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
-       WHERE ${getMediaSpendProvenanceClause(isDemo)}
-         AND mi.entity_level = 'ACCOUNT'
-         AND mi.date_start = mi.date_stop`
-    );
-    const metaStats = metaInsightsRes.rows[0];
-    const totalSpend = parseFloat(metaStats.total_spend);
+    // NORQVA-0003: the sync stores the SAME spend at several levels plus period aggregates.
+    // Summing every row multiplied the spend. Use the financial dashboard rule (daily rows,
+    // ACCOUNT level with CAMPAIGN fallback) so both screens always show the same number.
+    const metaStats = await aggregateVerifiedMediaSpend(pool, isDemo, range?.metaStart ?? null, range?.metaStop ?? null);
+    const totalSpend = Math.round(parseFloat(metaStats.total_spend) * 100) / 100;
     const totalImpressions = parseInt(metaStats.total_impressions, 10);
     const totalReach = parseInt(metaStats.total_reach, 10);
     const totalClicks = parseInt(metaStats.total_clicks, 10);
@@ -4695,7 +4724,10 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
          COUNT(*) FILTER (WHERE status IN ('CANCELLED', 'EXPIRED'))::int as cancelled_orders,
          COALESCE(SUM(total_amount) FILTER (WHERE status = 'PAID'), 0)::numeric as gross_revenue
        FROM orders
-       WHERE ${orderProvClause}`
+       WHERE ${orderProvClause}
+         AND ($1::timestamptz IS NULL OR created_at >= $1::timestamptz)
+         AND ($2::timestamptz IS NULL OR created_at <= $2::timestamptz)`,
+      [startIso, endIso]
     );
     const orderStats = ordersRes.rows[0];
     const totalOrders = orderStats.total_orders;
@@ -4716,7 +4748,10 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
          COALESCE(SUM(amount) FILTER (WHERE status = 'CONFIRMED'), 0)::numeric as confirmed_revenue,
          COUNT(*) FILTER (WHERE status = 'CONFIRMED' AND provider_payment_id IS NOT NULL)::int as reconciled_transactions
        FROM payments
-       WHERE ${payProvClause}`
+       WHERE ${payProvClause}
+         AND ($1::timestamptz IS NULL OR created_at >= $1::timestamptz)
+         AND ($2::timestamptz IS NULL OR created_at <= $2::timestamptz)`,
+      [startIso, endIso]
     );
     const paymentStats = paymentsRes.rows[0];
     const totalPixCreated = paymentStats.total_pix_created;
@@ -4735,7 +4770,10 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
          COUNT(*) FILTER (WHERE od.download_count = 0 AND od.status = 'ACTIVE')::int as pending_downloads
        FROM order_deliveries od
        JOIN orders o ON o.id = od.order_id
-       WHERE ${delivOrderClause}`
+       WHERE ${delivOrderClause}
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)
+         AND ($2::timestamptz IS NULL OR o.created_at <= $2::timestamptz)`,
+      [startIso, endIso]
     );
     const deliveryStats = deliveriesRes.rows[0];
     const totalEntitlements = deliveryStats.total_entitlements;
@@ -4760,8 +4798,11 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
        LEFT JOIN payments p ON p.order_id = o.id
        LEFT JOIN order_deliveries od ON od.order_id = o.id
        WHERE ${recentOrderClause}
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)
+         AND ($2::timestamptz IS NULL OR o.created_at <= $2::timestamptz)
        ORDER BY o.created_at DESC
-       LIMIT 10`
+       LIMIT 10`,
+      [startIso, endIso]
     );
 
     return res.status(200).json({
@@ -4800,7 +4841,8 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
         completedDownloads,
         pendingDownloads
       },
-      recentOrders: recentOrdersRes.rows
+      recentOrders: recentOrdersRes.rows,
+      period: range ? { period: range.period, start: range.metaStart, end: range.metaStop } : { period: 'all', start: null, end: null }
     });
   } catch (err: any) {
     console.error('Failed to retrieve executive dashboard metrics:', err);
@@ -5902,8 +5944,14 @@ export async function getCreativePerformance(req: AuthenticatedRequest, res: Res
     const isDemo = req.query.mode === 'demo';
     const campaign_id = req.query.campaign_id as string | undefined;
     const adset_id = req.query.adset_id as string | undefined;
-    const date_from = req.query.date_from as string | undefined;
-    const date_to = req.query.date_to as string | undefined;
+    let date_from = req.query.date_from as string | undefined;
+    let date_to = req.query.date_to as string | undefined;
+    // NORQVA-0004: the global period selector sends ?period=...; explicit date_from/date_to still win.
+    if (req.query.period && !date_from && !date_to) {
+      const range = resolvePeriodFilter(req.query.period as string, req.query.startDate as string, req.query.endDate as string);
+      date_from = range?.metaStart;
+      date_to = range?.metaStop;
+    }
 
     const service = new CreativePerformanceService();
     const result = await service.getCreativePerformance(pool, {

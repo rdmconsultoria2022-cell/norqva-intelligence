@@ -4,16 +4,61 @@ import { UserObj } from '../../types';
 
 import { API_BASE } from '../../lib/api';
 import { DEMO_MODE_ENABLED } from '../../lib/demoMode';
+import { clearGlobalPeriod } from '../../lib/globalPeriod';
+
+// NORQVA-0004: the intro and the open tab must survive tab switches. Supabase re-emits SIGNED_IN
+// when the browser tab regains focus; that used to reset the intro and replay it every time.
+const INTRO_SEEN_KEY = 'norqva_intro_seen_for_user_v1';
+const ACTIVE_TAB_KEY = 'norqva_active_tab_v1';
+
+function readSession(key: string): string | null {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(key: string, value: string | null) {
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable (private mode / blocked): fall back to in-memory state only.
+  }
+}
+
+export function clearNavigationSession() {
+  writeSession(INTRO_SEEN_KEY, null);
+  writeSession(ACTIVE_TAB_KEY, null);
+  clearGlobalPeriod();
+}
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserObj | null>(null);
   const [authMode, setAuthModeState] = useState<'demo' | 'real'>('demo');
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTabState] = useState(() => readSession(ACTIVE_TAB_KEY) || 'dashboard');
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    writeSession(ACTIVE_TAB_KEY, tab);
+  };
+  const currentUserRef = useRef<UserObj | null>(null);
+  currentUserRef.current = currentUser;
   const [isDemoViewState, setIsDemoViewState] = useState(DEMO_MODE_ENABLED);
   // Outside tests/local demo builds, the DEMO view can never be switched on.
   const isDemoView = DEMO_MODE_ENABLED ? isDemoViewState : false;
   const setIsDemoView = (value: boolean) => setIsDemoViewState(DEMO_MODE_ENABLED ? value : false);
-  const [introFinished, setIntroFinished] = useState(false);
+  const [introFinishedState, setIntroFinishedState] = useState(false);
+  // The intro counts as seen when this browser tab already played it for the same user.
+  const introFinished = introFinishedState || (!!currentUser && readSession(INTRO_SEEN_KEY) === currentUser.id);
+  const setIntroFinished = (value: boolean) => {
+    setIntroFinishedState(value);
+    if (value) {
+      if (currentUserRef.current) writeSession(INTRO_SEEN_KEY, currentUserRef.current.id);
+    } else {
+      writeSession(INTRO_SEEN_KEY, null);
+    }
+  };
   const [usersList, setUsersList] = useState<UserObj[]>([]);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
@@ -44,6 +89,8 @@ export function useAuth() {
     }
     setCurrentUser(null);
     setIntroFinished(false);
+    clearNavigationSession();
+    setActiveTabState('dashboard');
   };
 
   const authModeRef = useRef(authMode);
@@ -184,6 +231,9 @@ export function useAuth() {
 
         // D. If no real Supabase session exists:
         // Normal Demo/Real selection behavior may continue.
+        // Without a session nothing from a previous login may be restored (intro/tab).
+        clearNavigationSession();
+        setActiveTabState('dashboard');
         try {
           const isProduction = (import.meta as any).env.PROD;
           const res = await fetch(`${API_BASE}/users?mode=demo`, {
@@ -238,6 +288,11 @@ export function useAuth() {
       if (event === 'SIGNED_IN' && session) {
         setAuthMode('real');
         authModeRef.current = 'real';
+        // Supabase re-emits SIGNED_IN when the browser tab regains focus. If a user is already
+        // loaded, this is not a new login: keep the current screen, no intro, no toast.
+        if (currentUserRef.current) {
+          return;
+        }
         try {
           const meRes = await fetch(`${API_BASE}/me`, {
             headers: {

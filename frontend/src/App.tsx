@@ -44,6 +44,10 @@ import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
+import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
+
+// Screens whose numbers are filtered by the global period
+const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'creative-performance', 'demographics'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -570,7 +574,7 @@ export default function App() {
 
   // Active screens rendering helper
   return (
-    <>
+    <GlobalPeriodProvider>
       <AppShell
       globalError={globalError}
       globalSuccess={globalSuccess}
@@ -589,6 +593,10 @@ export default function App() {
         loadData
       }}
     >
+          {/* NORQVA-0004: one period for every screen */}
+          <div className="mb-4">
+            <GlobalPeriodSelector appliesToScreen={PERIOD_AWARE_TABS.includes(activeTab)} />
+          </div>
           {activeTab === 'dashboard' && (
             <DashboardView
               currentUser={currentUser}
@@ -1375,7 +1383,7 @@ export default function App() {
           showSuccess={showSuccess}
         />
       )}
-    </>
+    </GlobalPeriodProvider>
   );
 }
 

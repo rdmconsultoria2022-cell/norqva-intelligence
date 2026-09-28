@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useGlobalPeriod, periodQuery, periodLabel } from '../../lib/globalPeriod';
 import {
   Users,
   Calendar,
@@ -153,7 +154,9 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
   const [data, setData] = useState<DemographicAnalyticsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<DemographicPeriodOption>('today');
+  // NORQVA-0004: global period shared by every screen
+  const { globalPeriod } = useGlobalPeriod();
+  const periodQs = periodQuery(globalPeriod);
 
   const apiFetchRef = React.useRef(apiFetch);
   apiFetchRef.current = apiFetch;
@@ -165,12 +168,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
     setError(null);
     try {
       const mode = isDemoView ? 'demo' : 'real';
-      const params = new URLSearchParams({
-        mode,
-        period
-      });
-
-      const res = await apiFetchRef.current(`/intelligence/demographics?${params.toString()}`);
+      const res = await apiFetchRef.current(`/intelligence/demographics?mode=${mode}&${periodQs}`);
       if (res && res.summary) {
         setData(res);
       } else {
@@ -183,7 +181,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
     } finally {
       setLoading(false);
     }
-  }, [isDemoView, period]);
+  }, [isDemoView, periodQs]);
 
   useEffect(() => {
     loadData();
@@ -227,26 +225,6 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
 
         {/* Controls & Period Selector */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="inline-flex rounded-lg bg-slate-900 border border-slate-800 p-1">
-            {PERIOD_OPTIONS.map((opt) => {
-              const active = period === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  onClick={() => setPeriod(opt.id)}
-                  disabled={loading}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                    active
-                      ? 'bg-purple-600 text-white font-semibold shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
           <button
             onClick={loadData}
             disabled={loading}
@@ -308,7 +286,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
             <h3 className="text-base font-bold text-slate-200">Nenhum dado demográfico no período</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
               Não foram registradas impressões ou cliques com segmentação etária para o filtro selecionado (
-              {PERIOD_OPTIONS.find((p) => p.id === period)?.label}).
+              {periodLabel(globalPeriod)}).
             </p>
           </div>
           <div className="text-[11px] font-mono text-slate-500">
