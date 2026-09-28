@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { CREATIVE_BATCHES } from '../../data/creativeBatches';
 import { CreativePerformanceService, CreativeItemPerformance } from '../intelligence/creativePerformanceService';
 import { writeAuditLog } from '../../db/audit';
+import { campaignsForCreatives } from './creativeCampaigns';
 
 // NORQVA-0005 / G1: Creative Factory — matrix, versions, claims, human approval and a
 // deterministic scorecard per creative. Recommendations only; nothing here touches Meta.
@@ -337,6 +338,9 @@ export class CreativeFactoryService {
       adsByName.set(nameKey, list);
     }
 
+    // NORQVA-0011: campaign(s) each creative runs in
+    const campaignsByCreative = await campaignsForCreatives(pool, opts.isDemo, creatives);
+
     const items = creatives.map(c => {
       const linked = new Map<string, CreativeItemPerformance>();
       for (const ad of adsByName.get(String(c.utm_content_key || '').toUpperCase()) || []) linked.set(ad.ad_id, ad);
@@ -360,6 +364,7 @@ export class CreativeFactoryService {
         claims_all_verified: claims.length > 0 && claims.every(cl => cl.status === 'VERIFIED' && (!cl.valid_until || new Date(cl.valid_until) > new Date())),
         reviews: reviewsByCreative.get(c.id) || [],
         linked_meta_ads: [...linked.keys()],
+        campaigns: campaignsByCreative.get(String(c.id)) || [],
         metrics,
         cpa: metrics && metrics.paid_orders > 0 ? Math.round((metrics.spend / metrics.paid_orders) * 100) / 100 : null,
         link_ctr: metrics && metrics.impressions > 0 ? Math.round((metrics.link_clicks / metrics.impressions) * 10000) / 100 : null,

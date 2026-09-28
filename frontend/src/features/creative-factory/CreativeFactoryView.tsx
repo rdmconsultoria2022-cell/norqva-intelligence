@@ -3,6 +3,7 @@ import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, R
 import { UserObj } from '../../types';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { CreativePreview } from '../../components/CreativePreview';
+import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile, groupByCampaign } from '../../components/ViewModes';
 
 // NORQVA-0005 / G1: Creative Factory — batch matrix, claims gate, human approval and
 // a deterministic scorecard per creative (Meta ad name == creative key).
@@ -68,6 +69,9 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const [editing, setEditing] = useState<{ id: string; headline: string; primary_text: string; file_url: string } | null>(null);
   const [linking, setLinking] = useState<{ id: string; meta_ad_id: string } | null>(null);
   const [attaching, setAttaching] = useState<{ id: string; file_url: string } | null>(null);
+  // NORQVA-0011: display mode (list / grid / icons) and the card to focus when opening from a tile
+  const [viewMode, setViewMode] = useViewMode('norqva.factory.viewMode');
+  const [focusId, setFocusId] = useState<string | null>(null);
 
   // App re-creates apiFetch/showError/showSuccess on every render: keep them in refs so the
   // loader only changes with mode/period (same pattern as CreativePerformanceView).
@@ -191,169 +195,33 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
     }))
     .filter(x => x.count > 0);
 
-  return (
-    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Factory className="h-6 w-6 text-emerald-400" />
-            Fábrica de Criativos
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Lotes de criativos, claims verificadas, aprovação humana e resultado por criativo. Nada é publicado na Meta por aqui.
-          </p>
-        </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          aria-label="Atualizar"
-          className="self-start p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
+  const groups = groupByCampaign(visible);
+  const revisionQueue = creatives.filter(c => c.approval_status === 'REVISION_REQUESTED');
+  const openInList = (id: string) => {
+    setViewMode('list');
+    setFocusId(id);
+    setTimeout(() => {
+      try {
+        document.getElementById(`factory-card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {
+        /* ignore */
+      }
+    }, 50);
+  };
 
-      {isAdmin && notImported.length > 0 && (
-        <div className="p-4 rounded-xl border border-emerald-700/40 bg-emerald-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="text-sm text-slate-200">
-            Lote pronto para importar: <strong>{notImported.join(', ')}</strong>. Os criativos entram como rascunho e as claims como não verificadas.
-          </div>
-          {notImported.map(code => (
-            <button
-              key={code}
-              onClick={() => importBatch(code)}
-              disabled={busy === `import-${code}`}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 disabled:opacity-50"
-            >
-              <Download className="h-3.5 w-3.5" /> Importar {code}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {isAdmin && pendingAssets.length > 0 && (
-        <div
-          data-testid="pending-assets"
-          className="p-4 rounded-xl border border-blue-700/40 bg-blue-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-        >
-          <div className="text-sm text-slate-200">
-            Já existem arquivos produzidos para{' '}
-            <strong>{pendingAssets.map(p => `${p.count} criativo(s) do ${p.code}`).join(', ')}</strong>. Anexe para abrir pelo
-            Creative Lab. Não cria versão nova nem muda a aprovação.
-          </div>
-          {pendingAssets.map(p => (
-            <button
-              key={p.code}
-              onClick={() => attachBatchAssets(p.code)}
-              disabled={busy === `assets-${p.code}`}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-blue-500 text-slate-950 text-xs font-bold hover:bg-blue-400 disabled:opacity-50"
-            >
-              <Download className="h-3.5 w-3.5" /> Anexar arquivos produzidos
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Claims */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" /> Claims ({claims.length})
-          </h2>
-          {pendingClaims.length > 0 && (
-            <span className="text-[11px] font-mono text-amber-300">
-              {pendingClaims.length} aguardando verificação: sem elas nenhum criativo pode ser aprovado
-            </span>
-          )}
-        </div>
-        {claims.length === 0 ? (
-          <p className="text-xs text-slate-500">Nenhuma claim registrada.</p>
-        ) : (
-          <ul className="divide-y divide-slate-800">
-            {claims.map(cl => (
-              <li key={cl.id} className="py-2 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
-                <div className="text-xs text-slate-300">
-                  <span className="font-mono text-slate-500 mr-2">{cl.human_id}</span>
-                  {cl.claim_text}
-                  {cl.status_note && <span className="block text-[11px] text-slate-500">{cl.status_note}</span>}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                      cl.status === 'VERIFIED'
-                        ? 'border-emerald-600/40 text-emerald-300'
-                        : cl.status === 'REJECTED'
-                        ? 'border-red-600/40 text-red-300'
-                        : 'border-amber-600/40 text-amber-300'
-                    }`}
-                  >
-                    {cl.status === 'VERIFIED' ? 'Verificada' : cl.status === 'REJECTED' ? 'Rejeitada' : cl.status === 'EXPIRED' ? 'Expirada' : 'Não verificada'}
-                  </span>
-                  {isAdmin && cl.status !== 'VERIFIED' && cl.status !== 'REJECTED' && (
-                    <button
-                      onClick={() => setClaim(cl.id, 'VERIFIED')}
-                      disabled={busy === `claim-${cl.id}`}
-                      className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-bold disabled:opacity-50"
-                    >
-                      Verificar
-                    </button>
-                  )}
-                  {isAdmin && cl.status === 'VERIFIED' && (
-                    <button
-                      onClick={() => setClaim(cl.id, 'REJECTED', 'Revogada na Fábrica de Criativos')}
-                      disabled={busy === `claim-${cl.id}`}
-                      className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] disabled:opacity-50"
-                    >
-                      Revogar
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-        {['ALL', 'DRAFT', 'APPROVED', 'REVISION_REQUESTED', 'REJECTED', 'SUPERSEDED'].map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-2.5 py-1 rounded border ${statusFilter === s ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'border-slate-700 text-slate-300'}`}
-          >
-            {s === 'ALL' ? `Todos (${creatives.filter(c => c.approval_status !== 'SUPERSEDED').length})` : `${APPROVAL_LABEL[s].label} (${counts[s] || 0})`}
-          </button>
-        ))}
-        <select
-          aria-label="Filtrar por hook"
-          value={hookFilter}
-          onChange={e => setHookFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
-        >
-          <option value="ALL">Todos os hooks</option>
-          {hooks.map(h => (
-            <option key={h} value={h}>
-              {h}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {loading && !data && <p className="text-sm text-slate-400">Carregando…</p>}
-      {!loading && creatives.length === 0 && (
-        <p className="text-sm text-slate-400" data-testid="factory-empty">
-          Nenhum criativo na fábrica ainda.
-        </p>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {visible.map(c => {
+  const renderCard = (c: any) => {
           const st = APPROVAL_LABEL[c.approval_status] || APPROVAL_LABEL.DRAFT;
           const rec = RECOMMENDATION_LABEL[c.recommendation] || RECOMMENDATION_LABEL.OBSERVING;
           const last = c.reviews?.[0];
           return (
-            <article key={c.id} data-testid="factory-card" className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+            <article
+              key={c.id}
+              id={`factory-card-${c.id}`}
+              data-testid="factory-card"
+              className={`rounded-xl border border-slate-800 bg-slate-900/60 p-4 ${viewMode === 'list' ? 'flex flex-col-reverse md:flex-row gap-4' : 'space-y-3'} ${focusId === c.id ? 'ring-2 ring-emerald-500' : ''}`}
+            >
+              {viewMode === 'grid' && hasFile(c) && <CreativePreview url={c.file_url} format={c.format} title={c.human_id} />}
+              <div className={viewMode === 'list' ? 'flex-1 min-w-0 space-y-3' : 'space-y-3'}>
               <header className="flex items-start justify-between gap-2">
                 <div>
                   <div className="font-mono text-xs text-emerald-300">{c.human_id}</div>
@@ -364,17 +232,23 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold ${st.cls}`}>{st.label}</span>
               </header>
 
+              <div className="text-xs space-y-1" data-testid="creative-campaign">
+                <div>
+                  <span className="text-slate-500">Campanha:</span>{' '}
+                  {(c.campaigns || []).length > 0
+                    ? c.campaigns.map((cp: any) => `${cp.name}${cp.status && cp.status !== 'ACTIVE' ? ` (${cp.status === 'PAUSED' ? 'pausada' : cp.status})` : ''}`).join(' · ')
+                    : <span className="text-slate-500">não publicado</span>}
+                </div>
+                <div><span className="text-slate-500">Lote:</span> {c.batch_code || '—'}</div>
+              </div>
+
               <p className="text-sm text-white font-semibold">“{c.hook}”</p>
               <div className="text-xs text-slate-300 space-y-1">
                 <div><span className="text-slate-500">Mecanismo:</span> {c.mechanism}</div>
                 <div><span className="text-slate-500">Título:</span> {c.headline}</div>
                 <div className="text-slate-400">{c.primary_text}</div>
                 <div><span className="text-slate-500">CTA:</span> {c.cta}</div>
-                {c.file_url && /^https?:\/\//i.test(c.file_url) ? (
-                  <CreativePreview url={c.file_url} format={c.format} title={c.human_id} className="pt-1" />
-                ) : (
-                  <div className="text-amber-300/80">Arquivo ainda não produzido</div>
-                )}
+                {!hasFile(c) && <div className="text-amber-300/80">Arquivo ainda não produzido</div>}
               </div>
 
               <div className="flex flex-wrap gap-1">
@@ -592,10 +466,237 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   </div>
                 </div>
               )}
+              </div>
+              {viewMode === 'list' && (
+                <div className="md:w-60 shrink-0">
+                  {hasFile(c) ? (
+                    <CreativePreview url={c.file_url} format={c.format} title={c.human_id} />
+                  ) : (
+                    <div className="aspect-[4/5] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
+                      sem arquivo
+                    </div>
+                  )}
+                </div>
+              )}
             </article>
           );
-        })}
+  };
+
+  return (
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Factory className="h-6 w-6 text-emerald-400" />
+            Fábrica de Criativos
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Lotes de criativos, claims verificadas, aprovação humana e resultado por criativo. Nada é publicado na Meta por aqui.
+          </p>
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          aria-label="Atualizar"
+          className="self-start p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
+
+      {isAdmin && notImported.length > 0 && (
+        <div className="p-4 rounded-xl border border-emerald-700/40 bg-emerald-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-sm text-slate-200">
+            Lote pronto para importar: <strong>{notImported.join(', ')}</strong>. Os criativos entram como rascunho e as claims como não verificadas.
+          </div>
+          {notImported.map(code => (
+            <button
+              key={code}
+              onClick={() => importBatch(code)}
+              disabled={busy === `import-${code}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" /> Importar {code}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && pendingAssets.length > 0 && (
+        <div
+          data-testid="pending-assets"
+          className="p-4 rounded-xl border border-blue-700/40 bg-blue-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="text-sm text-slate-200">
+            Já existem arquivos produzidos para{' '}
+            <strong>{pendingAssets.map(p => `${p.count} criativo(s) do ${p.code}`).join(', ')}</strong>. Anexe para abrir pelo
+            Creative Lab. Não cria versão nova nem muda a aprovação.
+          </div>
+          {pendingAssets.map(p => (
+            <button
+              key={p.code}
+              onClick={() => attachBatchAssets(p.code)}
+              disabled={busy === `assets-${p.code}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-blue-500 text-slate-950 text-xs font-bold hover:bg-blue-400 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" /> Anexar arquivos produzidos
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* NORQVA-0011: queue of adjustment requests (they wait here until a new version is produced) */}
+      {revisionQueue.length > 0 && (
+        <section className="p-4 rounded-xl border border-amber-700/40 bg-amber-950/20 space-y-2" data-testid="revision-queue">
+          <h2 className="text-sm font-bold text-amber-200">Ajustes pedidos ({revisionQueue.length})</h2>
+          <p className="text-[11px] text-slate-400">
+            Ficam aqui até a nova versão ser produzida. O criativo que já está rodando na Meta continua no ar até ser substituído ou pausado.
+          </p>
+          <ul className="space-y-1.5 text-xs">
+            {revisionQueue.map((c: any) => {
+              const r = c.reviews?.[0];
+              return (
+                <li key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-t border-amber-800/30 pt-1.5">
+                  <span className="text-slate-200">
+                    <button onClick={() => openInList(c.id)} className="font-mono text-emerald-300 hover:underline">{c.human_id}</button>
+                    {r?.notes ? ` — “${r.notes}”` : ''}
+                  </span>
+                  <span className="text-[10px] text-slate-500 shrink-0">
+                    {r?.reviewer_name || ''} {r?.created_at ? `· ${new Date(r.created_at).toLocaleString('pt-BR')}` : ''}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {/* Claims */}
+      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-400" /> Claims ({claims.length})
+          </h2>
+          {pendingClaims.length > 0 && (
+            <span className="text-[11px] font-mono text-amber-300">
+              {pendingClaims.length} aguardando verificação: sem elas nenhum criativo pode ser aprovado
+            </span>
+          )}
+        </div>
+        {claims.length === 0 ? (
+          <p className="text-xs text-slate-500">Nenhuma claim registrada.</p>
+        ) : (
+          <ul className="divide-y divide-slate-800">
+            {claims.map(cl => (
+              <li key={cl.id} className="py-2 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+                <div className="text-xs text-slate-300">
+                  <span className="font-mono text-slate-500 mr-2">{cl.human_id}</span>
+                  {cl.claim_text}
+                  {cl.status_note && <span className="block text-[11px] text-slate-500">{cl.status_note}</span>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                      cl.status === 'VERIFIED'
+                        ? 'border-emerald-600/40 text-emerald-300'
+                        : cl.status === 'REJECTED'
+                        ? 'border-red-600/40 text-red-300'
+                        : 'border-amber-600/40 text-amber-300'
+                    }`}
+                  >
+                    {cl.status === 'VERIFIED' ? 'Verificada' : cl.status === 'REJECTED' ? 'Rejeitada' : cl.status === 'EXPIRED' ? 'Expirada' : 'Não verificada'}
+                  </span>
+                  {isAdmin && cl.status !== 'VERIFIED' && cl.status !== 'REJECTED' && (
+                    <button
+                      onClick={() => setClaim(cl.id, 'VERIFIED')}
+                      disabled={busy === `claim-${cl.id}`}
+                      className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-bold disabled:opacity-50"
+                    >
+                      Verificar
+                    </button>
+                  )}
+                  {isAdmin && cl.status === 'VERIFIED' && (
+                    <button
+                      onClick={() => setClaim(cl.id, 'REJECTED', 'Revogada na Fábrica de Criativos')}
+                      disabled={busy === `claim-${cl.id}`}
+                      className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] disabled:opacity-50"
+                    >
+                      Revogar
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+        {['ALL', 'DRAFT', 'APPROVED', 'REVISION_REQUESTED', 'REJECTED', 'SUPERSEDED'].map(s => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`px-2.5 py-1 rounded border ${statusFilter === s ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'border-slate-700 text-slate-300'}`}
+          >
+            {s === 'ALL' ? `Todos (${creatives.filter(c => c.approval_status !== 'SUPERSEDED').length})` : `${APPROVAL_LABEL[s].label} (${counts[s] || 0})`}
+          </button>
+        ))}
+        <select
+          aria-label="Filtrar por hook"
+          value={hookFilter}
+          onChange={e => setHookFilter(e.target.value)}
+          className="bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+        >
+          <option value="ALL">Todos os hooks</option>
+          {hooks.map(h => (
+            <option key={h} value={h}>
+              {h}
+            </option>
+          ))}
+        </select>
+        <div className="ml-auto">
+          <ViewModeSelector value={viewMode} onChange={setViewMode} />
+        </div>
+      </div>
+
+      {loading && !data && <p className="text-sm text-slate-400">Carregando…</p>}
+      {!loading && creatives.length === 0 && (
+        <p className="text-sm text-slate-400" data-testid="factory-empty">
+          Nenhum criativo na fábrica ainda.
+        </p>
+      )}
+
+      {groups.map(g => (
+        <section key={g.key} className="space-y-3" data-testid="campaign-group">
+          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-1.5">
+            {g.name}
+            {g.status && (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${g.status === 'ACTIVE' ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                {g.status === 'ACTIVE' ? 'ativa' : g.status === 'PAUSED' ? 'pausada' : g.status}
+              </span>
+            )}
+            <span className="text-[11px] font-normal text-slate-500">{g.items.length} criativo(s)</span>
+          </h2>
+          <div className={containerClass(viewMode)}>
+            {g.items.map((c: any) =>
+              isIconMode(viewMode) ? (
+                <IconTile
+                  key={c.id}
+                  mode={viewMode}
+                  title={c.human_id}
+                  subtitle={(APPROVAL_LABEL[c.approval_status] || APPROVAL_LABEL.DRAFT).label}
+                  url={hasFile(c) ? c.file_url : null}
+                  format={c.format}
+                  onOpen={() => openInList(c.id)}
+                />
+              ) : (
+                renderCard(c)
+              )
+            )}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
