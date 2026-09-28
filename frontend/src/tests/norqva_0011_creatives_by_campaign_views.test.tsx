@@ -47,7 +47,7 @@ describe('NORQVA-0011 — creatives by campaign, display modes, adjustment queue
     );
     const groups = screen.getAllByTestId('campaign-group');
     expect(groups).toHaveLength(2);
-    expect(within(groups[0]).getByText('BB-B01 | Rodada 1')).toBeInTheDocument();
+    expect(within(groups[0]).getByRole('heading')).toHaveTextContent('BB-B01 | Rodada 1');
     expect(within(groups[0]).getByTestId('creative-campaign')).toHaveTextContent('BB-B01 | Rodada 1');
     expect(within(groups[1]).getByTestId('creative-campaign')).toHaveTextContent('não publicado');
     expect(screen.getByRole('radio', { name: 'Lista' })).toHaveAttribute('aria-checked', 'true');
