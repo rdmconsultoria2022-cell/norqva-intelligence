@@ -111,6 +111,7 @@ import {
   attachFactoryCreativeFile,
   attachFactoryBatchAssets
 } from './controllers/creativeFactoryController';
+import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -351,6 +352,10 @@ app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
 app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDestinationUrl);
 // NORQVA-0006: campaign control (pause/activate, daily budget). ADMIN only, fail-closed.
 app.get('/api/meta-control/status', requireRole(['ADMIN']), getMetaControlStatus);
+// NORQVA-0009: ad alerts
+app.get('/api/alerts', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listAdAlerts);
+app.post('/api/alerts/evaluate', requireRole(['ADMIN']), evaluateAdAlerts);
+app.post('/api/alerts/:id/ack', requireRole(['ADMIN', 'PERFORMANCE']), acknowledgeAdAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
 

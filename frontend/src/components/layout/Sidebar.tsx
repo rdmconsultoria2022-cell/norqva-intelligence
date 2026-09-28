@@ -32,6 +32,8 @@ export interface SidebarProps {
   handleSignOut: () => void;
   onNavigate?: () => void;
   onClose?: () => void;
+  // NORQVA-0009: counters shown next to menu items (e.g. open ad alerts on "Meta Ads")
+  badges?: Record<string, number>;
 }
 
 const navigationItems: NavigationItem[] = [
@@ -56,7 +58,8 @@ export function Sidebar({
   setActiveTab,
   handleSignOut,
   onNavigate,
-  onClose
+  onClose,
+  badges
 }: SidebarProps) {
   return (
     <aside className="w-64 h-full bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
@@ -104,6 +107,15 @@ export function Sidebar({
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
+                {badges && badges[item.id] > 0 && (
+                  <span
+                    data-testid={`badge-${item.id}`}
+                    title="Alertas abertos"
+                    className="ml-auto min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold text-center normal-case tracking-normal"
+                  >
+                    {badges[item.id]}
+                  </span>
+                )}
               </button>
             );
           })}

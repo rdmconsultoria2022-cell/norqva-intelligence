@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { MetaSyncService, MetaSyncResult, MetaSyncOptions } from './metaSyncService';
 import { writeAuditLog } from '../../db/audit';
 import { getDB } from '../../db/db';
+import { AdAlertService } from '../alerts/adAlertService';
 
 export interface MetaSchedulerStatus {
   enabled: boolean;
@@ -247,6 +248,17 @@ export class MetaSchedulerService {
       };
 
       console.log(`[MetaSchedulerService]: Sync cycle (${trigger}) completed successfully in ${durationMs}ms.`);
+
+      // NORQVA-0009: evaluate ad alerts on fresh data. Never breaks the sync.
+      try {
+        const alerts = await new AdAlertService().evaluate(this.pool, isDemo);
+        if (alerts.created > 0 || alerts.resolved > 0) {
+          console.log(`[MetaSchedulerService]: ad alerts — ${alerts.created} opened, ${alerts.resolved} resolved, emailed=${alerts.emailed}.`);
+        }
+      } catch (alertErr: any) {
+        console.warn('[MetaSchedulerService]: ad alert evaluation failed:', alertErr?.message);
+      }
+
       return result;
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
