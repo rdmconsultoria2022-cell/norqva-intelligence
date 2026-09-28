@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { resolveCampaignProducts, allocateSpendToProducts } from '../services/finance/productMediaAllocation';
+import { campaignsForCreatives } from '../services/creative/creativeCampaigns';
 import https from 'https';
 import http from 'http';
 import { emailService } from '../services/emailService';
@@ -921,7 +922,11 @@ export async function getCreatives(req: AuthenticatedRequest, res: Response) {
        ORDER BY c.created_at DESC`,
       [isDemo]
     );
-    return res.status(200).json({ creatives: creatives.rows });
+    // NORQVA-0011: campaign(s) each creative runs in (deterministic: ad name = creative key, or manual link)
+    const campaignsByCreative = await campaignsForCreatives(pool, isDemo, creatives.rows).catch(() => new Map());
+    return res.status(200).json({
+      creatives: creatives.rows.map(c => ({ ...c, campaigns: campaignsByCreative.get(String(c.id)) || [] }))
+    });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch creatives.' });
   }
