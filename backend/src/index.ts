@@ -109,7 +109,13 @@ import {
   reviseFactoryCreative,
   linkFactoryCreativeAd,
   attachFactoryCreativeFile,
-  attachFactoryBatchAssets
+  attachFactoryBatchAssets,
+  listFactoryAdjustments,
+  retryFactoryAdjustment,
+  automationGetAdjustment,
+  automationReportAdjustment,
+  automationDeliverAdjustment,
+  enqueueFactoryAdjustment
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
@@ -371,6 +377,13 @@ app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CR
 app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
 app.post('/api/creative-factory/creatives/:id/file', requireRole(['ADMIN', 'CREATIVE']), attachFactoryCreativeFile);
 app.post('/api/creative-factory/batches/:code/attach-assets', requireRole(['ADMIN']), attachFactoryBatchAssets);
+// NORQVA-0013: adjustment tasks + automation API for the Claude routine (token in X-Norqva-Automation-Token)
+app.get('/api/creative-factory/adjustments', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryAdjustments);
+app.post('/api/creative-factory/adjustments/:id/retry', requireRole(['ADMIN']), retryFactoryAdjustment);
+app.post('/api/creative-factory/creatives/:id/adjustments', requireRole(['ADMIN']), enqueueFactoryAdjustment);
+app.get('/api/automation/adjustments/:id', automationGetAdjustment);
+app.post('/api/automation/adjustments/:id/status', automationReportAdjustment);
+app.post('/api/automation/adjustments/:id/version', automationDeliverAdjustment);
 
 // Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
 app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);
