@@ -50,9 +50,11 @@ export const defaultRoutineFirer: RoutineFirer = async (text) => {
 
 /** Constant-time check of the automation token sent by the routine. */
 export function automationTokenValid(provided: unknown): boolean {
-  const expected = process.env.NORQVA_AUTOMATION_TOKEN || '';
+  // Tolerate accidental spaces/quotes around the value pasted in Render or in the routine environment
+  const clean = (v: string) => v.trim().replace(/^["']|["']$/g, '').trim();
+  const expected = clean(process.env.NORQVA_AUTOMATION_TOKEN || '');
   if (!expected || expected.length < 24 || typeof provided !== 'string') return false;
-  const a = Buffer.from(provided);
+  const a = Buffer.from(clean(provided));
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }

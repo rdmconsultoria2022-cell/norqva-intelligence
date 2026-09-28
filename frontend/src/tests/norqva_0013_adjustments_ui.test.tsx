@@ -56,4 +56,12 @@ describe('NORQVA-0013 — adjustment tasks in the Factory', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/creative-factory/adjustments/a9/retry?mode=real', expect.objectContaining({ method: 'POST' })));
   });
+
+  it('a task stuck in "Enviado ao Claude" can be resent', async () => {
+    const apiFetch = renderWith([base({})], [
+      { id: 'a5', creative_id: 'c1', creative_human_id: 'BB-B01-H03-M1-C1', status: 'DISPATCHED', request_text: 'x', session_url: 'https://claude.ai/code/s' }
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/creative-factory/adjustments/a5/retry?mode=real', expect.objectContaining({ method: 'POST' })));
+  });
 });
