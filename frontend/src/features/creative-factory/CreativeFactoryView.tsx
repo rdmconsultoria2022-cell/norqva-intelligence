@@ -628,13 +628,13 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                         Enviar ao Claude
                       </button>
                     )}
-                    {isAdmin && !q.legacy && (q.status === 'FAILED' || q.status === 'NOT_CONFIGURED') && (
+                    {isAdmin && !q.legacy && (q.status === 'FAILED' || q.status === 'NOT_CONFIGURED' || q.status === 'DISPATCHED') && (
                       <button
                         onClick={() => run(`adj-${q.key}`, () => post(`/creative-factory/adjustments/${q.id}/retry?mode=${mode}`), 'Pedido reenviado ao Claude.')}
                         disabled={busy === `adj-${q.key}`}
                         className="px-2 py-0.5 rounded bg-slate-700 text-white font-bold disabled:opacity-50"
                       >
-                        Tentar de novo
+                        {q.status === 'DISPATCHED' ? 'Reenviar' : 'Tentar de novo'}
                       </button>
                     )}
                   </div>
