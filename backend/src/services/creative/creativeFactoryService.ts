@@ -385,7 +385,10 @@ export class CreativeFactoryService {
       importedBatches: batchRows.rows.map(r => r.batch_code),
       claims: claimsRes.rows,
       creatives: items,
-      rejectionReasons: REJECTION_REASONS
+      rejectionReasons: REJECTION_REASONS,
+      producedAssets: Object.fromEntries(
+        Object.entries(CREATIVE_BATCHES).map(([code, b]) => [code, Object.keys(b.producedAssets || {})])
+      )
     };
   }
 
@@ -547,6 +550,19 @@ export class CreativeFactoryService {
     const hash = computeContentHash({ ...next, mechanism: cur.mechanism, format: cur.format });
     if (hash === cur.content_hash) throw new CreativeFactoryError(400, 'Nenhuma alteração no conteúdo.');
 
+    // NORQVA-0007: only the file changed → attach it to this version. The approved copy stays the same,
+    // and a new version (new key) would break the link with the Meta ad name.
+    const copyUnchanged =
+      next.hook === cur.hook &&
+      (next.primary_text || '') === (cur.primary_text ?? cur.copy ?? '') &&
+      (next.headline || '') === (cur.headline || '') &&
+      next.cta === cur.cta &&
+      (next.script || '') === (cur.script || '');
+    if (copyUnchanged && next.file_url && next.file_url !== cur.file_url) {
+      const attached = await this.attachFile(pool, creativeId, next.file_url, userId, isDemo);
+      return { mode: 'FILE_ATTACHED', creative: attached };
+    }
+
     const reviewed = await pool.query('SELECT 1 FROM creative_reviews WHERE creative_id = $1 LIMIT 1', [creativeId]);
     if (reviewed.rows.length === 0 && cur.approval_status === 'DRAFT') {
       // Never reviewed: edit in place (no review is bound to the old content)
@@ -609,6 +625,66 @@ export class CreativeFactoryService {
     }
     await writeAuditLog(pool, userId, 'CREATIVE_VERSIONED', `Criativo ${cur.human_id} → nova versão ${newKey}`, cur.human_id, newKey, isDemo);
     return { mode: 'NEW_VERSION', creative: ins.rows[0] };
+  }
+
+  /**
+   * NORQVA-0007: attach (or replace) the produced file of a creative without creating a new version.
+   * The file is the production of the approved copy; approval and the Meta link are kept.
+   */
+  async attachFile(pool: Pool, creativeId: string, fileUrl: string, userId: string | null, isDemo: boolean) {
+    const url = String(fileUrl || '').trim();
+    if (!url) throw new CreativeFactoryError(400, 'Informe o link do arquivo.');
+    assertSafeFileUrl(url);
+    const cRes = await pool.query(
+      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
+      [creativeId, isDemo]
+    );
+    if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
+    const cur = cRes.rows[0];
+    if (cur.approval_status === 'SUPERSEDED') {
+      throw new CreativeFactoryError(409, 'Anexe o arquivo na versão mais nova deste criativo.');
+    }
+    const hash = computeContentHash({
+      hook: cur.hook,
+      mechanism: cur.mechanism,
+      cta: cur.cta,
+      format: cur.format,
+      script: cur.script,
+      primary_text: cur.primary_text ?? cur.copy,
+      headline: cur.headline,
+      file_url: url
+    });
+    const upd = await pool.query(
+      `UPDATE creatives SET file_url = $1, content_hash = $2, updated_at = NOW()
+       WHERE id = $3 RETURNING id, human_id, file_url, version, approval_status`,
+      [url, hash, creativeId]
+    );
+    await writeAuditLog(pool, userId, 'CREATIVE_FILE_ATTACHED', `Arquivo anexado ao criativo ${cur.human_id}`, cur.file_url || null, url, isDemo);
+    return upd.rows[0];
+  }
+
+  /** NORQVA-0007: attach every file already produced for a batch to creatives that still have none. */
+  async attachProducedAssets(pool: Pool, batchCode: string, userId: string | null, isDemo: boolean) {
+    const batch = CREATIVE_BATCHES[batchCode];
+    if (!batch) throw new CreativeFactoryError(404, 'Lote não encontrado.');
+    const assets = batch.producedAssets || {};
+    const attached: string[] = [];
+    const skipped: string[] = [];
+    for (const [key, url] of Object.entries(assets)) {
+      const humanId = `${key}${demoSuffix(isDemo)}`;
+      const r = await pool.query(
+        `SELECT id, file_url FROM creatives
+         WHERE human_id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code = $3 AND approval_status <> 'SUPERSEDED'`,
+        [humanId, isDemo, batchCode]
+      );
+      if (r.rows.length === 0 || (r.rows[0].file_url && String(r.rows[0].file_url).trim() !== '')) {
+        skipped.push(key);
+        continue;
+      }
+      await this.attachFile(pool, r.rows[0].id, url, userId, isDemo);
+      attached.push(key);
+    }
+    return { batch: batchCode, attached, skipped, available: Object.keys(assets).length };
   }
 
   async linkMetaAd(pool: Pool, creativeId: string, metaAdId: string, userId: string | null, isDemo: boolean) {

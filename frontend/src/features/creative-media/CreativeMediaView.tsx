@@ -166,9 +166,9 @@ export function CreativeMediaView({
                   <span
                     className="text-slate-500"
                     data-testid="creative-no-file"
-                    title={cr.batch_code ? `Criativo do lote ${cr.batch_code}: arquivo ainda não anexado na Fábrica de Criativos.` : 'Nenhum arquivo anexado a este criativo.'}
+                    title={cr.batch_code ? `Criativo do lote ${cr.batch_code}: anexe o arquivo na Fábrica de Criativos (botão "Anexar arquivo").` : 'Nenhum arquivo anexado a este criativo.'}
                   >
-                    {cr.batch_code ? 'Sem arquivo (Fábrica)' : 'Sem arquivo'}
+                    {cr.batch_code ? 'Sem arquivo · anexe na Fábrica' : 'Sem arquivo'}
                   </span>
                 )}
               </div>

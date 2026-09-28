@@ -66,6 +66,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const [notes, setNotes] = useState('');
   const [editing, setEditing] = useState<{ id: string; headline: string; primary_text: string; file_url: string } | null>(null);
   const [linking, setLinking] = useState<{ id: string; meta_ad_id: string } | null>(null);
+  const [attaching, setAttaching] = useState<{ id: string; file_url: string } | null>(null);
 
   // App re-creates apiFetch/showError/showSuccess on every render: keep them in refs so the
   // loader only changes with mode/period (same pattern as CreativePerformanceView).
@@ -140,6 +141,20 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
     ).then(() => setEditing(null));
   };
 
+  // NORQVA-0007: attach the produced file without creating a new version
+  const submitAttach = () => {
+    if (!attaching) return;
+    const { id, file_url } = attaching;
+    return run(
+      `file-${id}`,
+      () => post(`/creative-factory/creatives/${id}/file?mode=${mode}`, { file_url: file_url.trim() }),
+      'Arquivo anexado ao criativo.'
+    ).then(() => setAttaching(null));
+  };
+
+  const attachBatchAssets = (code: string) =>
+    run(`assets-${code}`, () => post(`/creative-factory/batches/${code}/attach-assets?mode=${mode}`), `Arquivos produzidos do ${code} anexados.`);
+
   const submitLink = () => {
     if (!linking) return;
     const { id, meta_ad_id } = linking;
@@ -165,6 +180,15 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const notImported: string[] = (data?.availableBatches || []).filter((b: string) => !(data?.importedBatches || []).includes(b));
   const claims: any[] = data?.claims || [];
   const pendingClaims = claims.filter(c => c.status === 'UNVERIFIED');
+  const hasFile = (c: any) => !!c.file_url && /^https?:\/\//i.test(c.file_url);
+  const pendingAssets: { code: string; count: number }[] = Object.entries((data?.producedAssets || {}) as Record<string, string[]>)
+    .map(([code, keys]) => ({
+      code,
+      count: creatives.filter(
+        c => c.batch_code === code && c.approval_status !== 'SUPERSEDED' && !hasFile(c) && keys.includes(String(c.human_id).replace(/-DEMO$/, ''))
+      ).length
+    }))
+    .filter(x => x.count > 0);
 
   return (
     <div className="space-y-6 pb-12 max-w-7xl mx-auto">
@@ -201,6 +225,29 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 disabled:opacity-50"
             >
               <Download className="h-3.5 w-3.5" /> Importar {code}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && pendingAssets.length > 0 && (
+        <div
+          data-testid="pending-assets"
+          className="p-4 rounded-xl border border-blue-700/40 bg-blue-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="text-sm text-slate-200">
+            Já existem arquivos produzidos para{' '}
+            <strong>{pendingAssets.map(p => `${p.count} criativo(s) do ${p.code}`).join(', ')}</strong>. Anexe para abrir pelo
+            Creative Lab. Não cria versão nova nem muda a aprovação.
+          </div>
+          {pendingAssets.map(p => (
+            <button
+              key={p.code}
+              onClick={() => attachBatchAssets(p.code)}
+              disabled={busy === `assets-${p.code}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-blue-500 text-slate-950 text-xs font-bold hover:bg-blue-400 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" /> Anexar arquivos produzidos
             </button>
           ))}
         </div>
@@ -405,6 +452,14 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   )}
                   {canRevise && (
                     <button
+                      onClick={() => setAttaching({ id: c.id, file_url: hasFile(c) ? c.file_url : '' })}
+                      className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs"
+                    >
+                      {hasFile(c) ? 'Trocar arquivo' : 'Anexar arquivo'}
+                    </button>
+                  )}
+                  {canRevise && (
+                    <button
                       onClick={() => setEditing({ id: c.id, headline: c.headline || '', primary_text: c.primary_text || '', file_url: c.file_url || '' })}
                       className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs"
                     >
@@ -457,7 +512,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
               {editing?.id === c.id && (
                 <div className="space-y-2 border-t border-slate-800 pt-2 text-xs">
                   <p className="text-[11px] text-slate-500">
-                    Se este criativo já foi revisado, salvar cria uma nova versão e a atual vira "Substituído".
+                    Se este criativo já foi revisado, mudar título ou texto cria uma nova versão e a atual vira "Substituído". Para só anexar o arquivo, use "Anexar arquivo".
                   </p>
                   <input
                     aria-label="Título"
@@ -483,6 +538,33 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                       Salvar
                     </button>
                     <button onClick={() => setEditing(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {attaching?.id === c.id && (
+                <div className="space-y-2 border-t border-slate-800 pt-2 text-xs">
+                  <p className="text-[11px] text-slate-500">
+                    Link público do vídeo ou imagem (http/https). Mantém esta versão, a aprovação e o vínculo com o anúncio.
+                  </p>
+                  <input
+                    aria-label="Link do arquivo produzido"
+                    placeholder="https://..."
+                    value={attaching?.file_url || ''}
+                    onChange={e => { const v = e.target.value; setAttaching(prev => (prev ? { ...prev, file_url: v } : prev)); }}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={submitAttach}
+                      disabled={!/^https?:\/\/\S+$/i.test((attaching?.file_url || '').trim()) || busy === `file-${c.id}`}
+                      className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-50"
+                    >
+                      Anexar
+                    </button>
+                    <button onClick={() => setAttaching(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
                       Cancelar
                     </button>
                   </div>

@@ -44,7 +44,7 @@ describe('NORQVA-0006 — Creative Lab "Abrir Arquivo"', () => {
     const links = screen.getAllByRole('link', { name: 'Abrir Arquivo' });
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveAttribute('href', 'https://cdn.test/v.mp4');
-    expect(screen.getByTestId('creative-no-file')).toHaveTextContent('Sem arquivo (Fábrica)');
+    expect(screen.getByTestId('creative-no-file')).toHaveTextContent('Sem arquivo · anexe na Fábrica');
     expect(screen.getByText('Disponível do mês')).toBeInTheDocument();
     expect(screen.getByText('Organize seu dinheiro')).toBeInTheDocument();
   });

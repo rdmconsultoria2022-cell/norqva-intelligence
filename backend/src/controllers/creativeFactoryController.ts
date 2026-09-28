@@ -113,3 +113,24 @@ export async function linkFactoryCreativeAd(req: AuthenticatedRequest, res: Resp
     return handle(res, err, 'Falha ao ligar o anúncio.');
   }
 }
+
+// NORQVA-0007: attach a produced file without creating a new version
+export async function attachFactoryCreativeFile(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const result = await service.attachFile(pool, String(req.params.id), String(req.body?.file_url || ''), req.user?.id || null, isDemoReq(req));
+    return res.status(200).json(result);
+  } catch (err) {
+    return handle(res, err, 'Falha ao anexar o arquivo.');
+  }
+}
+
+export async function attachFactoryBatchAssets(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const result = await service.attachProducedAssets(pool, String(req.params.code), req.user?.id || null, isDemoReq(req));
+    return res.status(200).json(result);
+  } catch (err) {
+    return handle(res, err, 'Falha ao anexar os arquivos do lote.');
+  }
+}
