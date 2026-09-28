@@ -59,7 +59,7 @@ describe('NORQVA-0007 — attach produced files (UI)', () => {
       Promise.resolve(payload([creative({ file_url: 'https://cdn.test/h01.mp4' }), creative({ id: 'c2', human_id: 'BB-B01-H03-M1-C1', file_url: 'https://cdn.test/h03.mp4' })]))
     );
     renderView(apiFetch);
-    expect((await screen.findAllByText('Ver arquivo')).length).toBe(2);
+    expect((await screen.findAllByTestId('creative-preview-video')).length).toBe(2);
     expect(screen.queryByTestId('pending-assets')).toBeNull();
   });
 

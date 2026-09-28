@@ -34,16 +34,17 @@ describe('NORQVA-0006 — Creative Lab "Abrir Arquivo"', () => {
     expect(isOpenableFileUrl('arquivo.mp4')).toBe(false);
   });
 
-  it('shows the link for a real file and a label for a Factory creative without file', () => {
+  it('previews a real file inline and labels a Factory creative without file', () => {
     renderLab([
       { ...base, id: 'a', human_id: 'CRT-001', hook: 'Com arquivo', concept: 'c', copy: 'x', file_url: 'https://cdn.test/v.mp4' },
       { ...base, id: 'b', human_id: 'BB-B01-H01-M1-C1', hook: 'Sem arquivo', concept: null, copy: null,
         mechanism: 'Disponível do mês', primary_text: 'Organize seu dinheiro', file_url: null, batch_code: 'BB-B01' }
     ]);
 
-    const links = screen.getAllByRole('link', { name: 'Abrir Arquivo' });
-    expect(links).toHaveLength(1);
-    expect(links[0]).toHaveAttribute('href', 'https://cdn.test/v.mp4');
+    // NORQVA-0010: the file is previewed inline (video player) instead of an "Abrir Arquivo" link
+    const videos = screen.getAllByTestId('creative-preview-video');
+    expect(videos).toHaveLength(1);
+    expect(videos[0].getAttribute('src')).toContain('https://cdn.test/v.mp4');
     expect(screen.getByTestId('creative-no-file')).toHaveTextContent('Sem arquivo · anexe na Fábrica');
     expect(screen.getByText('Disponível do mês')).toBeInTheDocument();
     expect(screen.getByText('Organize seu dinheiro')).toBeInTheDocument();

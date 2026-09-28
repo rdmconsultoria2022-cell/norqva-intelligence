@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2 } from 'lucide-react';
 import { UserObj } from '../../types';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
+import { CreativePreview } from '../../components/CreativePreview';
 
 // NORQVA-0005 / G1: Creative Factory — batch matrix, claims gate, human approval and
 // a deterministic scorecard per creative (Meta ad name == creative key).
@@ -370,9 +371,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                 <div className="text-slate-400">{c.primary_text}</div>
                 <div><span className="text-slate-500">CTA:</span> {c.cta}</div>
                 {c.file_url && /^https?:\/\//i.test(c.file_url) ? (
-                  <a href={c.file_url} target="_blank" rel="noreferrer" className="text-emerald-300 underline">
-                    Ver arquivo
-                  </a>
+                  <CreativePreview url={c.file_url} format={c.format} title={c.human_id} className="pt-1" />
                 ) : (
                   <div className="text-amber-300/80">Arquivo ainda não produzido</div>
                 )}
