@@ -200,6 +200,43 @@ describe('NORQVA-0005 G1 — Creative Factory', () => {
     expect(unlinked.metrics).toBeNull();
   });
 
+  it('revoking a claim sends approved creatives that use it back to revision', async () => {
+    const body = await list();
+    const v2 = body.creatives.find((c: any) => c.human_id === 'BB-B01-H02-M1-C1-V2-DEMO');
+    const ok = await as(adminToken).post(`/api/creative-factory/creatives/${v2.id}/review?mode=demo`, { decision: 'APPROVED' });
+    expect(ok.status).toBe(200);
+
+    const m1Claim = v2.claims.find((cl: any) => cl.human_id === 'BB-CL-02-DEMO');
+    const revoke = await as(adminToken).patch(`/api/creative-factory/claims/${m1Claim.id}?mode=demo`, { status: 'REJECTED', note: 'teste de revogação' });
+    expect(revoke.status).toBe(200);
+
+    const after = await list();
+    expect(after.creatives.find((c: any) => c.id === v2.id).approval_status).toBe('REVISION_REQUESTED');
+
+    // restore for any later assertions
+    await as(adminToken).patch(`/api/creative-factory/claims/${m1Claim.id}?mode=demo`, { status: 'VERIFIED' });
+  });
+
+  it('rejects unsafe file links, oversized CTAs and non-factory creatives', async () => {
+    const body = await list();
+    const draft = body.creatives.find((c: any) => c.human_id === 'BB-B01-H05-M1-C1-DEMO');
+    const js = await as(creativeToken).post(`/api/creative-factory/creatives/${draft.id}/revise?mode=demo`, { file_url: 'javascript:alert(1)' });
+    expect(js.status).toBe(400);
+    const longCta = await as(creativeToken).post(`/api/creative-factory/creatives/${draft.id}/revise?mode=demo`, { cta: 'x'.repeat(101) });
+    expect(longCta.status).toBe(400);
+    const good = await as(creativeToken).post(`/api/creative-factory/creatives/${draft.id}/revise?mode=demo`, { file_url: 'https://drive.example.com/video.mp4' });
+    expect(good.status).toBe(200);
+
+    const legacy = await pool.query(
+      `INSERT INTO creatives (human_id, product_id, hook, concept, copy, cta, format, file_url, status, is_demo)
+       VALUES ($1, 'c0000000-0000-4000-8000-000000000001', 'h', 'c', 'x', 'cta', 'IMAGE', 'https://x.test/a.png', 'IDEIA', TRUE)
+       RETURNING id`,
+      [`LEGACY-0005-${Date.now()}`]
+    );
+    const r = await as(adminToken).post(`/api/creative-factory/creatives/${legacy.rows[0].id}/review?mode=demo`, { decision: 'REJECTED', reason_code: 'OTHER' });
+    expect(r.status).toBe(404);
+  });
+
   it('recommendation rules follow the unit economics (breakeven R$ 26,12 / target R$ 17,15)', () => {
     const m = (o: Partial<Record<string, number>>) => ({
       spend: 0, impressions: 0, link_clicks: 0, offer_views: 0, checkout_modal_opened: 0, checkout_started: 0, paid_orders: 0, gross_revenue: 0, ...o

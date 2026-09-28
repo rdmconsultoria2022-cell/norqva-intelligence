@@ -233,7 +233,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 Checkout Seguro
               </h3>
               <p className="text-xs text-stone-500 font-medium">
-                Liberação Imediata via Pix • Acesso Vitalício
+                Liberação Imediata via Pix • Pagamento Único
               </p>
             </div>
           </div>

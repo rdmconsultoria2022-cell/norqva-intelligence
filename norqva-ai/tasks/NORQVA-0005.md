@@ -11,7 +11,7 @@ Permitir criar, aprovar e medir **vários criativos para a mesma campanha** com 
 ## Escopo
 
 ### G0: verdade de mensuração por anúncio
-1. `creativePerformanceService` lê `commercial_funnel_events`, e não mais a inexistente `telemetry_events`. Conta OFFER_VIEW/LANDING_PAGE_VIEW, CHECKOUT_MODAL_OPENED e CHECKOUT_STARTED.
+1. `creativePerformanceService` lê `commercial_funnel_events`, e não mais a inexistente `telemetry_events`. Conta OFFER_VIEW (evento de landing da página pública), CHECKOUT_MODAL_OPENED e CHECKOUT_STARTED.
 2. Vínculo evento/pedido → anúncio, somente determinístico:
    - `metadata.ad_id`/`attribution_metadata.ad_id` = `meta_ad_id`;
    - `utm_content` = nome do anúncio (sem diferenciar maiúsculas);

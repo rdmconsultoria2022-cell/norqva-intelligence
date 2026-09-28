@@ -311,7 +311,7 @@ export class CreativePerformanceService {
              COUNT(*)::int as count
       FROM commercial_funnel_events
       WHERE is_demo = $1
-        AND event_type IN ('LANDING_PAGE_VIEW', 'OFFER_VIEW', 'CHECKOUT_MODAL_OPENED', 'CHECKOUT_STARTED')
+        AND event_type IN ('OFFER_VIEW', 'CHECKOUT_MODAL_OPENED', 'CHECKOUT_STARTED')
     `;
     const telemetryParams: any[] = [isDemo];
 
@@ -335,7 +335,9 @@ export class CreativePerformanceService {
       if (!matchedAdMetaId) continue;
       const cur = telemetryByAd.get(matchedAdMetaId) || { offer_views: 0, checkout_modal_opened: 0, checkout_started: 0 };
       const count = Number(tel.count) || 0;
-      if (tel.event_type === 'OFFER_VIEW' || tel.event_type === 'LANDING_PAGE_VIEW') {
+      // The public offer page emits OFFER_VIEW as its landing event; LANDING_PAGE_VIEW is not
+      // added on top of it to avoid double counting if both are ever emitted.
+      if (tel.event_type === 'OFFER_VIEW') {
         cur.offer_views += count;
       } else if (tel.event_type === 'CHECKOUT_MODAL_OPENED') {
         cur.checkout_modal_opened += count;

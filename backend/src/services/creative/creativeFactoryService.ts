@@ -32,6 +32,13 @@ export class CreativeFactoryError extends Error {
 
 const demoSuffix = (isDemo: boolean) => (isDemo ? '-DEMO' : '');
 
+function assertSafeFileUrl(url: string | null | undefined) {
+  if (url === null || url === undefined || url === '') return;
+  if (!/^https?:\/\/[^\s]+$/i.test(url)) {
+    throw new CreativeFactoryError(400, 'O link do arquivo precisa começar com http:// ou https://.');
+  }
+}
+
 // "$1, $2, ..." placeholders for an IN list (portable across Postgres and pg-mem)
 function inList(values: any[], offset = 0): string {
   return values.map((_, i) => `$${i + 1 + offset}`).join(', ');
@@ -410,6 +417,23 @@ export class CreativeFactoryService {
              WHERE id = $3 RETURNING id, human_id, status, status_note, verified_at`,
             [status, note, claimId]
           );
+    // An approval is only valid while every claim it relies on stays VERIFIED
+    if (status !== 'VERIFIED') {
+      const affected = await pool.query(
+        `SELECT c.id, c.human_id, c.content_hash FROM creatives c
+         JOIN creative_claims cc ON cc.creative_id = c.id
+         WHERE cc.claim_id = $1 AND c.approval_status = 'APPROVED'`,
+        [claimId]
+      );
+      for (const c of affected.rows) {
+        await pool.query(
+          `INSERT INTO creative_reviews (creative_id, content_hash, decision, reason_code, notes, reviewer_id, is_demo)
+           VALUES ($1, $2, 'REVISION_REQUESTED', 'POLICY_RISK', $3, $4, $5)`,
+          [c.id, c.content_hash || 'UNHASHED', `Claim ${prev.rows[0].human_id} deixou de estar verificada`, userId, isDemo]
+        );
+        await pool.query(`UPDATE creatives SET approval_status = 'REVISION_REQUESTED', updated_at = NOW() WHERE id = $1`, [c.id]);
+      }
+    }
     await writeAuditLog(pool, userId, 'CLAIM_STATUS_CHANGED', `Claim ${prev.rows[0].human_id}: ${prev.rows[0].status} → ${status}`, prev.rows[0].status, status, isDemo);
     return res.rows[0];
   }
@@ -434,7 +458,7 @@ export class CreativeFactoryService {
     }
 
     const cRes = await pool.query(
-      'SELECT id, human_id, approval_status, content_hash FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
+      'SELECT id, human_id, approval_status, content_hash FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
       [creativeId, isDemo]
     );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
@@ -493,16 +517,28 @@ export class CreativeFactoryService {
     userId: string | null,
     isDemo: boolean
   ) {
-    const cRes = await pool.query('SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE', [creativeId, isDemo]);
+    const cRes = await pool.query(
+      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
+      [creativeId, isDemo]
+    );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
     const cur = cRes.rows[0];
     if (cur.approval_status === 'SUPERSEDED') {
       throw new CreativeFactoryError(409, 'Edite a versão mais nova deste criativo.');
     }
 
+    assertSafeFileUrl(changes.file_url);
+    if (changes.cta !== undefined && String(changes.cta).length > 100) {
+      throw new CreativeFactoryError(400, 'O CTA pode ter no máximo 100 caracteres.');
+    }
+    for (const [field, value] of Object.entries({ hook: changes.hook, primary_text: changes.primary_text, cta: changes.cta })) {
+      if (value !== undefined && String(value).trim() === '') {
+        throw new CreativeFactoryError(400, `O campo ${field} não pode ficar vazio.`);
+      }
+    }
     const next = {
       hook: changes.hook ?? cur.hook,
-      primary_text: changes.primary_text ?? cur.primary_text,
+      primary_text: changes.primary_text ?? cur.primary_text ?? cur.copy,
       headline: changes.headline ?? cur.headline,
       cta: changes.cta ?? cur.cta,
       script: changes.script ?? cur.script,
@@ -531,37 +567,52 @@ export class CreativeFactoryService {
     const version = (maxV.rows[0]?.v || cur.version || 1) + 1;
     const newKey = `${rootKey}-V${version}${demoSuffix(isDemo)}`;
 
-    const ins = await pool.query(
-      `INSERT INTO creatives (
-         human_id, product_id, offer_id, hook, concept, copy, cta, format, file_url, responsible_id, status, is_demo,
-         batch_code, hook_family, angle, pain, desire, mechanism, proof_type, audience, duration_seconds,
-         primary_text, headline, script, generation_source, parent_creative_id, root_creative_id, version,
-         lineage_code, utm_content_key, content_hash, approval_status
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'IDEIA', $11,
-         $12, $13, $14, $15, $16, $17, $18, $19, $20,
-         $6, $21, $22, $23, $24, $25, $26,
-         $27, $1, $28, 'DRAFT'
-       ) RETURNING id, human_id, version, approval_status`,
-      [
-        newKey, cur.product_id, cur.offer_id, next.hook, cur.concept, next.primary_text, next.cta, cur.format, next.file_url, userId, isDemo,
-        cur.batch_code, cur.hook_family, cur.angle, cur.pain, cur.desire, cur.mechanism, cur.proof_type, cur.audience, cur.duration_seconds,
-        next.headline, next.script, 'HUMAN', cur.id, rootId, version,
-        `${cur.lineage_code || rootKey}>V${version}`, hash
-      ]
-    );
-    const newId = ins.rows[0].id;
-    await pool.query(
-      'INSERT INTO creative_claims (creative_id, claim_id) SELECT $1, claim_id FROM creative_claims WHERE creative_id = $2 ON CONFLICT DO NOTHING',
-      [newId, cur.id]
-    );
-    await pool.query(`UPDATE creatives SET approval_status = 'SUPERSEDED', updated_at = NOW() WHERE id = $1`, [cur.id]);
+    // New version + claim copy + supersede old one: all or nothing
+    const client = await pool.connect();
+    let ins: any;
+    try {
+      await client.query('BEGIN');
+      ins = await client.query(
+        `INSERT INTO creatives (
+           human_id, product_id, offer_id, hook, concept, copy, cta, format, file_url, responsible_id, status, is_demo,
+           batch_code, hook_family, angle, pain, desire, mechanism, proof_type, audience, duration_seconds,
+           primary_text, headline, script, generation_source, parent_creative_id, root_creative_id, version,
+           lineage_code, utm_content_key, content_hash, approval_status
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'IDEIA', $11,
+           $12, $13, $14, $15, $16, $17, $18, $19, $20,
+           $6, $21, $22, $23, $24, $25, $26,
+           $27, $1, $28, 'DRAFT'
+         ) RETURNING id, human_id, version, approval_status`,
+        [
+          newKey, cur.product_id, cur.offer_id, next.hook, cur.concept, next.primary_text, next.cta, cur.format, next.file_url, userId, isDemo,
+          cur.batch_code, cur.hook_family, cur.angle, cur.pain, cur.desire, cur.mechanism, cur.proof_type, cur.audience, cur.duration_seconds,
+          next.headline, next.script, 'HUMAN', cur.id, rootId, version,
+          `${cur.lineage_code || rootKey}>V${version}`, hash
+        ]
+      );
+      const newId = ins.rows[0].id;
+      await client.query(
+        'INSERT INTO creative_claims (creative_id, claim_id) SELECT $1::uuid, claim_id FROM creative_claims WHERE creative_id = $2::uuid ON CONFLICT DO NOTHING',
+        [newId, cur.id]
+      );
+      await client.query(`UPDATE creatives SET approval_status = 'SUPERSEDED', updated_at = NOW() WHERE id = $1`, [cur.id]);
+      await client.query('COMMIT');
+    } catch (err: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (err?.code === '23505') {
+        throw new CreativeFactoryError(409, 'Outra edição deste criativo acabou de ser salva. Recarregue e tente de novo.');
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
     await writeAuditLog(pool, userId, 'CREATIVE_VERSIONED', `Criativo ${cur.human_id} → nova versão ${newKey}`, cur.human_id, newKey, isDemo);
     return { mode: 'NEW_VERSION', creative: ins.rows[0] };
   }
 
   async linkMetaAd(pool: Pool, creativeId: string, metaAdId: string, userId: string | null, isDemo: boolean) {
-    const c = await pool.query('SELECT id, human_id FROM creatives WHERE id = $1 AND is_demo = $2', [creativeId, isDemo]);
+    const c = await pool.query('SELECT id, human_id FROM creatives WHERE id = $1 AND is_demo = $2 AND batch_code IS NOT NULL', [creativeId, isDemo]);
     if (c.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
     const ad = await pool.query('SELECT meta_ad_id FROM meta_ads WHERE meta_ad_id = $1 AND is_demo = $2', [metaAdId, isDemo]);
     if (ad.rows.length === 0) throw new CreativeFactoryError(404, 'Anúncio da Meta não encontrado (sincronize antes).');

@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS claims_registry (
 
 CREATE TABLE IF NOT EXISTS creative_claims (
   creative_id UUID NOT NULL REFERENCES creatives(id) ON DELETE CASCADE,
-  claim_id UUID NOT NULL REFERENCES claims_registry(id) ON DELETE RESTRICT,
+  claim_id UUID NOT NULL REFERENCES claims_registry(id) ON DELETE CASCADE,
   PRIMARY KEY (creative_id, claim_id)
 );
 

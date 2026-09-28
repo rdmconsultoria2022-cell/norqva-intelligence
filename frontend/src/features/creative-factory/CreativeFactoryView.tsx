@@ -67,17 +67,26 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const [editing, setEditing] = useState<{ id: string; headline: string; primary_text: string; file_url: string } | null>(null);
   const [linking, setLinking] = useState<{ id: string; meta_ad_id: string } | null>(null);
 
+  // App re-creates apiFetch/showError/showSuccess on every render: keep them in refs so the
+  // loader only changes with mode/period (same pattern as CreativePerformanceView).
+  const apiFetchRef = React.useRef(apiFetch);
+  apiFetchRef.current = apiFetch;
+  const showErrorRef = React.useRef(showError);
+  showErrorRef.current = showError;
+  const showSuccessRef = React.useRef(showSuccess);
+  showSuccessRef.current = showSuccess;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/creative-factory/creatives?mode=${mode}&${periodQs}`);
+      const res = await apiFetchRef.current(`/creative-factory/creatives?mode=${mode}&${periodQs}`);
       setData(res);
     } catch (err: any) {
-      showError(err.message || 'Erro ao carregar a Fábrica de Criativos.');
+      showErrorRef.current(err.message || 'Erro ao carregar a Fábrica de Criativos.');
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, mode, periodQs, showError]);
+  }, [mode, periodQs]);
 
   useEffect(() => {
     load();
@@ -87,17 +96,17 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
     setBusy(key);
     try {
       await fn();
-      showSuccess(ok);
+      showSuccessRef.current(ok);
       await load();
     } catch (err: any) {
-      showError(err.message || 'Operação falhou.');
+      showErrorRef.current(err.message || 'Operação falhou.');
     } finally {
       setBusy(null);
     }
   };
 
   const post = (url: string, body: any = {}, method = 'POST') =>
-    apiFetch(url, { method, body: JSON.stringify(body) });
+    apiFetchRef.current(url, { method, body: JSON.stringify(body) });
 
   const importBatch = (code: string) =>
     run(`import-${code}`, () => post(`/creative-factory/batches/${code}/import?mode=${mode}`), `Lote ${code} importado.`);
@@ -312,7 +321,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                 <div><span className="text-slate-500">Título:</span> {c.headline}</div>
                 <div className="text-slate-400">{c.primary_text}</div>
                 <div><span className="text-slate-500">CTA:</span> {c.cta}</div>
-                {c.file_url ? (
+                {c.file_url && /^https?:\/\//i.test(c.file_url) ? (
                   <a href={c.file_url} target="_blank" rel="noreferrer" className="text-emerald-300 underline">
                     Ver arquivo
                   </a>
