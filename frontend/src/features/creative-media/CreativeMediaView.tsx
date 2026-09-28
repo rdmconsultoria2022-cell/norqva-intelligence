@@ -3,6 +3,16 @@ import { Plus, Film, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { UserObj } from '../../types';
 
+export function isOpenableFileUrl(url: unknown): url is string {
+  if (typeof url !== 'string' || !url.trim()) return false;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export interface CreativeMediaProps {
   creatives: any[];
   products: any[];
@@ -137,20 +147,30 @@ export function CreativeMediaView({
                 
                 <div className="mt-2 text-xs">
                   <span className="text-slate-500 font-mono uppercase">Conceito</span>
-                  <p className="text-slate-300">{cr.concept}</p>
+                  <p className="text-slate-300">{cr.concept || cr.mechanism || '—'}</p>
                 </div>
 
                 <div className="mt-2 text-xs">
                   <span className="text-slate-500 font-mono uppercase">Copy</span>
-                  <p className="text-slate-300 line-clamp-2">{cr.copy}</p>
+                  <p className="text-slate-300 line-clamp-2">{cr.copy || cr.primary_text || '—'}</p>
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-850 text-xs font-mono">
                 <span className="text-slate-500">CTA: {cr.cta}</span>
-                <a href={cr.file_url} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">
-                  Abrir Arquivo
-                </a>
+                {isOpenableFileUrl(cr.file_url) ? (
+                  <a href={cr.file_url} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">
+                    Abrir Arquivo
+                  </a>
+                ) : (
+                  <span
+                    className="text-slate-500"
+                    data-testid="creative-no-file"
+                    title={cr.batch_code ? `Criativo do lote ${cr.batch_code}: arquivo ainda não anexado na Fábrica de Criativos.` : 'Nenhum arquivo anexado a este criativo.'}
+                  >
+                    {cr.batch_code ? 'Sem arquivo (Fábrica)' : 'Sem arquivo'}
+                  </span>
+                )}
               </div>
             </div>
           ))
