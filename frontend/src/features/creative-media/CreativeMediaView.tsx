@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Plus, Film, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { UserObj } from '../../types';
+import { CreativePreview } from '../../components/CreativePreview';
 
 export function isOpenableFileUrl(url: unknown): url is string {
   if (typeof url !== 'string' || !url.trim()) return false;
@@ -139,7 +140,11 @@ export function CreativeMediaView({
                     {cr.status}
                   </span>
                 </div>
-                
+
+                {isOpenableFileUrl(cr.file_url) && (
+                  <CreativePreview url={cr.file_url} format={cr.format} title={cr.human_id} className="mt-3" />
+                )}
+
                 <div className="mt-3 text-xs">
                   <span className="text-slate-500 font-mono uppercase">Gancho (Hook)</span>
                   <p className="text-slate-200 font-semibold italic">"{cr.hook}"</p>
@@ -159,9 +164,7 @@ export function CreativeMediaView({
               <div className="flex items-center justify-between pt-2 border-t border-slate-850 text-xs font-mono">
                 <span className="text-slate-500">CTA: {cr.cta}</span>
                 {isOpenableFileUrl(cr.file_url) ? (
-                  <a href={cr.file_url} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">
-                    Abrir Arquivo
-                  </a>
+                  <span className="text-slate-500">Arquivo anexado</span>
                 ) : (
                   <span
                     className="text-slate-500"
