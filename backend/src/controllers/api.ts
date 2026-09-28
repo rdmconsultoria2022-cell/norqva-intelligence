@@ -69,6 +69,33 @@ function getMediaSpendProvenanceClause(isDemo: boolean): string {
         )`;
 }
 
+// Helper (NORQVA-0003b): all-time verified media spend, same semantics as the financial dashboard.
+// Daily rows only; ACCOUNT level when the sync stored it, otherwise CAMPAIGN level. Never both,
+// never ADSET/AD (those repeat the same spend). Production currently has no ACCOUNT rows.
+async function aggregateVerifiedMediaSpend(pool: Pool, isDemo: boolean) {
+  const provenance = getMediaSpendProvenanceClause(isDemo);
+  const run = (level: 'ACCOUNT' | 'CAMPAIGN') =>
+    pool.query(
+      `SELECT
+         COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
+         COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
+         COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
+         COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
+       FROM meta_insights mi
+       JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
+       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+       WHERE ${provenance}
+         AND mi.entity_level = $1
+         AND mi.date_start = mi.date_stop`,
+      [level]
+    );
+  let row = (await run('ACCOUNT')).rows[0];
+  if (parseFloat(row?.total_spend || '0') === 0) {
+    row = (await run('CAMPAIGN')).rows[0];
+  }
+  return row;
+}
+
 // Helper: safe math division
 function safeDivide(numerator: number, denominator: number): number | 'Dados insuficientes' {
   if (!denominator || denominator === 0) return 'Dados insuficientes';
@@ -4640,24 +4667,11 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     const isDemo = req.query.mode === 'demo';
 
     // 1. Meta Insights & Connection Aggregation (Pure SELECT, no side effects)
-    const metaInsightsRes = await pool.query(
-      // NORQVA-0003: the sync stores the SAME spend at ACCOUNT, CAMPAIGN, ADSET and AD level,
-      // plus period aggregates. Summing every row multiplied the spend (~4x). Aggregate only
-      // daily ACCOUNT rows from a verified source, the same rule as the financial dashboard.
-      `SELECT 
-         COALESCE(SUM(mi.spend), 0)::numeric as total_spend,
-         COALESCE(SUM(mi.impressions), 0)::bigint as total_impressions,
-         COALESCE(SUM(mi.reach), 0)::bigint as total_reach,
-         COALESCE(SUM(mi.clicks), 0)::bigint as total_clicks
-       FROM meta_insights mi
-       JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
-       LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
-       WHERE ${getMediaSpendProvenanceClause(isDemo)}
-         AND mi.entity_level = 'ACCOUNT'
-         AND mi.date_start = mi.date_stop`
-    );
-    const metaStats = metaInsightsRes.rows[0];
-    const totalSpend = parseFloat(metaStats.total_spend);
+    // NORQVA-0003: the sync stores the SAME spend at several levels plus period aggregates.
+    // Summing every row multiplied the spend. Use the financial dashboard rule (daily rows,
+    // ACCOUNT level with CAMPAIGN fallback) so both screens always show the same number.
+    const metaStats = await aggregateVerifiedMediaSpend(pool, isDemo);
+    const totalSpend = Math.round(parseFloat(metaStats.total_spend) * 100) / 100;
     const totalImpressions = parseInt(metaStats.total_impressions, 10);
     const totalReach = parseInt(metaStats.total_reach, 10);
     const totalClicks = parseInt(metaStats.total_clicks, 10);
