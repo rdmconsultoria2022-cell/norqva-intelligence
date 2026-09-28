@@ -51,6 +51,16 @@ const REASON_LABEL: Record<string, string> = {
 const brl = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const ADJ_STATUS: Record<string, { label: string; cls: string }> = {
+  QUEUED: { label: 'Na fila', cls: 'bg-slate-800 text-slate-300' },
+  NOT_CONFIGURED: { label: 'Automação não configurada', cls: 'bg-slate-800 text-amber-300' },
+  DISPATCHED: { label: 'Enviado ao Claude', cls: 'bg-blue-950 text-blue-300' },
+  IN_PROGRESS: { label: 'Claude trabalhando', cls: 'bg-blue-950 text-blue-300' },
+  DONE: { label: 'Nova versão pronta', cls: 'bg-emerald-950 text-emerald-300' },
+  NEEDS_INPUT: { label: 'Precisa de você', cls: 'bg-amber-900 text-amber-200' },
+  FAILED: { label: 'Falhou', cls: 'bg-red-950 text-red-300' }
+};
+
 export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showError, showSuccess }: CreativeFactoryViewProps) {
   const { globalPeriod } = useGlobalPeriod();
   const periodQs = periodQuery(globalPeriod);
@@ -82,11 +92,31 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const showSuccessRef = React.useRef(showSuccess);
   showSuccessRef.current = showSuccess;
 
+  // NORQVA-0013: adjustment tasks sent to Claude
+  const [adjustments, setAdjustments] = useState<any[]>([]);
+  const loadAdjustments = useCallback(async () => {
+    try {
+      const r = await apiFetchRef.current(`/creative-factory/adjustments?mode=${mode}`);
+      setAdjustments(Array.isArray(r?.adjustments) ? r.adjustments : []);
+    } catch {
+      /* keep previous */
+    }
+  }, [mode]);
+  const working = adjustments.some(a => a.status === 'DISPATCHED' || a.status === 'IN_PROGRESS');
+  useEffect(() => {
+    if (!working) return;
+    const t = setInterval(() => {
+      loadAdjustments();
+    }, 20000);
+    return () => clearInterval(t);
+  }, [working, loadAdjustments]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiFetchRef.current(`/creative-factory/creatives?mode=${mode}&${periodQs}`);
       setData(res);
+      loadAdjustments();
     } catch (err: any) {
       showErrorRef.current(err.message || 'Erro ao carregar a Fábrica de Criativos.');
     } finally {
@@ -197,6 +227,22 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
 
   const groups = groupByCampaign(visible);
   const revisionQueue = creatives.filter(c => c.approval_status === 'REVISION_REQUESTED');
+  const openAdjustments = adjustments.filter(a => a.status !== 'DONE' || (a.result_creative_id && creatives.some(c => c.id === a.result_creative_id && c.approval_status === 'DRAFT')));
+  const queueItems: any[] = [
+    ...openAdjustments.map(a => ({ ...a, key: a.id, legacy: false })),
+    // requests made before NORQVA-0013 (no task yet)
+    ...revisionQueue
+      .filter(c => !adjustments.some(a => a.creative_id === c.id))
+      .map(c => ({
+        key: `legacy-${c.id}`,
+        legacy: true,
+        creative_id: c.id,
+        creative_human_id: c.human_id,
+        status: 'QUEUED',
+        request_text: c.reviews?.[0]?.notes || 'Ajuste pedido',
+        created_at: c.reviews?.[0]?.created_at
+      }))
+  ];
   const openInList = (id: string) => {
     setViewMode('list');
     setFocusId(id);
@@ -545,25 +591,53 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
         </div>
       )}
 
-      {/* NORQVA-0011: queue of adjustment requests (they wait here until a new version is produced) */}
-      {revisionQueue.length > 0 && (
+      {/* NORQVA-0011/0013: adjustment requests and what Claude is doing with them */}
+      {queueItems.length > 0 && (
         <section className="p-4 rounded-xl border border-amber-700/40 bg-amber-950/20 space-y-2" data-testid="revision-queue">
-          <h2 className="text-sm font-bold text-amber-200">Ajustes pedidos ({revisionQueue.length})</h2>
+          <h2 className="text-sm font-bold text-amber-200">Ajustes pedidos ({queueItems.length})</h2>
           <p className="text-[11px] text-slate-400">
-            Ficam aqui até a nova versão ser produzida. O criativo que já está rodando na Meta continua no ar até ser substituído ou pausado.
+            Cada pedido é enviado ao Claude, que produz uma nova versão (rascunho) para você aprovar. O anúncio que já está na Meta continua no ar até a nova versão ser aprovada e publicada.
           </p>
-          <ul className="space-y-1.5 text-xs">
-            {revisionQueue.map((c: any) => {
-              const r = c.reviews?.[0];
+          <ul className="space-y-2 text-xs">
+            {queueItems.map((q: any) => {
+              const st = ADJ_STATUS[q.status] || ADJ_STATUS.QUEUED;
               return (
-                <li key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-t border-amber-800/30 pt-1.5">
-                  <span className="text-slate-200">
-                    <button onClick={() => openInList(c.id)} className="font-mono text-emerald-300 hover:underline">{c.human_id}</button>
-                    {r?.notes ? ` — “${r.notes}”` : ''}
-                  </span>
-                  <span className="text-[10px] text-slate-500 shrink-0">
-                    {r?.reviewer_name || ''} {r?.created_at ? `· ${new Date(r.created_at).toLocaleString('pt-BR')}` : ''}
-                  </span>
+                <li key={q.key} className="border-t border-amber-800/30 pt-2 space-y-1" data-testid="adjustment-item">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={() => openInList(q.creative_id)} className="font-mono text-emerald-300 hover:underline">{q.creative_human_id}</button>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${st.cls}`} data-testid="adjustment-status">{st.label}</span>
+                    <span className="text-[10px] text-slate-500">{q.created_at ? new Date(q.created_at).toLocaleString('pt-BR') : ''}</span>
+                  </div>
+                  <div className="text-slate-200">“{q.request_text}”</div>
+                  {q.response && <div className="text-slate-400">Claude: {q.response}</div>}
+                  <div className="flex flex-wrap gap-3 text-[11px]">
+                    {q.session_url && /^https:\/\/claude\.ai\//.test(q.session_url) && (
+                      <a href={q.session_url} target="_blank" rel="noreferrer" className="text-emerald-300 underline">Ver o Claude trabalhando</a>
+                    )}
+                    {q.result_creative_id && (
+                      <button onClick={() => openInList(q.result_creative_id)} className="text-emerald-300 underline">
+                        Revisar nova versão {q.result_human_id || ''}
+                      </button>
+                    )}
+                    {isAdmin && q.legacy && (
+                      <button
+                        onClick={() => run(`adj-${q.key}`, () => post(`/creative-factory/creatives/${q.creative_id}/adjustments?mode=${mode}`), 'Pedido enviado ao Claude.')}
+                        disabled={busy === `adj-${q.key}`}
+                        className="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold disabled:opacity-50"
+                      >
+                        Enviar ao Claude
+                      </button>
+                    )}
+                    {isAdmin && !q.legacy && (q.status === 'FAILED' || q.status === 'NOT_CONFIGURED') && (
+                      <button
+                        onClick={() => run(`adj-${q.key}`, () => post(`/creative-factory/adjustments/${q.id}/retry?mode=${mode}`), 'Pedido reenviado ao Claude.')}
+                        disabled={busy === `adj-${q.key}`}
+                        className="px-2 py-0.5 rounded bg-slate-700 text-white font-bold disabled:opacity-50"
+                      >
+                        Tentar de novo
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}

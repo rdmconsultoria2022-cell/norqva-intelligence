@@ -496,9 +496,9 @@ export class CreativeFactoryService {
       }
     }
 
-    await pool.query(
+    const reviewIns = await pool.query(
       `INSERT INTO creative_reviews (creative_id, content_hash, decision, reason_code, notes, reviewer_id, is_demo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [creativeId, creative.content_hash || 'UNHASHED', decision, input.reason_code || null, input.notes || null, userId, isDemo]
     );
     const updated = await pool.query(
@@ -515,7 +515,7 @@ export class CreativeFactoryService {
       decision,
       isDemo
     );
-    return updated.rows[0];
+    return { ...updated.rows[0], review_id: reviewIns.rows[0]?.id || null };
   }
 
   async reviseCreative(
@@ -523,7 +523,8 @@ export class CreativeFactoryService {
     creativeId: string,
     changes: { hook?: string; primary_text?: string; headline?: string; cta?: string; script?: string; file_url?: string | null },
     userId: string | null,
-    isDemo: boolean
+    isDemo: boolean,
+    options: { forceNewVersion?: boolean } = {}
   ) {
     const cRes = await pool.query(
       'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
@@ -563,13 +564,13 @@ export class CreativeFactoryService {
       (next.headline || '') === (cur.headline || '') &&
       next.cta === cur.cta &&
       (next.script || '') === (cur.script || '');
-    if (copyUnchanged && next.file_url && next.file_url !== cur.file_url) {
+    if (!options.forceNewVersion && copyUnchanged && next.file_url && next.file_url !== cur.file_url) {
       const attached = await this.attachFile(pool, creativeId, next.file_url, userId, isDemo);
       return { mode: 'FILE_ATTACHED', creative: attached };
     }
 
     const reviewed = await pool.query('SELECT 1 FROM creative_reviews WHERE creative_id = $1 LIMIT 1', [creativeId]);
-    if (reviewed.rows.length === 0 && cur.approval_status === 'DRAFT') {
+    if (!options.forceNewVersion && reviewed.rows.length === 0 && cur.approval_status === 'DRAFT') {
       // Never reviewed: edit in place (no review is bound to the old content)
       const upd = await pool.query(
         `UPDATE creatives SET hook = $1, primary_text = $2, copy = $2, headline = $3, cta = $4, script = $5,
