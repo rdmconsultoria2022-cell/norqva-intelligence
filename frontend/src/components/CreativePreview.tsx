@@ -37,7 +37,9 @@ export const CreativePreview: React.FC<{
   format?: string | null;
   title?: string;
   className?: string;
-}> = ({ url, format, title, className = '' }) => {
+  // NORQVA-0012: fill the parent's height (list view: media as tall as the info column)
+  fill?: boolean;
+}> = ({ url, format, title, className = '', fill = false }) => {
   const [expanded, setExpanded] = useState(false);
   const [failed, setFailed] = useState(false);
   const kind = previewKind(url, format);
@@ -77,7 +79,7 @@ export const CreativePreview: React.FC<{
         preload="metadata"
         autoPlay={big}
         onError={() => setFailed(true)}
-        className={big ? 'max-h-[80vh] max-w-full rounded' : 'w-full h-full object-contain bg-black'}
+        className={big ? 'max-h-[80vh] max-w-full rounded' : `w-full h-full object-contain bg-black ${fill ? 'absolute inset-0' : ''}`}
       />
     ) : (
       <img
@@ -87,13 +89,16 @@ export const CreativePreview: React.FC<{
         loading="lazy"
         onError={() => setFailed(true)}
         onClick={big ? undefined : () => setExpanded(true)}
-        className={big ? 'max-h-[80vh] max-w-full rounded' : 'w-full h-full object-contain bg-black cursor-zoom-in'}
+        className={big ? 'max-h-[80vh] max-w-full rounded' : `w-full h-full object-contain bg-black cursor-zoom-in ${fill ? 'absolute inset-0' : ''}`}
       />
     );
 
   return (
-    <div className={className}>
-      <div className="relative rounded overflow-hidden border border-slate-800 bg-black aspect-[4/5] max-h-72 mx-auto">
+    <div className={`${className} ${fill ? 'flex flex-col h-full' : ''}`}>
+      <div
+        data-testid={fill ? 'creative-preview-fill' : undefined}
+        className={`relative rounded overflow-hidden border border-slate-800 bg-black ${fill ? 'flex-1 min-h-[16rem]' : 'aspect-[4/5] max-h-72 mx-auto'}`}
+      >
         {media(false)}
         <button
           type="button"

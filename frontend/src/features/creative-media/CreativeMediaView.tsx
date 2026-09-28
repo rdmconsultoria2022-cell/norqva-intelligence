@@ -212,11 +212,11 @@ export function CreativeMediaView({
                       )}
                     </div>
                     {viewMode === 'list' && (
-                      <div className="md:w-60 shrink-0">
+                      <div className="md:w-[38%] lg:w-[34%] shrink-0 md:self-stretch flex flex-col">
                         {isOpenableFileUrl(cr.file_url) ? (
-                          <CreativePreview url={cr.file_url} format={cr.format} title={cr.human_id} />
+                          <CreativePreview url={cr.file_url} format={cr.format} title={cr.human_id} fill className="flex-1" />
                         ) : (
-                          <div className="aspect-[4/5] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
+                          <div className="flex-1 min-h-[16rem] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
                             sem arquivo
                           </div>
                         )}
