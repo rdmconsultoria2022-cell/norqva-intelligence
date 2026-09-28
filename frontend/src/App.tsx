@@ -45,9 +45,10 @@ import { CreativePerformanceView } from './features/intelligence/CreativePerform
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
 import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
+import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'creative-performance', 'demographics'];
+const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'creative-performance', 'demographics', 'creative-factory'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -697,6 +698,16 @@ export default function App() {
 
           {activeTab === 'meta-ads' && (
             <MetaAdsView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+            />
+          )}
+
+          {activeTab === 'creative-factory' && (
+            <CreativeFactoryView
               currentUser={currentUser}
               isDemoView={isDemoView}
               apiFetch={apiFetch}

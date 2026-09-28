@@ -20,3 +20,21 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão:** o frontend de produção sempre opera em modo REAL. O seletor DEMO/REAL, o aviso de ambiente demo e o botão "limpar base demo" só existem em testes automatizados ou com `VITE_ENABLE_DEMO_MODE=true` no desenvolvimento local. **Aprovado pelo operador.**
 - **Mantido:** o suporte a `mode=demo` no backend e o seed de demonstração, que a suíte de testes usa.
+
+## D-0004 — Aprovação de criativos em `creative_reviews`, não em `decisions` (2026-09-27)
+
+- **Decisão:** a aprovação de criativos da Fábrica (NORQVA-0005) fica numa tabela própria, `creative_reviews`, com decisão, motivo, revisor e `content_hash` da versão revisada.
+- **Por quê:** estender `decisions.type` exigiria trocar o CHECK de uma tabela já aplicada. `creative_reviews` é aditiva e guarda o hash, o que `decisions` não faz.
+- **Consequência:** quando a publicação automática existir (G4), ela vai gerar um `decisions` APROVADO a partir da revisão aprovada, porque é isso que o `metaMutatingClient` exige.
+- **Diverge de:** `NORQVA_COMMERCE_FACTORY_ARCHITECTURE_REVIEW_V1`, seção D (migration 031).
+
+## D-0005 — "Acesso vitalício" removido (2026-09-27)
+
+- **Decisão:** o dono do produto não garante acesso vitalício. A claim BB-CL-08 entra como REJECTED, e as landings do Bolso Blindado e da Trattoria deixam de prometer acesso vitalício.
+- **Contexto:** a entrega da Trattoria já limita os downloads (máximo de 5 por pedido), o que contradizia a promessa.
+
+## D-0006 — Atribuição por criativo só determinística (2026-09-27)
+
+- **Decisão:** o painel de performance de criativos só liga um evento ou pedido a um anúncio por `ad_id`, pelo nome exato do anúncio ou pelo `meta_ad_id` no `utm_content`. A correspondência por substring e o atalho `variant_x → ad_x` foram removidos.
+- **Efeito:** o que não casar aparece como "não atribuído", em vez de ir para o anúncio errado.
+- **Convenção:** nome do anúncio na Meta = chave do criativo (ex.: `BB-B01-H02-M1-C1`) = `utm_content`.

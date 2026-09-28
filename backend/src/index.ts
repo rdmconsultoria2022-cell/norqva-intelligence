@@ -101,6 +101,14 @@ import {
 } from './controllers/marketDiscoveryController';
 
 import { recordFunnelEvent, getFunnelEventsSummary } from './controllers/telemetryController';
+import {
+  listFactoryCreatives,
+  importFactoryBatch,
+  updateFactoryClaim,
+  reviewFactoryCreative,
+  reviseFactoryCreative,
+  linkFactoryCreativeAd
+} from './controllers/creativeFactoryController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
 
@@ -341,6 +349,14 @@ app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDes
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
+
+// Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
+app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);
+app.post('/api/creative-factory/batches/:code/import', requireRole(['ADMIN']), importFactoryBatch);
+app.patch('/api/creative-factory/claims/:id', requireRole(['ADMIN']), updateFactoryClaim);
+app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), reviewFactoryCreative);
+app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CREATIVE']), reviseFactoryCreative);
+app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
 
 // Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
 app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);

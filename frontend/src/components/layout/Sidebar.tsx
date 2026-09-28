@@ -14,6 +14,7 @@ import {
   TrendingUp,
   BarChart3,
   PieChart,
+  Factory,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -39,6 +40,7 @@ const navigationItems: NavigationItem[] = [
   { id: 'products', label: 'Produtos', icon: Package },
   { id: 'offers', label: 'Ofertas', icon: Tag },
   { id: 'creatives', label: 'Creative Lab', icon: Film },
+  { id: 'creative-factory', label: 'Fábrica de Criativos', icon: Factory },
   { id: 'experiments', label: 'Experimentos', icon: FlaskConical },
   { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
   { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
