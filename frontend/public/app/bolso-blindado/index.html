@@ -276,9 +276,9 @@
         <form id="txForm" class="tx-form">
           <input type="hidden" id="formTxId">
           
-          <div class="type-toggle-group">
-            <button type="button" class="btn-type active" id="btnTypeExpense">Despesa</button>
-            <button type="button" class="btn-type" id="btnTypeIncome">Receita</button>
+          <div class="type-toggle-group" role="group" aria-label="Tipo de lançamento">
+            <button type="button" class="btn-type active" id="btnTypeExpense" aria-pressed="true">Despesa</button>
+            <button type="button" class="btn-type" id="btnTypeIncome" aria-pressed="false">Receita</button>
           </div>
 
           <div class="form-group">

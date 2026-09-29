@@ -815,3 +815,44 @@ body {
   line-height: 1.4;
   margin-bottom: 12px;
 }
+
+/* NORQVA-0016: Despesa / Receita selector — large, separated touch targets with immediate feedback */
+.type-toggle-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.btn-type {
+  min-height: 56px;
+  padding: 14px 12px;
+  border: 2px solid var(--border-card);
+  background-color: var(--bg-card);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s, transform 0.08s;
+}
+
+.btn-type:active { transform: scale(0.97); }
+.btn-type:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 2px; }
+
+#btnTypeExpense.active {
+  background-color: var(--semantic-expense-bg);
+  border-color: var(--semantic-expense);
+  color: var(--semantic-expense);
+}
+
+#btnTypeIncome.active {
+  background-color: var(--semantic-income-bg);
+  border-color: var(--semantic-income);
+  color: var(--semantic-income);
+}

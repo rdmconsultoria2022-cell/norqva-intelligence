@@ -289,13 +289,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function setType(type) {
     formType = type;
-    if (type === 'Receita') {
-      btnTypeIncome.classList.add('active');
-      btnTypeExpense.classList.remove('active');
-    } else {
-      btnTypeExpense.classList.add('active');
-      btnTypeIncome.classList.remove('active');
-    }
+    const isIncome = type === 'Receita';
+    btnTypeIncome.classList.toggle('active', isIncome);
+    btnTypeExpense.classList.toggle('active', !isIncome);
+    btnTypeIncome.setAttribute('aria-pressed', String(isIncome));
+    btnTypeExpense.setAttribute('aria-pressed', String(!isIncome));
     await populateCategorySelect(type);
   }
 
