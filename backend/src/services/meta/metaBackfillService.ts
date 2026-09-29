@@ -45,6 +45,13 @@ export function backfillWindows(days: number, today: string): BackfillWindow[] {
   return out;
 }
 
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+/** Graph throttling: 17 (user limit), 4 (app limit), 32 (page limit), 613, 80000-80014 (ads insights / business use case). */
+export function isRateLimit(msg: string): boolean {
+  return /request limit|too many calls|rate limit|error 17\b|error 4\b|error 32\b|error 613\b|error 800\d\d|ERROR (17|4|32|613)\]/i.test(msg);
+}
+
 type SyncRunner = (w: BackfillWindow) => Promise<{ skipped?: boolean; success?: boolean; error?: string } | any>;
 
 export class MetaBackfillService {
@@ -61,7 +68,14 @@ export class MetaBackfillService {
   }
 
   /** Starts the backfill; returns false when one is already running. The promise resolves when it ends. */
-  static start(days: number, userId: string | null, runner?: SyncRunner): { started: boolean; done: Promise<void> } {
+  static start(
+    days: number,
+    userId: string | null,
+    runner?: SyncRunner,
+    opts: { paceMs?: number; rateLimitWaitMs?: number } = {}
+  ): { started: boolean; done: Promise<void> } {
+    const paceMs = opts.paceMs ?? 5000;
+    const rateWait = opts.rateLimitWaitMs ?? 90000;
     if (this.state.running) return { started: false, done: Promise.resolve() };
     const today = getCommercialTimeBoundaries('today').dateStopMeta;
     const windows = backfillWindows(days, today);
@@ -82,27 +96,35 @@ export class MetaBackfillService {
       for (const w of windows) {
         this.state.current = w;
         let attempts = 0;
-        // A regular sync may hold the lock; wait and retry a few times
+        // A regular sync may hold the lock; Meta may throttle (error 17/4/613). Wait and retry.
         while (true) {
           attempts++;
+          let r: any;
+          let errMsg: string | null = null;
           try {
-            const r: any = await run(w);
-            if (r && r.skipped && attempts < 6) {
-              await new Promise(res => setTimeout(res, 20000));
-              continue;
-            }
-            if (r && (r.skipped || r.success === false)) {
-              this.state.failed++;
-              this.state.lastError = r.error || r.reason || 'janela ignorada';
-            } else {
-              this.state.done++;
-            }
+            r = await run(w);
           } catch (err: any) {
+            errMsg = String(err?.message || err).slice(0, 300);
+          }
+          if (!errMsg && r && r.skipped && attempts < 6) {
+            await sleep(20000);
+            continue;
+          }
+          const msg = errMsg || (r && (r.skipped || r.success === false) ? String(r.error || r.reason || 'janela ignorada') : null);
+          if (msg && isRateLimit(msg) && attempts < 5) {
+            this.state.lastError = `Limite da Meta atingido; aguardando para tentar de novo (${attempts}/4).`;
+            await sleep(rateWait * attempts);
+            continue;
+          }
+          if (msg) {
             this.state.failed++;
-            this.state.lastError = String(err?.message || err).slice(0, 300);
+            this.state.lastError = msg.slice(0, 300);
+          } else {
+            this.state.done++;
           }
           break;
         }
+        if (paceMs > 0) await sleep(paceMs);
       }
       this.state.running = false;
       this.state.current = null;

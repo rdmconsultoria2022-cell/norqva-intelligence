@@ -53,6 +53,31 @@
 
 ### Fase 2: mercado europeu (`ai/NORQVA-0017-eu-market`)
 
+**Entregue:**
+- **Migration 034:**
+  - `market_niches`, com dois nichos iniciais: Finanças pessoais e Culinária italiana;
+  - `market_eu_ads`, único por anúncio e nicho;
+  - `market_eu_ad_snapshots`, com o alcance por dia;
+  - `market_eu_runs`.
+- **Serviço `MarketEuService`:**
+  - `probe`;
+  - `collect`: até 3 páginas de 100 anúncios por termo; para na primeira recusa de acesso e marca a coleta como BLOCKED;
+  - `listNiches`, com a pontuação;
+  - `topAds`.
+- **Pontuação do nicho:**
+  - 40%: anúncios ativos há 30 dias ou mais;
+  - 25%: número de anunciantes;
+  - 20%: alcance na UE;
+  - 15%: anúncios novos em 7 dias (escala logarítmica).
+  - Classe: VALIDADO a partir de 70, PROMISSOR a partir de 45, FRACO abaixo disso, SEM_DADOS com menos de 5 anúncios.
+- **Rotas `/api/market/eu/*`:**
+  - probe, niches (GET, POST e PATCH), `niches/:id/ads` e collect;
+  - coleta diária com `MARKET_EU_AUTO_ENABLED=true`.
+- **Token:** `META_AD_LIBRARY_TOKEN`, que tem prioridade sobre o `META_ACCESS_TOKEN`.
+  - A API exige que um usuário tenha confirmado identidade e aceitado os termos da Biblioteca de Anúncios.
+  - Se o acesso for recusado, a tela mostra os passos.
+- **Tela:** a "Base de campanhas" ganha a opção "Mercado europeu", com os nichos, a classe, os anúncios que se sustentam e um formulário de novo nicho.
+
 - **Acesso:** probe real de `ads_archive` com `ad_reached_countries` na UE.
   - Se o token não tiver acesso, a tela explica o passo de verificação de identidade que o operador precisa fazer.
 - **Nichos:** lista de nichos monitorados (termos de busca por nicho e idioma).
