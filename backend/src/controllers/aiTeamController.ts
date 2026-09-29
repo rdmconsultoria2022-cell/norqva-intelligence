@@ -19,7 +19,7 @@ const fail = (res: Response, err: any, tag: string) => {
   return res.status(500).json({ error: 'Falha no time de IAs.' });
 };
 
-export async function listOpportunities(req: AuthenticatedRequest, res: Response) {
+export async function listAiOpportunities(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
     return res.status(200).json({ opportunities: await service.list(pool, isDemoReq(req)) });
@@ -28,7 +28,7 @@ export async function listOpportunities(req: AuthenticatedRequest, res: Response
   }
 }
 
-export async function createOpportunity(req: AuthenticatedRequest, res: Response) {
+export async function createAiOpportunity(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
     return res.status(201).json(await service.create(pool, req.body || {}, req.user?.id || null, isDemoReq(req)));
@@ -37,7 +37,7 @@ export async function createOpportunity(req: AuthenticatedRequest, res: Response
   }
 }
 
-export async function dispatchOpportunity(req: AuthenticatedRequest, res: Response) {
+export async function dispatchAiOpportunity(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const kind = String(req.body?.kind || '').toUpperCase();
   if (kind !== 'EVALUATE' && kind !== 'PLAN') return res.status(400).json({ error: 'kind deve ser EVALUATE ou PLAN.' });
@@ -48,7 +48,7 @@ export async function dispatchOpportunity(req: AuthenticatedRequest, res: Respon
   }
 }
 
-export async function decideOpportunity(req: AuthenticatedRequest, res: Response) {
+export async function decideAiOpportunity(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
     return res.status(200).json(await service.decide(pool, String(req.params.id), String(req.body?.decision || ''), req.user?.id || null));

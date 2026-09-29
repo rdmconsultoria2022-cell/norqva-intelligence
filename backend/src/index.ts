@@ -120,7 +120,7 @@ import {
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
-import { listOpportunities, createOpportunity, dispatchOpportunity, decideOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
+import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -382,10 +382,10 @@ app.patch('/api/market/eu/niches/:id', requireRole(['ADMIN', 'INTELLIGENCE']), u
 app.get('/api/market/eu/niches/:id/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listNicheAds);
 app.post('/api/market/eu/collect', requireRole(['ADMIN']), collectMarketEu);
 // NORQVA-0017 (fase 3): time de IAs (oportunidade → avaliação → plano → lote na Fábrica)
-app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listOpportunities);
-app.post('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE']), createOpportunity);
-app.post('/api/ai-team/opportunities/:id/dispatch', requireRole(['ADMIN']), dispatchOpportunity);
-app.post('/api/ai-team/opportunities/:id/decision', requireRole(['ADMIN']), decideOpportunity);
+app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listAiOpportunities);
+app.post('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE']), createAiOpportunity);
+app.post('/api/ai-team/opportunities/:id/dispatch', requireRole(['ADMIN']), dispatchAiOpportunity);
+app.post('/api/ai-team/opportunities/:id/decision', requireRole(['ADMIN']), decideAiOpportunity);
 
 // Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
 app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);
