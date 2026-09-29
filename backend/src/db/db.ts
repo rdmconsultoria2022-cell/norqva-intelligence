@@ -55,8 +55,10 @@ export function initializeDB(): Pool {
     pool = new Pool({
       connectionString: dbUrl,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: parseInt(process.env.DB_POOL_MAX || '20', 10),
-      idleTimeoutMillis: 30000,
+      // Tests run in one process and several suites call resetPool() without closing the old pool;
+      // small pools that release idle connections quickly keep the CI Postgres under max_connections.
+      max: parseInt(process.env.DB_POOL_MAX || (isTest ? '10' : '20'), 10),
+      idleTimeoutMillis: isTest ? 2000 : 30000,
       connectionTimeoutMillis: 5000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000
