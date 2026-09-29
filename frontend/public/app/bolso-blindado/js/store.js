@@ -30,17 +30,31 @@ const DEFAULT_CATEGORIES = [
   { id: 'cat_outros', name: 'Outros / Diversos', type: 'Despesa', pillar: 'Conforto', budget: 300 }
 ];
 
+// NORQVA-0015: the app works on the current month (it was fixed on January 2026)
+function currentPeriod(d = new Date()) {
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+// Local calendar date (YYYY-MM-DD); toISOString() is UTC and turns Brazilian nights into "tomorrow"
+function localDateISO(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Default categories use local ids (cat_mercado); only real database ids go to category_id (uuid column)
+function dbCategoryId(cat) {
+  return cat && UUID_RE.test(String(cat.id)) ? cat.id : null;
+}
+
 const DEFAULT_SETTINGS = {
   currency: 'BRL',
   monthlySavingsGoal: 3000.00,
   reserveGoal: 20000.00,
   currentReserve: 8500.00,
   userName: 'Usuário',
-  currentYear: 2026,
-  currentMonth: 1
+  currentYear: currentPeriod().year,
+  currentMonth: currentPeriod().month
 };
 
-const DEMO_TRANSACTIONS = [
+const DEMO_TRANSACTIONS_BASE = [
   { id: 'tx_01', date: '2026-01-05', description: 'Salário Mensal CLT', category: 'Salário / Pró-Labore', type: 'Receita', amount: 7200.00 },
   { id: 'tx_02', date: '2026-01-05', description: 'Aluguel & Condomínio', category: 'Moradia (Aluguel/Condomínio)', type: 'Despesa', amount: 2100.00 },
   { id: 'tx_03', date: '2026-01-08', description: 'Supermercado Mensal', category: 'Alimentação & Mercado', type: 'Despesa', amount: 850.00 },
@@ -56,6 +70,16 @@ const DEMO_TRANSACTIONS = [
   { id: 'tx_13', date: '2026-01-30', description: 'Internet Fibra Óptica', category: 'Contas de Consumo (Luz/Água/Net)', type: 'Despesa', amount: 120.00 },
   { id: 'tx_14', date: '2026-01-31', description: 'Manutenção Preventiva / Outros', category: 'Outros / Diversos', type: 'Despesa', amount: 214.10 }
 ];
+
+function demoTransactions() {
+  const { year, month } = currentPeriod();
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, '0');
+  return DEMO_TRANSACTIONS_BASE.map(t => {
+    const day = Math.min(parseInt(t.date.slice(8), 10), lastDay);
+    return { ...t, date: `${year}-${mm}-${String(day).padStart(2, '0')}` };
+  });
+}
 
 /**
  * Abstract DataStore Base Class
@@ -80,7 +104,7 @@ class BaseDataStore {
   }
 
   // Pure Business Logic / Aggregation (Independent of persistence layer)
-  async getMonthlySummary(year = 2026, month = null) {
+  async getMonthlySummary(year = currentPeriod().year, month = currentPeriod().month) {
     const transactions = await this.getTransactions();
     const categories = await this.getCategories();
     
@@ -151,8 +175,8 @@ class BaseDataStore {
     };
   }
 
-  async getGoalProgress() {
-    const summary = await this.getMonthlySummary(2026, 1);
+  async getGoalProgress(year = currentPeriod().year, month = currentPeriod().month) {
+    const summary = await this.getMonthlySummary(year, month);
     const settings = await this.getSettings();
     const goal = parseFloat(settings.monthlySavingsGoal) || 3000.00;
     const netBalance = summary.netBalance;
@@ -217,7 +241,7 @@ class LocalStorageDataStore extends BaseDataStore {
   }
 
   loadDemoData() {
-    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(DEMO_TRANSACTIONS));
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(demoTransactions()));
     localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
     localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
@@ -249,7 +273,7 @@ class LocalStorageDataStore extends BaseDataStore {
     const transactions = await this.getTransactions();
     const newTx = {
       id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-      date: tx.date || new Date().toISOString().split('T')[0],
+      date: tx.date || localDateISO(),
       description: tx.description.trim(),
       category: tx.category,
       type: tx.type === 'Receita' ? 'Receita' : 'Despesa',
@@ -387,10 +411,10 @@ class SupabaseDataStore extends BaseDataStore {
 
     const payload = {
       user_id: this.userId,
-      date: tx.date || new Date().toISOString().split('T')[0],
+      date: tx.date || localDateISO(),
       description: tx.description.trim(),
       category_name: tx.category,
-      category_id: matchedCat ? matchedCat.id : null,
+      category_id: dbCategoryId(matchedCat),
       type: tx.type === 'Receita' ? 'Receita' : 'Despesa',
       amount: Math.abs(parseFloat(tx.amount)) || 0
     };
@@ -422,7 +446,7 @@ class SupabaseDataStore extends BaseDataStore {
       date: updatedTx.date,
       description: updatedTx.description.trim(),
       category_name: updatedTx.category,
-      category_id: matchedCat ? matchedCat.id : null,
+      category_id: dbCategoryId(matchedCat),
       type: updatedTx.type === 'Receita' ? 'Receita' : 'Despesa',
       amount: Math.abs(parseFloat(updatedTx.amount)) || 0,
       updated_at: new Date().toISOString()
@@ -541,8 +565,8 @@ class SupabaseDataStore extends BaseDataStore {
           reserveGoal: parseFloat(data.reserve_goal) || 20000.00,
           currentReserve: parseFloat(data.current_reserve) || 0.00,
           userName: this.session.user.user_metadata?.full_name || 'Usuário',
-          currentYear: 2026,
-          currentMonth: 1
+          currentYear: currentPeriod().year,
+          currentMonth: currentPeriod().month
         };
       }
       return DEFAULT_SETTINGS;
@@ -585,8 +609,8 @@ class SupabaseDataStore extends BaseDataStore {
       reserveGoal: parseFloat(data.reserve_goal),
       currentReserve: parseFloat(data.current_reserve),
       userName: this.session.user.user_metadata?.full_name || 'Usuário',
-      currentYear: 2026,
-      currentMonth: 1
+      currentYear: currentPeriod().year,
+      currentMonth: currentPeriod().month
     };
   }
 
@@ -604,6 +628,8 @@ class SupabaseDataStore extends BaseDataStore {
 }
 
 // Global Factory / Registry
+window.currentPeriod = currentPeriod;
+window.localDateISO = localDateISO;
 window.LocalStorageDataStore = LocalStorageDataStore;
 window.SupabaseDataStore = SupabaseDataStore;
 

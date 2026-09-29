@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       idEl.value = '';
       amountEl.value = '';
       descEl.value = '';
-      dateEl.value = new Date().toISOString().split('T')[0];
+      dateEl.value = window.localDateISO ? window.localDateISO() : new Date().toISOString().split('T')[0];
       setType(formType);
     }
 
@@ -337,14 +337,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    if (id) {
-      await window.db.updateTransaction(id, { date, description, category, type: formType, amount });
-    } else {
-      await window.db.addTransaction({ date, description, category, type: formType, amount });
+    // NORQVA-0015: never fail silently — show the error and keep the form open
+    const submitBtn = txForm.querySelector('button[type="submit"]');
+    const submitLabel = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Salvando...'; }
+    try {
+      if (id) {
+        await window.db.updateTransaction(id, { date, description, category, type: formType, amount });
+      } else {
+        await window.db.addTransaction({ date, description, category, type: formType, amount });
+      }
+      closeModal();
+      await renderAll();
+    } catch (err) {
+      console.error('Erro ao salvar lançamento:', err);
+      alert('Não foi possível salvar o lançamento. Verifique sua conexão e tente de novo.' + (err && err.message ? `\n\nDetalhe: ${err.message}` : ''));
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitLabel; }
     }
-
-    closeModal();
-    await renderAll();
   });
 
   // Goal Form in Planning View
@@ -360,9 +370,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --- Render Functions ---
+  const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  function period() { return window.currentPeriod ? window.currentPeriod() : { year: new Date().getFullYear(), month: new Date().getMonth() + 1 }; }
+
   async function renderHome() {
-    const summary = await window.db.getMonthlySummary(2026, 1);
-    const goalData = await window.db.getGoalProgress();
+    const { year, month } = period();
+    const badge = document.getElementById('currentPeriodBadge');
+    if (badge) badge.textContent = `${MONTHS[month - 1]} ${year}`;
+    const summary = await window.db.getMonthlySummary(year, month);
+    const goalData = await window.db.getGoalProgress(year, month);
     
     // Top KPIs
     document.getElementById('kpiIncome').textContent = window.db.formatCurrency(summary.totalIncome);
@@ -499,7 +515,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   async function renderPlanejamento() {
-    const summary = await window.db.getMonthlySummary(2026, 1);
+    const { year, month } = period();
+    const summary = await window.db.getMonthlySummary(year, month);
     const settings = await window.db.getSettings();
 
     // Goal input
