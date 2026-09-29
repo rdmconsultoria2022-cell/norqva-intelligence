@@ -126,7 +126,14 @@ export function percentileRank(sorted: number[], value: number | null): number |
  * - Confidence = min(1, spend / 3B); low confidence pulls the score toward an "unproven" prior (0.35).
  * Classification follows the BB-B01 test plan (section 7).
  */
-export function scoreEntity(t: BaseTotals, m: DerivedMetrics, quality: { ctrPct: number | null; hookPct: number | null }): ScoreResult {
+export function scoreEntity(
+  t: BaseTotals,
+  m: DerivedMetrics,
+  quality: { ctrPct: number | null; hookPct: number | null },
+  // Aggregates (campaign, product, niche) test several ads at once: the "no sale" budget scales with them (max 5)
+  adsInTest = 1
+): ScoreResult {
+  const k = Math.max(1, Math.min(5, Math.floor(adsInTest)));
   const B = m.breakeven_cpa;
   const qs = [quality.ctrPct, quality.hookPct].filter((x): x is number => x !== null);
   const q = qs.length ? qs.reduce((a, b) => a + b, 0) / qs.length : 0.5;
@@ -158,13 +165,16 @@ export function scoreEntity(t: BaseTotals, m: DerivedMetrics, quality: { ctrPct:
     } else if (t.sales >= 1 && cpa !== null && cpa <= B) {
       classification = 'PROMISSOR';
       reason = `CPA R$ ${cpa.toFixed(2)} dentro do equilíbrio (R$ ${B.toFixed(2)}): manter.`;
-    } else if (t.sales === 0 && t.spend >= 2 * B) {
+    } else if (t.sales === 0 && t.spend >= 2 * B * k) {
       classification = 'PERDEDOR';
-      reason = `Gastou R$ ${t.spend.toFixed(2)} (2× o CPA de equilíbrio) sem venda: pausar.`;
-    } else if (t.sales === 0 && t.spend >= 15 && ctr !== null && ctr < 0.6) {
+      reason =
+        k === 1
+          ? `Gastou R$ ${t.spend.toFixed(2)} (2× o CPA de equilíbrio) sem venda: pausar.`
+          : `Gastou R$ ${t.spend.toFixed(2)} em ${k} anúncios (2× o CPA de equilíbrio por anúncio) sem venda: rever a oferta ou o público.`;
+    } else if (t.sales === 0 && t.spend >= 15 * k && ctr !== null && ctr < 0.6) {
       classification = 'PERDEDOR';
       reason = `CTR de link ${ctr.toFixed(2)}% abaixo de 0,6% depois de R$ 15: o gancho não prende.`;
-    } else if (t.sales >= 1 && cpa !== null && cpa > B * 1.5 && t.spend >= 2 * B) {
+    } else if (t.sales >= 1 && cpa !== null && cpa > B * 1.5 && t.spend >= 2 * B * k) {
       classification = 'PERDEDOR';
       reason = `CPA R$ ${cpa.toFixed(2)} acima de 1,5× o equilíbrio com gasto relevante: pausar ou refazer.`;
     } else if (t.sales === 0 && t.spend < B * 0.5) {
@@ -366,12 +376,17 @@ export class CampaignIntelligenceService {
     const ref = facts.filter(x => x.totals.impressions >= 500).map(x => deriveMetrics(x.totals));
     const ctrSorted = ref.map(m => m.ctr_link).filter((v): v is number => v !== null).sort((a, b) => a - b);
     const hookSorted = ref.map(m => m.hook_rate).filter((v): v is number => v !== null && v > 0).sort((a, b) => a - b);
-    const scoreOf = (t: BaseTotals) => {
+    const scoreOf = (t: BaseTotals, adsInTest = 1) => {
       const m = deriveMetrics(t);
-      const sc = scoreEntity(t, m, {
-        ctrPct: percentileRank(ctrSorted, m.ctr_link),
-        hookPct: m.hook_rate && m.hook_rate > 0 ? percentileRank(hookSorted, m.hook_rate) : null
-      });
+      const sc = scoreEntity(
+        t,
+        m,
+        {
+          ctrPct: percentileRank(ctrSorted, m.ctr_link),
+          hookPct: m.hook_rate && m.hook_rate > 0 ? percentileRank(hookSorted, m.hook_rate) : null
+        },
+        adsInTest
+      );
       return { m, sc };
     };
 
@@ -407,7 +422,7 @@ export class CampaignIntelligenceService {
 
     const rows: IntelRow[] = [];
     for (const g of groups.values()) {
-      const { m, sc } = scoreOf(g.totals);
+      const { m, sc } = scoreOf(g.totals, level === 'ad' ? 1 : g.facts.filter(x => x.totals.spend > 0).length);
       const first = g.facts[0];
       const productNames = [...new Set(g.facts.map(x => x.productName).filter((n): n is string => !!n))];
       rows.push({
