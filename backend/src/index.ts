@@ -119,6 +119,7 @@ import {
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
+import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -372,6 +373,13 @@ app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLI
 app.get('/api/intelligence/campaign-base', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCampaignBase);
 app.post('/api/meta/backfill', requireRole(['ADMIN']), startMetaBackfill);
 app.get('/api/meta/backfill/status', requireRole(['ADMIN', 'INTELLIGENCE', 'PERFORMANCE']), getMetaBackfillStatus);
+// NORQVA-0017 (fase 2): mercado europeu (Biblioteca de Anúncios, API oficial)
+app.get('/api/market/eu/probe', requireRole(['ADMIN', 'INTELLIGENCE']), probeMarketEu);
+app.get('/api/market/eu/niches', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listMarketNiches);
+app.post('/api/market/eu/niches', requireRole(['ADMIN', 'INTELLIGENCE']), createMarketNiche);
+app.patch('/api/market/eu/niches/:id', requireRole(['ADMIN', 'INTELLIGENCE']), updateMarketNiche);
+app.get('/api/market/eu/niches/:id/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listNicheAds);
+app.post('/api/market/eu/collect', requireRole(['ADMIN']), collectMarketEu);
 
 // Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
 app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);
@@ -439,6 +447,13 @@ async function startServer() {
       registerShutdownHook(() => MetaSchedulerService.getInstance().stop());
     } catch (schedulerErr: any) {
       console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
+    }
+
+    // NORQVA-0017: daily EU market collection (MARKET_EU_AUTO_ENABLED=true)
+    try {
+      registerShutdownHook(startMarketEuScheduler(pool));
+    } catch (e: any) {
+      console.error('[Server] Failed to start market EU scheduler (non-fatal):', e.message);
     }
 
     // Initialize Automated CAPI Retry Job (Non-blocking / Isolated)

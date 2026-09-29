@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Database, RefreshCw, History, Trophy, TrendingUp, FlaskConical, XCircle, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { useGlobalPeriod, periodQuery, periodLabel } from '../../lib/globalPeriod';
+import { MarketEuPanel } from './MarketEuPanel';
 
 // NORQVA-0017 (fase 1): Base de campanhas — ranking of niches, products, campaigns, ad sets and ads
 // of our Meta account, with score (0–100), confidence and classification (BB-B01 test rules).
@@ -93,6 +94,7 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
   const { globalPeriod } = useGlobalPeriod();
   const mode = isDemoView ? 'demo' : 'real';
   const isAdmin = currentUser?.role === 'ADMIN';
+  const [source, setSource] = useState<'account' | 'eu'>('account');
   const [level, setLevel] = useState<Level>('campaign');
   const [data, setData] = useState<CampaignBase | null>(null);
   const [loading, setLoading] = useState(false);
@@ -178,7 +180,7 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
             atribuídos ao anúncio; compras da Meta aparecem só como referência. Período: {periodLabel(globalPeriod) || 'todo o histórico'}.
           </p>
         </div>
-        {isAdmin && !isDemoView && (
+        {isAdmin && !isDemoView && source === 'account' && (
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={syncNow} disabled={syncing} className="inline-flex items-center gap-1.5 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50">
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} /> Atualizar dados
@@ -190,6 +192,24 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
         )}
       </div>
 
+      <div className="inline-flex rounded border border-slate-700 p-0.5 text-xs" role="radiogroup" aria-label="Fonte dos dados">
+        {([['account', 'Nossa conta Meta'], ['eu', 'Mercado europeu']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            role="radio"
+            aria-checked={source === id}
+            onClick={() => setSource(id)}
+            className={`rounded px-3 py-1.5 ${source === id ? 'bg-emerald-600 font-semibold text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {source === 'eu' ? (
+        <MarketEuPanel isAdmin={isAdmin} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
+      ) : (
+      <>
       {backfill?.running && (
         <div className="rounded border border-emerald-700/50 bg-emerald-950/30 p-3 text-xs text-emerald-200" role="status">
           Importando histórico: {backfill.done + backfill.failed} de {backfill.windows} janelas
@@ -313,6 +333,8 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
       </div>
       {data && data.data.unattributed_sales > 0 && (
         <p className="text-[11px] text-slate-500">{data.data.unattributed_sales} venda(s) no período sem anúncio identificado (não entram no ranking).</p>
+      )}
+      </>
       )}
     </div>
   );
