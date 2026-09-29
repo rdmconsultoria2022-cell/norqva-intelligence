@@ -146,6 +146,14 @@ describe('NORQVA-0017 — scoring and classification (BB-B01 rules)', () => {
     const p = withBreakeven({ spend: 25, sales: 1, revenue: 29.9, impressions: 3000, link_clicks: 40 }, B);
     expect(scoreEntity(p, deriveMetrics(p), q).classification).toBe('PROMISSOR');
   });
+  it('aggregates (5 ads in test) need 5× the per-ad budget before being called losers', () => {
+    const t = withBreakeven({ spend: 55, impressions: 6000, link_clicks: 90 }, B);
+    expect(scoreEntity(t, deriveMetrics(t), q, 5).classification).not.toBe('PERDEDOR');
+    const big = withBreakeven({ spend: 262, impressions: 30000, link_clicks: 400 }, B);
+    const r = scoreEntity(big, deriveMetrics(big), q, 5);
+    expect(r.classification).toBe('PERDEDOR');
+    expect(r.reason).toContain('5 anúncios');
+  });
   it('low confidence pulls toward the unproven prior', () => {
     const tiny = withBreakeven({ spend: 1, sales: 1, revenue: 29.9 }, B);
     const big = withBreakeven({ spend: 60, sales: 5, revenue: 149.5, impressions: 8000, link_clicks: 120 }, B);
