@@ -42,13 +42,14 @@ import { OrderDeliveryView } from './features/delivery/OrderDeliveryView';
 import { AccessRecoveryView } from './features/delivery/AccessRecoveryView';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
+import { CampaignBaseView } from './features/intelligence/CampaignBaseView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
 import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'creative-performance', 'demographics', 'creative-factory'];
+const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'campaign-base', 'creative-performance', 'demographics', 'creative-factory'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -730,6 +731,16 @@ export default function App() {
 
           {activeTab === 'creative-factory' && (
             <CreativeFactoryView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+            />
+          )}
+
+          {activeTab === 'campaign-base' && (
+            <CampaignBaseView
               currentUser={currentUser}
               isDemoView={isDemoView}
               apiFetch={apiFetch}

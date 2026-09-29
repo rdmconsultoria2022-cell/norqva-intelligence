@@ -118,6 +118,7 @@ import {
   enqueueFactoryAdjustment
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
+import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -367,6 +368,10 @@ app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), set
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
+// NORQVA-0017: Base de campanhas (ranking de nichos, produtos, campanhas, conjuntos e anúncios) + importação de histórico
+app.get('/api/intelligence/campaign-base', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCampaignBase);
+app.post('/api/meta/backfill', requireRole(['ADMIN']), startMetaBackfill);
+app.get('/api/meta/backfill/status', requireRole(['ADMIN', 'INTELLIGENCE', 'PERFORMANCE']), getMetaBackfillStatus);
 
 // Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
 app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);

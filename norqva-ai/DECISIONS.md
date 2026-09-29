@@ -44,3 +44,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão:** o NORQVA passa a ativar e pausar campanhas, conjuntos e anúncios e a mudar o orçamento diário na Meta, substituindo o botão liga/desliga do Gerenciador. **Autorizado pelo operador** ("autorizo o controle de campanhas Meta pelo NORQVA").
 - **Proteções:** só ADMIN; confirmação em diálogo para toda ação; registro em `audit_logs` de sucesso e falha; orçamento diário entre R$ 5 e o teto `META_MAX_DAILY_BUDGET_BRL` (padrão R$ 100); desligado enquanto `META_MUTATION_ENABLED` não for `true`; verificação real da credencial (token válido, `ads_management`, acesso à conta) antes de cada alteração, com cache de 5 minutos.
 - **Fora de escopo:** criar campanhas, anúncios ou públicos pelo NORQVA; orçamento total (lifetime); ações automáticas sem clique humano.
+
+## D-0008 — Base de campanhas Meta e time de IAs (2026-09-28)
+
+- **Decisão:** o NORQVA passa a manter uma base de dados própria das campanhas Meta, com histórico, funil, retenção de vídeo e conteúdo do criativo. Sobre ela, pontua e classifica nichos, produtos, campanhas, conjuntos e anúncios. Depois, um time de IAs avalia oportunidades, monta o plano de campanha e prepara lotes de criativos na Fábrica. **Escolhido pelo operador:** nossa conta e mercado europeu como fontes; time só de IAs.
+- **Fontes fora de escopo:** anúncios comerciais do Brasil de terceiros, porque a API oficial não os entrega e raspar a Biblioteca de Anúncios viola os termos da Meta.
+- **Verdade de vendas:** pedidos pagos do NORQVA com atribuição determinística (D-0006). As compras reportadas pela Meta ficam só como referência.
+- **Proteções:** as IAs não publicam, não pausam e não mudam orçamento. O operador aprova o plano e os criativos; ações na Meta seguem a D-0007.
