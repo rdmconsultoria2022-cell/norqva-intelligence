@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { ActionMetrics, ACTION_METRIC_FIELDS, extractActionMetrics, summarizeTargeting } from './metaActionMetrics';
 import { getCommercialTimeBoundaries } from '../../utils/commercialTimezone';
 
 export interface MetaConnectionStatus {
@@ -46,6 +47,17 @@ export interface MetaAdSetPayload {
   billing_event?: string;
   daily_budget?: number;
   lifetime_budget?: number;
+  targeting_summary?: Record<string, unknown> | null;
+}
+
+export interface MetaAdCreativeContent {
+  title?: string | null;
+  body?: string | null;
+  cta?: string | null;
+  thumbnail_url?: string | null;
+  image_url?: string | null;
+  video_id?: string | null;
+  url_tags?: string | null;
 }
 
 export interface MetaAdPayload {
@@ -55,6 +67,8 @@ export interface MetaAdPayload {
   status: string;
   effective_status: string;
   creative?: { id: string };
+  creative_content?: MetaAdCreativeContent;
+  created_time?: string | null;
 }
 
 export interface MetaInsightPayload {
@@ -75,6 +89,7 @@ export interface MetaInsightPayload {
   ctr?: number;
   frequency?: number;
   raw_actions?: any[] | null;
+  metrics?: ActionMetrics;
 }
 
 export interface MetaDemographicInsightPayload {
@@ -98,6 +113,23 @@ export interface MetaDemographicInsightPayload {
   ctr?: number;
   raw_actions?: any[] | null;
 }
+
+// Demo fixture for funnel/video metrics (NORQVA-0017)
+const DEMO_ACTION_ROW = {
+  actions: [
+    { action_type: 'link_click', value: '980' },
+    { action_type: 'landing_page_view', value: '850' },
+    { action_type: 'initiate_checkout', value: '60' },
+    { action_type: 'purchase', value: '24' },
+    { action_type: 'video_view', value: '14550' }
+  ],
+  action_values: [{ action_type: 'purchase', value: '717.60' }],
+  video_thruplay_watched_actions: [{ action_type: 'video_view', value: '3880' }],
+  video_p25_watched_actions: [{ action_type: 'video_view', value: '9700' }],
+  video_p50_watched_actions: [{ action_type: 'video_view', value: '6300' }],
+  video_p75_watched_actions: [{ action_type: 'video_view', value: '4100' }],
+  video_p100_watched_actions: [{ action_type: 'video_view', value: '2900' }]
+};
 
 export class MetaClient {
   private apiVersion: string;
@@ -442,7 +474,7 @@ export class MetaClient {
 
     const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
     const data = await this.paginateGraphApi(`/${formatted}/adsets`, {
-      fields: 'id,name,campaign_id,status,effective_status,optimization_goal,billing_event,daily_budget,lifetime_budget'
+      fields: 'id,name,campaign_id,status,effective_status,optimization_goal,billing_event,daily_budget,lifetime_budget,targeting'
     });
 
     return data.map(s => ({
@@ -454,8 +486,26 @@ export class MetaClient {
       optimization_goal: s.optimization_goal,
       billing_event: s.billing_event,
       daily_budget: s.daily_budget ? parseFloat(s.daily_budget) / 100 : undefined,
-      lifetime_budget: s.lifetime_budget ? parseFloat(s.lifetime_budget) / 100 : undefined
+      lifetime_budget: s.lifetime_budget ? parseFloat(s.lifetime_budget) / 100 : undefined,
+      targeting_summary: summarizeTargeting(s.targeting)
     }));
+  }
+
+  /** Text, CTA and media of a creative; falls back to object_story_spec (video_data / link_data). */
+  public static creativeContent(c: any): MetaAdCreativeContent {
+    const spec = c?.object_story_spec || {};
+    const vd = spec.video_data || {};
+    const ld = spec.link_data || {};
+    const clip = (v: any, n: number) => (v === undefined || v === null || v === '' ? null : String(v).slice(0, n));
+    return {
+      title: clip(c.title ?? vd.title ?? ld.name, 500),
+      body: clip(c.body ?? vd.message ?? ld.message, 4000),
+      cta: clip(c.call_to_action_type ?? vd.call_to_action?.type ?? ld.call_to_action?.type, 60),
+      thumbnail_url: clip(c.thumbnail_url ?? vd.image_url, 2000),
+      image_url: clip(c.image_url ?? ld.picture, 2000),
+      video_id: clip(c.video_id ?? vd.video_id, 64),
+      url_tags: clip(c.url_tags, 2000)
+    };
   }
 
   public async getAds(adAccountId: string, isDemo: boolean = false): Promise<MetaAdPayload[]> {
@@ -474,7 +524,7 @@ export class MetaClient {
 
     const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
     const data = await this.paginateGraphApi(`/${formatted}/ads`, {
-      fields: 'id,name,adset_id,status,effective_status,creative'
+      fields: 'id,name,adset_id,status,effective_status,created_time,creative{id,title,body,call_to_action_type,thumbnail_url,image_url,video_id,url_tags,object_story_spec}'
     });
 
     return data.map(a => ({
@@ -483,7 +533,9 @@ export class MetaClient {
       adset_id: a.adset_id,
       status: a.status,
       effective_status: a.effective_status,
-      creative: a.creative ? { id: a.creative.id } : undefined
+      creative: a.creative ? { id: a.creative.id } : undefined,
+      creative_content: a.creative ? MetaClient.creativeContent(a.creative) : undefined,
+      created_time: a.created_time || null
     }));
   }
 
@@ -520,7 +572,8 @@ export class MetaClient {
             cpm: 29.90,
             ctr: 2.56,
             frequency: 1.5,
-            raw_actions: [{ action_type: 'link_click', value: 980 }, { action_type: 'landing_page_view', value: 850 }]
+            raw_actions: [{ action_type: 'link_click', value: 980 }, { action_type: 'landing_page_view', value: 850 }],
+            metrics: extractActionMetrics(DEMO_ACTION_ROW)
           }
         ];
       }
@@ -540,7 +593,8 @@ export class MetaClient {
           cpm: 29.90,
           ctr: 2.56,
           frequency: 1.5,
-          raw_actions: [{ action_type: 'link_click', value: 980 }, { action_type: 'landing_page_view', value: 850 }]
+          raw_actions: [{ action_type: 'link_click', value: 980 }, { action_type: 'landing_page_view', value: 850 }],
+          metrics: extractActionMetrics(DEMO_ACTION_ROW)
         }
       ];
     }
@@ -548,7 +602,7 @@ export class MetaClient {
     const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
     const params: Record<string, string> = {
       level,
-      fields: 'account_id,campaign_id,adset_id,ad_id,date_start,date_stop,spend,impressions,reach,clicks,cpc,cpm,ctr,frequency,actions,inline_link_clicks'
+      fields: ['account_id,campaign_id,adset_id,ad_id,date_start,date_stop,spend,impressions,reach,clicks,cpc,cpm,ctr,frequency,inline_link_clicks', ...ACTION_METRIC_FIELDS].join(',')
     };
 
     if (timeRange) {
@@ -588,7 +642,8 @@ export class MetaClient {
         cpm: this.normalizeNumeric(row.cpm, undefined),
         ctr: this.normalizeNumeric(row.ctr, undefined),
         frequency: this.normalizeNumeric(row.frequency, undefined),
-        raw_actions: this.sanitizeRawActions(row.actions)
+        raw_actions: this.sanitizeRawActions(row.actions),
+        metrics: extractActionMetrics(row)
       };
     });
   }

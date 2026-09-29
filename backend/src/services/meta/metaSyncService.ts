@@ -194,6 +194,12 @@ export class MetaSyncService {
             ]
           );
           adSetDbIdMap.set(set.id, setRes.rows[0].id);
+          if (set.targeting_summary !== undefined) {
+            await dbClient.query('UPDATE meta_ad_sets SET targeting_summary = $1 WHERE id = $2', [
+              set.targeting_summary ? JSON.stringify(set.targeting_summary) : null,
+              setRes.rows[0].id
+            ]);
+          }
           counts.adSets++;
         }
 
@@ -217,6 +223,19 @@ export class MetaSyncService {
             [ad.id, parentSetDbId, ad.name, ad.status, ad.effective_status, ad.creative?.id || null, isDemo, provenance]
           );
           adDbIdMap.set(ad.id, adRes.rows[0].id);
+          if (ad.creative_content || ad.created_time) {
+            const cc = ad.creative_content || {};
+            // NORQVA-0017: creative content (text, CTA, media) for analysis; keep the old values when Meta omits a field
+            await dbClient.query(
+              `UPDATE meta_ads SET creative_title = COALESCE($1, creative_title), creative_body = COALESCE($2, creative_body),
+                      creative_cta = COALESCE($3, creative_cta), thumbnail_url = COALESCE($4, thumbnail_url),
+                      image_url = COALESCE($5, image_url), video_id = COALESCE($6, video_id), url_tags = COALESCE($7, url_tags),
+                      meta_created_time = COALESCE($8, meta_created_time)
+               WHERE id = $9`,
+              [cc.title ?? null, cc.body ?? null, cc.cta ?? null, cc.thumbnail_url ?? null, cc.image_url ?? null, cc.video_id ?? null,
+               cc.url_tags ?? null, ad.created_time || null, adRes.rows[0].id]
+            );
+          }
           counts.ads++;
         }
 
@@ -252,7 +271,8 @@ export class MetaSyncService {
                frequency = EXCLUDED.frequency,
                raw_actions = EXCLUDED.raw_actions,
                data_provenance = CASE WHEN meta_insights.data_provenance = 'UNKNOWN' THEN EXCLUDED.data_provenance ELSE meta_insights.data_provenance END,
-               synced_at = NOW()`,
+               synced_at = NOW()
+             RETURNING id`,
             [
               actRes.rows[0].id, cmpDbId, setDbId, adDbId,
               ins.entity_level, ins.entity_meta_id,
@@ -262,7 +282,21 @@ export class MetaSyncService {
               ins.raw_actions ? JSON.stringify(ins.raw_actions) : null,
               isDemo, provenance
             ]
-          );
+          ).then(async (r: any) => {
+            const m = ins.metrics;
+            const id = r?.rows?.[0]?.id;
+            if (!m || !id) return r;
+            // NORQVA-0017: funnel and video metrics parsed from actions / action_values / video_*_actions
+            await dbClient.query(
+              `UPDATE meta_insights SET purchases = $1, purchase_value = $2, landing_page_views = $3, initiate_checkouts = $4,
+                      add_to_carts = $5, outbound_clicks = $6, video_3s_views = $7, thruplays = $8,
+                      video_p25 = $9, video_p50 = $10, video_p75 = $11, video_p100 = $12
+               WHERE id = $13`,
+              [m.purchases, m.purchase_value, m.landing_page_views, m.initiate_checkouts, m.add_to_carts, m.outbound_clicks,
+               m.video_3s_views, m.thruplays, m.video_p25, m.video_p50, m.video_p75, m.video_p100, id]
+            );
+            return r;
+          });
           counts.insights++;
           if (ins.entity_level === 'CAMPAIGN') {
             counts.campaignInsights++;
