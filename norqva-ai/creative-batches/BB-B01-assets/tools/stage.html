@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #07110f;
+    --bg2: #0c1a17;
+    --ink: #f4f7f6;
+    --muted: #9fb3ad;
+    --em: #10b981;
+    --em2: #34d399;
+    --line: #1f3a33;
+    --warn: #fbbf24;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: var(--bg); overflow: hidden; }
+  body { font-family: 'Noto Sans CJK SC', 'DejaVu Sans', sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; inset: 0; overflow: hidden;
+    background: radial-gradient(1200px 900px at 80% -10%, rgba(16,185,129,.22), transparent 60%),
+                radial-gradient(900px 700px at -10% 110%, rgba(16,185,129,.12), transparent 60%), var(--bg); }
+  .layer { position: absolute; inset: 0; opacity: 0; }
+  .brand { position: absolute; left: 64px; top: 64px; display: flex; align-items: center; gap: 18px; font-weight: 900; letter-spacing: .14em; font-size: 30px; }
+  .brand .logo { width: 58px; height: 58px; border-radius: 16px; background: var(--em); color: #03261c; display: grid; place-items: center; font-size: 26px; letter-spacing: 0; }
+  .illus { position: absolute; left: 0; right: 0; bottom: 40px; text-align: center; font-size: 26px; color: var(--muted); letter-spacing: .04em; }
+  .kicker { font-size: 40px; font-weight: 700; color: var(--muted); line-height: 1.25; }
+  .big { font-size: 92px; font-weight: 900; line-height: 1.05; letter-spacing: -0.02em; }
+  .huge { font-size: 132px; font-weight: 900; line-height: 1; letter-spacing: -0.03em; color: var(--em2); }
+  .em { color: var(--em2); }
+  .cap { position: absolute; left: 70px; right: 70px; text-align: center; font-size: 50px; font-weight: 800; line-height: 1.5; }
+  .cap span { background: rgba(7,17,15,.78); padding: 6px 18px; border-radius: 14px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .center { position: absolute; left: 80px; right: 80px; top: 50%; transform: translateY(-50%); }
+  .pill { display: inline-block; padding: 14px 28px; border-radius: 999px; border: 3px solid var(--em); color: var(--em2); font-weight: 800; font-size: 34px; }
+  .cta { display: inline-block; padding: 30px 46px; border-radius: 24px; background: var(--em); color: #03261c; font-weight: 900; font-size: 46px; }
+  /* Phone */
+  .phone { position: absolute; width: 560px; height: 1120px; border-radius: 72px; background: #0a0f0e; border: 14px solid #1b2623;
+    box-shadow: 0 60px 120px rgba(0,0,0,.55), 0 0 0 2px #2c3b37 inset; overflow: hidden; }
+  .phone .notch { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: 170px; height: 34px; border-radius: 20px; background: #000; }
+  .scr { position: absolute; inset: 0; padding: 78px 30px 30px; background: linear-gradient(180deg, #0e1b18, #0a1311); }
+  .apphdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; }
+  .apphdr .l { display: flex; gap: 12px; align-items: center; font-weight: 800; font-size: 24px; }
+  .apphdr .lg { width: 42px; height: 42px; border-radius: 12px; background: var(--em); color: #03261c; display: grid; place-items: center; font-size: 18px; font-weight: 900; }
+  .apphdr .m { font-size: 20px; color: var(--muted); }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .kpi { background: #12211e; border: 2px solid var(--line); border-radius: 20px; padding: 16px 18px; }
+  .kpi .t { font-size: 18px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .kpi .v { font-size: 30px; font-weight: 800; margin-top: 6px; }
+  .kpi.disp { grid-column: 1 / span 2; border-color: var(--em); background: #0f2a22; }
+  .kpi.disp .v { font-size: 54px; color: var(--em2); }
+  .list { margin-top: 22px; }
+  .list .h { font-size: 19px; color: var(--muted); margin-bottom: 10px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-radius: 16px; background: #101d1a; border: 2px solid #17302a; margin-bottom: 10px; font-size: 22px; }
+  .row .a { font-weight: 800; }
+  .row.new { border-color: var(--em); background: #0f2a22; }
+  .bar { height: 12px; border-radius: 8px; background: #17302a; margin-top: 8px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--em); border-radius: 8px; }
+  .fab { position: absolute; right: 34px; bottom: 40px; width: 92px; height: 92px; border-radius: 50%; background: var(--em); color: #03261c; display: grid; place-items: center; font-size: 60px; font-weight: 900; box-shadow: 0 10px 30px rgba(16,185,129,.4); }
+  .tap { position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 6px solid rgba(255,255,255,.8); }
+  /* Spreadsheet */
+  .sheet { position: absolute; left: 70px; right: 70px; border-radius: 22px; background: #f3f4f1; color: #222; overflow: hidden; font-family: 'DejaVu Sans Mono', monospace; box-shadow: 0 40px 90px rgba(0,0,0,.5); }
+  .sheet .tabs { display: flex; gap: 6px; padding: 12px; background: #d9dcd6; font-size: 18px; flex-wrap: nowrap; overflow: hidden; }
+  .sheet .tabs b { background: #eef0eb; padding: 6px 12px; border-radius: 6px; white-space: nowrap; font-weight: 400; }
+  .sheet table { border-collapse: collapse; width: 100%; font-size: 19px; }
+  .sheet td { border: 1px solid #c9ccc5; padding: 10px 8px; white-space: nowrap; overflow: hidden; max-width: 170px; }
+  .sheet td.f { color: #9a3412; }
+  .sheet td.err { color: #b91c1c; font-weight: 700; }
+  .xmark { position: absolute; font-size: 360px; font-weight: 900; color: rgba(248,113,113,.9); left: 50%; top: 50%; transform: translate(-50%,-50%) rotate(-8deg); }
+  /* 50/30/20 */
+  .rule { position: absolute; left: 80px; right: 80px; }
+  .rrow { margin-bottom: 44px; }
+  .rrow .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 44px; font-weight: 800; }
+  .rrow .lab .p { font-size: 84px; font-weight: 900; color: var(--em2); }
+  .rrow .d { font-size: 32px; color: var(--muted); margin-top: 6px; }
+  .rrow .track { height: 34px; border-radius: 18px; background: #12211e; margin-top: 14px; overflow: hidden; border: 2px solid var(--line); }
+  .rrow .track > i { display: block; height: 100%; background: linear-gradient(90deg, var(--em), var(--em2)); }
+  /* Static layout */
+  .static-hook { position: absolute; left: 64px; font-weight: 900; }
+  .seal { display: inline-block; padding: 16px 26px; border-radius: 18px; background: #0f2a22; border: 2px solid var(--em); font-size: 30px; font-weight: 700; color: #d1fae5; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const brl = v => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const W = () => window.innerWidth, H = () => window.innerHeight;
+
+function brandHTML() { return `<div class="brand"><div class="logo">BB</div>BOLSO BLINDADO</div>`; }
+
+function phoneHTML(id, opts = {}) {
+  return `
+  <div class="phone" id="${id}">
+    <div class="scr">
+      <div class="apphdr"><div class="l"><div class="lg">BB</div>Bolso Blindado</div><div class="m">Setembro</div></div>
+      <div class="kpis">
+        <div class="kpi"><div class="t">Entrou</div><div class="v">${brl(5200)}</div></div>
+        <div class="kpi"><div class="t">Saiu</div><div class="v" data-k="out">${brl(2450)}</div></div>
+        <div class="kpi disp"><div class="t">Disponível no mês</div><div class="v" data-k="disp">${brl(2750)}</div></div>
+      </div>
+      <div class="list">
+        <div class="h">Onde você mais gastou</div>
+        <div class="row new" data-k="new" style="opacity:0"><span>Mercado</span><span class="a">- ${brl(85)}</span></div>
+        <div class="row"><div style="flex:1"><div style="display:flex;justify-content:space-between"><span>Moradia &amp; Contas</span><span class="a">${brl(1200)}</span></div><div class="bar"><i style="width:78%"></i></div></div></div>
+        <div class="row"><div style="flex:1"><div style="display:flex;justify-content:space-between"><span>Alimentação</span><span class="a" data-k="food">${brl(680)}</span></div><div class="bar"><i data-k="foodbar" style="width:44%"></i></div></div></div>
+        <div class="row"><div style="flex:1"><div style="display:flex;justify-content:space-between"><span>Transporte</span><span class="a">${brl(320)}</span></div><div class="bar"><i style="width:21%"></i></div></div></div>
+      </div>
+      <div class="fab">+</div>
+      <div class="tap" data-k="tap" style="opacity:0"></div>
+    </div>
+    <div class="notch"></div>
+  </div>`;
+}
+
+// phone animation: at local progress p (0..1) a R$ 85 expense is added
+function animatePhone(root, p, m = 'M1') {
+  if (m === 'M2') return animatePhoneM2(root, p);
+  const tapP = prog(p, 0.12, 0.26);
+  const addP = ease(prog(p, 0.26, 0.5));
+  const tap = root.querySelector('[data-k=tap]');
+  tap.style.right = '10px'; tap.style.bottom = '-6px';
+  tap.style.opacity = tapP > 0 && tapP < 1 ? String(1 - tapP) : '0';
+  tap.style.transform = `scale(${0.5 + tapP})`;
+  const nw = root.querySelector('[data-k=new]');
+  nw.style.opacity = String(addP);
+  nw.style.transform = `translateY(${(1 - addP) * -30}px)`;
+  const outV = 2450 + 85 * addP, dispV = 2750 - 85 * addP, food = 680 + 85 * addP;
+  root.querySelector('[data-k=out]').textContent = brl(Math.round(outV * 100) / 100);
+  root.querySelector('[data-k=disp]').textContent = brl(Math.round(dispV * 100) / 100);
+  root.querySelector('[data-k=food]').textContent = brl(Math.round(food * 100) / 100);
+  root.querySelector('[data-k=foodbar]').style.width = (44 + 5 * addP) + '%';
+  const disp = root.querySelector('.kpi.disp');
+  const pulse = prog(p, 0.45, 0.75);
+  disp.style.boxShadow = pulse > 0 && pulse < 1 ? `0 0 0 ${8 * Math.sin(pulse * Math.PI)}px rgba(52,211,153,.35)` : 'none';
+}
+
+// M2: "Onde você mais gastou" — category bars grow and the biggest category is highlighted
+function animatePhoneM2(root, p) {
+  const rows = [...root.querySelectorAll('.list .row')].filter(r => r.dataset.k !== 'new');
+  const widths = [78, 44, 21];
+  rows.forEach((r, i) => {
+    const g = ease(prog(p, 0.08 + i * 0.1, 0.38 + i * 0.1));
+    const bar = r.querySelector('.bar > i');
+    if (bar) bar.style.width = (widths[i] * g) + '%';
+    r.style.opacity = String(0.35 + 0.65 * g);
+  });
+  const hl = ease(prog(p, 0.6, 0.75));
+  const top = rows[0];
+  top.style.borderColor = hl > 0 ? 'var(--em)' : '';
+  top.style.background = hl > 0 ? '#0f2a22' : '';
+  top.style.boxShadow = hl > 0 && hl < 1 ? `0 0 0 ${10 * Math.sin(hl * Math.PI)}px rgba(52,211,153,.35)` : 'none';
+  const hdr = root.querySelector('.list .h');
+  hdr.style.color = 'var(--em2)'; hdr.style.fontWeight = '800'; hdr.style.fontSize = '22px';
+  const kp = root.querySelector('.kpis');
+  kp.style.opacity = String(1 - 0.45 * ease(prog(p, 0.05, 0.25)));
+  const nw = root.querySelector('[data-k=new]'); nw.style.display = 'none';
+  root.querySelector('[data-k=tap]').style.opacity = '0';
+}
+
+function sheetHTML() {
+  const tabs = ['Jan', 'Fev', 'Mar', 'Resumo', 'Metas', 'Cartão', 'Dívidas?', 'Plan2 (1)', 'Cópia de Resumo', 'NÃO APAGAR'];
+  const rows = [
+    ['A', 'Categoria', 'Valor', 'Fórmula', '%', 'Obs'],
+    ['1', 'Aluguel', '1.200', '=SOMA(C2:C9)', '#REF!', 'ver aba 3'],
+    ['2', 'Luz', '???', "=PROCV(B3;Resumo!A:F;4;0)", '#N/D', ''],
+    ['3', 'Mercado', '680', '=SE(E4>0;C4*1,1;"")', '12%', 'conferir'],
+    ['4', 'Cartão', '—', "=Cartão!F22-Metas!B7", '#VALOR!', 'atualizar'],
+    ['5', 'Lazer', '210', '=C6/$C$12', '0,17', ''],
+    ['6', 'Outros', '', '=SOMASES(...)', '#DIV/0!', '??'],
+    ['7', 'Total', '', '=C2+C3+C4+C5', '#REF!', 'errado?'],
+  ];
+  const body = rows.map((r, i) => `<tr>${r.map((c, j) => `<td class="${j === 3 && i ? 'f' : ''} ${String(c).startsWith('#') ? 'err' : ''}">${c}</td>`).join('')}</tr>`).join('');
+  return `<div class="sheet" id="sheet"><div class="tabs">${tabs.map(t => `<b>${t}</b>`).join('')}</div><table>${body}</table></div>`;
+}
+
+// ---------- compositions ----------
+const SAFE_TOP = 250, SAFE_BOTTOM = 380; // Reels/Stories UI safe zones (1080x1920)
+
+function endcard(cta) {
+  return `<div class="layer" data-s="end">
+    <div class="center" style="text-align:center">
+      <div class="kicker" style="margin-bottom:26px">Método</div>
+      <div class="big" style="margin-bottom:34px">Bolso Blindado</div>
+      <div class="kicker" style="color:var(--ink);margin-bottom:40px">App + Planilha 2026 + Guia PDF</div>
+      <div class="huge" style="margin-bottom:16px">R$ 29,90</div>
+      <div class="kicker" style="margin-bottom:60px">pagamento único · sem mensalidade</div>
+      <div class="cta">${cta}</div>
+    </div></div>`;
+}
+
+const CTA_TEXT = { C1: 'Toque em Saiba mais e comece hoje.', C2: 'Veja como funciona na página.' };
+const M_CAPTION = {
+  M1: 'Aqui dá pra ver quanto ainda pode ser gasto no mês.',
+  M2: 'Aqui dá pra ver pra onde cada real foi.'
+};
+
+const VIDEOS = {
+  H01: {
+    duration: 20,
+    html: c => `
+      ${brandHTML()}
+      <div class="layer" data-s="a"><div class="center"><div class="big">Quando o salário some antes do fim do mês…</div></div></div>
+      <div class="layer" data-s="b"><div class="center"><div class="kicker" style="font-size:54px;color:var(--ink);margin-bottom:40px">…quase sempre falta uma coisa:</div><div class="big em">saber pra onde ele foi.</div></div></div>
+      <div class="layer" data-s="p">${phoneHTML('ph')}<div class="cap" style="top:${SAFE_TOP}px"><span>${M_CAPTION[c.m]}</span></div><div class="illus" style="bottom:auto;top:1455px">Valores ilustrativos</div></div>
+      ${endcard(CTA_TEXT[c.c])}`,
+    scenes: [['a', 0, 3.6], ['b', 3.6, 7.2], ['p', 7.2, 15], ['end', 15, 20]],
+    phoneScene: 'p'
+  },
+  H03: {
+    duration: 18,
+    html: c => `
+      ${brandHTML()}
+      <div class="layer" data-s="a">
+        <div class="cap" style="top:${SAFE_TOP}px;font-size:56px"><span>O erro de quem tenta se organizar:</span></div>
+        <div style="position:absolute;left:0;right:0;top:560px">${sheetHTML()}</div>
+        <div class="cap" style="top:1270px;font-size:54px"><span>uma planilha tão complicada que ninguém mantém.</span></div>
+      </div>
+      <div class="layer" data-s="b"><div class="center" style="text-align:center"><div class="big">Quase ninguém mantém uma planilha assim por muito tempo.</div><div class="pill" style="margin-top:60px">Existe um jeito mais simples</div></div></div>
+      <div class="layer" data-s="p">${phoneHTML('ph')}<div class="cap" style="top:${SAFE_TOP}px"><span>${M_CAPTION[c.m]}</span></div><div class="illus" style="bottom:auto;top:1455px">Valores ilustrativos</div></div>
+      ${endcard(CTA_TEXT[c.c])}`,
+    scenes: [['a', 0, 4.5], ['b', 4.5, 7.5], ['p', 7.5, 14], ['end', 14, 18]],
+    phoneScene: 'p'
+  },
+  H04: {
+    duration: 25,
+    html: c => `
+      ${brandHTML()}
+      <div class="layer" data-s="a"><div class="center" style="text-align:center"><div class="kicker" style="font-size:52px;margin-bottom:30px">A regra</div><div class="huge" style="font-size:190px">50/30/20</div><div class="big" style="margin-top:30px">em 20 segundos.</div></div></div>
+      <div class="layer" data-s="r"><div class="rule" style="top:${SAFE_TOP + 120}px">
+        <div class="rrow" data-k="r1"><div class="lab"><span>Necessidades</span><span class="p">50%</span></div><div class="d">Moradia, contas, mercado, transporte</div><div class="track"><i style="width:0"></i></div></div>
+        <div class="rrow" data-k="r2"><div class="lab"><span>Estilo de vida</span><span class="p">30%</span></div><div class="d">Lazer, restaurantes, assinaturas</div><div class="track"><i style="width:0"></i></div></div>
+        <div class="rrow" data-k="r3"><div class="lab"><span>Reserva e investimento</span><span class="p">20%</span></div><div class="d">Emergências e objetivos</div><div class="track"><i style="width:0"></i></div></div>
+      </div></div>
+      <div class="layer" data-s="p">${phoneHTML('ph')}<div class="cap" style="top:${SAFE_TOP}px"><span>${c.m === 'M2' ? M_CAPTION.M2 : 'O Bolso Blindado já vem com essa divisão pronta.'}</span></div><div class="illus" style="bottom:auto;top:1455px">Valores ilustrativos</div></div>
+      ${endcard(CTA_TEXT[c.c])}`,
+    scenes: [['a', 0, 3.2], ['r', 3.2, 12.5], ['p', 12.5, 20], ['end', 20, 25]],
+    phoneScene: 'p'
+  },
+  H02KIT: {
+    // Open card to put before the owner's real screen recording (H02)
+    duration: 2.5,
+    html: c => `
+      ${brandHTML()}
+      <div class="layer" data-s="a"><div class="center"><div class="big">Olha como é registrar um gasto aqui:</div><div class="big em" style="margin-top:30px">poucos toques e pronto.</div></div></div>`,
+    scenes: [['a', 0, 2.5]]
+  },
+  ENDCARD: {
+    duration: 4,
+    html: c => `${brandHTML()}${endcard(CTA_TEXT[c.c])}`,
+    scenes: [['end', 0, 4]]
+  }
+};
+
+function setupVideo(key, m, c) {
+  const v = VIDEOS[key];
+  document.getElementById('stage').innerHTML = v.html({ m, c });
+  const ph = document.getElementById('ph');
+  if (ph) { ph.style.left = ((W() - 560) / 2) + 'px'; ph.style.top = '500px'; ph.style.transformOrigin = 'top center'; }
+  window.__v = v; window.__m = m;
+  return v.duration;
+}
+
+function renderVideo(t) {
+  const v = window.__v;
+  const fade = 0.35;
+  for (const [id, a, b] of v.scenes) {
+    const el = document.querySelector(`[data-s="${id}"]`);
+    if (!el) continue;
+    const inP = a === 0 ? 1 : ease(prog(t, a, a + fade));
+    const outP = b >= v.duration ? 1 : 1 - ease(prog(t, b - fade, b));
+    const on = t >= a - 0.001 && t <= b + 0.001;
+    const op = on ? Math.min(inP, outP) : 0;
+    el.style.opacity = String(op);
+    el.style.transform = `translateY(${(1 - inP) * 40}px)`;
+    const local = prog(t, a, b);
+    if (id === v.phoneScene) {
+      const ph = document.getElementById('ph');
+      const s = 0.80 + 0.03 * ease(prog(t, a, a + 0.8));
+      ph.style.transform = `scale(${s})`;
+      animatePhone(ph, local, window.__m);
+    }
+    if (id === 'b') { const x = el.querySelector('[data-k=x]'); if (x) x.style.opacity = String(ease(prog(t, a + 0.6, a + 1.2)) * 0.9); }
+    if (id === 'r') {
+      [['r1', 50, 0.05], ['r2', 30, 0.35], ['r3', 20, 0.62]].forEach(([k, w, st]) => {
+        const row = el.querySelector(`[data-k=${k}]`);
+        const p = ease(prog(local, st, st + 0.22));
+        row.style.opacity = String(p);
+        row.querySelector('.track > i').style.width = (w * 2 * p) + '%';
+      });
+    }
+    if (id === 'end') {
+      const cta = el.querySelector('.cta');
+      const p = prog(t, a + 1.0, a + 1.6);
+      cta.style.transform = `scale(${1 + 0.05 * Math.sin(p * Math.PI)})`;
+    }
+  }
+}
+
+// ---------- statics (H05) ----------
+function setupStatic(m, c, w, h) {
+  const sub = m === 'M1' ? 'Veja quanto ainda dá pra gastar no mês.' : 'Veja pra onde o dinheiro está indo.';
+  const F = {
+    '1080x1080': { scale: .62, pl: 'right', top: 316, hookTop: 160, hookW: 570, fHook: 54, fPrice: 100, fSub: 34, seal: 26, stack: false },
+    '1080x1350': { scale: .78, pl: 'right', top: 396, hookTop: 170, hookW: 480, fHook: 52, fPrice: 96, fSub: 34, seal: 26, stack: false },
+    '1080x1920': { scale: .62, pl: 'center', top: 770, hookTop: 230, hookW: 952, fHook: 62, fPrice: 132, fSub: 40, seal: 30, stack: true }
+  }[`${w}x${h}`];
+  const phW = 560 * F.scale, phH = 1120 * F.scale;
+  const phLeft = F.pl === 'center' ? (w - phW) / 2 : w - phW - 60;
+  document.getElementById('stage').innerHTML = `
+    ${brandHTML()}
+    <div class="static-hook" style="top:${F.hookTop}px;left:64px;width:${F.hookW}px">
+      <div style="font-size:${F.fHook}px;line-height:1.1">Organizar o dinheiro não precisa ter mensalidade:</div>
+      <div class="huge" style="font-size:${F.fPrice}px;margin-top:18px">R$ 29,90,</div>
+      <div style="font-size:${F.fHook}px;color:var(--em2)">uma vez.</div>
+      <div class="kicker" style="margin-top:22px;font-size:${F.fSub}px;color:var(--ink);font-weight:700">${sub}</div>
+    </div>
+    ${phoneHTML('ph')}
+    <div class="illus" style="left:auto;right:auto;bottom:auto;top:${F.top - 44}px;${F.pl === 'center' ? `left:0;right:0;text-align:center` : `left:${phLeft}px;width:${phW}px;text-align:center`};font-size:22px">Valores ilustrativos</div>
+    <div style="position:absolute;left:64px;${F.stack ? 'right:64px;text-align:center;bottom:366px' : `width:${F.hookW}px;bottom:70px`}">
+      <div class="seal" style="font-size:${F.seal}px">App + Planilha 2026 + Guia PDF · Pagamento único</div>
+    </div>`;
+  const ph = document.getElementById('ph');
+  ph.style.transformOrigin = 'top left';
+  ph.style.left = phLeft + 'px'; ph.style.top = F.top + 'px';
+  ph.style.transform = `scale(${F.scale})`;
+  animatePhone(ph, 1, m);
+}
+window.setupVideo = setupVideo; window.renderVideo = renderVideo; window.setupStatic = setupStatic;
+</script>
+</body>
+</html>
