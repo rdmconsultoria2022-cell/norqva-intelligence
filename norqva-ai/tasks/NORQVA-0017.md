@@ -91,6 +91,23 @@
 
 ### Fase 3: time de IAs (`ai/NORQVA-0017-ai-team`)
 
+**Entregue:**
+- **Migration 035:** `creative_batches` (lotes das IAs no banco, importados pela Fábrica) e `campaign_opportunities`, com a sequência OPP-0001.
+- **`OpportunityService`:**
+  - cria a oportunidade a partir da Base de campanhas (guarda um retrato da linha e do ranking), do Mercado UE (nicho e melhores anúncios) ou de um briefing;
+  - dispara a rotina do Claude com o payload `NORQVA_OPPORTUNITY_TASK` (tarefa EVALUATE ou PLAN), e o GPT dá a segunda opinião em segundo plano (`gptSecondOpinion`, opcional sem `OPENAI_API_KEY`);
+  - valida o plano: produto, oferta do produto, de 1 a 20 criativos, e só claims VERIFIED do produto;
+  - vira lote `OPP-XXXX-B01` com criativos DRAFT na Fábrica;
+  - só ADMIN aprova ou descarta.
+- **API de automação** (`X-Norqva-Automation-Token`):
+  - `GET /api/automation/opportunities/:id` devolve a oportunidade e o contexto (produtos, ofertas, claims VERIFIED, CPA de equilíbrio, top anúncios da conta e nichos UE);
+  - `POST …/status`, `…/evaluation` e `…/plan`.
+- **Tela "Time de IAs":**
+  - quadro por etapa, com as avaliações do Claude e do GPT lado a lado, o plano e o lote;
+  - ações: pedir avaliação, montar plano, aprovar e descartar;
+  - botões "Criar oportunidade" na Base de campanhas e no Mercado europeu.
+- **Rotina:** a rotina "NORQVA — executar ajuste de criativo" ganha a seção do formato `NORQVA_OPPORTUNITY_TASK`.
+
 - **Oportunidades:** criadas a partir do ranking (fases 1 e 2) ou manualmente, e seguem o fluxo CAPTADA → AVALIADA → PLANO → PRONTA_PARA_FÁBRICA → APROVADA ou DESCARTADA.
 - **Avaliação:** a rotina do Claude avalia com os dados, e o GPT dá uma segunda opinião estruturada. O parecer, a nota e os riscos ficam gravados.
 - **Plano de campanha:**

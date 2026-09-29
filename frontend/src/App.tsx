@@ -43,6 +43,7 @@ import { AccessRecoveryView } from './features/delivery/AccessRecoveryView';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
 import { CampaignBaseView } from './features/intelligence/CampaignBaseView';
+import { AiTeamView } from './features/intelligence/AiTeamView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
 import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
@@ -731,6 +732,16 @@ export default function App() {
 
           {activeTab === 'creative-factory' && (
             <CreativeFactoryView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+            />
+          )}
+
+          {activeTab === 'ai-team' && (
+            <AiTeamView
               currentUser={currentUser}
               isDemoView={isDemoView}
               apiFetch={apiFetch}

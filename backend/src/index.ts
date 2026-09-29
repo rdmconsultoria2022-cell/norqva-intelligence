@@ -120,6 +120,7 @@ import {
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
+import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -380,6 +381,11 @@ app.post('/api/market/eu/niches', requireRole(['ADMIN', 'INTELLIGENCE']), create
 app.patch('/api/market/eu/niches/:id', requireRole(['ADMIN', 'INTELLIGENCE']), updateMarketNiche);
 app.get('/api/market/eu/niches/:id/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listNicheAds);
 app.post('/api/market/eu/collect', requireRole(['ADMIN']), collectMarketEu);
+// NORQVA-0017 (fase 3): time de IAs (oportunidade → avaliação → plano → lote na Fábrica)
+app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listAiOpportunities);
+app.post('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE']), createAiOpportunity);
+app.post('/api/ai-team/opportunities/:id/dispatch', requireRole(['ADMIN']), dispatchAiOpportunity);
+app.post('/api/ai-team/opportunities/:id/decision', requireRole(['ADMIN']), decideAiOpportunity);
 
 // Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
 app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);
@@ -397,6 +403,10 @@ app.post('/api/creative-factory/creatives/:id/adjustments', requireRole(['ADMIN'
 app.get('/api/automation/adjustments/:id', automationGetAdjustment);
 app.post('/api/automation/adjustments/:id/status', automationReportAdjustment);
 app.post('/api/automation/adjustments/:id/version', automationDeliverAdjustment);
+app.get('/api/automation/opportunities/:id', automationGetOpportunity);
+app.post('/api/automation/opportunities/:id/status', automationOpportunityStatus);
+app.post('/api/automation/opportunities/:id/evaluation', automationOpportunityEvaluation);
+app.post('/api/automation/opportunities/:id/plan', automationOpportunityPlan);
 
 // Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
 app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);

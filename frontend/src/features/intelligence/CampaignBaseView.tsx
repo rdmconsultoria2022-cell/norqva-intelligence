@@ -166,6 +166,20 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
     }
   };
 
+  const canCreateOpp = isAdmin || currentUser?.role === 'INTELLIGENCE';
+  const createOpportunity = async (r: IntelRow) => {
+    try {
+      const o = await apiFetch(`/ai-team/opportunities?mode=${mode}`, {
+        method: 'POST',
+        body: JSON.stringify({ source: 'ACCOUNT', source_level: r.level, source_ref: r.key }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      showSuccess(`Oportunidade ${o?.human_id || ''} criada. Veja em "Time de IAs".`);
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível criar a oportunidade.');
+    }
+  };
+
   const rows = useMemo(() => (data?.rows || []).filter(r => filter === 'ALL' || r.classification === filter), [data, filter]);
 
   return (
@@ -322,7 +336,7 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
                   {open === r.key && (
                     <tr className="border-t border-slate-800 bg-slate-950/60">
                       <td colSpan={12} className="px-4 py-3">
-                        <RowDetail r={r} />
+                        <RowDetail r={r} onCreateOpportunity={canCreateOpp ? () => createOpportunity(r) : undefined} />
                       </td>
                     </tr>
                   )}
@@ -354,13 +368,18 @@ const FilterChip: React.FC<{ active: boolean; onClick: () => void; label: string
   </button>
 );
 
-export const RowDetail: React.FC<{ r: IntelRow }> = ({ r }) => {
+export const RowDetail: React.FC<{ r: IntelRow; onCreateOpportunity?: () => void }> = ({ r, onCreateOpportunity }) => {
   const t = r.totals;
   const m = r.metrics;
   return (
     <div className="grid gap-4 md:grid-cols-3" data-testid="campaign-base-detail">
       <div className="space-y-1 text-xs text-slate-300 md:col-span-2">
         <p className="text-sm text-slate-100">{r.reason}</p>
+        {onCreateOpportunity && (
+          <button onClick={onCreateOpportunity} className="mt-1 rounded border border-violet-600/60 px-2.5 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-900/30">
+            Criar oportunidade para o time de IAs
+          </button>
+        )}
         <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-2 sm:grid-cols-3">
           <span>Impressões: {int(t.impressions)}</span>
           <span>Alcance: {int(t.reach)}</span>
