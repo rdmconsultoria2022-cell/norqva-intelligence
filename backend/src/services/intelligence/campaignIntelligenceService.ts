@@ -142,8 +142,10 @@ export function scoreEntity(t: BaseTotals, m: DerivedMetrics, quality: { ctrPct:
     prof = clamp((m.roas ?? 0) / 1.5);
     confidence = clamp(t.spend / 80);
   }
-  const raw = 0.7 * prof + 0.3 * q;
-  const score = Math.round(100 * (confidence * raw + (1 - confidence) * 0.35));
+  // Top-of-funnel quality matters while money data is thin; with confidence, profitability dominates
+  const qWeight = 0.3 - 0.2 * confidence;
+  const raw = (1 - qWeight) * prof + qWeight * q;
+  let score = Math.round(100 * (confidence * raw + (1 - confidence) * 0.35));
 
   const ctr = m.ctr_link;
   let classification: IntelClass = 'TESTANDO';
@@ -176,6 +178,8 @@ export function scoreEntity(t: BaseTotals, m: DerivedMetrics, quality: { ctrPct:
     classification = 'VENCEDOR';
     reason = `ROAS ${m.roas} com ${t.sales} vendas (sem CPA de equilíbrio cadastrado).`;
   }
+  // A proven loser never ranks above something still being tested
+  if (classification === 'PERDEDOR') score = Math.min(score, 25);
   return { score, confidence: r2(confidence), classification, reason };
 }
 
@@ -277,6 +281,10 @@ export class CampaignIntelligenceService {
       pool.query(`SELECT id, name, category FROM products`)
     ]);
 
+    // Campaigns without an identified product use the median breakeven of the account's products (estimate)
+    const knownBe = [...breakeven.values()].sort((a, b) => a - b);
+    const fallbackBe = knownBe.length ? knownBe[Math.floor((knownBe.length - 1) / 2)] : null;
+
     const products = new Map<string, { name: string; category: string | null }>();
     for (const p of productsRes.rows) products.set(String(p.id), { name: p.name, category: p.category || null });
 
@@ -297,7 +305,7 @@ export class CampaignIntelligenceService {
       const ins = insByAd.get(String(a.id));
       const s = salesByAd.get(String(a.meta_ad_id));
       const productId = campaignProduct.get(String(a.campaign_id)) || null;
-      const be = productId ? breakeven.get(productId) ?? null : null;
+      const be = (productId ? breakeven.get(productId) ?? null : null) ?? fallbackBe;
       const spend = f(ins?.spend);
       const totals: BaseTotals = {
         spend,

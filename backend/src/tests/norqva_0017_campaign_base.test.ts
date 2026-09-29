@@ -8,7 +8,7 @@ import { signSupabaseToken } from '../utils/token';
 import { extractActionMetrics, summarizeTargeting } from '../services/meta/metaActionMetrics';
 import { MetaClient } from '../services/meta/metaClient';
 import { MetaSyncService } from '../services/meta/metaSyncService';
-import { backfillWindows, MetaBackfillService } from '../services/meta/metaBackfillService';
+import { backfillWindows, MetaBackfillService, isRateLimit } from '../services/meta/metaBackfillService';
 import { deriveMetrics, scoreEntity, percentileRank, BaseTotals } from '../services/intelligence/campaignIntelligenceService';
 
 // NORQVA-0017 (fase 1): base de campanhas Meta — parser, histórico, pontuação e endpoint.
@@ -90,12 +90,27 @@ describe('NORQVA-0017 — history windows', () => {
     const a = MetaBackfillService.start(40, null, async w => {
       calls.push(w.since);
       return calls.length === 2 ? { success: false, error: 'boom' } : { success: true };
-    });
+    }, { paceMs: 0 });
     expect(a.started).toBe(true);
     expect(MetaBackfillService.start(10, null, async () => ({ success: true })).started).toBe(false);
     await a.done;
     const s = MetaBackfillService.status();
     expect(s).toMatchObject({ running: false, windows: 2, done: 1, failed: 1, lastError: 'boom' });
+  });
+
+  it('waits and retries when Meta throttles (error 17) instead of losing the window', async () => {
+    MetaBackfillService.resetForTesting();
+    let n = 0;
+    const b = MetaBackfillService.start(20, null, async () => {
+      n++;
+      if (n <= 2) throw new Error('[META SYNC ERROR]: [META API ERROR 17]: User request limit reached (subcode 2446079)');
+      return { success: true };
+    }, { paceMs: 0, rateLimitWaitMs: 1 });
+    await b.done;
+    expect(MetaBackfillService.status()).toMatchObject({ windows: 1, done: 1, failed: 0 });
+    expect(n).toBe(3);
+    expect(isRateLimit('Failed: [META API ERROR 4]: Application request limit reached')).toBe(true);
+    expect(isRateLimit('Invalid OAuth access token')).toBe(false);
   });
 });
 
@@ -111,6 +126,13 @@ describe('NORQVA-0017 — scoring and classification (BB-B01 rules)', () => {
   it('loser: 2× breakeven spent without sales', () => {
     const t = withBreakeven({ spend: 53, impressions: 6000, link_clicks: 60 }, B);
     expect(scoreEntity(t, deriveMetrics(t), q).classification).toBe('PERDEDOR');
+  });
+  it('a proven loser (sales at 3× the breakeven, great CTR) never outranks an untested ad', () => {
+    const loser = withBreakeven({ spend: 100, sales: 2, revenue: 39.8, impressions: 5000, link_clicks: 140 }, 16.72);
+    const lr = scoreEntity(loser, deriveMetrics(loser), { ctrPct: 0.95, hookPct: 0.9 });
+    expect(lr.classification).toBe('PERDEDOR');
+    const untested = withBreakeven({ spend: 2, impressions: 300, link_clicks: 5 }, 26.12);
+    expect(lr.score).toBeLessThan(scoreEntity(untested, deriveMetrics(untested), q).score);
   });
   it('loser: CTR below 0.6% after R$ 15', () => {
     const t = withBreakeven({ spend: 16, impressions: 4000, link_clicks: 12 }, B);
