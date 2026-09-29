@@ -1,0 +1,264 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bot, Sparkles, ClipboardList, CheckCircle2, XCircle, ExternalLink, RefreshCw, ChevronDown, ChevronRight, Send } from 'lucide-react';
+
+// NORQVA-0017 (fase 3): Time de IAs — oportunidade → avaliação (Claude + segunda opinião GPT)
+// → plano de campanha → lote de criativos em rascunho na Fábrica → aprovação do dono.
+
+export type OppStatus = 'CAPTADA' | 'EM_AVALIACAO' | 'AVALIADA' | 'EM_PLANEJAMENTO' | 'PLANO_PRONTO' | 'APROVADA' | 'DESCARTADA';
+
+export interface Opportunity {
+  id: string;
+  human_id: string;
+  title: string;
+  source: 'ACCOUNT' | 'EU_MARKET' | 'MANUAL';
+  source_level: string | null;
+  product_name?: string | null;
+  niche_name?: string | null;
+  brief: string | null;
+  status: OppStatus;
+  ai_score: number | null;
+  verdict: 'SEGUIR' | 'TESTAR' | 'DESCARTAR' | null;
+  evaluation: any;
+  second_opinion: any;
+  plan: any;
+  batch_code: string | null;
+  task_kind: 'EVALUATE' | 'PLAN' | null;
+  task_status: string | null;
+  task_response: string | null;
+  session_url: string | null;
+  updated_at: string;
+}
+
+export const STAGES: { id: OppStatus; label: string }[] = [
+  { id: 'CAPTADA', label: 'Captadas' },
+  { id: 'EM_AVALIACAO', label: 'Em avaliação' },
+  { id: 'AVALIADA', label: 'Avaliadas' },
+  { id: 'EM_PLANEJAMENTO', label: 'Em planejamento' },
+  { id: 'PLANO_PRONTO', label: 'Plano pronto' },
+  { id: 'APROVADA', label: 'Aprovadas' },
+  { id: 'DESCARTADA', label: 'Descartadas' }
+];
+
+const SOURCE: Record<string, string> = { ACCOUNT: 'Nossa conta', EU_MARKET: 'Mercado UE', MANUAL: 'Briefing' };
+const VERDICT_CLS: Record<string, string> = {
+  SEGUIR: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+  TESTAR: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
+  DESCARTAR: 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+};
+const TASK_LABEL: Record<string, string> = {
+  NOT_CONFIGURED: 'Automação não configurada',
+  DISPATCHED: 'Enviado ao Claude',
+  IN_PROGRESS: 'Claude trabalhando',
+  DONE: 'Concluído',
+  NEEDS_INPUT: 'Precisa de você',
+  FAILED: 'Falhou'
+};
+
+interface Props {
+  currentUser: any;
+  isDemoView: boolean;
+  apiFetch: (url: string, options?: RequestInit) => Promise<any>;
+  showError: (msg: string) => void;
+  showSuccess: (msg: string) => void;
+}
+
+export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch, showError, showSuccess }) => {
+  const mode = isDemoView ? 'demo' : 'real';
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const canCreate = isAdmin || currentUser?.role === 'INTELLIGENCE';
+  const [items, setItems] = useState<Opportunity[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
+  const [brief, setBrief] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiFetch(`/ai-team/opportunities?mode=${mode}`);
+      setItems(r?.opportunities || []);
+    } catch (e: any) {
+      showError(e?.message || 'Falha ao carregar as oportunidades.');
+    }
+  }, [apiFetch, mode]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // While the AIs work, refresh every 20 s
+  const working = useMemo(() => items.some(o => o.task_status === 'DISPATCHED' || o.task_status === 'IN_PROGRESS'), [items]);
+  useEffect(() => {
+    if (!working) return;
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, [working, load]);
+
+  const post = async (id: string, path: string, body: any, ok: string) => {
+    setBusy(id + path);
+    try {
+      await apiFetch(`/ai-team/opportunities/${id}/${path}?mode=${mode}`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+      showSuccess(ok);
+      load();
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível concluir a ação.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const create = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    try {
+      await apiFetch(`/ai-team/opportunities?mode=${mode}`, { method: 'POST', body: JSON.stringify({ source: 'MANUAL', brief }), headers: { 'Content-Type': 'application/json' } });
+      setBrief('');
+      showSuccess('Oportunidade criada. Peça a avaliação ao time de IAs.');
+      load();
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível criar a oportunidade.');
+    }
+  };
+
+  return (
+    <div className="space-y-5" data-testid="ai-team-view">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-xl font-bold text-slate-100">
+            <Bot className="h-5 w-5 text-violet-400" /> Time de IAs
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm text-slate-400">
+            O Claude avalia cada oportunidade com os dados da Base de campanhas e do mercado europeu, o GPT dá uma segunda opinião e, se valer a pena,
+            o Claude monta o plano de campanha e deixa os criativos em rascunho na Fábrica. Você aprova. As IAs nunca publicam nem mexem em orçamento na Meta.
+          </p>
+        </div>
+        <button onClick={load} className="inline-flex items-center gap-1.5 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
+          <RefreshCw className="h-3.5 w-3.5" /> Atualizar
+        </button>
+      </div>
+
+      {canCreate && (
+        <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded border border-dashed border-slate-700 p-3 text-xs">
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-slate-400">Nova oportunidade (briefing livre). Também dá para criar a partir da Base de campanhas e do Mercado europeu.</span>
+            <input value={brief} onChange={e => setBrief(e.target.value)} placeholder="Ex.: testar o Bolso Blindado para autônomos com gancho de 'pró-labore'" className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100" />
+          </label>
+          <button type="submit" disabled={brief.trim().length < 5} className="inline-flex items-center gap-1 rounded bg-violet-600 px-3 py-1.5 font-semibold text-white hover:bg-violet-500 disabled:opacity-40">
+            <Sparkles className="h-3.5 w-3.5" /> Criar
+          </button>
+        </form>
+      )}
+
+      {items.length === 0 && <p className="text-sm text-slate-500">Nenhuma oportunidade ainda.</p>}
+
+      {STAGES.map(stage => {
+        const group = items.filter(o => o.status === stage.id);
+        if (group.length === 0) return null;
+        return (
+          <section key={stage.id} data-testid={`ai-stage-${stage.id}`}>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {stage.label} ({group.length})
+            </h3>
+            <div className="space-y-2">
+              {group.map(o => (
+                <div key={o.id} className="rounded border border-slate-800 bg-slate-900/40" data-testid="ai-opportunity">
+                  <div className="flex flex-wrap items-center gap-2 p-3">
+                    <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen(open === o.id ? null : o.id)}>
+                      {open === o.id ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+                      <span className="font-mono text-[11px] text-slate-500">{o.human_id}</span>
+                      <span className="truncate font-semibold text-slate-100">{o.title}</span>
+                      <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">{SOURCE[o.source]}</span>
+                      {o.verdict && <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VERDICT_CLS[o.verdict]}`}>{o.verdict} · {o.ai_score}</span>}
+                    </button>
+                    {o.task_status && (
+                      <span className="text-[11px] text-slate-400">
+                        {TASK_LABEL[o.task_status] || o.task_status}
+                        {o.session_url && (
+                          <a href={o.session_url} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-sky-300 hover:underline">
+                            sessão <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </span>
+                    )}
+                    {isAdmin && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {['CAPTADA', 'AVALIADA', 'PLANO_PRONTO'].includes(o.status) && (
+                          <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'dispatch', { kind: 'EVALUATE' }, 'Avaliação pedida ao time de IAs.')} icon={Send} label={o.status === 'CAPTADA' ? 'Pedir avaliação' : 'Reavaliar'} />
+                        )}
+                        {['AVALIADA', 'PLANO_PRONTO'].includes(o.status) && (
+                          <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'dispatch', { kind: 'PLAN' }, 'Plano pedido ao Claude.')} icon={ClipboardList} label={o.status === 'PLANO_PRONTO' ? 'Refazer plano' : 'Montar plano'} />
+                        )}
+                        {o.status === 'PLANO_PRONTO' && (
+                          <ActionBtn primary disabled={busy !== null} onClick={() => post(o.id, 'decision', { decision: 'APROVADA' }, 'Plano aprovado. Revise e aprove os criativos na Fábrica.')} icon={CheckCircle2} label="Aprovar plano" />
+                        )}
+                        {!['APROVADA', 'DESCARTADA'].includes(o.status) && (
+                          <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'decision', { decision: 'DESCARTADA' }, 'Oportunidade descartada.')} icon={XCircle} label="Descartar" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {open === o.id && <OpportunityDetail o={o} />}
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+};
+
+const ActionBtn: React.FC<{ onClick: () => void; icon: React.ElementType; label: string; disabled?: boolean; primary?: boolean }> = ({ onClick, icon: Icon, label, disabled, primary }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs disabled:opacity-40 ${primary ? 'bg-emerald-600 font-semibold text-white hover:bg-emerald-500' : 'border border-slate-700 text-slate-200 hover:bg-slate-800'}`}
+  >
+    <Icon className="h-3.5 w-3.5" /> {label}
+  </button>
+);
+
+const Opinion: React.FC<{ title: string; v: any }> = ({ title, v }) => (
+  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+    <div className="mb-1 flex items-center justify-between">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{title}</span>
+      {v?.verdict && <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VERDICT_CLS[v.verdict] || ''}`}>{v.verdict} · {v.score}</span>}
+    </div>
+    {!v && <p className="text-slate-500">Ainda não recebida.</p>}
+    {v?.skipped && <p className="text-slate-500">{v.reason}</p>}
+    {v?.summary && <p className="text-slate-200">{v.summary}</p>}
+    {Array.isArray(v?.strengths) && v.strengths.length > 0 && <p className="mt-1 text-emerald-300/90">+ {v.strengths.join(' · ')}</p>}
+    {Array.isArray(v?.risks) && v.risks.length > 0 && <p className="mt-1 text-rose-300/90">Riscos: {v.risks.join(' · ')}</p>}
+    {Array.isArray(v?.hypotheses) && v.hypotheses.length > 0 && <p className="mt-1 text-sky-300/90">Hipóteses: {v.hypotheses.join(' · ')}</p>}
+  </div>
+);
+
+export const OpportunityDetail: React.FC<{ o: Opportunity }> = ({ o }) => (
+  <div className="space-y-3 border-t border-slate-800 p-3 text-xs" data-testid="ai-opportunity-detail">
+    {o.brief && <p className="text-slate-300">Briefing: {o.brief}</p>}
+    {(o.product_name || o.niche_name) && (
+      <p className="text-slate-400">
+        {o.product_name ? `Produto: ${o.product_name}` : ''} {o.niche_name ? `· Nicho UE: ${o.niche_name}` : ''}
+      </p>
+    )}
+    {o.task_response && <p className="text-slate-400">Último retorno: {o.task_response}</p>}
+    <div className="grid gap-3 md:grid-cols-2">
+      <Opinion title="Avaliação — Claude" v={o.evaluation} />
+      <Opinion title="Segunda opinião — GPT" v={o.second_opinion} />
+    </div>
+    {o.plan && (
+      <div className="rounded border border-violet-800/50 bg-violet-950/20 p-3" data-testid="ai-opportunity-plan">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-violet-300">Plano de campanha</div>
+        {o.plan.summary && <p className="text-slate-200">{o.plan.summary}</p>}
+        {o.plan.campaign && (
+          <p className="mt-1 text-slate-400">
+            {Object.entries(o.plan.campaign)
+              .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+              .join(' · ')}
+          </p>
+        )}
+        {o.plan.test_plan && <p className="mt-1 whitespace-pre-line text-slate-300">{o.plan.test_plan}</p>}
+        <p className="mt-2 text-slate-300">
+          {o.plan.creatives_count} criativo(s) em rascunho na Fábrica de Criativos, lote <span className="font-mono">{o.batch_code}</span>. Revise, aprove e produza por lá.
+        </p>
+      </div>
+    )}
+  </div>
+);

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { Pool } from 'pg';
-import { CREATIVE_BATCHES } from '../../data/creativeBatches';
+import { CREATIVE_BATCHES, CreativeBatch } from '../../data/creativeBatches';
 import { CreativePerformanceService, CreativeItemPerformance } from '../intelligence/creativePerformanceService';
 import { writeAuditLog } from '../../db/audit';
 import { campaignsForCreatives } from './creativeCampaigns';
@@ -142,9 +142,19 @@ function addAd(target: CreativeMetrics, ad: CreativeItemPerformance) {
 
 export class CreativeFactoryService {
   async importBatch(pool: Pool, code: string, userId: string | null, isDemo: boolean) {
-    const batch = CREATIVE_BATCHES[code];
+    let batch: CreativeBatch | undefined = CREATIVE_BATCHES[code];
+    if (!batch) {
+      // NORQVA-0017 (fase 3): batches built by the AI team live in creative_batches
+      const r = await pool.query(`SELECT payload FROM creative_batches WHERE code = $1 AND is_demo = $2`, [code, isDemo]).catch(() => ({ rows: [] as any[] }));
+      batch = r.rows[0]?.payload as CreativeBatch | undefined;
+    }
     if (!batch) throw new CreativeFactoryError(404, `Lote ${code} não existe.`);
+    return this.importBatchData(pool, batch, userId, isDemo);
+  }
 
+  /** Imports claims (new ones as given) and creatives as DRAFT. Claim codes not in the batch are looked up in claims_registry. */
+  async importBatchData(pool: Pool, batch: CreativeBatch, userId: string | null, isDemo: boolean) {
+    const code = batch.code;
     const suffix = demoSuffix(isDemo);
     const product = await pool.query('SELECT id FROM products WHERE id = $1', [batch.productId]);
     if (product.rows.length === 0) throw new CreativeFactoryError(409, 'Produto do lote não encontrado.');
@@ -207,7 +217,14 @@ export class CreativeFactoryService {
       );
       const creativeId = ins.rows[0].id;
       for (const claimCode of c.claimCodes) {
-        const claimId = claimIdByCode.get(claimCode);
+        let claimId = claimIdByCode.get(claimCode);
+        if (!claimId) {
+          const found = await pool.query('SELECT id FROM claims_registry WHERE human_id = $1 OR human_id = $2 LIMIT 1', [`${claimCode}${suffix}`, claimCode]);
+          if (found.rows[0]) {
+            claimId = found.rows[0].id as string;
+            claimIdByCode.set(claimCode, claimId);
+          }
+        }
         if (claimId) {
           await pool.query(
             'INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',

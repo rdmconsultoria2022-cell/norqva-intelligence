@@ -147,6 +147,21 @@ export const MarketEuPanel: React.FC<Props> = ({ isAdmin, apiFetch, showError, s
             {open === nc.id && (
               <div className="border-t border-slate-800 p-3 text-xs">
                 <p className="text-slate-300">{nc.reason}</p>
+                {isAdmin && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const o = await apiFetch('/ai-team/opportunities', { method: 'POST', body: JSON.stringify({ source: 'EU_MARKET', market_niche_id: nc.id }), headers: { 'Content-Type': 'application/json' } });
+                        showSuccess(`Oportunidade ${o?.human_id || ''} criada. Veja em "Time de IAs".`);
+                      } catch (e: any) {
+                        showError(e?.message || 'Não foi possível criar a oportunidade.');
+                      }
+                    }}
+                    className="mt-2 rounded border border-violet-600/60 px-2.5 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-900/30"
+                  >
+                    Criar oportunidade para o time de IAs
+                  </button>
+                )}
                 <p className="mt-1 text-slate-500">Termos: {nc.search_terms.join(', ')} · Países: {nc.countries.join(', ')}</p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {(ads[nc.id] || []).map(a => (
