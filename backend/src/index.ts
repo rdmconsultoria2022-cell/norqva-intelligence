@@ -120,6 +120,7 @@ import {
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
+import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
@@ -381,6 +382,13 @@ app.post('/api/market/eu/niches', requireRole(['ADMIN', 'INTELLIGENCE']), create
 app.patch('/api/market/eu/niches/:id', requireRole(['ADMIN', 'INTELLIGENCE']), updateMarketNiche);
 app.get('/api/market/eu/niches/:id/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listNicheAds);
 app.post('/api/market/eu/collect', requireRole(['ADMIN']), collectMarketEu);
+
+// NORQVA-0018 (fase A): marcas por nicho (D-0009)
+app.get('/api/brands', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listBrands);
+app.post('/api/brands', requireRole(['ADMIN']), createBrand);
+app.patch('/api/brands/:id', requireRole(['ADMIN']), updateBrand);
+app.put('/api/brands/:id/assets/:type', requireRole(['ADMIN']), recordBrandAsset);
+app.put('/api/brands/:id/products/:productId', requireRole(['ADMIN']), assignBrandProduct);
 // NORQVA-0017 (fase 3): time de IAs (oportunidade → avaliação → plano → lote na Fábrica)
 app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listAiOpportunities);
 app.post('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE']), createAiOpportunity);

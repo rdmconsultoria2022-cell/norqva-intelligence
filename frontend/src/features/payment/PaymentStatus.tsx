@@ -203,7 +203,8 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                     value: Number(parseFloat(String(orderData.total_amount || amount)) || Number(amount) || 0),
                     currency: 'BRL',
                     contentIds: [canonicalContentId],
-                    numItems: canonicalQuantity
+                    numItems: canonicalQuantity,
+                    pixelId: orderData.meta_pixel_id || null
                   });
                 } catch (_) {}
               }
