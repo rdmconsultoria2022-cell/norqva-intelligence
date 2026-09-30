@@ -72,6 +72,16 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
   const navigate = useNavigate();
 
+  // Aba do navegador com o nome da oferta (marca), não "NORQVA" (D-0009).
+  useEffect(() => {
+    if (!offer?.name) return;
+    const previousTitle = document.title;
+    document.title = offer.name;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [offer?.name]);
+
   const handleOpenCheckout = () => {
     if (existingSession && existingSession.status === 'PAID') {
       navigate(`/pedido/${existingSession.orderId}/entrega#token=${existingSession.checkoutToken}`);
