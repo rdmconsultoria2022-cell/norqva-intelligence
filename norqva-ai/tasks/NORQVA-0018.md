@@ -64,3 +64,24 @@ Uma marca por nicho, com seus próprios ativos Meta, e cada venda indo para o pi
 2. Criar o Instagram da marca no app e conectar à Página.
 3. Definir o número de WhatsApp da marca e confirmar o código.
 4. Informar os IDs na tela "Marcas" (o NORQVA confere).
+
+## Desenvolvimento futuro (anotado em 2026-09-30, fora deste contrato)
+
+### Fase E: fila de conteúdo orgânico com aprovação
+
+- **Pedido do operador:** o Claude cria posts (imagem e legenda) e o NORQVA publica na Página e no Instagram de cada marca. **Adiado** para depois da certificação do piloto.
+- **Fluxo:**
+  - Claude cria o post numa fila por marca, com data e hora sugeridas;
+  - o operador aprova, pede ajuste ou descarta na tela "Marcas";
+  - no horário marcado, o NORQVA publica pela API da Meta (Página: `/{page_id}/photos`; Instagram: container de mídia + `media_publish`);
+  - sucesso e falha vão para `audit_logs`.
+- **Regras:**
+  - nada é publicado sem clique humano (mesmo padrão da D-0007);
+  - a legenda passa pelo registro de claims da Fábrica;
+  - vale a D-0005 (sem "vitalício");
+  - sem depoimentos ou números não verificados.
+- **Pré-requisitos:**
+  - Instagram da marca conectado à Página;
+  - token com `pages_manage_posts` e `instagram_content_publish`;
+  - imagens em URL pública, no armazenamento que o NORQVA já usa.
+- **Referência:** os 3 posts iniciais da Trattoria (boas-vindas, dica, guia) foram criados pelo Claude e publicados manualmente pelo operador em 2026-09-30.
