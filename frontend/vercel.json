@@ -1,5 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "trattoria.norqva.com.br"
+        }
+      ],
+      "destination": "/p/OFF-000001",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
