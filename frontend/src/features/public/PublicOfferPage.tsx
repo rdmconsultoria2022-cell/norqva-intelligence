@@ -40,6 +40,7 @@ export interface PublicOfferData {
   promotional_price: number | null;
   bonus: string | null;
   is_demo: boolean;
+  meta_pixel_id?: string | null;
 }
 
 interface PublicOfferPageProps {
@@ -130,7 +131,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
               contentIds: [data.human_id || humanId],
               contentType: 'product',
               value: !isNaN(offerPrice) && offerPrice >= 0 ? offerPrice : undefined,
-              currency: 'BRL'
+              currency: 'BRL',
+              pixelId: data.meta_pixel_id || null
             });
           } catch (trackErr) {
             console.warn('[Meta Pixel]: ViewContent tracking observer error:', trackErr);

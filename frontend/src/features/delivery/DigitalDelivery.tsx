@@ -83,7 +83,8 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                 value: Number(parseFloat(String(fetchedOrder.total_amount)) || 0),
                 currency: 'BRL',
                 contentIds: [canonicalContentId],
-                numItems: canonicalQuantity
+                numItems: canonicalQuantity,
+                pixelId: fetchedOrder.meta_pixel_id || null
               });
             } catch (trackErr) {
               // Fail-safe: pixel errors never interrupt digital delivery UI or asset downloads

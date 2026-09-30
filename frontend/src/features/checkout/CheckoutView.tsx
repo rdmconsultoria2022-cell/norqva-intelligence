@@ -190,7 +190,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             value: parseFloat(String(orderResult.total_amount)) || displayPrice * quantity,
             currency: 'BRL',
             contentIds: [offer.human_id || offer.id],
-            numItems: quantity
+            numItems: quantity,
+            pixelId: (offer as any).meta_pixel_id || null
           });
         } catch (_) {
           // Fail-safe: pixel tracking must never interrupt checkout

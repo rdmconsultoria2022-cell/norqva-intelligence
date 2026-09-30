@@ -133,3 +133,41 @@ export class BrandService {
     return r.rows[0];
   }
 }
+
+/**
+ * Fase B (D-0009): pixel da marca para uma venda ou oferta.
+ * Só um PIXEL com status VERIFIED vale. Sem ele, ou em qualquer erro, retorna null
+ * e quem chamou segue com o pixel padrão (META_PIXEL_ID). Nunca lança exceção.
+ */
+export async function resolveBrandPixelId(pool: Pool, ref: { orderId?: string | null; offerId?: string | null }): Promise<string | null> {
+  try {
+    if (ref.orderId) {
+      const r = await pool.query(
+        `SELECT a.external_id
+         FROM order_items oi
+         JOIN offers o ON o.id = oi.offer_id
+         JOIN products p ON p.id = o.product_id
+         JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED'
+         WHERE oi.order_id = $1 AND a.external_id IS NOT NULL
+         LIMIT 1`,
+        [ref.orderId]
+      );
+      return r.rows[0]?.external_id || null;
+    }
+    if (ref.offerId) {
+      const r = await pool.query(
+        `SELECT a.external_id
+         FROM offers o
+         JOIN products p ON p.id = o.product_id
+         JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED'
+         WHERE o.id = $1 AND a.external_id IS NOT NULL
+         LIMIT 1`,
+        [ref.offerId]
+      );
+      return r.rows[0]?.external_id || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

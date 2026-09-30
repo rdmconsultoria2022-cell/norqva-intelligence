@@ -26,6 +26,8 @@ export interface MetaViewContentParams {
   contentType?: string;
   value?: number;
   currency?: 'BRL';
+  /** D-0009: pixel da marca. Ausente ou igual ao padrão = pixel padrão. */
+  pixelId?: string | null;
 }
 
 export interface MetaInitiateCheckoutParams {
@@ -34,6 +36,8 @@ export interface MetaInitiateCheckoutParams {
   currency?: 'BRL';
   contentIds: string[];
   numItems?: number;
+  /** D-0009: pixel da marca. Ausente ou igual ao padrão = pixel padrão. */
+  pixelId?: string | null;
 }
 
 export interface MetaPurchaseParams {
@@ -42,6 +46,8 @@ export interface MetaPurchaseParams {
   currency?: 'BRL';
   contentIds: string[];
   numItems?: number;
+  /** D-0009: pixel da marca. Ausente ou igual ao padrão = pixel padrão. */
+  pixelId?: string | null;
 }
 
 let isInitialized = false;
@@ -52,6 +58,26 @@ let environmentOverrideForTesting: boolean | null = null;
 const sentViewContents = new Set<string>();
 const sentInitiateCheckouts = new Set<string>();
 const sentPurchases = new Set<string>();
+const initializedBrandPixels = new Set<string>();
+
+/**
+ * D-0009 (fase B): envia o evento ao pixel da marca com trackSingle, para não
+ * duplicar no pixel padrão. Sem pixel de marca, mantém o comportamento anterior (track).
+ */
+function sendPixelEvent(eventName: string, payload: any, options: any, pixelId?: string | null): void {
+  const brandPixel = typeof pixelId === 'string' && /^[0-9]{5,30}$/.test(pixelId) ? pixelId : null;
+  if (brandPixel && brandPixel !== getMetaPixelId()) {
+    if (!initializedBrandPixels.has(brandPixel)) {
+      window.fbq('init', brandPixel);
+      initializedBrandPixels.add(brandPixel);
+    }
+    if (options) window.fbq('trackSingle', brandPixel, eventName, payload, options);
+    else window.fbq('trackSingle', brandPixel, eventName, payload);
+    return;
+  }
+  if (options) window.fbq('track', eventName, payload, options);
+  else window.fbq('track', eventName, payload);
+}
 
 /**
  * Checks whether a given pathname belongs to a public commercial route
@@ -232,7 +258,7 @@ export function trackViewContent(params: MetaViewContentParams): boolean {
     }
 
     if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-      window.fbq('track', 'ViewContent', payload);
+      sendPixelEvent('ViewContent', payload, null, params.pixelId);
       sentViewContents.add(dedupeKey);
       return true;
     }
@@ -292,7 +318,7 @@ export function trackInitiateCheckout(params: MetaInitiateCheckoutParams): boole
     };
 
     if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-      window.fbq('track', 'InitiateCheckout', payload, options);
+      sendPixelEvent('InitiateCheckout', payload, options, params.pixelId);
       sentInitiateCheckouts.add(params.orderId);
       return true;
     }
@@ -370,7 +396,7 @@ export function trackPurchase(params: MetaPurchaseParams): boolean {
     };
 
     if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-      window.fbq('track', 'Purchase', payload, options);
+      sendPixelEvent('Purchase', payload, options, params.pixelId);
       
       // Mark as sent in memory, localStorage, and sessionStorage
       sentPurchases.add(orderId);
@@ -420,6 +446,7 @@ export function resetMetaPixelForTesting(): void {
   sentViewContents.clear();
   sentInitiateCheckouts.clear();
   sentPurchases.clear();
+  initializedBrandPixels.clear();
   if (typeof window !== 'undefined') {
     delete window.fbq;
     delete window._fbq;

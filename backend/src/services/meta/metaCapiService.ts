@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { OFFICIAL_NORQVA_PIXEL_ID } from './metaMutatingClient';
 import { MetaClient } from './metaClient';
+import { resolveBrandPixelId } from '../brands/brandService';
 
 export interface MetaCapiUserData {
   em?: string[];
@@ -98,7 +99,9 @@ export class MetaCapiService {
   }
 
   public static async sendEvent(pool: Pool, options: SendCapiEventOptions): Promise<{ success: boolean; eventId: string; status: string }> {
-    const pixelId = options.pixelId || process.env.META_PIXEL_ID || OFFICIAL_NORQVA_PIXEL_ID;
+    // D-0009 (fase B): pixel da marca do produto vendido, se houver um VERIFIED; senão, o pixel padrão.
+    const brandPixelId = options.pixelId ? null : await resolveBrandPixelId(pool, { orderId: options.orderId });
+    const pixelId = options.pixelId || brandPixelId || process.env.META_PIXEL_ID || OFFICIAL_NORQVA_PIXEL_ID;
     const apiVersion = this.getApiVersion();
     const accessToken = process.env.META_ACCESS_TOKEN;
     const testCode = process.env.META_TEST_EVENT_CODE;

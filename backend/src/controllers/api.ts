@@ -46,6 +46,7 @@ import {
   COMMERCIAL_TIMEZONE
 } from '../utils/commercialTimezone';
 import { MetaCapiService } from '../services/meta/metaCapiService';
+import { resolveBrandPixelId } from '../services/brands/brandService';
 
 export const aiProvider = new MockAIProvider();
 
@@ -900,7 +901,9 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       price: parseFloat(offer.price),
       promotional_price: offer.promotional_price !== null ? parseFloat(offer.promotional_price) : null,
       bonus: offer.bonus || null,
-      is_demo: offer.is_demo
+      is_demo: offer.is_demo,
+      // D-0009 (fase B): pixel da marca (null = a landing usa o pixel padrão)
+      meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer.id })
     });
   } catch (err) {
     console.error('Get public offer error:', err);
@@ -2577,6 +2580,8 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
         offer_id: order.offer_id || null,
         quantity: order.quantity ? parseInt(String(order.quantity), 10) : 1,
         is_demo: order.is_demo,
+        // D-0009 (fase B): pixel da marca para o Purchase do navegador (null = pixel padrão)
+        meta_pixel_id: await resolveBrandPixelId(pool, { orderId: order.id }),
         created_at: order.created_at,
         updated_at: order.updated_at
       });
