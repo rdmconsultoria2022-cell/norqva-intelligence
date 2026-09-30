@@ -51,3 +51,18 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Fontes fora de escopo:** anúncios comerciais do Brasil de terceiros, porque a API oficial não os entrega e raspar a Biblioteca de Anúncios viola os termos da Meta.
 - **Verdade de vendas:** pedidos pagos do NORQVA com atribuição determinística (D-0006). As compras reportadas pela Meta ficam só como referência.
 - **Proteções:** as IAs não publicam, não pausam e não mudam orçamento. O operador aprova o plano e os criativos; ações na Meta seguem a D-0007.
+
+## D-0009 — Estrutura Meta por nicho e piloto Trattoria (2026-09-30)
+
+- **Decisão:** cada nicho vira uma marca própria, com Página do Facebook, Instagram, Pixel/Dataset e WhatsApp próprios. Conta de anúncios própria só quando o volume justificar. O provisionamento pelo Claude é o objetivo. **Aprovado pelo operador** (quadro META / MULTI-NICHE, 2026-09-30).
+- **Ordem:** primeiro um nicho piloto (Culinária italiana / Trattoria). Criação em massa só depois da certificação do piloto.
+- **Por que Trattoria:** o BB-B01 roda na conta e no pixel atuais; mover o Bolso Blindado no meio da rodada 1 zeraria o aprendizado. O Bolso migra para a marca própria depois que a rodada fechar.
+- **Limites reais do provisionamento:**
+  - Claude cria por API: marca no NORQVA, Pixel/Dataset, conta de anúncios (dentro do limite do Business Manager), textos, identidade e landing.
+  - O operador cria à mão: Página do Facebook, conta do Instagram e número do WhatsApp (verificação por código). O NORQVA mostra o checklist do que falta.
+- **Regras:**
+  - tudo no mesmo Business Manager verificado, mesma empresa e mesma forma de pagamento;
+  - nunca criar conta ou Página para substituir ativo restringido;
+  - conta de anúncios nova só com justificativa registrada (padrão: uma conta, uma campanha por marca);
+  - marca nasce `BRAND_ONLY`: sem avatar realista nem pessoa fictícia apresentada como real;
+  - claims seguem o registro da Fábrica; D-0005 vale para todas as marcas.
