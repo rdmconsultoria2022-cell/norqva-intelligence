@@ -17,6 +17,7 @@ import {
   Factory,
   Database,
   Bot,
+  Store,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -49,6 +50,7 @@ const navigationItems: NavigationItem[] = [
   { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
   { id: 'campaign-base', label: 'Base de campanhas', icon: Database },
   { id: 'ai-team', label: 'Time de IAs', icon: Bot },
+  { id: 'brands', label: 'Marcas', icon: Store },
   { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
   { id: 'demographics', label: 'Demografia', icon: PieChart },
   { id: 'decisions', label: 'Decisões', icon: Scale },
