@@ -52,7 +52,7 @@ describe('NORQVA-0018 — endpoints de marca', () => {
     expect(t).toMatchObject({ name: 'Trattoria em Casa', spokesperson_type: 'BRAND_ONLY', status: 'PILOT', assets_total: 5 });
     const page = t.assets.find((a: any) => a.asset_type === 'FACEBOOK_PAGE');
     expect(page).toMatchObject({ external_id: '1287452237795325', status: 'LINKED' });
-    expect(t.assets.find((a: any) => a.asset_type === 'INSTAGRAM').status).toBe('PENDING_OPERATOR');
+    expect(t.assets.find((a: any) => a.asset_type === 'INSTAGRAM')).toMatchObject({ external_id: '17841424315618975', handle: 'trattoriaemcasa.oficial', status: 'LINKED' });
   });
 
   it('só ADMIN cria marca; valida porta-voz e código duplicado', async () => {

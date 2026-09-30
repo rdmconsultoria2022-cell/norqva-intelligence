@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS brand_meta_assets (
 ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_products_brand ON products (brand_id);
 
--- Piloto: Trattoria em Casa. Página criada pelo operador em 2026-09-30 (ID lido no portfólio norqva).
+-- Piloto: Trattoria em Casa. Página e Instagram criados pelo operador em 2026-09-30 (IDs vistos no portfólio norqva).
 -- Dados em bloco DO: o Postgres (produção e CI) executa, e o pg-mem (testes) ignora o bloco.
 DO $$
 BEGIN
@@ -62,7 +62,7 @@ BEGIN
   SELECT b.id, 'FACEBOOK_PAGE', '1287452237795325', 'Trattoria em Casa', 'LINKED', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
   ON CONFLICT (brand_id, asset_type) DO NOTHING;
   INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
-  SELECT b.id, 'INSTAGRAM', NULL, 'trattoriaemcasa.oficial', 'PENDING_OPERATOR', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
+  SELECT b.id, 'INSTAGRAM', '17841424315618975', 'trattoriaemcasa.oficial', 'LINKED', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
   ON CONFLICT (brand_id, asset_type) DO NOTHING;
   INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
   SELECT b.id, 'PIXEL', NULL, NULL, 'PENDING_API', NULL FROM brands b WHERE b.code = 'TRATTORIA'
