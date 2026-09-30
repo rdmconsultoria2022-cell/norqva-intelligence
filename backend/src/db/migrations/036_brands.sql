@@ -44,34 +44,38 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id
 CREATE INDEX IF NOT EXISTS idx_products_brand ON products (brand_id);
 
 -- Piloto: Trattoria em Casa. Página criada pelo operador em 2026-09-30 (ID lido no portfólio norqva).
--- Formato INSERT ... SELECT ... FROM tabela, sem subconsulta escalar: aceito também pelo pg-mem dos testes.
-INSERT INTO brands (code, name, niche_id, positioning, audience, tone, visual_identity, status)
-SELECT 'TRATTORIA', 'Trattoria em Casa', n.id,
-       'Cozinha de trattoria italiana para fazer em casa: massa fresca, molhos clássicos, medidas para o Brasil.',
-       'Quem gosta de cozinhar em casa e quer pratos italianos de verdade.',
-       'Acolhedor, simples, sem promessas de resultado.',
-       '{"primary":"#A83E28","background":"#F5ECDD","ink":"#34221A","accent":"tricolor"}'::jsonb,
-       'PILOT'
-FROM market_niches n
-WHERE n.name = 'Culinária italiana'
-ON CONFLICT (code) DO NOTHING;
+-- Dados em bloco DO: o Postgres (produção e CI) executa; o pg-mem, que não interpreta estes INSERTs, ignora o bloco.
+DO $$
+BEGIN
+  INSERT INTO brands (code, name, niche_id, positioning, audience, tone, visual_identity, status)
+  SELECT 'TRATTORIA', 'Trattoria em Casa', n.id,
+         'Cozinha de trattoria italiana para fazer em casa: massa fresca, molhos clássicos, medidas para o Brasil.',
+         'Quem gosta de cozinhar em casa e quer pratos italianos de verdade.',
+         'Acolhedor, simples, sem promessas de resultado.',
+         '{"primary":"#A83E28","background":"#F5ECDD","ink":"#34221A","accent":"tricolor"}'::jsonb,
+         'PILOT'
+  FROM market_niches n
+  WHERE n.name = 'Culinária italiana'
+  ON CONFLICT (code) DO NOTHING;
 
-INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
-SELECT b.id, 'FACEBOOK_PAGE', '1287452237795325', 'Trattoria em Casa', 'LINKED', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
-ON CONFLICT (brand_id, asset_type) DO NOTHING;
-INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
-SELECT b.id, 'INSTAGRAM', NULL, 'trattoriaemcasa.oficial', 'PENDING_OPERATOR', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
-ON CONFLICT (brand_id, asset_type) DO NOTHING;
-INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
-SELECT b.id, 'PIXEL', NULL, NULL, 'PENDING_API', NULL FROM brands b WHERE b.code = 'TRATTORIA'
-ON CONFLICT (brand_id, asset_type) DO NOTHING;
-INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
-SELECT b.id, 'WHATSAPP', NULL, NULL, 'PENDING_OPERATOR', NULL FROM brands b WHERE b.code = 'TRATTORIA'
-ON CONFLICT (brand_id, asset_type) DO NOTHING;
-INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
-SELECT b.id, 'AD_ACCOUNT', NULL, NULL, 'NOT_NEEDED', NULL FROM brands b WHERE b.code = 'TRATTORIA'
-ON CONFLICT (brand_id, asset_type) DO NOTHING;
+  INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
+  SELECT b.id, 'FACEBOOK_PAGE', '1287452237795325', 'Trattoria em Casa', 'LINKED', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
+  ON CONFLICT (brand_id, asset_type) DO NOTHING;
+  INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
+  SELECT b.id, 'INSTAGRAM', NULL, 'trattoriaemcasa.oficial', 'PENDING_OPERATOR', 'OPERATOR' FROM brands b WHERE b.code = 'TRATTORIA'
+  ON CONFLICT (brand_id, asset_type) DO NOTHING;
+  INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
+  SELECT b.id, 'PIXEL', NULL, NULL, 'PENDING_API', NULL FROM brands b WHERE b.code = 'TRATTORIA'
+  ON CONFLICT (brand_id, asset_type) DO NOTHING;
+  INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
+  SELECT b.id, 'WHATSAPP', NULL, NULL, 'PENDING_OPERATOR', NULL FROM brands b WHERE b.code = 'TRATTORIA'
+  ON CONFLICT (brand_id, asset_type) DO NOTHING;
+  INSERT INTO brand_meta_assets (brand_id, asset_type, external_id, handle, status, created_by)
+  SELECT b.id, 'AD_ACCOUNT', NULL, NULL, 'NOT_NEEDED', NULL FROM brands b WHERE b.code = 'TRATTORIA'
+  ON CONFLICT (brand_id, asset_type) DO NOTHING;
 
-UPDATE products SET brand_id = (SELECT id FROM brands WHERE code = 'TRATTORIA' LIMIT 1)
-WHERE brand_id IS NULL
-  AND id IN (SELECT product_id FROM offers WHERE human_id = 'OFF-000001' AND is_demo = FALSE);
+  UPDATE products SET brand_id = (SELECT id FROM brands WHERE code = 'TRATTORIA' LIMIT 1)
+  WHERE brand_id IS NULL
+    AND id IN (SELECT product_id FROM offers WHERE human_id = 'OFF-000001' AND is_demo = FALSE);
+END
+$$;
