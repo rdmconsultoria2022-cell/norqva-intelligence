@@ -8,7 +8,7 @@ import { runMigrations } from '../db/migrations';
 import { resolveBrandPixelId } from '../services/brands/brandService';
 import { MetaCapiService } from '../services/meta/metaCapiService';
 
-// NORQVA-0018 (fase B): pixel por marca. Só PIXEL VERIFIED vale; sem ele, pixel padrão.
+// NORQVA-0018 (fase B/C): pixel por marca. Só PIXEL VERIFIED e com roteamento ligado vale; sem ele, pixel padrão.
 
 describe('NORQVA-0018 — pixel da marca', () => {
   let pool: Pool;
@@ -86,6 +86,9 @@ describe('NORQVA-0018 — pixel da marca', () => {
 
   it('pixel VERIFIED vai para a landing e para o CAPI da venda', async () => {
     await pool.query(`UPDATE brand_meta_assets SET status = 'VERIFIED', verified_at = NOW() WHERE brand_id = $1 AND asset_type = 'PIXEL'`, [brandId]);
+    // Verificado, mas sem ativação do operador: continua no pixel padrão.
+    expect(await resolveBrandPixelId(pool, { offerId })).toBeNull();
+    await pool.query(`UPDATE brand_meta_assets SET routing_enabled = TRUE WHERE brand_id = $1 AND asset_type = 'PIXEL'`, [brandId]);
     expect(await resolveBrandPixelId(pool, { offerId })).toBe(brandPixel);
     expect(await resolveBrandPixelId(pool, { orderId })).toBe(brandPixel);
 

@@ -3,6 +3,12 @@ import { Pool, PoolClient } from 'pg';
 import { writeAuditLog } from '../../db/audit';
 
 export const OFFICIAL_NORQVA_PIXEL_ID = '1049452567443586';
+// Portfólio empresarial norqva (D-0009). META_BUSINESS_ID no ambiente tem prioridade.
+export const NORQVA_BUSINESS_ID = '2566466360497925';
+export function getMetaBusinessId(): string {
+  const v = String(process.env.META_BUSINESS_ID || '').trim();
+  return /^[0-9]{5,30}$/.test(v) ? v : NORQVA_BUSINESS_ID;
+}
 export const PUBLIC_COMMERCE_URL_REGEX = /^https:\/\/norqva-intelligence-frontend\.vercel\.app\/p\/[A-Za-z0-9_-]+(\?.*)?$/;
 
 export interface MetaPreflightStatus {
@@ -1008,6 +1014,40 @@ export class MetaMutatingClient {
     if (entityType === 'ADSET') return { table: 'meta_ad_sets', idCol: 'meta_adset_id' };
     if (entityType === 'AD') return { table: 'meta_ads', idCol: 'meta_ad_id' };
     throw new Error('[VALIDATION EXCEPTION]: Unknown Meta entity type.');
+  }
+
+  // =========================================================================
+  // NORQVA-0018 (fase C): ativos de marca no portfólio (D-0009)
+  // =========================================================================
+
+  /** Leitura na Graph API (sem efeito na conta). Usada para conferir ativos de marca. */
+  public async readGraph(endpoint: string, params: Record<string, string> = {}): Promise<any> {
+    return this.callTransportGet(endpoint, params);
+  }
+
+  /**
+   * Cria um Pixel/Dataset no portfólio. Mesmas travas da D-0007: só ADMIN, nunca em DEMO,
+   * META_MUTATION_ENABLED=true e preflight real da credencial.
+   */
+  public async createBusinessPixel(context: MetaMutatingSecurityContext, businessId: string, name: string): Promise<{ id: string }> {
+    if (context.userRole !== 'ADMIN') throw new Error('[SECURITY EXCEPTION]: Only ADMIN can create brand pixels.');
+    if (context.isDemo) throw new Error('[VALIDATION EXCEPTION]: Brand pixels cannot be created in DEMO mode.');
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    if (!/^[0-9]{5,30}$/.test(businessId)) throw new Error('[VALIDATION EXCEPTION]: Invalid business id.');
+    const cleanName = String(name || '').trim().slice(0, 100);
+    if (!cleanName) throw new Error('[VALIDATION EXCEPTION]: Pixel name is required.');
+    const res = await this.callTransportPost(`/${businessId}/adspixels`, { name: cleanName });
+    if (!res?.id) throw new Error('[META GRAPH API ERROR]: Pixel creation returned no id.');
+    return { id: String(res.id) };
+  }
+
+  /** Dá à conta de anúncios padrão acesso ao pixel da marca (mesmo portfólio). */
+  public async shareBusinessPixelWithAdAccount(context: MetaMutatingSecurityContext, pixelId: string, businessId: string): Promise<boolean> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    if (!this.adAccountId) return false;
+    const accountId = this.adAccountId.replace(/^act_/, '');
+    await this.callTransportPost(`/${pixelId}/shared_accounts`, { account_id: accountId, business: businessId });
+    return true;
   }
 
   private async callTransportGet(endpoint: string, params: Record<string, string>): Promise<any> {

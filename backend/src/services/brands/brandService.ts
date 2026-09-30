@@ -136,7 +136,7 @@ export class BrandService {
 
 /**
  * Fase B (D-0009): pixel da marca para uma venda ou oferta.
- * Só um PIXEL com status VERIFIED vale. Sem ele, ou em qualquer erro, retorna null
+ * Só um PIXEL VERIFIED e com roteamento ligado pelo operador vale. Sem ele, ou em qualquer erro, retorna null
  * e quem chamou segue com o pixel padrão (META_PIXEL_ID). Nunca lança exceção.
  */
 export async function resolveBrandPixelId(pool: Pool, ref: { orderId?: string | null; offerId?: string | null }): Promise<string | null> {
@@ -147,7 +147,7 @@ export async function resolveBrandPixelId(pool: Pool, ref: { orderId?: string | 
          FROM order_items oi
          JOIN offers o ON o.id = oi.offer_id
          JOIN products p ON p.id = o.product_id
-         JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED'
+         JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED' AND a.routing_enabled = TRUE
          WHERE oi.order_id = $1 AND a.external_id IS NOT NULL
          LIMIT 1`,
         [ref.orderId]
@@ -159,7 +159,7 @@ export async function resolveBrandPixelId(pool: Pool, ref: { orderId?: string | 
         `SELECT a.external_id
          FROM offers o
          JOIN products p ON p.id = o.product_id
-         JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED'
+         JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED' AND a.routing_enabled = TRUE
          WHERE o.id = $1 AND a.external_id IS NOT NULL
          LIMIT 1`,
         [ref.offerId]
