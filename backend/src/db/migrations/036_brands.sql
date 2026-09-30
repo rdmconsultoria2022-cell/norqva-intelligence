@@ -44,7 +44,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id
 CREATE INDEX IF NOT EXISTS idx_products_brand ON products (brand_id);
 
 -- Piloto: Trattoria em Casa. Página criada pelo operador em 2026-09-30 (ID lido no portfólio norqva).
--- Dados em bloco DO: o Postgres (produção e CI) executa; o pg-mem, que não interpreta estes INSERTs, ignora o bloco.
+-- Dados em bloco DO: o Postgres (produção e CI) executa, e o pg-mem (testes) ignora o bloco.
 DO $$
 BEGIN
   INSERT INTO brands (code, name, niche_id, positioning, audience, tone, visual_identity, status)
