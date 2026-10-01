@@ -62,6 +62,7 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - O operador cria à mão: Página do Facebook, conta do Instagram e número do WhatsApp (verificação por código). O NORQVA mostra o checklist do que falta.
 - **Regras:**
   - tudo no mesmo Business Manager verificado, mesma empresa e mesma forma de pagamento;
+  - portfólio da operação: **Norqva (1361471345973932)**, dono da conta de anúncios, do app e do usuário de sistema NORQVA_Backend. Os ativos da Trattoria nasceram no portfólio "norqva" (2566466360497925) e são compartilhados com o Norqva como parceiro (decisão do operador em 2026-09-30). Marcas novas nascem direto no Norqva;
   - nunca criar conta ou Página para substituir ativo restringido;
   - conta de anúncios nova só com justificativa registrada (padrão: uma conta, uma campanha por marca);
   - marca nasce `BRAND_ONLY`: sem avatar realista nem pessoa fictícia apresentada como real;

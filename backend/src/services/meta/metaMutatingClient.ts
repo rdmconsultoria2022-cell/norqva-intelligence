@@ -3,8 +3,9 @@ import { Pool, PoolClient } from 'pg';
 import { writeAuditLog } from '../../db/audit';
 
 export const OFFICIAL_NORQVA_PIXEL_ID = '1049452567443586';
-// Portfólio empresarial norqva (D-0009). META_BUSINESS_ID no ambiente tem prioridade.
-export const NORQVA_BUSINESS_ID = '2566466360497925';
+// Portfólio empresarial "Norqva" da operação (D-0009): dono da conta de anúncios, do app e do usuário
+// de sistema NORQVA_Backend. META_BUSINESS_ID no ambiente tem prioridade.
+export const NORQVA_BUSINESS_ID = '1361471345973932';
 export function getMetaBusinessId(): string {
   const v = String(process.env.META_BUSINESS_ID || '').trim();
   return /^[0-9]{5,30}$/.test(v) ? v : NORQVA_BUSINESS_ID;

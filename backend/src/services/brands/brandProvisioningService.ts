@@ -103,14 +103,27 @@ export class BrandProvisioningService {
 
     await check('FACEBOOK_PAGE', async () => {
       const pageId = byType('FACEBOOK_PAGE').external_id;
-      let after: string | undefined;
-      for (let i = 0; i < 10; i++) {
-        const res = await this.client.readGraph(`/${businessId}/owned_pages`, { fields: 'id', limit: '100', ...(after ? { after } : {}) });
-        if ((res?.data || []).some((p: any) => String(p.id) === pageId)) return { ok: true, detail: 'Página pertence ao portfólio.' };
-        after = res?.paging?.cursors?.after;
-        if (!res?.paging?.next || !after) break;
+      // Página do próprio portfólio (owned_pages) ou compartilhada com ele como parceiro (client_pages).
+      let seenAny = false;
+      for (const edge of ['owned_pages', 'client_pages']) {
+        let after: string | undefined;
+        for (let i = 0; i < 10; i++) {
+          const res = await this.client.readGraph(`/${businessId}/${edge}`, { fields: 'id', limit: '100', ...(after ? { after } : {}) });
+          const data = Array.isArray(res?.data) ? res.data : [];
+          if (data.length) seenAny = true;
+          if (data.some((p: any) => String(p.id) === pageId)) {
+            return { ok: true, detail: edge === 'owned_pages' ? 'Página pertence ao portfólio.' : 'Página compartilhada com o portfólio como parceiro.' };
+          }
+          after = res?.paging?.cursors?.after;
+          if (!res?.paging?.next || !after) break;
+        }
       }
-      return { ok: false, detail: 'Página não encontrada entre as Páginas do portfólio.' };
+      return {
+        ok: false,
+        detail: seenAny
+          ? `Página não está no portfólio ${businessId} (nem como dona, nem compartilhada como parceira).`
+          : `O token não enxerga nenhuma Página do portfólio ${businessId}. Compartilhe a Página com o portfólio e atribua ao usuário de sistema, com a permissão business_management.`
+      };
     });
 
     await check('INSTAGRAM', async () => {
