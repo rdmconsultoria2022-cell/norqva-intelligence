@@ -36,7 +36,7 @@ const ASSET_LABEL: Record<AssetType, string> = {
 };
 const ASSET_ORDER: AssetType[] = ['FACEBOOK_PAGE', 'INSTAGRAM', 'PIXEL', 'WHATSAPP', 'AD_ACCOUNT'];
 const HOW_TO: Partial<Record<AssetType, string>> = {
-  FACEBOOK_PAGE: 'Crie a Página no portfólio (Configurações → Contas → Páginas → Adicionar) e registre o ID aqui.',
+  FACEBOOK_PAGE: 'Crie a Página no portfólio Norqva (Configurações → Contas → Páginas → Adicionar) ou compartilhe com ele como parceiro, e registre o ID aqui.',
   INSTAGRAM: 'Crie a conta no app, mude para profissional e conecte à Página. Registre o ID do perfil (Configurações → Perfis do Instagram).',
   WHATSAPP: 'Escolha um número exclusivo da marca e confirme o código no WhatsApp Business. Registre o ID do número.',
   PIXEL: 'Criado pelo NORQVA na Meta com um clique (precisa de META_MUTATION_ENABLED=true).'
@@ -229,7 +229,7 @@ export const BrandsView: React.FC<Props> = ({ currentUser, apiFetch, showError, 
                       <span className="text-sm text-slate-200 w-40">{ASSET_LABEL[a.asset_type]}</span>
                       <span className={`text-[11px] font-mono px-2 py-0.5 rounded border ${STATUS_CLS[a.status] || STATUS_CLS.LINKED}`}>{STATUS_LABEL[a.status] || a.status}</span>
                       <span className="text-xs font-mono text-slate-400">
-                        {a.handle ? `@${a.handle}` : ''} {a.external_id ? `· ${a.external_id}` : ''}
+                        {a.handle ? (a.asset_type === 'FACEBOOK_PAGE' ? a.handle : `@${a.handle}`) : ''} {a.external_id ? `· ${a.external_id}` : ''}
                       </span>
                       {a.asset_type === 'PIXEL' && a.external_id && (
                         <span className={`text-[11px] font-mono ${a.routing_enabled ? 'text-emerald-300' : 'text-slate-500'}`}>

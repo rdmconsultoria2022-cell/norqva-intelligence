@@ -1,6 +1,7 @@
 import React from 'react';
 import { DEMO_MODE_ENABLED } from '../../lib/demoMode';
 import { RefreshCw, Shield, Menu, X } from 'lucide-react';
+import { navigationItems } from './Sidebar';
 
 export interface HeaderProps {
   activeTab: string;
@@ -37,7 +38,7 @@ export function Header({
         )}
 
         <h1 className="text-xs md:text-sm font-bold uppercase tracking-widest text-slate-400 font-mono truncate max-w-[130px] sm:max-w-none">
-          {activeTab === 'dashboard' ? 'Visão Executiva' : activeTab}
+          {navigationItems.find(i => i.id === activeTab)?.label || activeTab}
         </h1>
         
         {/* DEMO / REAL mode toggle: only in tests or local demo builds (NORQVA-0003) */}

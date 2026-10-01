@@ -39,7 +39,7 @@ export interface SidebarProps {
   badges?: Record<string, number>;
 }
 
-const navigationItems: NavigationItem[] = [
+export const navigationItems: NavigationItem[] = [
   { id: 'dashboard', label: 'Visão Executiva', icon: LayoutDashboard },
   { id: 'opportunities', label: 'Intelligence', icon: Lightbulb },
   { id: 'products', label: 'Produtos', icon: Package },

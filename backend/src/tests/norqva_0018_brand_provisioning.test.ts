@@ -34,6 +34,7 @@ describe('NORQVA-0018 — provisionamento de ativos da marca', () => {
       if (endpoint.startsWith('/act_')) return { id: endpoint.slice(1), account_status: 1 };
       if (endpoint === `/${OFFICIAL_NORQVA_PIXEL_ID}`) return { id: OFFICIAL_NORQVA_PIXEL_ID };
       if (endpoint === `/${NORQVA_BUSINESS_ID}/owned_pages`) return { data: [{ id: '111' }, { id: PAGE }] };
+      if (endpoint === `/${NORQVA_BUSINESS_ID}/client_pages`) return { data: [] };
       if (endpoint === `/${PAGE}`) return { id: PAGE, instagram_business_account: { id: IG } };
       if (endpoint === `/${NEW_PIXEL}`) return { id: NEW_PIXEL, owner_business: { id: NORQVA_BUSINESS_ID } };
       throw new Error('unexpected GET ' + endpoint);
@@ -85,6 +86,10 @@ describe('NORQVA-0018 — provisionamento de ativos da marca', () => {
     resetMetaPreflightCacheForTesting();
   });
 
+  it('usa o portfólio Norqva (1361471345973932) como padrão', () => {
+    expect(NORQVA_BUSINESS_ID).toBe('1361471345973932');
+  });
+
   it('confere Página e Instagram pela API e marca VERIFIED', async () => {
     const brandId = await mkBrand();
     setBrandMetaClientFactoryForTesting(() => new MetaMutatingClient(vi.fn(), undefined, fakeGet()));
@@ -100,6 +105,24 @@ describe('NORQVA-0018 — provisionamento de ativos da marca', () => {
     );
     const rows = (await pool.query(`SELECT asset_type, status, verified_at FROM brand_meta_assets WHERE brand_id = $1`, [brandId])).rows;
     expect(rows.every((x: any) => x.status === 'VERIFIED' && x.verified_at)).toBe(true);
+  });
+
+  it('aceita Página compartilhada como parceira e explica quando o token não vê Páginas', async () => {
+    const brandId = await mkBrand();
+    setBrandMetaClientFactoryForTesting(() =>
+      new MetaMutatingClient(vi.fn(), undefined, fakeGet({ [`/${NORQVA_BUSINESS_ID}/owned_pages`]: { data: [] }, [`/${NORQVA_BUSINESS_ID}/client_pages`]: { data: [{ id: PAGE }] } }))
+    );
+    const r = await request(app).post(`/api/brands/${brandId}/verify`).set('Authorization', `Bearer ${adminToken}`);
+    expect(r.body.results.find((x: any) => x.asset_type === 'FACEBOOK_PAGE')).toMatchObject({ status: 'VERIFIED', ok: true, detail: expect.stringContaining('parceiro') });
+
+    const other = await mkBrand();
+    setBrandMetaClientFactoryForTesting(() =>
+      new MetaMutatingClient(vi.fn(), undefined, fakeGet({ [`/${NORQVA_BUSINESS_ID}/owned_pages`]: { data: [] }, [`/${NORQVA_BUSINESS_ID}/client_pages`]: { data: [] } }))
+    );
+    const r2 = await request(app).post(`/api/brands/${other}/verify`).set('Authorization', `Bearer ${adminToken}`);
+    const page = r2.body.results.find((x: any) => x.asset_type === 'FACEBOOK_PAGE');
+    expect(page).toMatchObject({ status: 'LINKED', ok: false });
+    expect(page.detail).toContain('business_management');
   });
 
   it('Instagram diferente fica LINKED com o motivo; erro de leitura não rebaixa', async () => {
