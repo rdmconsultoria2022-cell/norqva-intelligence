@@ -44,6 +44,7 @@ import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
 import { CampaignBaseView } from './features/intelligence/CampaignBaseView';
 import { AiTeamView } from './features/intelligence/AiTeamView';
+import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
 import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
@@ -748,6 +749,10 @@ export default function App() {
               showError={showError}
               showSuccess={showSuccess}
             />
+          )}
+
+          {activeTab === 'brands' && (
+            <BrandsView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
           )}
 
           {activeTab === 'campaign-base' && (
