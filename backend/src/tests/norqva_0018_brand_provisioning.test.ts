@@ -140,6 +140,22 @@ describe('NORQVA-0018 — provisionamento de ativos da marca', () => {
     expect(page.last_error).toContain('sem permissão');
   });
 
+  it('Instagram: aceita connected_instagram_account e orienta quando a Página não informa o vínculo', async () => {
+    const a = await mkBrand();
+    setBrandMetaClientFactoryForTesting(() => new MetaMutatingClient(vi.fn(), undefined, fakeGet({ [`/${PAGE}`]: { id: PAGE, connected_instagram_account: { id: IG } } })));
+    const r = await request(app).post(`/api/brands/${a}/verify`).set('Authorization', `Bearer ${adminToken}`);
+    expect(r.body.results.find((x: any) => x.asset_type === 'INSTAGRAM')).toMatchObject({ status: 'VERIFIED', ok: true });
+
+    const b = await mkBrand();
+    setBrandMetaClientFactoryForTesting(() =>
+      new MetaMutatingClient(vi.fn(), undefined, fakeGet({ [`/${PAGE}`]: { id: PAGE }, [`/${IG}`]: { id: IG, username: 'x' } }))
+    );
+    const r2 = await request(app).post(`/api/brands/${b}/verify`).set('Authorization', `Bearer ${adminToken}`);
+    const ig = r2.body.results.find((x: any) => x.asset_type === 'INSTAGRAM');
+    expect(ig).toMatchObject({ status: 'LINKED', ok: false });
+    expect(ig.detail).toContain('Empresa');
+  });
+
   it('cria o pixel com as travas da D-0007, verifica e não cria um segundo', async () => {
     const brandId = await mkBrand();
     const post = vi.fn(async (endpoint: string, payload: any) => {

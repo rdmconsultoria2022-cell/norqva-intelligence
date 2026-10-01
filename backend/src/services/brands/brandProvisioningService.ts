@@ -129,11 +129,27 @@ export class BrandProvisioningService {
     await check('INSTAGRAM', async () => {
       const page = byType('FACEBOOK_PAGE');
       if (!page) return { ok: false, detail: 'Registre a Página antes de conferir o Instagram.' };
-      const res = await this.client.readGraph(`/${page.external_id}`, { fields: 'instagram_business_account' });
-      const linked = res?.instagram_business_account?.id ? String(res.instagram_business_account.id) : null;
-      return linked === byType('INSTAGRAM').external_id
-        ? { ok: true, detail: 'Instagram conectado à Página.' }
-        : { ok: false, detail: linked ? `A Página está conectada a outro Instagram (${linked}).` : 'A Página não tem Instagram conectado.' };
+      const igId = byType('INSTAGRAM').external_id;
+      // A Meta informa o vínculo em dois campos: instagram_business_account (conta Empresa)
+      // e connected_instagram_account (conta conectada pelo Business Suite, inclusive Criador).
+      const res = await this.client.readGraph(`/${page.external_id}`, { fields: 'instagram_business_account,connected_instagram_account' });
+      const linked = [res?.instagram_business_account?.id, res?.connected_instagram_account?.id].filter(Boolean).map(String);
+      if (linked.includes(igId)) return { ok: true, detail: 'Instagram conectado à Página.' };
+      if (linked.length) return { ok: false, detail: `A Página está conectada a outro Instagram (${linked.join(', ')}).` };
+      // Sem vínculo informado: diz se ao menos o perfil é acessível, para orientar o operador.
+      let reachable = false;
+      try {
+        const ig = await this.client.readGraph(`/${igId}`, { fields: 'id,username' });
+        reachable = String(ig?.id || '') === igId;
+      } catch {
+        reachable = false;
+      }
+      return {
+        ok: false,
+        detail: reachable
+          ? 'O perfil do Instagram é acessível, mas a Página não informa o vínculo. Confira se a conta é do tipo Empresa (não Criador) e se está conectada à Página.'
+          : 'A Página não tem Instagram conectado (ou o token não tem instagram_basic).'
+      };
     });
 
     await check('PIXEL', async () => {

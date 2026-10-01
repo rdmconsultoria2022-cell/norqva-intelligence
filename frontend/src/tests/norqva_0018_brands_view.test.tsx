@@ -70,6 +70,19 @@ describe('NORQVA-0018 — tela Marcas', () => {
     );
   });
 
+  it('pixel que falhou na criação pode ser registrado manualmente', async () => {
+    const { apiFetch } = setup(trattoria({ asset_type: 'PIXEL', external_id: null, handle: null, status: 'FAILED', last_error: 'MANAGE_PIXELS' }));
+    await screen.findByText('MANAGE_PIXELS');
+    expect(within(screen.getByTestId('asset-PIXEL')).getByText(/Gerenciador de Eventos/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('asset-PIXEL')).getByText('Registrar'));
+    expect(screen.queryByLabelText('Nome de usuário')).toBeNull();
+    fireEvent.change(screen.getByLabelText('ID do ativo'), { target: { value: '7788990011' } });
+    fireEvent.click(screen.getByText('Salvar'));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/brands/b1/assets/PIXEL', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ external_id: '7788990011' }) }))
+    );
+  });
+
   it('quem não é ADMIN só visualiza', async () => {
     setup(trattoria(), 'CREATIVE');
     await screen.findByText('Trattoria em Casa');

@@ -39,7 +39,7 @@ const HOW_TO: Partial<Record<AssetType, string>> = {
   FACEBOOK_PAGE: 'Crie a Página no portfólio Norqva (Configurações → Contas → Páginas → Adicionar) ou compartilhe com ele como parceiro, e registre o ID aqui.',
   INSTAGRAM: 'Crie a conta no app, mude para profissional e conecte à Página. Registre o ID do perfil (Configurações → Perfis do Instagram).',
   WHATSAPP: 'Escolha um número exclusivo da marca e confirme o código no WhatsApp Business. Registre o ID do número.',
-  PIXEL: 'Criado pelo NORQVA na Meta com um clique (precisa de META_MUTATION_ENABLED=true).'
+  PIXEL: 'Crie pelo botão (precisa de permissão para criar pixels no portfólio) ou no Gerenciador de Eventos do portfólio Norqva e registre o ID aqui.'
 };
 const STATUS_LABEL: Record<string, string> = {
   PENDING_OPERATOR: 'Falta você',
@@ -221,7 +221,7 @@ export const BrandsView: React.FC<Props> = ({ currentUser, apiFetch, showError, 
             <ul className="divide-y divide-slate-800">
               {assets.map(a => {
                 const editing = edit && edit.brandId === b.id && edit.type === a.asset_type;
-                const manual = a.asset_type === 'FACEBOOK_PAGE' || a.asset_type === 'INSTAGRAM' || a.asset_type === 'WHATSAPP';
+                const manual = a.asset_type === 'FACEBOOK_PAGE' || a.asset_type === 'INSTAGRAM' || a.asset_type === 'WHATSAPP' || (a.asset_type === 'PIXEL' && a.status !== 'VERIFIED');
                 return (
                   <li key={a.asset_type} className="py-3 flex flex-col gap-2" data-testid={`asset-${a.asset_type}`}>
                     <div className="flex flex-wrap items-center gap-3">
@@ -267,7 +267,7 @@ export const BrandsView: React.FC<Props> = ({ currentUser, apiFetch, showError, 
                       </div>
                     </div>
                     {a.last_error && <p className="text-xs text-rose-300 pl-7">{a.last_error}</p>}
-                    {(a.status === 'PENDING_OPERATOR' || a.status === 'PENDING_API') && HOW_TO[a.asset_type] && (
+                    {(a.status === 'PENDING_OPERATOR' || a.status === 'PENDING_API' || a.status === 'FAILED') && HOW_TO[a.asset_type] && (
                       <p className="text-xs text-slate-500 pl-7">{HOW_TO[a.asset_type]}</p>
                     )}
                     {editing && edit && (
@@ -279,7 +279,7 @@ export const BrandsView: React.FC<Props> = ({ currentUser, apiFetch, showError, 
                           onChange={e => setEdit({ ...edit, id: e.target.value })}
                           className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200"
                         />
-                        {a.asset_type !== 'FACEBOOK_PAGE' && (
+                        {a.asset_type !== 'FACEBOOK_PAGE' && a.asset_type !== 'PIXEL' && (
                           <input
                             aria-label="Nome de usuário"
                             placeholder="@usuário ou número"
