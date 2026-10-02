@@ -76,6 +76,6 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - nunca como porta-voz, autor ou "chef" da marca (a marca continua `BRAND_ONLY`, D-0009);
   - pessoa nunca olha para a câmera nem fala em primeira pessoa sobre o produto;
   - comida gerada não é apresentada como foto do produto ou do e-book;
-  - legenda *"Imagens ilustrativas"* nas cenas de comida e no cartão final (proposta do Claude, **aguarda confirmação do operador**);
+  - disclosure (*"Imagens ilustrativas"* ou rótulo de IA) **não entra automaticamente**: só quando houver requisito aplicável confirmado para o material ou o canal (decisão do operador, Gate C rev. 2);
   - cada asset passa por inspeção humana (regra de `REJECT` por anomalia) antes da montagem.
 - **Ajusta:** D-0009, item "marca nasce BRAND_ONLY: sem avatar realista", que passa a valer para porta-voz, não para figurantes de cena.

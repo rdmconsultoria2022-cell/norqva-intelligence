@@ -1,6 +1,6 @@
 # TRATTORIA_EMOTIONAL_V1_MASTER — Gate C: plano de geração
 
-**Status:** aguardando aprovação humana. **Zero geração paga até a aprovação.**
+**Status:** **substituído** pelo `TRATTORIA_EMOTIONAL_V1_GATE_C_REVISION_V2.md` (Gate C aprovado condicionalmente; teto de US$ 70 **não** autorizado). Mantido como histórico.
 **Base:** roteiro (Gate A aprovado com ajustes) e storyboard (Gate B aprovado) em `TRATTORIA_EMOTIONAL_V1.md` · regras de figurantes em D-0010.
 **Autor:** Claude · 2026-10-01
 
