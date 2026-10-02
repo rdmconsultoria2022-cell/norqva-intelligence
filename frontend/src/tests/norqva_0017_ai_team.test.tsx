@@ -50,6 +50,17 @@ describe('NORQVA-0017 — Time de IAs', () => {
     await waitFor(() => expect(apiFetch.mock.calls.some(c => c[0] === '/ai-team/opportunities/o2/decision?mode=real')).toBe(true));
   });
 
+  it('a stuck dispatch can be re-sent to Claude with the same task kind', async () => {
+    opps.push({ ...base, id: 'o3', human_id: 'OPP-0003', title: 'Travada', status: 'EM_AVALIACAO', task_kind: 'EVALUATE', task_status: 'DISPATCHED' } as any);
+    const apiFetch = setup();
+    await waitFor(() => expect(screen.getAllByTestId('ai-opportunity')).toHaveLength(3));
+    fireEvent.click(screen.getByRole('button', { name: /Reenviar ao Claude/ }));
+    await waitFor(() => expect(apiFetch.mock.calls.some(c => c[0] === '/ai-team/opportunities/o3/dispatch?mode=real')).toBe(true));
+    const call = apiFetch.mock.calls.find(c => c[0] === '/ai-team/opportunities/o3/dispatch?mode=real') as any;
+    expect(JSON.parse(call[1].body)).toEqual({ kind: 'EVALUATE' });
+    opps.pop();
+  });
+
   it('creates an opportunity from a brief; other roles only read', async () => {
     const apiFetch = setup();
     await waitFor(() => expect(screen.getAllByTestId('ai-opportunity').length).toBe(2));

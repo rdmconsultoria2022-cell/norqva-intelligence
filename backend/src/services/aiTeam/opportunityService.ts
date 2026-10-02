@@ -111,7 +111,7 @@ export class OpportunityService {
   /** Fires the Claude routine for EVALUATE or PLAN; EVALUATE also asks GPT for a second opinion. */
   async dispatch(pool: Pool, id: string, kind: 'EVALUATE' | 'PLAN', isDemo: boolean) {
     const o = await this.get(pool, id);
-    if (kind === 'PLAN' && !['AVALIADA', 'PLANO_PRONTO'].includes(o.status)) throw new OpportunityError(409, 'Peça a avaliação antes de montar o plano.');
+    if (kind === 'PLAN' && !['AVALIADA', 'EM_PLANEJAMENTO', 'PLANO_PRONTO'].includes(o.status)) throw new OpportunityError(409, 'Peça a avaliação antes de montar o plano.');
     if (['APROVADA', 'DESCARTADA'].includes(o.status)) throw new OpportunityError(409, 'Oportunidade já decidida.');
     const nextStatus = kind === 'EVALUATE' ? 'EM_AVALIACAO' : 'EM_PLANEJAMENTO';
 

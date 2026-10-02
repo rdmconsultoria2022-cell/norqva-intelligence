@@ -136,6 +136,10 @@ describe('NORQVA-0017 — AI team', () => {
     expect(evalOk.body).toMatchObject({ status: 'AVALIADA', ai_score: 74, verdict: 'TESTAR' });
 
     await request(app).post(`/api/ai-team/opportunities/${opp.id}/dispatch?mode=demo`).set('Authorization', `Bearer ${adminToken}`).send({ kind: 'PLAN' });
+    // A stuck plan request (EM_PLANEJAMENTO) can be re-sent
+    const resend = await request(app).post(`/api/ai-team/opportunities/${opp.id}/dispatch?mode=demo`).set('Authorization', `Bearer ${adminToken}`).send({ kind: 'PLAN' });
+    expect(resend.status).toBe(200);
+    expect(resend.body.status).toBe('EM_PLANEJAMENTO');
 
     const creative = (claim: string) => ({
       hook: 'Você sabe quanto ainda pode gastar este mês?', mechanism: 'Card Disponível', cta: 'Toque em Saiba mais', format: 'VIDEO',
