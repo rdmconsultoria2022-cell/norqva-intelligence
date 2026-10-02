@@ -182,6 +182,14 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                         {['CAPTADA', 'AVALIADA', 'PLANO_PRONTO'].includes(o.status) && (
                           <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'dispatch', { kind: 'EVALUATE' }, 'Avaliação pedida ao time de IAs.')} icon={Send} label={o.status === 'CAPTADA' ? 'Pedir avaliação' : 'Reavaliar'} />
                         )}
+                        {['EM_AVALIACAO', 'EM_PLANEJAMENTO'].includes(o.status) && (
+                          <ActionBtn
+                            disabled={busy !== null}
+                            onClick={() => post(o.id, 'dispatch', { kind: o.status === 'EM_AVALIACAO' ? 'EVALUATE' : 'PLAN' }, 'Pedido reenviado ao Claude.')}
+                            icon={Send}
+                            label="Reenviar ao Claude"
+                          />
+                        )}
                         {['AVALIADA', 'PLANO_PRONTO'].includes(o.status) && (
                           <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'dispatch', { kind: 'PLAN' }, 'Plano pedido ao Claude.')} icon={ClipboardList} label={o.status === 'PLANO_PRONTO' ? 'Refazer plano' : 'Montar plano'} />
                         )}
