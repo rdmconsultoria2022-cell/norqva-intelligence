@@ -67,3 +67,15 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - conta de anúncios nova só com justificativa registrada (padrão: uma conta, uma campanha por marca);
   - marca nasce `BRAND_ONLY`: sem avatar realista nem pessoa fictícia apresentada como real;
   - claims seguem o registro da Fábrica; D-0005 vale para todas as marcas.
+
+## D-0010 — Figurantes gerados por IA em criativos de marca (2026-10-01)
+
+- **Decisão:** criativos narrativos podem usar pessoas e comida geradas por IA como **personagens fictícios da cena**. **Aprovado pelo operador** (TRATTORIA_EMOTIONAL_V1, Gate A/B).
+- **Limites:**
+  - nunca como depoimento, cliente, aluno ou "resultado de quem comprou";
+  - nunca como porta-voz, autor ou "chef" da marca (a marca continua `BRAND_ONLY`, D-0009);
+  - pessoa nunca olha para a câmera nem fala em primeira pessoa sobre o produto;
+  - comida gerada não é apresentada como foto do produto ou do e-book;
+  - legenda *"Imagens ilustrativas"* nas cenas de comida e no cartão final (proposta do Claude, **aguarda confirmação do operador**);
+  - cada asset passa por inspeção humana (regra de `REJECT` por anomalia) antes da montagem.
+- **Ajusta:** D-0009, item "marca nasce BRAND_ONLY: sem avatar realista", que passa a valer para porta-voz, não para figurantes de cena.

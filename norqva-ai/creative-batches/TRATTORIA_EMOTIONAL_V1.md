@@ -2,7 +2,7 @@
 
 **Marca:** Trattoria em Casa · **Oferta:** OFF-000001 · R$ 19,90
 **Linha:** Emotional Food Storytelling V1 (experimental). Os criativos TR-B01 (tipográficos) ficam preservados como controle.
-**Status:** `EXPERIMENTAL_CREATIVE` · Gate A + Gate B para aprovação humana. **Nenhuma geração paga foi feita.**
+**Status:** `EXPERIMENTAL_CREATIVE` · **Gate A aprovado com ajustes · Gate B aprovado** (operador, 2026-10-01). Gate C em `TRATTORIA_EMOTIONAL_V1_GATE_C.md`. **Nenhuma geração paga foi feita.**
 **Autor:** Claude · 2026-10-01
 
 ---
@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|
 | **SC01 Hook** | 0:00–0:03 | Macro: massa sendo envolvida no molho na frigideira, vapor, molho aderindo | "Quer impressionar alguém que você ama?" | — | Chiado da frigideira, pegador na massa |
 | **SC02 Quebra** | 0:03–0:06 | Pessoa arrumando uma mesa para dois em casa: duas taças, pratos simples, luz quente | "Talvez você não precise reservar um restaurante." | — | Taça apoiada na mesa; trilha entra baixa |
-| **SC03 Processo** | 0:06–0:10 | Cortes rápidos: farinha na madeira → massa sendo aberta → mãos sovando → molho mexido → parmesão ralado no prato | "Com uma boa receita, você cria essa experiência na sua própria cozinha." | — | Farinha, rolo, colher, ralador |
+| **SC03 Processo** | 0:06–0:10 | Cortes rápidos: farinha na madeira → massa sendo aberta → mãos sovando → molho mexido → parmesão ralado no prato | "Com as receitas certas, você pode criar essa experiência na sua própria cozinha." | — | Farinha, rolo, colher, ralador |
 | **SC04 Servir** | 0:10–0:14 | Pessoa leva o prato à mesa; quem está sentado recebe com um sorriso pequeno, contato visual entre eles (nunca para a câmera) | "Para quem você ama. Para a sua família…" *(pausa)* "…ou só para você." | — | Prato na mesa |
 | **SC05 Desejo** | 0:14–0:19 | Montagem de close: massa fresca, carbonara, pomodoro, cacio e pepe, ragu; garfo enrolando; parmesão | "O Trattoria em Casa reúne 28 receitas italianas, explicadas para você fazer de verdade." | *Massa fresca · molhos clássicos* | Garfo no prato; trilha cresce |
 | **SC06 Payoff** | 0:19–0:23 | De volta à mesa: primeira garfada, conversa, sorriso, taças se aproximando | "Porque algumas lembranças começam na cozinha." | — | Brinde suave, conversa abafada |
@@ -28,7 +28,7 @@
 ### Ajustes que fiz no roteiro do briefing (e por quê)
 
 1. **SC04: troquei "Para sua esposa. Seu namorado." por "Para quem você ama. Para a sua família…".** A Meta proíbe anúncios que afirmem ou insinuem características pessoais de quem vê. "Sua esposa" e "seu namorado", juntos, presumem o relacionamento e o gênero do parceiro de quem assiste, o que é risco de reprovação. A versão nova mantém a emoção sem presumir nada. A original fica como **SC04-ALT** se você quiser testar e aceitar o risco.
-2. **SC03: "você pode criar" virou "você cria".** É só ritmo de fala. A promessa não muda: a boa receita torna a experiência possível; não garante resultado.
+2. **SC03 (texto final do operador):** "Com as receitas certas, você pode criar essa experiência na sua própria cozinha." Possibilidade, não garantia de resultado.
 3. **SC05: o texto na tela não repete a fala** (regra 7 do briefing). Mostra só "Massa fresca · molhos clássicos".
 4. **SC07: "Acesso após a confirmação do pagamento"** foi mantido. Está correto e é mais preciso do que "acesso imediato" (TR-CL-08).
 
@@ -89,7 +89,19 @@ Cada asset recebe checagem humana nesta ordem: textura → mãos → utensílios
 
 ---
 
-## Decisões para o Gate C (preciso de você antes de gastar qualquer crédito)
+## Decisões do operador (2026-10-01)
+
+| Item | Decisão |
+|---|---|
+| Gate A | Aprovado com ajustes (SC03 com o texto do operador; SC04 neutro) |
+| Gate B | Aprovado |
+| Origem das imagens | **Geração por IA**, com gate human-first (inspeção de cada asset) |
+| Figurantes | **Permitidos como personagens fictícios da narrativa.** Nunca depoimento, nunca representação de cliente, nunca porta-voz. Registrado na D-0010 |
+| Voz | **Sintética premium**, com licença comercial e aprovação humana |
+| SC04 | Versão neutra |
+| "28 receitas" | **Exige verificação no produto** antes do corte final |
+
+## Decisões que estavam abertas antes do Gate C (histórico)
 
 1. **Origem das imagens.** Três caminhos, do mais honesto e barato ao mais caro:
    - **(a) Filmagem real com celular**, em uma noite de preparo de verdade de uma receita do guia. Custo quase zero, e cumpre ao pé da letra "vapor verdadeiro" e "imperfeições".
