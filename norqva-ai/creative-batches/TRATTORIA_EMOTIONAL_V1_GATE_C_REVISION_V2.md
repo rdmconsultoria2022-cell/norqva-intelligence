@@ -1,49 +1,27 @@
 # TRATTORIA_EMOTIONAL_V1_MASTER — GATE_C_REVISION_V2
 
-**Status:** aguardando nova autorização humana. **Zero geração paga. Nenhum POST pago foi feito nesta auditoria.**
+**Status:** aguardando nova autorização humana. **Zero geração paga. Nenhum POST pago foi feito.** Seção 1 corrigida após a auditoria da Creative Factory local; o orçamento em créditos atualizado está em `CREATIVE_FACTORY_KIE_CAPABILITY_AUDIT.md` (seção 6), que prevalece sobre as seções 2 e 3 abaixo.
 **Substitui:** o plano de orçamento do `TRATTORIA_EMOTIONAL_V1_GATE_C.md` (≈ 32 tentativas, teto de US$ 70 não autorizado).
 **Autor:** Claude · 2026-10-01
 
 ---
 
-## 1. Auditoria da infraestrutura KIE
+## 1. Auditoria da infraestrutura KIE (corrigida em 2026-10-01)
 
-### 1.1 No NORQVA (repositório `norqva-intelligence`, todos os branches)
+> **Correção:** a primeira versão desta seção dizia "integração KIE ausente". Isso vale **só para o NORQVA principal** (`norqva-intelligence`). A integração KIE **existe e está certificada** na Creative Factory local, em `D:\NORQVA\norqva-criativos-engine`. Os detalhes estão em **`CREATIVE_FACTORY_KIE_CAPABILITY_AUDIT.md`**.
 
-| Item | Resultado |
+| Item | Situação real |
 |---|---|
-| Cliente/serviço KIE no backend | **Não existe.** Nenhuma chamada a `api.kie.ai` |
-| Variáveis de ambiente `KIE_*` (código e `render.yaml`) | **Não existem** |
-| Integração KIE na Creative Factory (NORQVA-0005) | **Não existe.** A Fábrica registra criativos, claims e aprovações, mas não gera mídia |
-| Rastro de uso da KIE | Só no `frontend/public/app/bolso-blindado/RELEASE_MANIFEST.json`, em `financial_ledger`: `reference_kie_balance: 8679.43`, `credits_consumed: 0`, `paid_calls: 0`, de **2026-09-18** |
+| Integração KIE | **Existe** na Creative Factory: `engine/src/factory/generator.py` (`KieImageGenerator`) + `orchestrator.py` + `cli.py` |
+| Produção real certificada | Gates 8C–8F (`factory-e2e-test-001` → `out/AdUgc_V1.mp4`): 3 imagens (12 cr), 4 speeches (108 cr), 2 retakes (54 cr), 2 Kling 3.0 i2v (140 cr) = **314 cr** |
+| Consulta de saldo | **Existe**: `get_credit_balance()` antes e depois de cada stage; `kie.py credit` (GET, custo zero) |
+| Saldo atual | **Não consultado nesta sessão** (a shell do computador não iniciou; a chave não sai do `.env` local). Histórico: 9.055,43 cr |
+| Modelos já suportados | `google/nano-banana` (4 cr), `grok-imagine-video-1-5-preview` (27 cr/6 s), `kling-3.0/video` (70 cr/5 s) |
+| Modelos a adicionar | Nano Banana 2 (com referências), `nano-banana-edit`, Veo 3.1 Fast/Quality (i2v, 9:16), ElevenLabs TTS |
+| Ledger / budget gate / gates humanos / pre-video gate | **Existem** e estão certificados |
+| Lacunas | Custos e limiares fixos do teste E2E; idempotência parcial (risco de POST duplicado se cair entre o POST e o download); manifesto sem tentativas por asset nem referências; Remotion só em formato UGC; pasta fora do Git |
 
-**Conclusão:** a "infraestrutura KIE existente" **não está neste repositório.** Ela provavelmente vive no ambiente de quem gerou os assets do Bolso Blindado (Antigravity/GPT ou scripts locais). **Preciso que o operador indique onde ela está** (repositório, pasta no computador ou ferramenta) para auditar o código e o registro de custos.
-
-### 1.2 Na conta KIE
-
-O saldo só pode ser lido com a chave da conta (`GET https://api.kie.ai/api/v1/chat/credit`, com `Authorization: Bearer`). **Não tenho a chave, e por regra não manipulo chaves.** Por isso:
-
-| Item pedido | Situação |
-|---|---|
-| **Saldo atual** | **Não verificado.** Última referência: **8.679,43 créditos ≈ US$ 43,40** (18/09). O operador confirma no painel da KIE |
-| Nano Banana 2 | Disponível no catálogo público: 1K US$ 0,04 · 2K US$ 0,06 · 4K US$ 0,09 por imagem |
-| Veo 3.1 Fast | Disponível: **US$ 0,325 por vídeo** (1080p) |
-| Veo 3.1 Quality | Disponível: **US$ 1,275 por vídeo** (1080p) |
-| Image-to-video / reference-to-video | Disponível no Veo 3.1 da KIE: `FIRST_AND_LAST_FRAMES_2_VIDEO` e `REFERENCE_2_VIDEO` (este só no Fast/Lite) |
-| 9:16 | Disponível (`aspect_ratio: 9:16`) |
-| ElevenLabs TTS | Disponível na KIE: `text-to-speech-multilingual-v2`, `turbo-2-5`, `text-to-dialogue-v3`. **Preço por caractere, suporte a português e licença comercial não confirmados** na documentação pública |
-| Kling 3.0 (alternativa para pessoas) | Disponível: US$ 0,07 por segundo |
-| Conversão de créditos | 200 créditos = US$ 1 (1 crédito = US$ 0,005), segundo a tabela pública de VEO 3 (60 créditos = US$ 0,30) |
-
-**Custos reais em créditos:** os valores acima são da página pública. Antes de cada wave, confirmo o custo de **uma** operação de cada tipo pelo registro da conta (o primeiro POST autorizado de cada modelo) e só então sigo.
-
-**Pendências de licença (bloqueiam o render final, não a Wave 1):**
-- uso comercial do vídeo do Veo gerado via KIE: confirmar nos termos da KIE;
-- uso comercial da voz ElevenLabs gerada via KIE: confirmar se a KIE repassa a licença. Se não repassar, a voz vai para a conta própria da ElevenLabs (Starter, US$ 5), **só com nova autorização**.
-
-**Não foi criado nada:** nenhuma chave Gemini, nenhuma conta Google, nenhuma chave ElevenLabs, nenhum billing externo.
-
----
+**Conclusão revisada:** o Gate C deve ser executado **pela Creative Factory existente, estendida**, sem criar uma segunda integração KIE e sem chave ou billing novos. A extensão (1,5–2,5 dias, 0 crédito) vem antes da Wave 1.
 
 ## 2. Geração progressiva por waves
 
