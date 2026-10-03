@@ -81,3 +81,23 @@ Keyframes S1 não selecionados: 8 × 12 = 96 cr (custo de exploração).
 - `sprint_runner`: custo informado pela KIE (`creditsConsumed`) registrado; retomada de tarefa existente sem POST.
 - Smoke: checagens W1A independentes do estado; pendência de reconciliação com taskId permitida (sem taskId continua bloqueando).
 - Suíte: 115 testes OK; `WINDOWS_SMOKE=PASS`.
+
+---
+
+## Revisão do end card (2026-10-03) — masters finais
+
+Única alteração: fechamento comercial. Nenhuma imagem/vídeo regenerado, trilha e normalização preservadas (áudio copiado bit a bit do master de origem), 0 créditos KIE.
+
+**Linhagem:** `SOURCE_MASTER` (CREATIVE_Vx_*.mp4, preservado) → `END_CARD_REVISION` (`tools/endcard_revision.py`: mesmo ponto de corte e dissolve de 0,45 s; fundo = último quadro da cena, desfocado e escurecido; 3 camadas tipográficas com entrada escalonada) → `FINAL_MASTER` (CREATIVE_Vx_*_FINAL.mp4).
+
+**Novo end card:** “Trattoria em Casa” (Pagella itálico) · “Receitas italianas / para fazer em casa” · **R$ 19,90** (negrito, maior elemento) · botão terracota **QUERO CONHECER** · secundário discreto “e-book digital • acesso após pagamento”. Todo o conteúdo entre y 330–1178 px (zona segura Reels/Stories: 268–1248 px; laterais 6 %).
+
+| Master final | Duração | LUFS | Pico | SSIM pré-end card vs origem | SHA-256 |
+|---|---|---|---|---|---|
+| CREATIVE_V1_EMOTIONAL_FINAL.mp4 | 21,5 s | −14,1 | −2,8 dBTP | 0,995 | 52b8a7a4f8d12d3f4986f0d54e834ea9636b23429a0e5b9494174f4ba21b264e |
+| CREATIVE_V2_FOOD_DESIRE_FINAL.mp4 | 17,6 s | −14,7 | −1,9 dBTP | 0,996 | 1e70d562a65dfb0da6636812ad9255976e5bf5a97a5d59577a8ea7fee5644820 |
+| CREATIVE_V3_HYBRID_FINAL.mp4 | 15,7 s | −14,4 | −1,7 dBTP | 0,995 | 83825fa9728d809cbc7fbb3ec9cdd64d757c9b82575f900a869f2db43489c31e |
+
+QA (todos PASS): 1080x1920, 30 fps, H.264 High yuv420p, AAC 48 kHz estéreo, duração igual à origem, sem clipping, sem segmentos pretos, decodificação sem erros, áudio idêntico à origem, layout na zona segura. Capturas: `V1_ENDCARD.png`, `V2_ENDCARD.png`, `V3_ENDCARD.png`. Detalhes: `ENDCARD_REVISION_PROVENANCE_QA.json`.
+
+`KIE_CREDITS_USED=0` · `META_PUBLICATION=NOT_EXECUTED` · `CONTROL_CAMPAIGN=UNTOUCHED` · `FINAL_STATE=READY_FOR_HUMAN_FINAL_REVIEW`
