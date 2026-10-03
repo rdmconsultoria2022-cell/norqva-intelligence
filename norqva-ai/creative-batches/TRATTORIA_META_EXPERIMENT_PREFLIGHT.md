@@ -133,3 +133,13 @@ O conjunto de controle exibe a tarefa de **transparência de anúncios (Brasil)*
 
 ### Saída
 `PUBLICATION_BLOCKER=CONTROL_UNPUBLISHED_DRAFTS` · `META_OBJECTS_CREATED=0` · `META_OBJECTS_ACTIVE=NO` · **BLOCKED_BEFORE_EXP02_PUBLICATION**
+
+---
+
+## Limpeza de rascunhos + staging (2026-10-03 01:40) — STOP antes de agir
+
+- Segundo rascunho identificado por ID: anúncio **BB-B01-H04-M1-C1-V2** (120249740642740097), campanha `BB-B01 | Rodada 1` (120249722943110097, pausada), conjunto `BB-B01 | R1 | BR amplo` (120249722943120097); criativo publicado 1708808246856546; rascunho = "ATUALIZADO: Criativo" com **0 mídias** no anúncio (erro). Não pertence ao CONTROL, ao EXP02, nem a anúncio ativo (campanha pausada); sem registro de intenção nos docs do BB-B01 → elegível para descarte.
+- Rascunho do CONTROL confirmado: orçamento diário do conjunto 120249666098760097 **R$ 30 → R$ 20** (publicado segue R$ 30).
+- "Teste de criativo" existe nativamente na conta (no editor do anúncio): "Compare até 7 versões diferentes do seu criativo em um teste que ajuda a garantir a veiculação para novos anúncios de teste." Demais regras (divisão de verba, público, relatório) só aparecem ao configurar.
+- Anunciante/pagador (Brasil): no conjunto de controle, campo "Anunciante (verificação necessária)" sem seleção e aviso de tarefa "necessária em breve"; o controle segue veiculando → hoje não bloqueia, mas é exigência pendente.
+- **Nenhum descarte, publicação ou criação foi feito:** a proteção de ações do ambiente bloqueou a operação nos controles de rascunho/publicação do Gerenciador, e o navegador do Claude não consegue enviar arquivos de vídeo locais. Rascunhos continuam 2. Passos manuais ao operador.
