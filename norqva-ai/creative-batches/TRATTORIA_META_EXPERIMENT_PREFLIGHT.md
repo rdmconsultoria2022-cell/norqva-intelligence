@@ -94,3 +94,42 @@ KIE_CREDITS_USED=0
 FINAL_STATE=READY_FOR_META_PUBLICATION_AUTHORIZATION
 ```
 Efeito colateral da auditoria: 1 visita de teste na landing (PageView/ViewContent no pixel e 1 `OFFER_VIEW` com `utm_campaign=AUDIT_NO_ADS`). Nenhum pedido.
+
+---
+
+## EXP02 — Preparação final (2026-10-03, somente leitura)
+
+### Rascunhos pendentes na conta (Gerenciador de Anúncios → "Conferir e publicar (2)")
+| Objeto | Alteração em rascunho | Observação |
+|---|---|---|
+| Conjunto `TRATTORIA_ABO_BROAD_BR_V1` (CONTROL, 120249666098760097) | **Orçamento diário R$ 30 → R$ 20** | não publicado; se publicado, reduz a verba do CONTROL |
+| 1 anúncio (nome não carregou no diálogo) | ATUALIZADO: Criativo, com erro "Corrigir erro" | não é nenhum dos 3 anúncios da campanha de controle (verificado um a um) |
+O diálogo de publicação é **da conta inteira** e vem com as duas linhas **pré-marcadas**. Publicar o EXP02 pelo Gerenciador sem desmarcar essas linhas publicaria a redução de orçamento do CONTROL. Nada foi publicado nem descartado; contagem de rascunhos conferida antes e depois (2).
+
+### Outro achado
+O conjunto de controle exibe a tarefa de **transparência de anúncios (Brasil)**: "anunciante e pagador verificados" serão exigidos "em breve" para veicular no Brasil. Conjuntos novos podem pedir isso na publicação.
+
+### Estrutura recomendada
+1 campanha nova → 1 conjunto → 3 anúncios, com o recurso nativo **Teste de criativos** do Gerenciador (2–5 anúncios, divisão igual de verba no teste, cada pessoa vê uma só variação), se disponível na conta no momento da criação. Sem esse recurso, a entrega automática concentra verba em um anúncio e a comparação não é justa → alternativa: 3 conjuntos ABO idênticos (1 anúncio cada, mesma verba). Executar dentro do conjunto de controle está fora de questão (alteraria o CONTROL).
+
+### Especificação
+- Campanha `NORQVA_TRATTORIA_EXP02_CREATIVE` · Vendas · Campanha de vendas Advantage+ ativada (igual ao controle) · criada **PAUSADA**.
+- Conjunto `TRATTORIA_EXP02_BROAD_BR` · site · Maximizar conversões · Compra · dataset NORQVA WEB DATA 1049452567443586 · lance Volume mais alto · atribuição 7 dias clique / 1 dia visualização / 1 dia engajamento (igual ao controle) · Brasil 25–65, público Advantage+, sem interesses · posicionamentos Advantage+.
+- Anúncios (texto, título e CTA idênticos; só o vídeo muda):
+  - `TR_V1_EMO` ← CREATIVE_V1_EMOTIONAL_FINAL.mp4 (SHA 52b8a7a4…)
+  - `TR_V2_FOOD` ← CREATIVE_V2_FOOD_DESIRE_FINAL.mp4 (SHA 1e70d562…)
+  - `TR_V3_HYB` ← CREATIVE_V3_HYBRID_FINAL.mp4 (SHA 83825fa9…)
+  - Texto: "Massa fresca, molho de verdade e o passo a passo para preparar um jantar italiano em casa. Trattoria em Casa: e-book digital de receitas italianas por R$ 19,90, pagamento único via Pix, com download logo após a confirmação." · Título: "Trattoria em Casa · R$ 19,90" · CTA: Ver detalhes.
+- Destino: `https://trattoria.norqva.com.br/p/OFF-000001`
+- Parâmetros de URL (por anúncio): `utm_source=meta&utm_medium=paid_social&utm_campaign=NORQVA_TRATTORIA_EXP02_CREATIVE&utm_content=<TR_Vx>&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}`
+
+### Orçamento e regras de proteção (teto R$ 420, não é meta)
+- Fase 1 (dias 1–3): R$ 45/dia no total (≈ R$ 15 por criativo) → até R$ 135.
+- Pausar um criativo com ≥ R$ 50 gastos (3× o CAC de equilíbrio) sem nenhuma compra **e** sem InitiateCheckout; ou com ≥ R$ 80 sem compra.
+- Encerrar o teste se o gasto acumulado chegar a R$ 250 com ≤ 1 compra no total.
+- Fase 2 (dias 4–7, até o teto de R$ 420): só para criativos com trajetória de CAC ≤ R$ 35 (≈ 2× equilíbrio).
+- Escala só com ≥ 3 compras e CAC ≤ R$ 16,72. CTR/CPC/retenção são diagnósticos.
+- Fonte: gasto do Gerenciador de Anúncios; compras atribuídas pelo NORQVA (sync antes de ler).
+
+### Saída
+`PUBLICATION_BLOCKER=CONTROL_UNPUBLISHED_DRAFTS` · `META_OBJECTS_CREATED=0` · `META_OBJECTS_ACTIVE=NO` · **BLOCKED_BEFORE_EXP02_PUBLICATION**
