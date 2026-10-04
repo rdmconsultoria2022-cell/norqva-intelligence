@@ -12,6 +12,22 @@ export function getMetaBusinessId(): string {
 }
 export const PUBLIC_COMMERCE_URL_REGEX = /^https:\/\/norqva-intelligence-frontend\.vercel\.app\/p\/[A-Za-z0-9_-]+(\?.*)?$/;
 
+// NORQVA-0019: domínios de marca verificados que também servem a página pública da oferta
+// (https://<host>/p/:humanId). Lista configurável; só hosts exatos, sem curingas.
+export const DEFAULT_BRAND_DESTINATION_HOSTS = ['trattoria.norqva.com.br'];
+export function getBrandDestinationHosts(): string[] {
+  const raw = process.env.META_BRAND_DESTINATION_HOSTS;
+  const list = (raw === undefined || raw.trim() === '' ? DEFAULT_BRAND_DESTINATION_HOSTS : raw.split(','))
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h));
+  return Array.from(new Set(list));
+}
+export function isBrandDestinationUrl(url: string): boolean {
+  return getBrandDestinationHosts().some((host) =>
+    new RegExp(`^https:\\/\\/${host.replace(/[.-]/g, (c) => `\\${c}`)}\\/p\\/[A-Za-z0-9_-]+(\\?.*)?$`).test(url)
+  );
+}
+
 export interface MetaPreflightStatus {
   tokenValid: boolean;
   adsRead: boolean;
@@ -57,8 +73,14 @@ export interface CreateAdCreativeParams {
   callToAction: string;
   imageHash?: string;
   videoId?: string;
+  /** NORQVA-0019: thumbnail of a video creative (video_data.image_url). */
+  thumbnailUrl?: string;
   pageId?: string;
   instagramActorId?: string;
+  /** NORQVA-0019: Instagram account used by the ad (object_story_spec.instagram_user_id). */
+  instagramUserId?: string;
+  /** NORQVA-0019: tracking parameters appended by Meta to the destination (creative url_tags). */
+  urlTags?: string;
 }
 
 export interface CreateAdParams {
@@ -325,9 +347,9 @@ export class MetaMutatingClient {
       throw new Error('[SECURITY EXCEPTION]: Missing or invalid destination URL.');
     }
 
-    if (!PUBLIC_COMMERCE_URL_REGEX.test(url)) {
+    if (!PUBLIC_COMMERCE_URL_REGEX.test(url) && !isBrandDestinationUrl(url)) {
       throw new Error(
-        `[SECURITY EXCEPTION]: Blocked non-whitelisted destination URL: "${url}". Destination URLs must strictly match public offer entry pattern "https://norqva-intelligence-frontend.vercel.app/p/:humanId".`
+        `[SECURITY EXCEPTION]: Blocked non-whitelisted destination URL: "${url}". Destination URLs must strictly match public offer entry pattern "https://norqva-intelligence-frontend.vercel.app/p/:humanId" or "https://<verified brand domain>/p/:humanId" (META_BRAND_DESTINATION_HOSTS).`
       );
     }
   }
@@ -621,26 +643,13 @@ export class MetaMutatingClient {
     try {
       await client.query('BEGIN');
 
-      const actId = context.isDemo ? 'act_demo_12345678' : (this.adAccountId || 'act_production');
+      const configuredAct = this.adAccountId ? (this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`) : '';
+      const actId = context.isDemo ? 'act_demo_12345678' : (configuredAct || 'act_production');
       this.assertEnvironmentIsolation(context, actId);
 
       const externalId = context.isDemo
         ? `crt_demo_${crypto.randomUUID().slice(0, 8)}`
-        : (await this.callTransportPost(`/${actId}/adcreatives`, {
-            name: params.name,
-            object_story_spec: {
-              page_id: params.pageId || 'page_norqva_official',
-              link_data: {
-                message: params.body,
-                link: params.destinationUrl,
-                name: params.title,
-                call_to_action: {
-                  type: params.callToAction || 'LEARN_MORE',
-                  value: { link: params.destinationUrl }
-                }
-              }
-            }
-          })).id;
+        : (await this.callTransportPost(`/${actId}/adcreatives`, MetaMutatingClient.buildAdCreativePayload(params))).id;
 
       await client.query('COMMIT');
 
@@ -668,6 +677,48 @@ export class MetaMutatingClient {
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Graph payload of an ad creative. Link creative (image/link_data) by default; with `videoId`
+   * (NORQVA-0019) a video creative with object_story_spec.video_data. `url_tags` only when given.
+   */
+  public static buildAdCreativePayload(params: CreateAdCreativeParams): Record<string, any> {
+    if (params.urlTags !== undefined) MetaMutatingClient.assertValidUrlTags(params.urlTags);
+    const callToAction = {
+      type: params.callToAction || 'LEARN_MORE',
+      value: { link: params.destinationUrl }
+    };
+    const objectStorySpec: Record<string, any> = { page_id: params.pageId || 'page_norqva_official' };
+    if (params.instagramUserId) objectStorySpec.instagram_user_id = params.instagramUserId;
+
+    if (params.videoId) {
+      const videoData: Record<string, any> = {
+        video_id: params.videoId,
+        message: params.body,
+        title: params.title,
+        call_to_action: callToAction
+      };
+      if (params.thumbnailUrl) videoData.image_url = params.thumbnailUrl;
+      objectStorySpec.video_data = videoData;
+    } else {
+      objectStorySpec.link_data = {
+        message: params.body,
+        link: params.destinationUrl,
+        name: params.title,
+        call_to_action: callToAction
+      };
+    }
+
+    const payload: Record<string, any> = { name: params.name, object_story_spec: objectStorySpec };
+    if (params.urlTags) payload.url_tags = params.urlTags;
+    return payload;
+  }
+
+  public static assertValidUrlTags(urlTags: string): void {
+    if (typeof urlTags !== 'string' || urlTags.length > 1024 || /[\s#]/.test(urlTags) || urlTags.startsWith('?') || urlTags.includes('://')) {
+      throw new Error('[VALIDATION EXCEPTION]: Invalid url_tags (query string without "?", spaces, "#" or URLs).');
     }
   }
 
@@ -1015,6 +1066,259 @@ export class MetaMutatingClient {
     if (entityType === 'ADSET') return { table: 'meta_ad_sets', idCol: 'meta_adset_id' };
     if (entityType === 'AD') return { table: 'meta_ads', idCol: 'meta_ad_id' };
     throw new Error('[VALIDATION EXCEPTION]: Unknown Meta entity type.');
+  }
+
+  // =========================================================================
+  // NORQVA-0019: launch plans — objects created by the Claude are ALWAYS PAUSED
+  // =========================================================================
+  // Paused objects cannot spend, so creation does not take a decisionId nor reserve capital
+  // (D-0010). It still requires META_MUTATION_ENABLED=true + the live preflight, runs only on the
+  // configured REAL ad account and writes audit_logs. There is no status parameter: the Graph
+  // payload is hard-coded to PAUSED. Activation goes through setEntityStatus/setDailyBudget after
+  // the operator answers YES (launchPlanService).
+
+  private realLaunchActId(context: MetaMutatingSecurityContext): string {
+    if (context.isDemo) {
+      throw new Error('[VALIDATION EXCEPTION]: Launch plans run only on the REAL ad account (no DEMO).');
+    }
+    if (!this.adAccountId) {
+      throw new Error('[META CONFIG EXCEPTION]: Missing META_AD_ACCOUNT_ID.');
+    }
+    const actId = this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`;
+    this.assertAccountAndPixelBinding(actId);
+    return actId;
+  }
+
+  private static requireGraphId(res: any, what: string): string {
+    const id = res?.id === undefined || res?.id === null ? '' : String(res.id).trim();
+    if (!id) throw new Error(`[META GRAPH API ERROR]: ${what} creation returned no id.`);
+    return id;
+  }
+
+  private async ensureRealAdAccountRow(pool: Pool, actId: string): Promise<string> {
+    const found = await pool.query(
+      'SELECT id FROM meta_ad_accounts WHERE meta_account_id IN ($1, $2) AND is_demo = FALSE LIMIT 1',
+      [actId, actId.replace(/^act_/, '')]
+    );
+    if (found.rows.length > 0) return found.rows[0].id;
+    const ins = await pool.query(
+      `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo)
+       VALUES ($1, 'NORQVA', 'BRL', FALSE)
+       ON CONFLICT (meta_account_id, is_demo) DO UPDATE SET updated_at = NOW()
+       RETURNING id`,
+      [actId]
+    );
+    return ins.rows[0].id;
+  }
+
+  private async auditLaunchFailure(pool: Pool, context: MetaMutatingSecurityContext, what: string, err: any) {
+    await writeAuditLog(pool, context.userId || null, 'META_MUTATION_FAILED', `Failed to create paused ${what}: ${err?.message || err}`, null, null, false, false);
+  }
+
+  public async createPausedCampaign(
+    pool: Pool,
+    params: { name: string; objective: 'OUTCOME_SALES' },
+    context: MetaMutatingSecurityContext,
+    onCreated?: (externalId: string) => Promise<void>
+  ): Promise<{ externalId: string }> {
+    await this.assertFeatureFlagAndPreflight(context);
+    const actId = this.realLaunchActId(context);
+    if (params.objective !== 'OUTCOME_SALES') {
+      throw new Error('[VALIDATION EXCEPTION]: Launch plan campaigns must use objective OUTCOME_SALES.');
+    }
+    try {
+      const externalId = MetaMutatingClient.requireGraphId(
+        await this.callTransportPost(`/${actId}/campaigns`, {
+          name: params.name,
+          objective: params.objective,
+          status: 'PAUSED',
+          special_ad_categories: [],
+          // ABO: budgets live on the ad sets (one per creative), no campaign budget.
+          is_adset_budget_sharing_enabled: false
+        }),
+        'Campaign'
+      );
+      if (onCreated) await onCreated(externalId);
+
+      const acctDbId = await this.ensureRealAdAccountRow(pool, actId);
+      await pool.query(
+        `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo, last_synced_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'PAUSED', 'PAUSED', FALSE, NOW(), NOW())
+         ON CONFLICT (meta_campaign_id, is_demo) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()`,
+        [externalId, acctDbId, params.name, params.objective]
+      );
+      await writeAuditLog(pool, context.userId || null, 'META_CAMPAIGN_CREATED', `Created PAUSED Meta Campaign '${params.name}' (Meta ID: ${externalId}).`, null, JSON.stringify({ externalId, name: params.name, status: 'PAUSED' }), false, false);
+      return { externalId };
+    } catch (err: any) {
+      await this.auditLaunchFailure(pool, context, `campaign '${params.name}'`, err);
+      throw err;
+    }
+  }
+
+  public async createPausedAdSet(
+    pool: Pool,
+    params: {
+      campaignId: string;
+      name: string;
+      dailyBudget: number;
+      pixelId: string;
+      customEventType: 'PURCHASE';
+      optimizationGoal: 'OFFSITE_CONVERSIONS';
+      targeting: Record<string, any>;
+    },
+    context: MetaMutatingSecurityContext,
+    onCreated?: (externalId: string) => Promise<void>
+  ): Promise<{ externalId: string }> {
+    await this.assertFeatureFlagAndPreflight(context);
+    const actId = this.realLaunchActId(context);
+    this.assertAccountAndPixelBinding(undefined, params.pixelId);
+    const amount = Math.round(Number(params.dailyBudget) * 100) / 100;
+    const max = getMaxDailyBudgetBRL();
+    if (!Number.isFinite(amount) || amount < META_MIN_DAILY_BUDGET_BRL || amount > max) {
+      throw new Error(`[VALIDATION EXCEPTION]: Ad set daily budget must be between R$ ${META_MIN_DAILY_BUDGET_BRL.toFixed(2)} and R$ ${max.toFixed(2)} (META_MAX_DAILY_BUDGET_BRL).`);
+    }
+    try {
+      const externalId = MetaMutatingClient.requireGraphId(
+        await this.callTransportPost(`/${actId}/adsets`, {
+          campaign_id: params.campaignId,
+          name: params.name,
+          status: 'PAUSED',
+          daily_budget: Math.round(amount * 100),
+          billing_event: 'IMPRESSIONS',
+          optimization_goal: params.optimizationGoal,
+          bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+          destination_type: 'WEBSITE',
+          promoted_object: { pixel_id: params.pixelId, custom_event_type: params.customEventType },
+          targeting: params.targeting
+        }),
+        'Ad set'
+      );
+      if (onCreated) await onCreated(externalId);
+
+      let cmpDbId = (await pool.query('SELECT id FROM meta_campaigns WHERE meta_campaign_id = $1 AND is_demo = FALSE LIMIT 1', [params.campaignId])).rows[0]?.id;
+      if (!cmpDbId) {
+        const acctDbId = await this.ensureRealAdAccountRow(pool, actId);
+        cmpDbId = (await pool.query(
+          `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, status, effective_status, is_demo)
+           VALUES ($1, $2, 'Parent Campaign', 'PAUSED', 'PAUSED', FALSE)
+           ON CONFLICT (meta_campaign_id, is_demo) DO UPDATE SET updated_at = NOW()
+           RETURNING id`,
+          [params.campaignId, acctDbId]
+        )).rows[0].id;
+      }
+      await pool.query(
+        `INSERT INTO meta_ad_sets (meta_adset_id, campaign_id, name, status, effective_status, optimization_goal, billing_event, daily_budget, is_demo, last_synced_at, updated_at)
+         VALUES ($1, $2, $3, 'PAUSED', 'PAUSED', $4, 'IMPRESSIONS', $5, FALSE, NOW(), NOW())
+         ON CONFLICT (meta_adset_id, is_demo) DO UPDATE SET name = EXCLUDED.name, daily_budget = EXCLUDED.daily_budget, updated_at = NOW()`,
+        [externalId, cmpDbId, params.name, params.optimizationGoal, amount]
+      );
+      await writeAuditLog(pool, context.userId || null, 'META_ADSET_CREATED', `Created PAUSED Meta AdSet '${params.name}' (Meta ID: ${externalId}, Budget: R$ ${amount.toFixed(2)}).`, null, JSON.stringify({ externalId, name: params.name, dailyBudget: amount, pixelId: params.pixelId, status: 'PAUSED' }), false, false);
+      return { externalId };
+    } catch (err: any) {
+      await this.auditLaunchFailure(pool, context, `ad set '${params.name}'`, err);
+      throw err;
+    }
+  }
+
+  public async createPausedAd(
+    pool: Pool,
+    params: { adsetId: string; creativeId: string; name: string },
+    context: MetaMutatingSecurityContext,
+    onCreated?: (externalId: string) => Promise<void>
+  ): Promise<{ externalId: string }> {
+    await this.assertFeatureFlagAndPreflight(context);
+    const actId = this.realLaunchActId(context);
+    try {
+      const externalId = MetaMutatingClient.requireGraphId(
+        await this.callTransportPost(`/${actId}/ads`, {
+          name: params.name,
+          adset_id: params.adsetId,
+          creative: { creative_id: params.creativeId },
+          status: 'PAUSED'
+        }),
+        'Ad'
+      );
+      if (onCreated) await onCreated(externalId);
+
+      const setDbId = (await pool.query('SELECT id FROM meta_ad_sets WHERE meta_adset_id = $1 AND is_demo = FALSE LIMIT 1', [params.adsetId])).rows[0]?.id;
+      if (setDbId) {
+        await pool.query(
+          `INSERT INTO meta_ads (meta_ad_id, adset_id, name, status, effective_status, meta_creative_id, is_demo, last_synced_at, updated_at)
+           VALUES ($1, $2, $3, 'PAUSED', 'PAUSED', $4, FALSE, NOW(), NOW())
+           ON CONFLICT (meta_ad_id, is_demo) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()`,
+          [externalId, setDbId, params.name, params.creativeId]
+        );
+      }
+      await writeAuditLog(pool, context.userId || null, 'META_AD_CREATED', `Created PAUSED Meta Ad '${params.name}' (Meta ID: ${externalId}).`, null, JSON.stringify({ externalId, name: params.name, adsetId: params.adsetId, creativeId: params.creativeId, status: 'PAUSED' }), false, false);
+      return { externalId };
+    } catch (err: any) {
+      await this.auditLaunchFailure(pool, context, `ad '${params.name}'`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * NORQVA-0019: upload a video to the ad account from a public URL (POST /act_X/advideos
+   * {file_url, name}). Returns as soon as Meta answers with the video id; processing is awaited
+   * separately with waitForVideoReady so a rerun can resume without uploading again.
+   */
+  public async uploadVideoFromUrl(
+    pool: Pool,
+    params: { fileUrl: string; name: string },
+    context: MetaMutatingSecurityContext
+  ): Promise<{ id: string }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    const actId = this.realLaunchActId(context);
+    let parsed: URL;
+    try {
+      parsed = new URL(String(params.fileUrl || ''));
+    } catch {
+      throw new Error('[VALIDATION EXCEPTION]: Video file_url must be a public https URL.');
+    }
+    if (parsed.protocol !== 'https:') {
+      throw new Error('[VALIDATION EXCEPTION]: Video file_url must be a public https URL.');
+    }
+    try {
+      const id = MetaMutatingClient.requireGraphId(
+        await this.callTransportPost(`/${actId}/advideos`, { file_url: parsed.toString(), name: String(params.name || '').slice(0, 200) }),
+        'Video'
+      );
+      await writeAuditLog(pool, context.userId || null, 'META_VIDEO_UPLOADED', `Uploaded video '${params.name}' to ${actId} (Meta video ID: ${id}).`, null, JSON.stringify({ id, name: params.name, host: parsed.host }), false, false);
+      return { id };
+    } catch (err: any) {
+      await this.auditLaunchFailure(pool, context, `video '${params.name}'`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * NORQVA-0019: poll GET /{video_id}?fields=status,picture until status.video_status === 'ready'.
+   * Bounded by timeoutMs (META_VIDEO_READY_TIMEOUT_MS, default 120 s). Returns the thumbnail Meta
+   * generated (picture), used when the plan has no thumbnail of its own.
+   */
+  public async waitForVideoReady(
+    videoId: string,
+    opts: { timeoutMs?: number; pollIntervalMs?: number } = {}
+  ): Promise<{ id: string; picture: string | null }> {
+    const envTimeout = Number(process.env.META_VIDEO_READY_TIMEOUT_MS);
+    const timeoutMs = opts.timeoutMs ?? (Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 120000);
+    const pollIntervalMs = opts.pollIntervalMs ?? 5000;
+    const deadline = Date.now() + timeoutMs;
+    let lastStatus = 'unknown';
+    for (;;) {
+      const res = await this.callTransportGet(`/${videoId}`, { fields: 'status,picture' });
+      lastStatus = String(res?.status?.video_status || 'unknown');
+      if (lastStatus === 'ready') {
+        return { id: String(videoId), picture: typeof res?.picture === 'string' && res.picture ? res.picture : null };
+      }
+      if (lastStatus === 'error') {
+        throw new Error(`[META GRAPH API ERROR]: Video ${videoId} processing failed on Meta.`);
+      }
+      if (Date.now() + pollIntervalMs > deadline) {
+        throw new Error(`[META TIMEOUT EXCEPTION]: Video ${videoId} not ready after ${Math.round(timeoutMs / 1000)}s (status: ${lastStatus}). Run the creation again to resume.`);
+      }
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
   }
 
   // =========================================================================
