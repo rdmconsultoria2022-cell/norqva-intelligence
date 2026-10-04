@@ -202,6 +202,8 @@ describe('GATE: 16.4B — META DATA PROVENANCE HOTFIX & FINANCIAL INTEGRITY', ()
   });
 
   it('6 & 7. Campanha nova NORQVA_TRATTORIA_REVENUE_V1 com 3 anuncios sincronizada em REAL aparece no relatorio B2 com metricas validas', async () => {
+    // Data relativa: o relatório '7d' olha a semana corrente (data fixa virava bomba-relógio).
+    const recentDay = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
     const mockClient = {
       getAdAccounts: async () => [{ id: 'act_trattoria_real', name: 'Trattoria Account', currency: 'BRL', timezone_name: 'America/Sao_Paulo', account_status: 1 }],
       getCampaigns: async () => [{ id: '120250000000000001', name: 'NORQVA_TRATTORIA_REVENUE_V1', objective: 'OUTCOME_SALES', status: 'ACTIVE', effective_status: 'ACTIVE', account_id: 'act_trattoria_real' }],
@@ -212,7 +214,7 @@ describe('GATE: 16.4B — META DATA PROVENANCE HOTFIX & FINANCIAL INTEGRITY', ()
         { id: '120250000000000005', adset_id: '120250000000000002', name: 'TRATTORIA_V1_AD_C_HOOK_MASSA_CASEIRA', status: 'ACTIVE', effective_status: 'ACTIVE' }
       ],
       getInsights: async (_actId: string, level: string) => {
-        const todayStr = '2026-09-25';
+        const todayStr = recentDay;
         if (level === 'campaign') {
           return [{
             ad_account_id: 'act_trattoria_real',
@@ -245,12 +247,12 @@ describe('GATE: 16.4B — META DATA PROVENANCE HOTFIX & FINANCIAL INTEGRITY', ()
     const custId = custRes.rows[0].id;
     const ordRes = await pool.query(`
       INSERT INTO orders (customer_id, total_amount, status, is_demo, data_provenance, idempotency_key, utm_source, utm_campaign, utm_content, attribution_metadata, created_at, updated_at)
-      VALUES ($1, 29.90, 'PAID', FALSE, 'COMMERCIAL_PRODUCTION', 'idem_trattoria_01', 'meta', '120250000000000001', '120250000000000003', $2, '2026-09-25 12:00:00', '2026-09-25 12:00:00')
+      VALUES ($1, 29.90, 'PAID', FALSE, 'COMMERCIAL_PRODUCTION', 'idem_trattoria_01', 'meta', '120250000000000001', '120250000000000003', $2, '${recentDay} 12:00:00', '${recentDay} 12:00:00')
       RETURNING id
     `, [custId, JSON.stringify({ campaign_id: '120250000000000001', adset_id: '120250000000000002', ad_id: '120250000000000003' })]);
     await pool.query(`
       INSERT INTO payments (human_id, order_id, provider, status, amount, confirmed_at, idempotency_key, external_reference, data_provenance, created_at, updated_at)
-      VALUES ('PAY_TRATTORIA_01', $1, 'ASAAS', 'CONFIRMED', 29.90, '2026-09-25 12:00:00', 'idem_pay_trattoria_01', 'ext_trattoria_01', 'COMMERCIAL_PRODUCTION', '2026-09-25 12:00:00', '2026-09-25 12:00:00')
+      VALUES ('PAY_TRATTORIA_01', $1, 'ASAAS', 'CONFIRMED', 29.90, '${recentDay} 12:00:00', 'idem_pay_trattoria_01', 'ext_trattoria_01', 'COMMERCIAL_PRODUCTION', '${recentDay} 12:00:00', '${recentDay} 12:00:00')
     `, [ordRes.rows[0].id]);
 
     // Query B2 Attribution Report for '7d'
