@@ -123,6 +123,7 @@ import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, 
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
 import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
+import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
 
@@ -368,6 +369,12 @@ app.post('/api/alerts/evaluate', requireRole(['ADMIN']), evaluateAdAlerts);
 app.post('/api/alerts/:id/ack', requireRole(['ADMIN', 'PERFORMANCE']), acknowledgeAdAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
+// NORQVA-0019 (D-0010): planos de lançamento — criados PAUSADOS pelo Claude, ativados só pela resposta do operador
+app.get('/api/launch-plans', requireRole(['ADMIN']), listLaunchPlans);
+app.post('/api/launch-plans', requireRole(['ADMIN']), createLaunchPlan);
+app.get('/api/launch-plans/:id', requireRole(['ADMIN']), getLaunchPlan);
+app.post('/api/launch-plans/:id/create', requireRole(['ADMIN']), createLaunchPlanOnMeta);
+app.post('/api/launch-plans/:id/answer', requireRole(['ADMIN']), answerLaunchPlan);
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
