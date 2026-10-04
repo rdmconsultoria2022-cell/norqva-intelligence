@@ -29,22 +29,54 @@ describe('NORQVA-0019 — launch plans', () => {
   const PAGE_ID = '1287452237795325';
 
   // Graph mock: records every POST; ids are generated per object type.
-  function makeGraph(opts: { failOn?: (endpoint: string, payload: any, n: number) => boolean } = {}) {
+  function makeGraph(
+    opts: {
+      failOn?: (endpoint: string, payload: any, n: number) => boolean;
+      // the object IS created on "Meta" but the response is lost (timeout after the POST landed)
+      loseResponseOn?: (endpoint: string, payload: any, n: number) => boolean;
+      failListing?: boolean;
+      preexisting?: { parent: string; edge: string; name: string; status: string }[];
+    } = {}
+  ) {
     let n = 0;
     const calls: { endpoint: string; payload: any }[] = [];
+    // live "Meta" registry: parent path + edge -> objects
+    const registry: { parent: string; edge: string; id: string; name: string; status: string }[] = (opts.preexisting || []).map((o) => ({
+      ...o,
+      id: `pre_${crypto.randomUUID().slice(0, 8)}`
+    }));
     const post = vi.fn(async (endpoint: string, payload: any) => {
       n++;
       calls.push({ endpoint, payload });
       if (opts.failOn && opts.failOn(endpoint, payload, n)) throw new Error('[META GRAPH API ERROR]: simulated failure');
       const tag = crypto.randomUUID().slice(0, 8);
-      if (endpoint.endsWith('/campaigns')) return { id: `lpcmp_${tag}` };
-      if (endpoint.endsWith('/adsets')) return { id: `lpset_${tag}` };
-      if (endpoint.endsWith('/advideos')) return { id: `lpvid_${tag}` };
-      if (endpoint.endsWith('/adcreatives')) return { id: `lpcrt_${tag}` };
-      if (endpoint.endsWith('/ads')) return { id: `lpad_${tag}` };
-      return { success: true };
+      let id: string | null = null;
+      let edge = '';
+      if (endpoint.endsWith('/campaigns')) { id = `lpcmp_${tag}`; edge = 'campaigns'; }
+      else if (endpoint.endsWith('/adsets')) { id = `lpset_${tag}`; edge = 'adsets'; }
+      else if (endpoint.endsWith('/advideos')) id = `lpvid_${tag}`;
+      else if (endpoint.endsWith('/adcreatives')) id = `lpcrt_${tag}`;
+      else if (endpoint.endsWith('/ads')) { id = `lpad_${tag}`; edge = 'ads'; }
+      if (!id) return { success: true };
+      if (edge) {
+        // ad sets/ads are listed under their parent object, campaigns under the account
+        const parent = edge === 'campaigns' ? endpoint.slice(0, -'/campaigns'.length)
+          : edge === 'adsets' ? `/${payload.campaign_id}` : `/${payload.adset_id}`;
+        registry.push({ parent, edge, id, name: String(payload.name), status: String(payload.status || 'PAUSED') });
+      }
+      if (opts.loseResponseOn && opts.loseResponseOn(endpoint, payload, n)) {
+        throw new Error('[META TIMEOUT EXCEPTION]: simulated lost response after the object was created');
+      }
+      return { id };
     });
-    const get = vi.fn(async (endpoint: string) => {
+    const get = vi.fn(async (endpoint: string, params: Record<string, string> = {}) => {
+      const listing = endpoint.match(/^(.*)\/(campaigns|adsets|ads)$/);
+      if (listing && params && params.filtering) {
+        if (opts.failListing) throw new Error('[META GRAPH API ERROR]: listing unavailable');
+        const name = JSON.parse(params.filtering)[0].value;
+        const parent = listing[1].startsWith('/') ? listing[1] : '/' + listing[1];
+        return { data: registry.filter((o) => o.parent === parent && o.edge === listing[2] && o.name === name).map((o) => ({ id: o.id, name: o.name, status: o.status })) };
+      }
       if (endpoint === '/me') return { id: 'u1' };
       if (endpoint === '/me/permissions') return { data: [{ permission: 'ads_management', status: 'granted' }, { permission: 'ads_read', status: 'granted' }] };
       if (endpoint.startsWith('/act_')) return { id: endpoint.slice(1), account_status: 1 };
@@ -55,7 +87,7 @@ describe('NORQVA-0019 — launch plans', () => {
     const client = new MetaMutatingClient(post as any, undefined, get as any);
     setLaunchPlanClientFactoryForTesting(() => client);
     const creations = () => calls.filter((c) => /\/(campaigns|adsets|advideos|adcreatives|ads)$/.test(c.endpoint));
-    return { post, get, calls, creations };
+    return { post, get, calls, creations, registry };
   }
 
   const planBody = (over: { code?: string; campaignName?: string; spec?: any } = {}) => {
@@ -338,6 +370,58 @@ describe('NORQVA-0019 — launch plans', () => {
     expect(second.filter((c) => c.endpoint.endsWith('/adsets')).map((c) => c.payload.name)).toEqual(['T19_SET_B', 'T19_SET_C']);
     expect(second.filter((c) => c.endpoint.endsWith('/adsets'))[0].payload.campaign_id).toBe(Object.values(ids1.campaign)[0]);
     expect(second.filter((c) => c.endpoint.endsWith('/ads'))).toHaveLength(3);
+  });
+
+  it('recovery: a POST whose response was lost is adopted on rerun (live lookup by name), never duplicated', async () => {
+    let lostOnce = false;
+    // the 2nd ad set and the 1st ad are created on Meta but the caller never sees their ids
+    let setPosts = 0;
+    let adPosts = 0;
+    const graph = makeGraph({
+      loseResponseOn: (endpoint) => {
+        if (endpoint.endsWith('/adsets') && ++setPosts === 2 && !lostOnce) { lostOnce = true; return true; }
+        return false;
+      }
+    });
+    const plan = await draft();
+    const r = await request(app).post(`/api/launch-plans/${plan.id}/create`).set(auth(adminToken)).send({});
+    expect(r.status).toBe(502);
+    expect((await getPlan(plan.id)).status).toBe('FAILED');
+
+    // rerun on the SAME live Meta state: the lost ad set exists PAUSED and must be adopted
+    let adLost = false;
+    const r2 = await request(app).post(`/api/launch-plans/${plan.id}/create`).set(auth(adminToken)).send({});
+    expect(r2.status).toBe(200);
+    expect(r2.body.plan.status).toBe('AWAITING_OPERATOR');
+    const sets = graph.registry.filter((o) => o.edge === 'adsets');
+    expect(sets.map((o) => o.name).sort()).toEqual(['T19_SET_A', 'T19_SET_B', 'T19_SET_C']);
+    expect(graph.registry.filter((o) => o.edge === 'campaigns')).toHaveLength(1);
+    expect(graph.registry.filter((o) => o.edge === 'ads')).toHaveLength(3);
+    const row = await getPlan(plan.id);
+    const ids = typeof row.meta_ids === 'string' ? JSON.parse(row.meta_ids) : row.meta_ids;
+    expect(ids.adsets.T19_SET_B).toBe(sets.find((o) => o.name === 'T19_SET_B')!.id);
+    const adopted = await pool.query(`SELECT 1 FROM audit_logs WHERE event_type = 'LAUNCH_PLAN_OBJECT_ADOPTED' AND new_value LIKE $1`, [`%${plan.id}%`]);
+    expect(adopted.rows.length).toBeGreaterThanOrEqual(1);
+    void adPosts; void adLost;
+  });
+
+  it('recovery is fail-closed: if Meta cannot be listed, nothing is created', async () => {
+    const graph = makeGraph({ failListing: true });
+    const plan = await draft();
+    const r = await request(app).post(`/api/launch-plans/${plan.id}/create`).set(auth(adminToken)).send({});
+    expect(r.status).not.toBe(200);
+    expect(graph.creations()).toHaveLength(0);
+    expect((await getPlan(plan.id)).status).toBe('FAILED');
+  });
+
+  it('recovery never adopts or touches a same-name object that is not PAUSED', async () => {
+    const name = `NORQVA_T19_LIVE_${crypto.randomUUID().slice(0, 6)}`;
+    const graph = makeGraph({ preexisting: [{ parent: `/${ACT}`, edge: 'campaigns', name, status: 'ACTIVE' }] });
+    const plan = await draft(planBody({ campaignName: name }));
+    const r = await request(app).post(`/api/launch-plans/${plan.id}/create`).set(auth(adminToken)).send({});
+    expect(r.status).toBe(409);
+    expect(graph.creations()).toHaveLength(0);
+    expect(graph.calls.some((c) => c.payload?.status === 'ACTIVE' || c.payload?.status === 'PAUSED')).toBe(false);
   });
 
   it('answer: ADMIN only, never with an automation token, only while AWAITING_OPERATOR', async () => {

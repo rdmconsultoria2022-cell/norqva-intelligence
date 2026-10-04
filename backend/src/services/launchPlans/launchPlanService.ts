@@ -61,6 +61,30 @@ export class LaunchPlanError extends Error {
   }
 }
 
+/**
+ * Before creating a campaign/ad set/ad, look it up live on Meta by its exact name under the parent.
+ * - none found  -> null (safe to create)
+ * - one PAUSED  -> adopt its id (a previous POST succeeded but its id was lost)
+ * - one not PAUSED or several -> stop: manual reconciliation (never touch or duplicate it)
+ */
+async function adoptExistingLaunchObject(
+  client: MetaMutatingClient,
+  ctx: MetaMutatingSecurityContext,
+  parent: 'ACCOUNT' | string,
+  edge: 'campaigns' | 'adsets' | 'ads',
+  name: string
+): Promise<string | null> {
+  const found = await client.findLaunchObjectsByName(ctx, parent, edge, name);
+  if (found.length === 0) return null;
+  if (found.length > 1) {
+    throw new LaunchPlanError(409, `Encontrados ${found.length} objetos "${name}" em ${edge}; reconciliação manual necessária (nada foi criado).`);
+  }
+  if (found[0].status !== 'PAUSED') {
+    throw new LaunchPlanError(409, `Já existe "${name}" (${found[0].id}) com status ${found[0].status || 'desconhecido'}; reconciliação manual necessária (nada foi criado).`);
+  }
+  return found[0].id;
+}
+
 export interface LaunchPlanTargeting {
   countries: string[];
   age_min: number;
@@ -523,6 +547,14 @@ export class LaunchPlanService {
     try {
       const cName = spec.campaign.name;
       if (!ids.campaign[cName]) {
+        const adopted = await adoptExistingLaunchObject(client, ctx, 'ACCOUNT', 'campaigns', cName);
+        if (adopted) {
+          ids.campaign[cName] = adopted;
+          await save();
+          await audit(pool, user.id, 'LAUNCH_PLAN_OBJECT_ADOPTED', `Plano ${plan.code}: campanha "${cName}" já existia PAUSADA (${adopted}); adotada sem novo POST.`, { id, campaign: adopted });
+        }
+      }
+      if (!ids.campaign[cName]) {
         await client.createPausedCampaign(pool, { name: cName, objective: 'OUTCOME_SALES' }, ctx, async (extId) => {
           ids.campaign[cName] = extId;
           await save();
@@ -532,6 +564,13 @@ export class LaunchPlanService {
 
       for (const s of spec.adsets) {
         if (ids.adsets[s.name]) continue;
+        const adoptedSet = await adoptExistingLaunchObject(client, ctx, campaignId, 'adsets', s.name);
+        if (adoptedSet) {
+          ids.adsets[s.name] = adoptedSet;
+          await save();
+          await audit(pool, user.id, 'LAUNCH_PLAN_OBJECT_ADOPTED', `Plano ${plan.code}: conjunto "${s.name}" já existia PAUSADO (${adoptedSet}); adotado sem novo POST.`, { id, adset: adoptedSet });
+          continue;
+        }
         await client.createPausedAdSet(
           pool,
           {
@@ -553,6 +592,13 @@ export class LaunchPlanService {
 
       for (const ad of spec.ads) {
         if (ids.ads[ad.name]) continue;
+        const adoptedAd = await adoptExistingLaunchObject(client, ctx, ids.adsets[ad.adset_name], 'ads', ad.name);
+        if (adoptedAd) {
+          ids.ads[ad.name] = adoptedAd;
+          await save();
+          await audit(pool, user.id, 'LAUNCH_PLAN_OBJECT_ADOPTED', `Plano ${plan.code}: anúncio "${ad.name}" já existia PAUSADO (${adoptedAd}); adotado sem novo POST.`, { id, ad: adoptedAd });
+          continue;
+        }
         if (!ids.creatives[ad.name]) {
           if (!ids.videos[ad.name]) {
             const v = await client.uploadVideoFromUrl(pool, { fileUrl: ad.video_url, name: `${plan.code}_${ad.name}` }, ctx);

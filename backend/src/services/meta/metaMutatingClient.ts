@@ -1077,6 +1077,36 @@ export class MetaMutatingClient {
   // payload is hard-coded to PAUSED. Activation goes through setEntityStatus/setDailyBudget after
   // the operator answers YES (launchPlanService).
 
+  /**
+   * NORQVA-0019 recovery: live lookup (GET only) of launch-plan objects by exact name under a parent.
+   * Used before every create so that a POST whose response was lost (timeout/crash) is adopted
+   * instead of being created twice. Fail-closed: if the listing cannot be read, nothing is created.
+   */
+  public async findLaunchObjectsByName(
+    context: MetaMutatingSecurityContext,
+    parent: 'ACCOUNT' | string,
+    edge: 'campaigns' | 'adsets' | 'ads',
+    name: string
+  ): Promise<Array<{ id: string; name: string; status: string }>> {
+    const parentPath = parent === 'ACCOUNT' ? `/${this.realLaunchActId(context)}` : `/${parent}`;
+    let res: any;
+    try {
+      res = await this.callTransportGet(`${parentPath}/${edge}`, {
+        fields: 'id,name,status,effective_status',
+        filtering: JSON.stringify([{ field: 'name', operator: 'EQUAL', value: name }]),
+        limit: '50'
+      });
+    } catch (err: any) {
+      throw new Error(`[META RECONCILE EXCEPTION]: could not list ${edge} under ${parentPath} (${String(err?.message || err)}); refusing to create to avoid duplicates.`);
+    }
+    if (!res || !Array.isArray(res.data)) {
+      throw new Error(`[META RECONCILE EXCEPTION]: unexpected listing for ${edge} under ${parentPath}; refusing to create to avoid duplicates.`);
+    }
+    return res.data
+      .filter((o: any) => o && String(o.name) === name)
+      .map((o: any) => ({ id: String(o.id), name: String(o.name), status: String(o.status || o.effective_status || '').toUpperCase() }));
+  }
+
   private realLaunchActId(context: MetaMutatingSecurityContext): string {
     if (context.isDemo) {
       throw new Error('[VALIDATION EXCEPTION]: Launch plans run only on the REAL ad account (no DEMO).');

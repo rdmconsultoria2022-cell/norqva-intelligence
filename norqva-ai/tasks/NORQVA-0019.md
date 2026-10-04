@@ -50,3 +50,19 @@ Criação idempotente (mock Graph), tudo PAUSED, resposta só por ADMIN humano, 
 ## Fora de escopo
 
 Escalar orçamento automaticamente; editar/pausar o CONTROL; "Teste de criativos" nativo (não exposto na API pública de forma verificada).
+
+## Recuperação após timeout (adicionado na revisão)
+
+Antes de cada `POST` de campanha, conjunto ou anúncio, o NORQVA lista na Meta (somente leitura) os objetos com o **mesmo nome exato** sob o pai (conta → campanhas, campanha → conjuntos, conjunto → anúncios):
+- nenhum: cria;
+- um, `PAUSED`: adota o ID (um `POST` anterior foi aceito mas a resposta se perdeu) e registra `LAUNCH_PLAN_OBJECT_ADOPTED`;
+- um não pausado, ou mais de um: para com 409 — reconciliação manual, nada é criado nem alterado;
+- listagem indisponível: para (fail-closed), nada é criado.
+
+Vídeos e criativos sem ID salvo podem ser recriados num retry; não veiculam sozinhos (sem anúncio) e ficam órfãos sem custo.
+
+## Riscos operacionais registrados
+
+- **R-0019-01 — teto não é limite na Meta.** O `max_spend_brl` (R$ 420 no TR-EXP02) é persistido no NORQVA (experimento + reserva de capital), mas **não** é um `spend_cap` na Meta. As regras de pausa reduzem o risco; não equivalem a limite externo. Mitigação pendente: `spend_cap` na campanha ou limite de gastos da conta. Não bloqueia o EXP02 de R$ 45/dia; fica aberto até a proteção adicional existir.
+- **R-0019-02 — campos Graph não verificados ao vivo** (`is_adset_budget_sharing_enabled`, `targeting_automation`, `instagram_user_id`): a primeira criação real confirma; falha deixa tudo pausado e retomável.
+- **R-0019-03 — espera do vídeo dentro da requisição** pode estourar o timeout do servidor; o retry retoma do vídeo já enviado.
