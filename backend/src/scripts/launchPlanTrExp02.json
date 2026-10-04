@@ -1,0 +1,94 @@
+{
+  "code": "TR-EXP02",
+  "brand_code": "TRATTORIA",
+  "offer_human_id": "OFF-000001",
+  "max_spend_brl": 420,
+  "question_text": "Ativar NORQVA_TRATTORIA_EXP02_CREATIVE com R$ 45/dia (3 × R$ 15), teto de R$ 420? A campanha de controle não é alterada.",
+  "spec": {
+    "campaign": {
+      "name": "NORQVA_TRATTORIA_EXP02_CREATIVE",
+      "objective": "OUTCOME_SALES"
+    },
+    "pixel_id": "1049452567443586",
+    "custom_event_type": "PURCHASE",
+    "optimization_goal": "OFFSITE_CONVERSIONS",
+    "adsets": [
+      {
+        "name": "TR_EXP02_V1_EMO",
+        "daily_budget_brl": 15,
+        "targeting": {
+          "countries": [
+            "BR"
+          ],
+          "age_min": 25,
+          "age_max": 65,
+          "advantage_audience": true
+        },
+        "targeting_summary": "Brasil, 25–65 anos, público Advantage+ e posicionamentos Advantage+"
+      },
+      {
+        "name": "TR_EXP02_V2_FOOD",
+        "daily_budget_brl": 15,
+        "targeting": {
+          "countries": [
+            "BR"
+          ],
+          "age_min": 25,
+          "age_max": 65,
+          "advantage_audience": true
+        },
+        "targeting_summary": "Brasil, 25–65 anos, público Advantage+ e posicionamentos Advantage+"
+      },
+      {
+        "name": "TR_EXP02_V3_HYB",
+        "daily_budget_brl": 15,
+        "targeting": {
+          "countries": [
+            "BR"
+          ],
+          "age_min": 25,
+          "age_max": 65,
+          "advantage_audience": true
+        },
+        "targeting_summary": "Brasil, 25–65 anos, público Advantage+ e posicionamentos Advantage+"
+      }
+    ],
+    "ads": [
+      {
+        "name": "TR_V1_EMO",
+        "adset_name": "TR_EXP02_V1_EMO",
+        "video_url": "TO_BE_FILLED",
+        "primary_text": "Massa fresca, molho de verdade e o passo a passo para preparar um jantar italiano em casa. Trattoria em Casa: e-book digital de receitas italianas por R$ 19,90, pagamento único via Pix, com download logo após a confirmação.",
+        "headline": "Trattoria em Casa · R$ 19,90",
+        "cta": "SEE_DETAILS",
+        "destination_url": "https://trattoria.norqva.com.br/p/OFF-000001",
+        "url_tags": "utm_source=meta&utm_medium=paid_social&utm_campaign=NORQVA_TRATTORIA_EXP02_CREATIVE&utm_content=TR_V1_EMO&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}"
+      },
+      {
+        "name": "TR_V2_FOOD",
+        "adset_name": "TR_EXP02_V2_FOOD",
+        "video_url": "TO_BE_FILLED",
+        "primary_text": "Massa fresca, molho de verdade e o passo a passo para preparar um jantar italiano em casa. Trattoria em Casa: e-book digital de receitas italianas por R$ 19,90, pagamento único via Pix, com download logo após a confirmação.",
+        "headline": "Trattoria em Casa · R$ 19,90",
+        "cta": "SEE_DETAILS",
+        "destination_url": "https://trattoria.norqva.com.br/p/OFF-000001",
+        "url_tags": "utm_source=meta&utm_medium=paid_social&utm_campaign=NORQVA_TRATTORIA_EXP02_CREATIVE&utm_content=TR_V2_FOOD&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}"
+      },
+      {
+        "name": "TR_V3_HYB",
+        "adset_name": "TR_EXP02_V3_HYB",
+        "video_url": "TO_BE_FILLED",
+        "primary_text": "Massa fresca, molho de verdade e o passo a passo para preparar um jantar italiano em casa. Trattoria em Casa: e-book digital de receitas italianas por R$ 19,90, pagamento único via Pix, com download logo após a confirmação.",
+        "headline": "Trattoria em Casa · R$ 19,90",
+        "cta": "SEE_DETAILS",
+        "destination_url": "https://trattoria.norqva.com.br/p/OFF-000001",
+        "url_tags": "utm_source=meta&utm_medium=paid_social&utm_campaign=NORQVA_TRATTORIA_EXP02_CREATIVE&utm_content=TR_V3_HYB&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}"
+      }
+    ],
+    "pause_rules": [
+      "Teto do experimento: R$ 420 no total; ao atingir, pausar a campanha.",
+      "A campanha de controle não é alterada por este plano."
+    ],
+    "hypothesis": "Entre três criativos de vídeo (emocional, comida, híbrido) com a mesma oferta e o mesmo público, ao menos um gera compra com custo por compra menor que o do controle."
+  }
+}
