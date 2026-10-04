@@ -1440,6 +1440,46 @@ export class MetaMutatingClient {
     return true;
   }
 
+  /**
+   * Auditoria ao vivo, SOMENTE LEITURA: consulta a Graph API (GET) para os IDs informados, sem passar pelo
+   * banco. Nunca faz POST. Erros por objeto são devolvidos no próprio item (não interrompem a auditoria).
+   */
+  public async auditLive(input: { campaigns: string[]; adsets: string[]; ads: string[] }): Promise<Record<string, any>> {
+    const safeGet = async (path: string, params: Record<string, string>) => {
+      try {
+        return await this.callTransportGet(path, params);
+      } catch (err: any) {
+        return { error: String(err?.message || err).slice(0, 500) };
+      }
+    };
+    const insightsFields = 'spend,impressions,reach,clicks,inline_link_clicks,actions';
+    const insights = (id: string) => safeGet(`/${id}/insights`, { fields: insightsFields, date_preset: 'maximum' });
+    const out: Record<string, any> = { fetched_at: new Date().toISOString(), source: 'META_GRAPH_API_LIVE' };
+
+    out.campaigns = await Promise.all(input.campaigns.map(async (id) => ({
+      object: await safeGet(`/${id}`, { fields: 'id,name,status,effective_status,configured_status,objective,daily_budget,lifetime_budget,spend_cap,created_time,updated_time' }),
+      insights: await insights(id)
+    })));
+    out.adsets = await Promise.all(input.adsets.map(async (id) => ({
+      object: await safeGet(`/${id}`, { fields: 'id,name,status,effective_status,configured_status,campaign_id,daily_budget,lifetime_budget,optimization_goal,created_time,updated_time' }),
+      insights: await insights(id)
+    })));
+    out.ads = await Promise.all(input.ads.map(async (id) => {
+      const ad = await safeGet(`/${id}`, {
+        fields: 'id,name,status,effective_status,configured_status,campaign_id,adset_id,created_time,updated_time,creative{id,name,object_story_spec,asset_feed_spec,url_tags,video_id,call_to_action_type,title,body,link_url}'
+      });
+      const spec = ad?.creative?.object_story_spec?.video_data || {};
+      const videoId = spec.video_id || ad?.creative?.video_id || null;
+      const video = videoId ? await safeGet(`/${videoId}`, { fields: 'id,title,length,created_time,status' }) : null;
+      return { object: ad, video, insights: await insights(id) };
+    }));
+    const act = this.adAccountId ? (this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`) : null;
+    out.account = act
+      ? await safeGet(`/${act}`, { fields: 'id,name,account_status,disable_reason,currency,amount_spent,spend_cap,balance,funding_source_details' })
+      : { error: 'META_AD_ACCOUNT_ID ausente' };
+    return out;
+  }
+
   private async callTransportGet(endpoint: string, params: Record<string, string>): Promise<any> {
     const path = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
     if (this.transportGet) {
