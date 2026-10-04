@@ -33,7 +33,7 @@ const plan: LaunchPlan = {
 function setup(opts: { user?: any; isDemoView?: boolean; plans?: LaunchPlan[] } = {}) {
   let plans = opts.plans ?? [plan];
   const apiFetch = vi.fn(async (url: string, _opts?: any) => {
-    if (url.startsWith('/launch-plans?')) return { plans };
+    if (url === '/launch-plans') return { plans };
     if (url.endsWith('/answer')) {
       plans = [];
       return { plan: { ...plan, status: 'ACTIVE' } };
@@ -88,7 +88,20 @@ describe('NORQVA-0019 — LaunchPlansCard', () => {
     );
   });
 
-  it('hidden for non-admins, in DEMO and when nothing awaits', async () => {
+  it('lists only plans that need the operator; an incomplete activation offers only "Sim"', async () => {
+    setup({
+      plans: [
+        { ...plan, id: 'p-active', code: 'TR-OLD', status: 'ACTIVE' },
+        { ...plan, id: 'p-approved', code: 'TR-RETRY', status: 'APPROVED', last_error: 'A Meta não respondeu' }
+      ]
+    });
+    const card = await screen.findByTestId('launch-plan-TR-RETRY');
+    expect(card).toHaveTextContent('Ativação incompleta');
+    expect(screen.queryByTestId('launch-plan-TR-OLD')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Não' })).not.toBeInTheDocument();
+  });
+
+  it('hidden for non-admins', async () => {
     const a = setup({ user: { ...admin, role: 'PERFORMANCE' } });
     expect(a.apiFetch).not.toHaveBeenCalled();
     expect(screen.queryByTestId('launch-plans-card')).not.toBeInTheDocument();

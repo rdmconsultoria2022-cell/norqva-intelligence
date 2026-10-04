@@ -22,6 +22,7 @@ export interface LaunchPlan {
   question_text: string;
   daily_budget_brl: number;
   max_spend_brl: number;
+  last_error?: string | null;
   spec: {
     campaign: { name: string };
     adsets: LaunchPlanAdSet[];
@@ -36,6 +37,9 @@ const brl = (n: number) => `R$ ${Number(n || 0).toLocaleString('pt-BR', { minimu
 
 const isPlan = (p: any): p is LaunchPlan =>
   !!p && typeof p.id === 'string' && !!p.spec?.campaign?.name && Array.isArray(p.spec?.adsets) && Array.isArray(p.spec?.ads);
+
+// Aguardando resposta, ou aprovado com ativação incompleta (responder Sim de novo retoma).
+const needsOperator = (p: LaunchPlan) => p.status === 'AWAITING_OPERATOR' || (p.status === 'APPROVED' && !!p.last_error);
 
 export const LaunchPlansCard: React.FC<{
   apiFetch: (url: string, options?: any, mode?: string, user?: any) => Promise<any>;
@@ -59,8 +63,8 @@ export const LaunchPlansCard: React.FC<{
       return;
     }
     try {
-      const res = await fetchRef.current('/launch-plans?status=AWAITING_OPERATOR', {}, 'real', userRef.current);
-      setPlans(Array.isArray(res?.plans) ? res.plans.filter(isPlan) : []);
+      const res = await fetchRef.current('/launch-plans', {}, 'real', userRef.current);
+      setPlans(Array.isArray(res?.plans) ? res.plans.filter(isPlan).filter(needsOperator) : []);
     } catch {
       setPlans([]);
     }
@@ -106,6 +110,11 @@ export const LaunchPlansCard: React.FC<{
       {plans.map((plan) => (
         <div key={plan.id} data-testid={`launch-plan-${plan.code}`} className="p-4 rounded border border-slate-800 bg-slate-900/60 space-y-3 text-sm">
           <p className="text-slate-100 font-semibold">{plan.question_text}</p>
+          {plan.status === 'APPROVED' ? (
+            <p className="text-xs text-red-300 font-mono">
+              Ativação incompleta: {plan.last_error}. Responder "Sim" de novo retoma a ativação dos objetos deste plano.
+            </p>
+          ) : null}
           <div className="text-xs text-slate-400 font-mono space-y-1">
             <div>
               Campanha: <span className="text-slate-200">{plan.spec.campaign.name}</span> <span className="text-slate-500">({plan.code}, criada pausada)</span>
@@ -157,12 +166,14 @@ export const LaunchPlansCard: React.FC<{
             >
               <Rocket className="h-3.5 w-3.5" /> Sim, ativar
             </button>
-            <button
-              onClick={() => setPending({ plan, answer: 'NO' })}
-              className="px-3 py-2 rounded text-xs font-mono font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-            >
-              Não
-            </button>
+            {plan.status === 'AWAITING_OPERATOR' ? (
+              <button
+                onClick={() => setPending({ plan, answer: 'NO' })}
+                className="px-3 py-2 rounded text-xs font-mono font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+              >
+                Não
+              </button>
+            ) : null}
           </div>
         </div>
       ))}
