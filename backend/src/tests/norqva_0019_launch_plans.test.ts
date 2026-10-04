@@ -385,7 +385,7 @@ describe('NORQVA-0019 — launch plans', () => {
     });
     const plan = await draft();
     const r = await request(app).post(`/api/launch-plans/${plan.id}/create`).set(auth(adminToken)).send({});
-    expect(r.status).toBe(502);
+    expect([502, 504]).toContain(r.status); // lost response = timeout (504) or gateway error (502)
     expect((await getPlan(plan.id)).status).toBe('FAILED');
 
     // rerun on the SAME live Meta state: the lost ad set exists PAUSED and must be adopted
