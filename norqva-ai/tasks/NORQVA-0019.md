@@ -66,3 +66,11 @@ Vídeos e criativos sem ID salvo podem ser recriados num retry; não veiculam so
 - **R-0019-01 — teto não é limite na Meta.** O `max_spend_brl` (R$ 420 no TR-EXP02) é persistido no NORQVA (experimento + reserva de capital), mas **não** é um `spend_cap` na Meta. As regras de pausa reduzem o risco; não equivalem a limite externo. Mitigação pendente: `spend_cap` na campanha ou limite de gastos da conta. Não bloqueia o EXP02 de R$ 45/dia; fica aberto até a proteção adicional existir.
 - **R-0019-02 — campos Graph não verificados ao vivo** (`is_adset_budget_sharing_enabled`, `targeting_automation`, `instagram_user_id`): a primeira criação real confirma; falha deixa tudo pausado e retomável.
 - **R-0019-03 — espera do vídeo dentro da requisição** pode estourar o timeout do servidor; o retry retoma do vídeo já enviado.
+
+## Anunciante verificado (adicionado após a primeira criação real)
+
+A Meta recusou o primeiro conjunto do TR-EXP02 com `code 100, subcode 3858634` ("O anunciante está ausente", campo `compliance_section`). O "anunciante e pagador padrão" da tela de configurações só é preenchido pelo Gerenciador; a API exige `regional_regulation_identities` no conjunto.
+
+- Render: `META_ADVERTISER_BENEFICIARY_ID` (e opcional `META_ADVERTISER_PAYER_ID`; sem ele, usa o anunciante) com o ID numérico da entidade verificada. Envio: `{universal_beneficiary, universal_payer}`.
+- Opcional: `META_REGIONAL_REGULATED_CATEGORIES` (códigos numéricos), só se a Meta pedir a categoria.
+- Sem as variáveis, nada muda. Valor não numérico: falha fechada, nada é criado.

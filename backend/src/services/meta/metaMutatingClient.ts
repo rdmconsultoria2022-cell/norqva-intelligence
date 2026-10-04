@@ -129,6 +129,36 @@ export function resetMetaPreflightCacheForTesting() {
   preflightCache = null;
 }
 
+/**
+ * NORQVA-0019: anunciante/pagador verificados exigidos pela Meta para conjuntos novos com público no
+ * Brasil (erro 100/3858634, campo compliance_section). A API não herda o "anunciante e pagador padrão"
+ * da tela de configurações; o conjunto precisa enviar `regional_regulation_identities`.
+ * IDs vêm de META_ADVERTISER_BENEFICIARY_ID / META_ADVERTISER_PAYER_ID (IDs de entidade verificada,
+ * não são segredo). Opcional: META_REGIONAL_REGULATED_CATEGORIES (lista numérica separada por vírgula).
+ * Sem as variáveis, nada é adicionado (comportamento anterior).
+ */
+export function advertiserIdentityParams(env: Record<string, string | undefined> = process.env): Record<string, any> {
+  const id = (v: string | undefined) => {
+    const s = String(v || '').trim();
+    if (!s) return null;
+    if (!/^\d{5,25}$/.test(s)) throw new Error('[META CONFIG EXCEPTION]: META_ADVERTISER_BENEFICIARY_ID/META_ADVERTISER_PAYER_ID must be numeric Meta IDs.');
+    return s;
+  };
+  const beneficiary = id(env.META_ADVERTISER_BENEFICIARY_ID);
+  const payer = id(env.META_ADVERTISER_PAYER_ID) || beneficiary;
+  if (!beneficiary) return {};
+  const out: Record<string, any> = { regional_regulation_identities: { universal_beneficiary: beneficiary, universal_payer: payer } };
+  const cats = String(env.META_REGIONAL_REGULATED_CATEGORIES || '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  if (cats.length) {
+    if (cats.some((c) => !/^\d{1,3}$/.test(c))) throw new Error('[META CONFIG EXCEPTION]: META_REGIONAL_REGULATED_CATEGORIES must be numeric codes.');
+    out.regional_regulated_categories = cats;
+  }
+  return out;
+}
+
 export class MetaMutatingClient {
   private apiVersion: string;
   private accessToken?: string;
@@ -1243,7 +1273,8 @@ export class MetaMutatingClient {
           bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
           destination_type: 'WEBSITE',
           promoted_object: { pixel_id: params.pixelId, custom_event_type: params.customEventType },
-          targeting: params.targeting
+          targeting: params.targeting,
+          ...advertiserIdentityParams()
         }),
         'Ad set'
       );
