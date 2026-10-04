@@ -1141,6 +1141,30 @@ export class MetaMutatingClient {
     return ins.rows[0].id;
   }
 
+  /**
+   * NORQVA-0019: Meta's generic `message` ("Invalid parameter") hides which field failed. Append the
+   * code/subcode, the user-facing title/message and the blamed fields so a FAILED plan is diagnosable.
+   * Never includes request data or tokens (Graph error bodies carry neither).
+   */
+  public static describeGraphError(error: any): string {
+    if (!error || typeof error !== 'object') return '';
+    const parts: string[] = [];
+    if (error.message) parts.push(String(error.message));
+    const codes = [error.code !== undefined ? `code ${error.code}` : '', error.error_subcode !== undefined ? `subcode ${error.error_subcode}` : '']
+      .filter(Boolean)
+      .join(', ');
+    if (codes) parts.push(`(${codes})`);
+    if (error.error_user_title) parts.push(`— ${String(error.error_user_title)}`);
+    if (error.error_user_msg) parts.push(`— ${String(error.error_user_msg)}`);
+    let errorData: any = error.error_data;
+    if (typeof errorData === 'string') {
+      try { errorData = JSON.parse(errorData); } catch { errorData = null; }
+    }
+    const blame = errorData?.blame_field_specs;
+    if (Array.isArray(blame) && blame.length) parts.push(`[campos: ${JSON.stringify(blame)}]`);
+    return parts.join(' ').slice(0, 900);
+  }
+
   private async auditLaunchFailure(pool: Pool, context: MetaMutatingSecurityContext, what: string, err: any) {
     await writeAuditLog(pool, context.userId || null, 'META_MUTATION_FAILED', `Failed to create paused ${what}: ${err?.message || err}`, null, null, false, false);
   }
@@ -1408,7 +1432,7 @@ export class MetaMutatingClient {
       });
       const data: any = await res.json();
       if (!res.ok) {
-        throw new Error(`[META GRAPH API ERROR]: ${data?.error?.message || `HTTP ${res.status}`}`);
+        throw new Error(`[META GRAPH API ERROR]: ${MetaMutatingClient.describeGraphError(data?.error) || `HTTP ${res.status}`}`);
       }
       return data;
     } catch (err: any) {
@@ -1448,7 +1472,7 @@ export class MetaMutatingClient {
 
       const data: any = await res.json();
       if (!res.ok) {
-        const msg = data?.error?.message || `Meta mutating request returned HTTP ${res.status}`;
+        const msg = MetaMutatingClient.describeGraphError(data?.error) || `Meta mutating request returned HTTP ${res.status}`;
         throw new Error(`[META GRAPH API ERROR]: ${msg}`);
       }
 
