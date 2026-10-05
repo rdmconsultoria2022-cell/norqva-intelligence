@@ -122,7 +122,7 @@ import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './con
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
-import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
+import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -363,6 +363,7 @@ app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
 app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDestinationUrl);
 // NORQVA-0006: campaign control (pause/activate, daily budget). ADMIN only, fail-closed.
 app.get('/api/meta-control/status', requireRole(['ADMIN']), getMetaControlStatus);
+app.get('/api/meta-control/audit', requireRole(['ADMIN']), getMetaLiveAudit);
 // NORQVA-0009: ad alerts
 app.get('/api/alerts', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listAdAlerts);
 app.post('/api/alerts/evaluate', requireRole(['ADMIN']), evaluateAdAlerts);

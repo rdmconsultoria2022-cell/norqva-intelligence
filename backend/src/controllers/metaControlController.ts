@@ -156,3 +156,27 @@ export async function setMetaEntityDailyBudget(req: AuthenticatedRequest, res: R
     return res.status(t.status).json({ error: t.error });
   }
 }
+
+const AUDIT_ID = /^\d{6,25}$/;
+const auditIds = (v: unknown): string[] =>
+  String(v || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+/** GET /api/meta-control/audit?campaigns=..&adsets=..&ads=.. — leitura ao vivo na Graph API (ADMIN, somente GET). */
+export async function getMetaLiveAudit(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (isDemoReq(req)) return res.status(400).json({ error: 'Auditoria ao vivo só existe no modo real.' });
+    const input = { campaigns: auditIds(req.query.campaigns), adsets: auditIds(req.query.adsets), ads: auditIds(req.query.ads) };
+    const all = [...input.campaigns, ...input.adsets, ...input.ads];
+    if (all.length === 0 || all.length > 20 || all.some((id) => !AUDIT_ID.test(id))) {
+      return res.status(400).json({ error: 'Informe de 1 a 20 IDs numéricos da Meta em campaigns, adsets e ads.' });
+    }
+    const result = await clientFactory().auditLive(input);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[META CONTROL] live audit error', err);
+    return res.status(500).json({ error: 'Falha na auditoria ao vivo.' });
+  }
+}
