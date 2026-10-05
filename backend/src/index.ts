@@ -123,6 +123,8 @@ import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, 
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
 import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
+import { getDecisionEvents } from './controllers/decisionEventsController';
+import { purgeDecisionEventPii } from './db/decisionEvents';
 import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -370,6 +372,7 @@ app.post('/api/alerts/evaluate', requireRole(['ADMIN']), evaluateAdAlerts);
 app.post('/api/alerts/:id/ack', requireRole(['ADMIN', 'PERFORMANCE']), acknowledgeAdAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
+app.get('/api/decision-events', requireRole(['ADMIN']), getDecisionEvents);
 // NORQVA-0019 (D-0010): planos de lançamento — criados PAUSADOS pelo Claude, ativados só pela resposta do operador
 app.get('/api/launch-plans', requireRole(['ADMIN']), listLaunchPlans);
 app.post('/api/launch-plans', requireRole(['ADMIN']), createLaunchPlan);
@@ -483,6 +486,19 @@ async function startServer() {
       registerShutdownHook(startMarketEuScheduler(pool));
     } catch (e: any) {
       console.error('[Server] Failed to start market EU scheduler (non-fatal):', e.message);
+    }
+
+    // H1: retenção LGPD de IP/user-agent em decision_events (padrão 180 dias), na subida e a cada 24 h.
+    if (process.env.NODE_ENV !== 'test') {
+      const days = Math.min(Math.max(Number(process.env.DECISION_EVENTS_PII_RETENTION_DAYS) || 180, 1), 3650);
+      const runPurge = async () => {
+        const n = await purgeDecisionEventPii(pool, days);
+        if (n) console.log(`[DECISION AUDIT] PII retention: ip/user-agent removed from ${n} event(s) older than ${days} days.`);
+      };
+      void runPurge();
+      const purgeTimer = setInterval(() => void runPurge(), 24 * 60 * 60 * 1000);
+      purgeTimer.unref();
+      registerShutdownHook(() => clearInterval(purgeTimer));
     }
 
     // Initialize Automated CAPI Retry Job (Non-blocking / Isolated)
