@@ -27,6 +27,9 @@ export interface BatchCreative {
   primaryText: string;
   headline: string;
   claimCodes: string[];
+  // NORQVA-0020: creatives that arrive with their produced file (Creative Factory releases)
+  fileUrl?: string | null;
+  generationSource?: 'AI_ASSISTED' | 'FACTORY';
 }
 
 export interface CreativeBatch {

@@ -115,7 +115,9 @@ import {
   automationGetAdjustment,
   automationReportAdjustment,
   automationDeliverAdjustment,
-  enqueueFactoryAdjustment
+  enqueueFactoryAdjustment,
+  automationFactoryUploadUrl,
+  automationFactoryIngest
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
@@ -425,6 +427,9 @@ app.get('/api/automation/opportunities/:id', automationGetOpportunity);
 app.post('/api/automation/opportunities/:id/status', automationOpportunityStatus);
 app.post('/api/automation/opportunities/:id/evaluation', automationOpportunityEvaluation);
 app.post('/api/automation/opportunities/:id/plan', automationOpportunityPlan);
+// NORQVA-0020: Creative Factory → NORQVA (release certificado → Storage → criativo DRAFT)
+app.post('/api/automation/creative-factory/upload-url', automationFactoryUploadUrl);
+app.post('/api/automation/creative-factory/ingest', automationFactoryIngest);
 
 // Demographic Intelligence Analytics Core (Gate 16.6E - Read-Only Media Demographics)
 app.get('/api/intelligence/demographics', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getDemographicsAnalytics);
