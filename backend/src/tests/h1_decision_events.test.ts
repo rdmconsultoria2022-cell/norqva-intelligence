@@ -188,6 +188,94 @@ describe('H1 — decision_events', () => {
     await expect(beginDecision(broken, ctx, { action: 'TEST' })).rejects.toBeInstanceOf(DecisionAuditError);
   });
 
+  // Falha de auditoria bloqueia ações que aumentam exposição, mas não impede uma pausa de emergência.
+  const auditDown = (opts: { legacyDown?: boolean } = {}) => {
+    const original = pool.query.bind(pool);
+    const attempted: string[] = [];
+    const spy = vi.spyOn(pool, 'query').mockImplementation(((text: any, params?: any) => {
+      if (typeof text === 'string' && text.includes('INSERT INTO decision_events')) return Promise.reject(new Error('decision_events unavailable'));
+      if (typeof text === 'string' && text.includes('INSERT INTO audit_logs')) {
+        attempted.push(String((params || [])[2] || ''));
+        if (opts.legacyDown) return Promise.reject(new Error('audit_logs unavailable'));
+      }
+      return original(text, params);
+    }) as any);
+    return { spy, attempted };
+  };
+
+  it('audit unavailable + ACTIVE => 503 and no call to Meta (fail-closed)', async () => {
+    const metaId = String(Date.now()) + '06';
+    const c = fakeClient({});
+    const { spy } = auditDown();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const r = await request(app).post(`/api/meta-control/campaign/${metaId}/status`).set('Authorization', `Bearer ${adminToken}`).send({ status: 'ACTIVE' });
+    spy.mockRestore();
+    expect(r.status).toBe(503);
+    expect(c.setEntityStatus).not.toHaveBeenCalled();
+  });
+
+  it('audit unavailable + PAUSED => the pause runs, response says audit_incomplete, audit_logs fallback is written', async () => {
+    const metaId = String(Date.now()) + '07';
+    const c = fakeClient({ setEntityStatus: async () => ({ success: true, newStatus: 'PAUSED' }) });
+    const { spy, attempted } = auditDown();
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const r = await request(app).post(`/api/meta-control/campaign/${metaId}/status`).set('Authorization', `Bearer ${adminToken}`).send({ status: 'PAUSED' });
+    spy.mockRestore();
+    expect(r.status).toBe(200);
+    expect(r.body.audit_incomplete).toBe(true);
+    expect(c.setEntityStatus).toHaveBeenCalledTimes(1);
+    expect(c.setEntityStatus.mock.calls[0][3]).toBe('PAUSED');
+    expect(errSpy.mock.calls.some((x) => String(x[0]).includes('risk-reducing action allowed (fail-safe)'))).toBe(true);
+    expect(attempted).toContain('DECISION_AUDIT_UNAVAILABLE');
+    const legacy = await pool.query(`SELECT * FROM audit_logs WHERE event_type = 'DECISION_AUDIT_UNAVAILABLE' AND new_value LIKE $1`, [`%${metaId}%`]);
+    expect(legacy.rows.length).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(legacy.rows)).not.toContain(adminToken);
+    // nada em decision_events (indisponível nesse momento)
+    expect(await latestFor('META_ENTITY_STATUS', metaId)).toEqual([]);
+  });
+
+  it('audit AND legacy fallback unavailable + PAUSED => the pause still runs; the fallback was attempted', async () => {
+    const metaId = String(Date.now()) + '08';
+    const c = fakeClient({});
+    const { spy, attempted } = auditDown({ legacyDown: true });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const r = await request(app).post(`/api/meta-control/adset/${metaId}/status`).set('Authorization', `Bearer ${adminToken}`).send({ status: 'paused' });
+    spy.mockRestore();
+    expect(r.status).toBe(200);
+    expect(r.body.audit_incomplete).toBe(true);
+    expect(c.setEntityStatus).toHaveBeenCalledTimes(1);
+    expect(attempted.filter((x) => x === 'DECISION_AUDIT_UNAVAILABLE').length).toBeGreaterThanOrEqual(1);
+    expect(errSpy.mock.calls.some((x) => String(x[0]).includes('legacy audit_logs fallback also failed'))).toBe(true);
+  });
+
+  it('ACTIVE never inherits the PAUSED fail-safe path, and other decisions stay fail-closed', async () => {
+    const metaId = String(Date.now()) + '09';
+    const c = fakeClient({});
+    const { spy } = auditDown();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const paused = await request(app).post(`/api/meta-control/campaign/${metaId}/status`).set('Authorization', `Bearer ${adminToken}`).send({ status: 'PAUSED' });
+    const active = await request(app).post(`/api/meta-control/campaign/${metaId}/status`).set('Authorization', `Bearer ${adminToken}`).send({ status: 'ACTIVE' });
+    const badType = await request(app).post(`/api/meta-control/bogus/${metaId}/status`).set('Authorization', `Bearer ${adminToken}`).send({ status: 'PAUSED' });
+    const budget = await request(app).post(`/api/meta-control/adset/${metaId}/budget`).set('Authorization', `Bearer ${adminToken}`).send({ daily_budget: 5 });
+    const answer = await request(app).post(`/api/launch-plans/${crypto.randomUUID()}/answer`).set('Authorization', `Bearer ${adminToken}`).send({ answer: 'NO' });
+    spy.mockRestore();
+    expect(paused.status).toBe(200);
+    expect(active.status).toBe(503);
+    expect(badType.status).toBe(503);
+    expect(budget.status).toBe(503);
+    expect(answer.status).toBe(503);
+    expect(c.setEntityStatus).toHaveBeenCalledTimes(1);
+    expect(c.setEntityStatus.mock.calls[0][3]).toBe('PAUSED');
+    expect(c.setDailyBudget).not.toHaveBeenCalled();
+
+    const ctx = { userId: null, userEmail: null, actorType: 'HUMAN' as const, sessionId: null, ip: null, userAgent: null, isDemo: false };
+    const broken = { query: async () => { throw new Error('db down'); } } as any;
+    await expect(beginDecision(broken, ctx, { action: 'META_ENTITY_STATUS', decision: 'CAMPAIGN:ACTIVE' })).rejects.toBeInstanceOf(DecisionAuditError);
+    const degraded = await beginDecision(broken, ctx, { action: 'META_ENTITY_STATUS', decision: 'CAMPAIGN:PAUSED' }, { riskReducing: true });
+    expect(degraded.degraded).toBe(true);
+    expect(await degraded.finish('EXECUTED', { result: { ok: true } })).toBe(false);
+  });
+
   it('result write failure is not silent: response flags audit_incomplete and audit_logs gets a critical entry', async () => {
     const metaId = String(Date.now()) + '05';
     fakeClient({});

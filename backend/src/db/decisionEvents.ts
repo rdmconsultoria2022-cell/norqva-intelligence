@@ -7,7 +7,9 @@ import { writeAuditLog } from './audit';
  *
  * Fluxo de cada decisão:
  *   1. beginDecision() grava REQUESTED ANTES de qualquer execução. Se a gravação falhar, lança
- *      DecisionAuditError e o chamador NÃO executa nada (fail-closed: nenhuma ação sem rastro).
+ *      DecisionAuditError e o chamador NÃO executa nada (fail-closed). Exceção única: ações que
+ *      reduzem exposição (pausa) seguem em fail-safe — ver beginDecision. Falha de auditoria
+ *      bloqueia ações que aumentam exposição, mas não impede uma pausa de emergência.
  *   2. finish() grava o resultado (EXECUTED | REJECTED | FAILED). A ação pode já ter acontecido na
  *      Meta, então uma falha aqui não desfaz nada: o evento higienizado vai para o log do servidor
  *      (console.error), para audit_logs (DECISION_AUDIT_RESULT_WRITE_FAILED, melhor esforço) e o
@@ -191,6 +193,8 @@ async function insertEvent(
 
 export interface DecisionHandle {
   correlationId: string;
+  /** true quando REQUESTED não foi gravado e a ação seguiu pelo caminho fail-safe (só pausas). */
+  degraded: boolean;
   /** Grava o resultado. Retorna false (sem lançar) se a gravação falhar; ver cabeçalho do módulo. */
   finish(
     phase: Exclude<DecisionPhase, 'REQUESTED'>,
@@ -198,20 +202,62 @@ export interface DecisionHandle {
   ): Promise<boolean>;
 }
 
+async function legacyFallback(db: Db, ctx: DecisionContext, eventType: string, description: string, summary: unknown): Promise<void> {
+  try {
+    await writeAuditLog(db, ctx.userId, eventType, description, null, JSON.stringify(summary), ctx.isDemo, true);
+  } catch (err: any) {
+    console.error('[DECISION AUDIT] CRITICAL legacy audit_logs fallback also failed:', eventType, JSON.stringify(summary), redactSecrets(String(err?.message || err)));
+  }
+}
+
 /**
- * Grava REQUESTED. Lança DecisionAuditError se não conseguir: o chamador deve responder 503 e
- * não executar a decisão.
+ * Grava REQUESTED antes da execução.
+ *
+ * Regra de falha (H1):
+ * - padrão (fail-closed): se REQUESTED não puder ser gravado, lança DecisionAuditError; o chamador
+ *   responde 503 e não executa nada. Vale para tudo que aumenta ou mantém exposição (ativar, criar
+ *   na Meta, responder SIM, mudar orçamento).
+ * - `riskReducing: true` (fail-safe): só para ações que REDUZEM exposição. Hoje o único chamador é
+ *   META_ENTITY_STATUS com status PAUSED. Se REQUESTED falhar, a ação segue (pausa de emergência
+ *   nunca é bloqueada pela auditoria), com log crítico, tentativa de registro em audit_logs e
+ *   handle `degraded` (o chamador devolve audit_incomplete: true). A decisão de usar este caminho é
+ *   do chamador e deve ser estrita: ACTIVE, criação e orçamento nunca o usam.
  */
-export async function beginDecision(db: Db, ctx: DecisionContext, req: DecisionRequest): Promise<DecisionHandle> {
+export async function beginDecision(
+  db: Db,
+  ctx: DecisionContext,
+  req: DecisionRequest,
+  opts: { riskReducing?: boolean } = {}
+): Promise<DecisionHandle> {
   const correlationId = crypto.randomUUID();
   try {
     await insertEvent(db, correlationId, 'REQUESTED', ctx, req);
   } catch (err: any) {
-    console.error('[DECISION AUDIT] REQUESTED write failed — decision blocked (fail-closed):', redactSecrets(String(err?.message || err)));
-    throw new DecisionAuditError('Auditoria de decisões indisponível. Nada foi executado.');
+    const reason = redactSecrets(String(err?.message || err));
+    if (opts.riskReducing !== true) {
+      console.error('[DECISION AUDIT] REQUESTED write failed — decision blocked (fail-closed):', reason);
+      throw new DecisionAuditError('Auditoria de decisões indisponível. Nada foi executado.');
+    }
+    const summary = { correlationId, action: req.action, decision: req.decision ?? null, userId: ctx.userId, actorType: ctx.actorType, metaIds: uniqIds(req.metaIds ?? []) };
+    console.error('[DECISION AUDIT] CRITICAL REQUESTED write failed — risk-reducing action allowed (fail-safe):', JSON.stringify(summary), reason);
+    await legacyFallback(db, ctx, 'DECISION_AUDIT_UNAVAILABLE', `Auditoria de decisões indisponível; ação que reduz exposição (${req.action} ${req.decision ?? ''}) executada sem registro em decision_events (${correlationId}).`, summary);
+    return {
+      correlationId,
+      degraded: true,
+      async finish(phase, extra = {}) {
+        await legacyFallback(db, ctx, 'DECISION_AUDIT_UNAVAILABLE', `Resultado ${phase} da ação ${req.action} sem registro em decision_events (${correlationId}).`, {
+          ...summary,
+          phase,
+          result: sanitizeForAudit(extra.result ?? null),
+          error: extra.error ? redactSecrets(String((extra.error as any)?.message ?? extra.error)).slice(0, MAX_TEXT) : null
+        });
+        return false;
+      }
+    };
   }
   return {
     correlationId,
+    degraded: false,
     async finish(phase, extra = {}) {
       try {
         await insertEvent(db, correlationId, phase, ctx, req, extra);
@@ -227,11 +273,7 @@ export async function beginDecision(db: Db, ctx: DecisionContext, req: DecisionR
           metaIds: uniqIds(extra.metaIds ?? req.metaIds ?? [])
         };
         console.error('[DECISION AUDIT] result write failed — action may have run; event kept in server log:', JSON.stringify(summary), redactSecrets(String(err?.message || err)));
-        try {
-          await writeAuditLog(db, ctx.userId, 'DECISION_AUDIT_RESULT_WRITE_FAILED', `Falha ao gravar o resultado ${phase} da decisão ${req.action} (${correlationId}).`, null, JSON.stringify(summary), ctx.isDemo, true);
-        } catch {
-          /* o log do servidor acima continua sendo o rastro */
-        }
+        await legacyFallback(db, ctx, 'DECISION_AUDIT_RESULT_WRITE_FAILED', `Falha ao gravar o resultado ${phase} da decisão ${req.action} (${correlationId}).`, summary);
         return false;
       }
     }

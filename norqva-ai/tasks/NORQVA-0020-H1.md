@@ -21,14 +21,23 @@
 **Nunca gravados:** token, cabeçalho `Authorization`, cookie, senha, `x-norqva-automation-token` nem segredo em texto livre. O token só é lido em memória para extrair o `session_id`. `result` e `error` passam por `sanitizeForAudit`/`redactSecrets`: chaves sensíveis viram `[REDACTED]`, e são removidos padrões de JWT, token Meta (`EAA…`), `Bearer …`, `access_token=…`, chave Asaas (`$aact_…`) e chaves `sk_/rk_`.
 
 ## Comportamento em falha (fail-closed / fail-safe)
-1. **Antes da execução (fail-closed):** se a linha `REQUESTED` não puder ser gravada, a decisão **não é executada** e a API responde **503** ("Auditoria de decisões indisponível. Nada foi executado."). Nenhuma ação acontece sem rastro.
-2. **Depois da execução (fail-safe, nunca silencioso):** a ação pode já ter ocorrido na Meta e não é desfeita. Se a linha de resultado não puder ser gravada:
-   - o evento resumido vai para o log do servidor (`[DECISION AUDIT] result write failed`);
-   - grava-se `audit_logs.DECISION_AUDIT_RESULT_WRITE_FAILED` (crítico, melhor esforço);
-   - a resposta da API leva `audit_incomplete: true`.
+**Falha de auditoria bloqueia ações que aumentam exposição, mas não impede uma pausa de emergência.**
 
-   A linha `REQUESTED` já existe nesse caso.
-3. **Fora do registro:** requisições barradas pelo middleware de autenticação (sem login, 401; papel errado, 403) não chegam ao fluxo de decisão e continuam só no log HTTP.
+1. **Ações que aumentam ou mantêm exposição: FAIL-CLOSED.**
+   - Ações: `ACTIVE`, criação na Meta (`LAUNCH_PLAN_CREATE_ON_META`), resposta ao plano (`LAUNCH_PLAN_ANSWER`, SIM ou NÃO) e qualquer mudança de orçamento (`META_ENTITY_DAILY_BUDGET`, inclusive redução, porque o H1 não compara com o valor atual).
+   - Se a linha `REQUESTED` não puder ser gravada, a API responde **503** ("Auditoria de decisões indisponível. Nada foi executado.") e **nada é executado**.
+2. **Ações que reduzem exposição: FAIL-SAFE.** No H1, só `META_ENTITY_STATUS` com status `PAUSED` e tipo válido (campaign, adset ou ad). Se `decision_events` estiver indisponível:
+   - a **pausa é executada**;
+   - o servidor registra log crítico (`[DECISION AUDIT] CRITICAL REQUESTED write failed — risk-reducing action allowed (fail-safe)`);
+   - tenta-se registrar em `audit_logs` (`DECISION_AUDIT_UNAVAILABLE`, crítico) o pedido e o resultado; se isso também falhar, há novo log crítico;
+   - a resposta traz `audit_incomplete: true`.
+
+   A escolha do caminho é estrita no controller (`isEmergencyPause = tipo válido && status === 'PAUSED'`). `ACTIVE`, criação, resposta ao plano e orçamento nunca usam esse caminho.
+3. **Depois da execução, em qualquer ação (fail-safe, nunca silencioso):** a ação pode já ter ocorrido na Meta e não é desfeita. Se a linha de resultado não puder ser gravada:
+   - o evento resumido vai para o log do servidor;
+   - grava-se `audit_logs.DECISION_AUDIT_RESULT_WRITE_FAILED` (crítico, melhor esforço);
+   - a resposta leva `audit_incomplete: true`.
+4. **Fora do registro:** requisições barradas pelo middleware de autenticação (sem login, 401; papel errado, 403) não chegam ao fluxo de decisão e continuam só no log HTTP.
 
 ## Fora de escopo (H2–H9)
 Confirmação forte, idempotência por chave, `spend_cap`, vigia do teto, pausa automática, alertas, comparabilidade. R-0019-01 continua **ABERTO**.
@@ -42,6 +51,10 @@ Confirmação forte, idempotência por chave, `spend_cap`, vigia do teto, pausa 
 - tentativa de burlar a exceção da retenção;
 - expurgo;
 - falha antes (503, nada executado) e depois (`audit_incomplete` + `audit_logs`);
+- auditoria indisponível + `ACTIVE` → 503 sem chamada à Meta;
+- auditoria indisponível + `PAUSED` → pausa executada, `audit_incomplete: true` e registro em `audit_logs`;
+- `audit_logs` também indisponível → pausa executada e registro tentado;
+- `ACTIVE`, tipo inválido, orçamento e resposta ao plano nunca herdam o caminho da pausa;
 - recusa registrada;
 - endpoint de leitura.
 

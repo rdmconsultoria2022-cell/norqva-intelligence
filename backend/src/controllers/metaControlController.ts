@@ -123,13 +123,14 @@ export async function getMetaControlStatus(req: AuthenticatedRequest, res: Respo
 }
 
 /** H1: registra a decisão antes de executar; 503 sem execução se a auditoria estiver indisponível. */
-async function beginEntityDecision(req: AuthenticatedRequest, res: Response, action: string, decision: string) {
+async function beginEntityDecision(req: AuthenticatedRequest, res: Response, action: string, decision: string, riskReducing = false) {
   try {
-    return await beginDecision(req.app.get('db'), decisionContextFromRequest(req), {
-      action,
-      decision: decision.slice(0, 60) || null,
-      metaIds: [String(req.params.id || '')]
-    });
+    return await beginDecision(
+      req.app.get('db'),
+      decisionContextFromRequest(req),
+      { action, decision: decision.slice(0, 60) || null, metaIds: [String(req.params.id || '')] },
+      { riskReducing }
+    );
   } catch (err) {
     if (err instanceof DecisionAuditError) {
       res.status(503).json({ error: err.message });
@@ -145,7 +146,10 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
   const pool: Pool = req.app.get('db');
   const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
   const status = String(req.body?.status || '').toUpperCase();
-  const decision = await beginEntityDecision(req, res, 'META_ENTITY_STATUS', `${entityType || String(req.params.entityType || '').slice(0, 20)}:${status}`);
+  // Fail-safe só para PAUSED de um tipo válido: falha de auditoria bloqueia ações que aumentam
+  // exposição, mas não impede uma pausa de emergência. ACTIVE (ou qualquer outro valor) é fail-closed.
+  const isEmergencyPause = Boolean(entityType) && status === 'PAUSED';
+  const decision = await beginEntityDecision(req, res, 'META_ENTITY_STATUS', `${entityType || String(req.params.entityType || '').slice(0, 20)}:${status}`, isEmergencyPause);
   if (!decision) return;
   if (!entityType || (status !== 'ACTIVE' && status !== 'PAUSED')) {
     const error = !entityType ? 'Tipo inválido. Use campaign, adset ou ad.' : 'Status inválido. Use ACTIVE ou PAUSED.';
