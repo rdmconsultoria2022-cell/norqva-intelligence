@@ -1,6 +1,6 @@
 -- NORQVA-0020: ponte Creative Factory → NORQVA. Somente aditiva.
 -- Cada release certificado da Factory vira um criativo DRAFT na Fábrica do NORQVA.
--- A certificação da Factory viaja como evidência; a aprovação operacional continua no NORQVA (D-0011).
+-- A certificação da Factory viaja como evidência, e a aprovação operacional continua no NORQVA (D-0011).
 
 ALTER TABLE creative_batches DROP CONSTRAINT IF EXISTS creative_batches_source_check;
 ALTER TABLE creative_batches DROP CONSTRAINT IF EXISTS chk_creative_batches_source;
