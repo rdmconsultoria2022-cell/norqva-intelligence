@@ -204,5 +204,20 @@ describe('NORQVA-0020 — Creative Factory → NORQVA (ingest)', () => {
       .send({ campaign_id: 'cf-test-0020', creative_version: 'V5', sha256: b.media.sha256, size_bytes: b.media.size_bytes, mime: 'video/mp4' });
     expect(present.status).toBe(200);
     expect(present.body).toMatchObject({ already_uploaded: true, upload_url: null, path: b.storage.path });
+    // The file of an ingested release is never re-signed (would allow replacing certified bytes)
+    const replace = await request(app)
+      .post('/api/automation/creative-factory/upload-url')
+      .set('X-Norqva-Automation-Token', AUTOMATION)
+      .send({ campaign_id: 'cf-test-0020', creative_version: 'V5', sha256: b.media.sha256, size_bytes: b.media.size_bytes + 1, mime: 'video/mp4' });
+    expect(replace.status).toBe(409);
+  });
+
+  it('recusa CTA acima de 100 caracteres e duração inválida sem gravar nada', async () => {
+    const b = release({ campaign_id: 'cf-test-0020-val', sha256: sha('val') });
+    upload(b);
+    expect((await ingest({ ...b, copy: { ...b.copy, cta: 'x'.repeat(101) } })).status).toBe(422);
+    expect((await ingest({ ...b, media: { ...b.media, duration_seconds: 'abc' } })).status).toBe(422);
+    const batch = await pool.query(`SELECT 1 FROM creative_batches WHERE code = 'CF-cf-test-0020-val'`);
+    expect(batch.rows).toHaveLength(0);
   });
 });

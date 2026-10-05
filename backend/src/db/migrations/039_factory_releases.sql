@@ -28,4 +28,5 @@ CREATE TABLE IF NOT EXISTS factory_releases (
   CONSTRAINT uq_factory_releases_key UNIQUE (campaign_id, creative_version, is_demo)
 );
 CREATE INDEX IF NOT EXISTS idx_factory_releases_creative ON factory_releases (creative_id);
-CREATE INDEX IF NOT EXISTS idx_factory_releases_sha ON factory_releases (sha256);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_factory_releases_sha ON factory_releases (sha256, is_demo);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_factory_releases_path ON factory_releases (storage_path, is_demo);

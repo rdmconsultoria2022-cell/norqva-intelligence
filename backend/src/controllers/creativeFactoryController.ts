@@ -253,10 +253,11 @@ const factoryIngest = new FactoryIngestService();
 
 export async function automationFactoryUploadUrl(req: AuthenticatedRequest, res: Response) {
   if (!automationGuard(req, res)) return;
+  const pool: Pool = req.app.get('db');
   try {
     const b = req.body || {};
     return res.status(200).json(
-      await factoryIngest.createUploadUrl({
+      await factoryIngest.createUploadUrl(pool, {
         campaign_id: String(b.campaign_id || ''),
         creative_version: String(b.creative_version || ''),
         sha256: String(b.sha256 || ''),

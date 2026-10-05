@@ -35,6 +35,9 @@ Resultado: lote `CF-<campanha>` (`creative_batches.source = 'FACTORY'`) e criati
 - **Idempotente:** reenviar o mesmo release devolve `ALREADY_INGESTED`.
 - **Imutável:** mesma `(campanha, versão)` com outro `sha256` → 409; o mesmo arquivo com outra chave → 409.
 - **Fail-closed:** oferta inexistente, claim ausente/rejeitada/de outro produto, arquivo ausente no Storage ou com tamanho diferente → 422, nada é gravado.
+- **Arquivo verificado byte a byte:** o NORQVA baixa o objeto do Storage e confere tamanho e `sha256` antes de registrar.
+- **Arquivo certificado não é substituível:** upload sem upsert, e o caminho de um release já registrado nunca recebe nova URL de upload (409).
+- **Atômico:** lote, criativo, claims e evidência são gravados numa única transação; corrida entre duas execuções → 409 (índices únicos por chave, `sha256` e caminho).
 - **Governança:** a aprovação continua exigindo claims verificadas (regra da NORQVA-0005).
 
 ## Modelo
@@ -47,6 +50,7 @@ Migration 039 (aditiva): `factory_releases` (chave única `campaign_id + creativ
 - lê só releases certificados (adaptadores explícitos por formato; o que não for reconhecido é recusado);
 - cópia, oferta e claims vêm de `norqva_export.json` na pasta da campanha, escrito por humano (nada é inferido);
 - dry-run por padrão; `--execute` sobe o arquivo e chama o ingest;
+- recibo em `campaigns/<campanha>/norqva_export_receipts/<versão>.json` (a pasta do release certificado não é alterada);
 - carga retroativa = rodar o mesmo comando nas campanhas certificadas.
 
 ## Fora de escopo

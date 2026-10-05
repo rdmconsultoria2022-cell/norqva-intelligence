@@ -1,4 +1,5 @@
 import https from 'https';
+import crypto from 'crypto';
 import { URL } from 'url';
 import { Pool } from 'pg';
 import { CreativeBatch, BatchCreative } from '../../data/creativeBatches';
@@ -38,7 +39,7 @@ export interface FactoryReleasePayload {
 }
 
 /** Confirms the object is really in Storage with the declared size. Replaceable only in tests. */
-export type StorageVerifier = (publicUrl: string, expectedBytes: number) => Promise<{ ok: boolean; detail: string }>;
+export type StorageVerifier = (publicUrl: string, expectedBytes: number, expectedSha256: string) => Promise<{ ok: boolean; detail: string }>;
 
 const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
 
@@ -99,17 +100,37 @@ function httpJson(method: string, url: string, headers: Record<string, string>, 
   });
 }
 
-const defaultVerifier: StorageVerifier = async (publicUrl, expectedBytes) => {
-  try {
-    const r = await httpJson('HEAD', publicUrl, {});
-    if (r.status !== 200) return { ok: false, detail: `Storage respondeu ${r.status}` };
-    const len = Number(r.headers['content-length']);
-    if (len !== expectedBytes) return { ok: false, detail: `tamanho no Storage ${len} ≠ declarado ${expectedBytes}` };
-    return { ok: true, detail: 'ok' };
-  } catch (err: any) {
-    return { ok: false, detail: String(err?.message || err) };
-  }
-};
+const defaultVerifier: StorageVerifier = (publicUrl, expectedBytes, expectedSha256) =>
+  new Promise(resolve => {
+    // Downloads the object (≤ 50 MB) and hashes the bytes: size and sha256 must match the certified release
+    const u = new URL(publicUrl);
+    const req = https.get({ hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, timeout: 120000 }, res => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return resolve({ ok: false, detail: `Storage respondeu ${res.statusCode}` });
+      }
+      const h = crypto.createHash('sha256');
+      let n = 0;
+      res.on('data', (c: Buffer) => {
+        n += c.length;
+        if (n > FACTORY_MAX_BYTES) {
+          req.destroy();
+          resolve({ ok: false, detail: 'objeto acima de 50 MB' });
+          return;
+        }
+        h.update(c);
+      });
+      res.on('end', () => {
+        if (n !== expectedBytes) return resolve({ ok: false, detail: `tamanho no Storage ${n} ≠ declarado ${expectedBytes}` });
+        const got = h.digest('hex');
+        if (got !== expectedSha256) return resolve({ ok: false, detail: 'sha256 do objeto no Storage difere do release' });
+        resolve({ ok: true, detail: 'ok' });
+      });
+      res.on('error', err => resolve({ ok: false, detail: String(err?.message || err) }));
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', err => resolve({ ok: false, detail: String(err?.message || err) }));
+  });
 
 let verifier: StorageVerifier = defaultVerifier;
 
@@ -140,6 +161,10 @@ function validate(p: any): FactoryReleasePayload {
   if (!MIME_EXT[m.mime]) bad('media.mime deve ser video/mp4, image/png ou image/jpeg.');
   if (!Number.isInteger(m.size_bytes) || m.size_bytes <= 0) bad('media.size_bytes inválido.');
   if (m.size_bytes > FACTORY_MAX_BYTES) bad('Arquivo acima de 50 MB.');
+  if (m.duration_seconds !== undefined && m.duration_seconds !== null && !(Number.isFinite(Number(m.duration_seconds)) && Number(m.duration_seconds) > 0)) {
+    bad('media.duration_seconds inválido.');
+  }
+  if (typeof p.copy?.cta === 'string' && p.copy.cta.trim().length > 100) bad('copy.cta acima de 100 caracteres.');
   const s = p.storage || {};
   if (s.bucket !== FACTORY_BUCKET) bad(`storage.bucket deve ser ${FACTORY_BUCKET}.`);
   if (s.path !== factoryStoragePath(p.campaign_id, p.creative_version, m.sha256, m.mime)) bad('storage.path fora do padrão factory/<campanha>/<versão>/<sha256>.<ext>.');
@@ -155,7 +180,7 @@ export class FactoryIngestService {
   constructor(private factory = new CreativeFactoryService()) {}
 
   /** Returns a signed upload URL for the release file (the Factory never holds the Supabase admin key). */
-  async createUploadUrl(input: { campaign_id: string; creative_version: string; sha256: string; size_bytes: number; mime: string }) {
+  async createUploadUrl(pool: Pool, input: { campaign_id: string; creative_version: string; sha256: string; size_bytes: number; mime: string }) {
     if (!CAMPAIGN_RE.test(String(input.campaign_id || ''))) throw new CreativeFactoryError(422, 'campaign_id inválido.');
     if (!VERSION_RE.test(String(input.creative_version || ''))) throw new CreativeFactoryError(422, 'creative_version inválido.');
     if (!SHA_RE.test(String(input.sha256 || ''))) throw new CreativeFactoryError(422, 'sha256 inválido.');
@@ -166,9 +191,14 @@ export class FactoryIngestService {
     const path = factoryStoragePath(input.campaign_id, input.creative_version, input.sha256, input.mime);
     const publicUrl = factoryPublicUrl(FACTORY_BUCKET, path);
 
-    // Already uploaded with the same size (path carries the sha256): nothing to send
-    const existing = await verifier(publicUrl, input.size_bytes);
+    // Already uploaded with the same bytes (path carries the sha256): nothing to send
+    const existing = await verifier(publicUrl, input.size_bytes, input.sha256);
     if (existing.ok) return { bucket: FACTORY_BUCKET, path, public_url: publicUrl, already_uploaded: true, upload_url: null };
+    // A path that already belongs to an ingested release is never signed again: the certified file cannot be replaced
+    const owned = await pool.query('SELECT 1 FROM factory_releases WHERE storage_path = $1 LIMIT 1', [path]);
+    if (owned.rows.length > 0) {
+      throw new CreativeFactoryError(409, 'Este arquivo pertence a um release já registrado e não pode ser substituído.');
+    }
 
     const base = supabaseBase();
     const key = serviceKey();
@@ -187,7 +217,7 @@ export class FactoryIngestService {
       throw new CreativeFactoryError(502, `Falha ao preparar o bucket (${bucket.status}).`);
     }
 
-    const sign = await httpJson('POST', `${base}/storage/v1/object/upload/sign/${FACTORY_BUCKET}/${path}`, { ...auth, 'x-upsert': 'true' }, {});
+    const sign = await httpJson('POST', `${base}/storage/v1/object/upload/sign/${FACTORY_BUCKET}/${path}`, auth, {});
     if (sign.status < 200 || sign.status >= 300 || !sign.body?.url) {
       throw new CreativeFactoryError(502, `Falha ao gerar URL de upload (${sign.status}).`);
     }
@@ -248,82 +278,98 @@ export class FactoryIngestService {
 
     // 3. O arquivo tem que estar no Storage com o tamanho declarado
     const fileUrl = factoryPublicUrl(p.storage.bucket, p.storage.path);
-    const check = await verifier(fileUrl, p.media.size_bytes);
+    const check = await verifier(fileUrl, p.media.size_bytes, p.media.sha256);
     if (!check.ok) throw new CreativeFactoryError(422, `Arquivo não confirmado no Storage: ${check.detail}.`);
 
-    // 4. Lote da campanha (creative_batches, fonte FACTORY) + import pelo caminho padrão
-    const creative: BatchCreative = {
-      key,
-      hookCode: p.creative_version,
-      hookFamily: clip(p.copy.hook_family, 50) || 'FACTORY',
-      hook: clip(p.copy.hook, 2000),
-      mechanismCode: '',
-      mechanism: clip(p.copy.mechanism, 2000),
-      ctaCode: '',
-      cta: clip(p.copy.cta, 500),
-      format: FORMAT_BY_MIME[p.media.mime],
-      durationSeconds: p.media.duration_seconds ? Math.round(Number(p.media.duration_seconds)) : null,
-      script: clip(p.copy.script, 8000),
-      primaryText: clip(p.copy.primary_text, 4000),
-      headline: clip(p.copy.headline, 500),
-      claimCodes: codes,
-      fileUrl,
-      generationSource: 'FACTORY'
-    };
-    const existingBatch = await pool.query('SELECT payload FROM creative_batches WHERE code = $1 AND is_demo = $2', [batchCode, isDemo]);
-    const prev: CreativeBatch | undefined = existingBatch.rows[0]?.payload;
-    if (prev && prev.offerId !== String(offer.rows[0].id)) {
-      throw new CreativeFactoryError(409, `A campanha ${p.campaign_id} já está ligada a outra oferta no NORQVA.`);
-    }
-    const batch: CreativeBatch = {
-      code: batchCode,
-      productId,
-      offerId: String(offer.rows[0].id),
-      offerHumanId: String(offer.rows[0].human_id),
-      description: `Creative Factory — campanha ${p.campaign_id}`,
-      claims: [],
-      creatives: [...(prev?.creatives || []).filter(c => c.key !== key), creative]
-    };
-    if (prev) {
-      await pool.query('UPDATE creative_batches SET payload = $1 WHERE code = $2 AND is_demo = $3', [JSON.stringify(batch), batchCode, isDemo]);
-    } else {
-      await pool.query(
-        `INSERT INTO creative_batches (code, product_id, offer_id, name, source, payload, is_demo)
-         VALUES ($1, $2, $3, $4, 'FACTORY', $5, $6)`,
-        [batchCode, productId, batch.offerId, `Factory ${p.campaign_id}`, JSON.stringify(batch), isDemo]
+    // 4–5 em uma transação: ou o release entra inteiro (lote, criativo, claims, evidência), ou nada é gravado
+    const client = await (pool as any).connect();
+    const db = client as Pool;
+    let c: any;
+    try {
+      await client.query('BEGIN');
+      // 4. Lote da campanha (creative_batches, fonte FACTORY) + import pelo caminho padrão
+      const creative: BatchCreative = {
+        key,
+        hookCode: p.creative_version,
+        hookFamily: clip(p.copy.hook_family, 50) || 'FACTORY',
+        hook: clip(p.copy.hook, 2000),
+        mechanismCode: '',
+        mechanism: clip(p.copy.mechanism, 2000),
+        ctaCode: '',
+        cta: clip(p.copy.cta, 100),
+        format: FORMAT_BY_MIME[p.media.mime],
+        durationSeconds: p.media.duration_seconds ? Math.round(Number(p.media.duration_seconds)) : null,
+        script: clip(p.copy.script, 8000),
+        primaryText: clip(p.copy.primary_text, 4000),
+        headline: clip(p.copy.headline, 500),
+        claimCodes: codes,
+        fileUrl,
+        generationSource: 'FACTORY'
+      };
+      const existingBatch = await db.query('SELECT payload FROM creative_batches WHERE code = $1 AND is_demo = $2', [batchCode, isDemo]);
+      const prev: CreativeBatch | undefined = existingBatch.rows[0]?.payload;
+      if (prev && prev.offerId !== String(offer.rows[0].id)) {
+        throw new CreativeFactoryError(409, `A campanha ${p.campaign_id} já está ligada a outra oferta no NORQVA.`);
+      }
+      const batch: CreativeBatch = {
+        code: batchCode,
+        productId,
+        offerId: String(offer.rows[0].id),
+        offerHumanId: String(offer.rows[0].human_id),
+        description: `Creative Factory — campanha ${p.campaign_id}`,
+        claims: [],
+        creatives: [...(prev?.creatives || []).filter(c => c.key !== key), creative]
+      };
+      if (prev) {
+        await db.query('UPDATE creative_batches SET payload = $1 WHERE code = $2 AND is_demo = $3', [JSON.stringify(batch), batchCode, isDemo]);
+      } else {
+        await db.query(
+          `INSERT INTO creative_batches (code, product_id, offer_id, name, source, payload, is_demo)
+           VALUES ($1, $2, $3, $4, 'FACTORY', $5, $6)`,
+          [batchCode, productId, batch.offerId, `Factory ${p.campaign_id}`, JSON.stringify(batch), isDemo]
+        );
+      }
+      await this.factory.importBatchData(db, { ...batch, creatives: [creative] }, null, isDemo);
+      await db.query('UPDATE creative_batches SET imported_at = NOW() WHERE code = $1 AND is_demo = $2', [batchCode, isDemo]);
+
+      const cRow = await db.query('SELECT id, batch_code, file_url FROM creatives WHERE human_id = $1', [humanId]);
+      c = cRow.rows[0];
+      if (!c || c.batch_code !== batchCode || c.file_url !== fileUrl) {
+        throw new CreativeFactoryError(409, `Já existe um criativo ${humanId} que não corresponde a este release.`);
+      }
+
+      // 5. Evidência da Factory
+      await db.query(
+        `INSERT INTO factory_releases (
+           campaign_id, creative_version, creative_id, batch_code, factory_version, sha256, size_bytes,
+           storage_bucket, storage_path, file_url, media, qa_certifications, lineage, manifest, approval_timestamp, is_demo
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        [
+          p.campaign_id, p.creative_version, c.id, batchCode, clip(p.factory_version, 30) || null, p.media.sha256, p.media.size_bytes,
+          p.storage.bucket, p.storage.path, fileUrl, JSON.stringify(p.media), JSON.stringify(p.qa_certifications),
+          p.lineage ? JSON.stringify(p.lineage) : null, JSON.stringify(p.manifest || p), p.approval_timestamp || null, isDemo
+        ]
       );
+      await writeAuditLog(
+        db,
+        null,
+        'FACTORY_RELEASE_INGESTED',
+        `Release ${p.campaign_id} ${p.creative_version} (Factory ${p.factory_version || '?'}) entrou como ${humanId} em DRAFT.`,
+        null,
+        p.media.sha256,
+        isDemo,
+        true // inside the transaction: a failure must abort, never be swallowed
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      if ((err as any)?.code === '23505') {
+        throw new CreativeFactoryError(409, 'Release ou arquivo já registrado por outra execução simultânea.');
+      }
+      throw err;
+    } finally {
+      client.release();
     }
-    await this.factory.importBatchData(pool, { ...batch, creatives: [creative] }, null, isDemo);
-    await pool.query('UPDATE creative_batches SET imported_at = NOW() WHERE code = $1 AND is_demo = $2', [batchCode, isDemo]);
-
-    const cRow = await pool.query('SELECT id, batch_code, file_url FROM creatives WHERE human_id = $1', [humanId]);
-    const c = cRow.rows[0];
-    if (!c || c.batch_code !== batchCode || c.file_url !== fileUrl) {
-      throw new CreativeFactoryError(409, `Já existe um criativo ${humanId} que não corresponde a este release.`);
-    }
-
-    // 5. Evidência da Factory
-    await pool.query(
-      `INSERT INTO factory_releases (
-         campaign_id, creative_version, creative_id, batch_code, factory_version, sha256, size_bytes,
-         storage_bucket, storage_path, file_url, media, qa_certifications, lineage, manifest, approval_timestamp, is_demo
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       ON CONFLICT (campaign_id, creative_version, is_demo) DO NOTHING`,
-      [
-        p.campaign_id, p.creative_version, c.id, batchCode, clip(p.factory_version, 30) || null, p.media.sha256, p.media.size_bytes,
-        p.storage.bucket, p.storage.path, fileUrl, JSON.stringify(p.media), JSON.stringify(p.qa_certifications),
-        p.lineage ? JSON.stringify(p.lineage) : null, JSON.stringify(p.manifest || p), p.approval_timestamp || null, isDemo
-      ]
-    );
-    await writeAuditLog(
-      pool,
-      null,
-      'FACTORY_RELEASE_INGESTED',
-      `Release ${p.campaign_id} ${p.creative_version} (Factory ${p.factory_version || '?'}) entrou como ${humanId} em DRAFT.`,
-      null,
-      p.media.sha256,
-      isDemo
-    );
     return { status: 'INGESTED', creative_id: c.id, human_id: humanId, batch_code: batchCode, approval_status: 'DRAFT', file_url: fileUrl };
   }
 }
