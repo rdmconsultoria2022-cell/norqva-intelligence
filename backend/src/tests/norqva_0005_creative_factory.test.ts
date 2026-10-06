@@ -198,6 +198,58 @@ describe('NORQVA-0005 G1 — Creative Factory', () => {
     const unlinked = body.creatives.find((x: any) => x.human_id === 'BB-B01-H04-M1-C1-DEMO');
     expect(unlinked.recommendation).toBe('NOT_PUBLISHED');
     expect(unlinked.metrics).toBeNull();
+
+    // Visão por campanha: a campanha aparece com seus anúncios; o anúncio do criativo fica ligado
+    const cp = body.campaigns.find((x: any) => x.name === 'BB-B01 test');
+    expect(cp.status).toBe('ACTIVE');
+    const factoryAd = cp.ads.find((a: any) => a.meta_ad_id === metaAdId);
+    expect(factoryAd.factory_creative_id).toBe(c.id);
+    expect(factoryAd.metrics.spend).toBe(60);
+    const decoy = cp.ads.find((a: any) => a.meta_ad_id === `${metaAdId}_decoy`);
+    expect(decoy.factory_creative_id).toBeNull();
+  });
+
+  it('campaign overview: every campaign is listed (active, paused, without factory creatives) with its external ads', async () => {
+    const tag = Date.now();
+    const accountId = crypto.randomUUID();
+    const pausedId = crypto.randomUUID();
+    const emptyId = crypto.randomUUID();
+    const adsetId = crypto.randomUUID();
+    await pool.query(`INSERT INTO meta_ad_accounts (id, meta_account_id, name, is_demo) VALUES ($1, $2, 'acc overview', TRUE)`, [accountId, `act_ov_${tag}`]);
+    await pool.query(
+      `INSERT INTO meta_campaigns (id, meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo)
+       VALUES ($1, $2, $3, 'TRATTORIA OVERVIEW', 'OUTCOME_SALES', 'PAUSED', 'PAUSED', TRUE),
+              ($4, $5, $3, 'EMPTY OVERVIEW', 'OUTCOME_SALES', 'ACTIVE', 'ACTIVE', TRUE)`,
+      [pausedId, `cmp_ov_${tag}`, accountId, emptyId, `cmp_ov_empty_${tag}`]
+    );
+    await pool.query(
+      `INSERT INTO meta_ad_sets (id, meta_adset_id, campaign_id, name, status, effective_status, is_demo)
+       VALUES ($1, $2, $3, 'TR set', 'PAUSED', 'PAUSED', TRUE)`,
+      [adsetId, `set_ov_${tag}`, pausedId]
+    );
+    await pool.query(
+      `INSERT INTO meta_ads (id, meta_ad_id, adset_id, name, status, effective_status, is_demo, creative_title, creative_body, creative_cta, thumbnail_url)
+       VALUES ($1, $2, $3, 'TR_EXTERNAL_AD', 'PAUSED', 'PAUSED', TRUE, 'Trattoria em Casa · R$ 19,90', 'Massa fresca.', 'SEE_DETAILS', 'https://cdn.test/thumb.jpg')`,
+      [crypto.randomUUID(), `ad_ov_${tag}`, adsetId]
+    );
+
+    const body = await list();
+    const paused = body.campaigns.find((x: any) => x.meta_campaign_id === `cmp_ov_${tag}`);
+    expect(paused.status).toBe('PAUSED');
+    expect(paused.ads).toHaveLength(1);
+    expect(paused.ads[0]).toMatchObject({
+      name: 'TR_EXTERNAL_AD',
+      status: 'PAUSED',
+      adset_name: 'TR set',
+      creative_title: 'Trattoria em Casa · R$ 19,90',
+      creative_cta: 'SEE_DETAILS',
+      thumbnail_url: 'https://cdn.test/thumb.jpg',
+      factory_creative_id: null
+    });
+    const empty = body.campaigns.find((x: any) => x.meta_campaign_id === `cmp_ov_empty_${tag}`);
+    expect(empty.ads).toEqual([]);
+    // nenhum criativo da Fábrica passa a pertencer a essas campanhas
+    expect(body.creatives.some((c: any) => (c.campaigns || []).some((x: any) => x.meta_campaign_id === `cmp_ov_${tag}`))).toBe(false);
   });
 
   it('revoking a claim sends approved creatives that use it back to revision', async () => {
