@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2 } from 'lucide-react';
 import { UserObj } from '../../types';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
-import { CreativePreview } from '../../components/CreativePreview';
+import { CreativePreview, isHttpUrl } from '../../components/CreativePreview';
 import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile, groupByCampaign } from '../../components/ViewModes';
 
 // NORQVA-0005 / G1: Creative Factory — batch matrix, claims gate, human approval and
@@ -73,6 +73,9 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const [busy, setBusy] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [hookFilter, setHookFilter] = useState<string>('ALL');
+  // Organização por campanha: todas / ativas / pausadas, e mostrar ou não os criativos não publicados
+  const [campaignFilter, setCampaignFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED'>('ALL');
+  const [showUnpublished, setShowUnpublished] = useState(true);
   const [rejecting, setRejecting] = useState<{ id: string; decision: 'REJECTED' | 'REVISION_REQUESTED' } | null>(null);
   const [reason, setReason] = useState('WEAK_HOOK');
   const [notes, setNotes] = useState('');
@@ -225,7 +228,42 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
     }))
     .filter(x => x.count > 0);
 
-  const groups = groupByCampaign(visible);
+  // Todas as campanhas da conta (quando o backend envia `campaigns`); senão, o agrupamento antigo.
+  const allCampaigns: any[] | null = Array.isArray(data?.campaigns) ? data.campaigns : null;
+  const noCreativeFilter = statusFilter === 'ALL' && hookFilter === 'ALL';
+  const campaignStatusOf = (cp: { status?: string | null }) => (cp.status === 'ACTIVE' ? 'ACTIVE' : cp.status === 'PAUSED' ? 'PAUSED' : 'OTHER');
+  const campaignCounts = (allCampaigns || []).reduce(
+    (acc: Record<string, number>, cp: any) => {
+      acc[campaignStatusOf(cp)] += 1;
+      return acc;
+    },
+    { ACTIVE: 0, PAUSED: 0, OTHER: 0 }
+  );
+  const unpublished = visible.filter(c => !(c.campaigns || []).length);
+  type Group = { key: string; name: string; status: string | null; effective?: string | null; items: any[]; externalAds: any[] };
+  const groups: Group[] = allCampaigns
+    ? [
+        ...allCampaigns
+          .filter(cp => campaignFilter === 'ALL' || campaignStatusOf(cp) === campaignFilter)
+          .map(cp => ({
+            key: cp.meta_campaign_id,
+            name: cp.name,
+            status: cp.status,
+            effective: cp.effective_status,
+            items: visible.filter(c => (c.campaigns || []).some((x: any) => x.meta_campaign_id === cp.meta_campaign_id)),
+            // anúncios da campanha que não vieram da Fábrica (sem status de aprovação: só aparecem sem filtro de criativo)
+            externalAds: noCreativeFilter ? (cp.ads || []).filter((a: any) => !a.factory_creative_id) : []
+          }))
+          .filter(g => noCreativeFilter || g.items.length > 0)
+          .sort((a, b) => {
+            const rank = (g: Group) => (g.status === 'ACTIVE' ? 0 : g.status === 'PAUSED' ? 1 : 2);
+            return rank(a) - rank(b) || a.name.localeCompare(b.name);
+          }),
+        ...(showUnpublished && unpublished.length > 0
+          ? [{ key: '__none__', name: 'Criativos não publicados', status: null, items: unpublished, externalAds: [] }]
+          : [])
+      ]
+    : groupByCampaign(visible).map(g => ({ ...g, externalAds: [] as any[] }));
   const revisionQueue = creatives.filter(c => c.approval_status === 'REVISION_REQUESTED');
   const openAdjustments = adjustments.filter(a => a.status !== 'DONE' || (a.result_creative_id && creatives.some(c => c.id === a.result_creative_id && c.approval_status === 'DRAFT')));
   const queueItems: any[] = [
@@ -253,6 +291,60 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
         /* ignore */
       }
     }, 50);
+  };
+
+  const AD_STATUS: Record<string, { label: string; cls: string }> = {
+    ACTIVE: { label: 'ativo', cls: 'bg-emerald-950 text-emerald-300' },
+    PAUSED: { label: 'pausado', cls: 'bg-slate-800 text-slate-400' }
+  };
+  const openAdInList = (adId: string) => {
+    setViewMode('list');
+    setFocusId(`ad-${adId}`);
+    setTimeout(() => {
+      try {
+        document.getElementById(`factory-ad-${adId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {
+        /* ignore */
+      }
+    }, 50);
+  };
+  // Anúncio da campanha que não é criativo da Fábrica (ex.: criado no Gerenciador ou por plano de lançamento)
+  const renderMetaAd = (a: any) => {
+    const st = AD_STATUS[a.status] || { label: a.status ? String(a.status).toLowerCase() : 'sem status', cls: 'bg-slate-800 text-slate-400' };
+    const thumb = a.image_url || a.thumbnail_url;
+    return (
+      <article
+        key={`ad-${a.meta_ad_id}`}
+        id={`factory-ad-${a.meta_ad_id}`}
+        data-testid="meta-ad-card"
+        className={`rounded-xl border border-slate-800 bg-slate-900/40 p-4 flex gap-4 ${focusId === `ad-${a.meta_ad_id}` ? 'ring-2 ring-emerald-500' : ''}`}
+      >
+        {isHttpUrl(thumb) ? (
+          <img src={thumb} alt={a.name} loading="lazy" className="w-20 h-20 object-cover rounded border border-slate-800 shrink-0" />
+        ) : (
+          <div className="w-20 h-20 rounded border border-slate-800 bg-black shrink-0 flex items-center justify-center text-[10px] text-slate-600">sem prévia</div>
+        )}
+        <div className="flex-1 min-w-0 space-y-1.5 text-xs">
+          <header className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-emerald-300">{a.name}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${st.cls}`} data-testid="meta-ad-status">{st.label}</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-700 text-slate-400" title="Anúncio que não foi gerado por um lote da Fábrica">
+              fora da Fábrica
+            </span>
+          </header>
+          {a.adset_name && <div className="text-[11px] text-slate-500">Conjunto: {a.adset_name}</div>}
+          {a.creative_title && <div className="text-slate-200 font-semibold">{a.creative_title}</div>}
+          {a.creative_body && <p className="text-slate-400 line-clamp-2">{a.creative_body}</p>}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+            {a.creative_cta && <span>CTA: {a.creative_cta}</span>}
+            <span>Investido: {brl(a.metrics?.spend ?? null)}</span>
+            <span>Impressões: {a.metrics ? a.metrics.impressions.toLocaleString('pt-BR') : '—'}</span>
+            <span>Cliques no link: {a.metrics ? a.metrics.link_clicks.toLocaleString('pt-BR') : '—'}</span>
+            <span>Vendas: {a.metrics ? a.metrics.paid_orders : '—'}</span>
+          </div>
+        </div>
+      </article>
+    );
   };
 
   const renderCard = (c: any) => {
@@ -705,6 +797,35 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
         )}
       </section>
 
+      {/* Organização por campanha */}
+      {allCampaigns && (
+        <div className="flex flex-wrap items-center gap-2 text-xs font-mono" data-testid="campaign-filters">
+          {([
+            ['ALL', `Todas as campanhas (${allCampaigns.length})`],
+            ['ACTIVE', `Ativas (${campaignCounts.ACTIVE})`],
+            ['PAUSED', `Pausadas (${campaignCounts.PAUSED})`]
+          ] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setCampaignFilter(k)}
+              aria-pressed={campaignFilter === k}
+              className={`px-2.5 py-1 rounded border ${campaignFilter === k ? 'bg-sky-500 text-slate-950 border-sky-500' : 'border-slate-700 text-slate-300'}`}
+            >
+              {label}
+            </button>
+          ))}
+          <label className="flex items-center gap-1.5 ml-2 text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showUnpublished}
+              onChange={e => setShowUnpublished(e.target.checked)}
+              aria-label="Exibir criativos não publicados"
+            />
+            Exibir criativos não publicados ({creatives.filter(c => c.approval_status !== 'SUPERSEDED' && !(c.campaigns || []).length).length})
+          </label>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
         {['ALL', 'DRAFT', 'APPROVED', 'REVISION_REQUESTED', 'REJECTED', 'SUPERSEDED'].map(s => (
@@ -735,7 +856,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
       </div>
 
       {loading && !data && <p className="text-sm text-slate-400">Carregando…</p>}
-      {!loading && creatives.length === 0 && (
+      {!loading && creatives.length === 0 && !(allCampaigns && allCampaigns.length > 0) && (
         <p className="text-sm text-slate-400" data-testid="factory-empty">
           Nenhum criativo na fábrica ainda.
         </p>
@@ -747,11 +868,17 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
             {g.name}
             {g.status && (
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${g.status === 'ACTIVE' ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                {g.status === 'ACTIVE' ? 'ativa' : g.status === 'PAUSED' ? 'pausada' : g.status}
+                {g.status === 'ACTIVE' ? 'ativa' : g.status === 'PAUSED' ? 'pausada' : String(g.status).toLowerCase()}
               </span>
             )}
-            <span className="text-[11px] font-normal text-slate-500">{g.items.length} criativo(s)</span>
+            <span className="text-[11px] font-normal text-slate-500">
+              {g.items.length} criativo(s) da Fábrica
+              {g.externalAds.length > 0 ? ` · ${g.externalAds.length} anúncio(s) fora da Fábrica` : ''}
+            </span>
           </h2>
+          {g.items.length === 0 && g.externalAds.length === 0 && (
+            <p className="text-xs text-slate-500" data-testid="campaign-empty">Nenhum anúncio nesta campanha.</p>
+          )}
           <div className={containerClass(viewMode)}>
             {g.items.map((c: any) =>
               isIconMode(viewMode) ? (
@@ -768,9 +895,27 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                 renderCard(c)
               )
             )}
+            {g.externalAds.map((a: any) =>
+              isIconMode(viewMode) ? (
+                <IconTile
+                  key={`ad-${a.meta_ad_id}`}
+                  mode={viewMode}
+                  title={a.name}
+                  subtitle={`${(AD_STATUS[a.status] || { label: a.status || '' }).label} · fora da Fábrica`}
+                  url={a.image_url || a.thumbnail_url}
+                  format="IMAGE"
+                  onOpen={() => openAdInList(a.meta_ad_id)}
+                />
+              ) : (
+                renderMetaAd(a)
+              )
+            )}
           </div>
         </section>
       ))}
+      {allCampaigns && groups.length === 0 && (
+        <p className="text-sm text-slate-400" data-testid="campaigns-none">Nenhuma campanha com esse filtro.</p>
+      )}
     </div>
   );
 }
