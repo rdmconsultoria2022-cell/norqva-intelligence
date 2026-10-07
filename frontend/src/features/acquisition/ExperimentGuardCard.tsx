@@ -40,6 +40,8 @@ export const ExperimentGuardCard: React.FC<{
   const [plans, setPlans] = useState<GuardPlan[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [value, setValue] = useState('');
+  const [confirmCode, setConfirmCode] = useState('');
+  const [justification, setJustification] = useState('');
   const [busy, setBusy] = useState(false);
   const fetchRef = useRef(apiFetch);
   fetchRef.current = apiFetch;
@@ -81,7 +83,7 @@ export const ExperimentGuardCard: React.FC<{
     try {
       const r = await fetchRef.current(
         `/launch-plans/${encodeURIComponent(plan.id)}/spend-cap`,
-        { method: 'POST', body: JSON.stringify({ max_spend_brl: v }) },
+        { method: 'POST', body: JSON.stringify(v > (num(plan.max_spend_brl) ?? 0) ? { max_spend_brl: v, confirm_code: confirmCode, justification } : { max_spend_brl: v }) },
         'real',
         currentUser
       );
@@ -89,6 +91,8 @@ export const ExperimentGuardCard: React.FC<{
       showSuccess(`Teto de ${plan.code} agora é ${brl(v)}: ${capMsg}.${r?.guard?.pause?.paused ? ' A campanha foi pausada porque o gasto já chegou ao teto.' : ''}`);
       setEditing(null);
       setValue('');
+      setConfirmCode('');
+      setJustification('');
       await load();
     } catch (e: any) {
       showError(e?.message || 'Falha ao alterar o teto.');
@@ -151,11 +155,19 @@ export const ExperimentGuardCard: React.FC<{
                   <button onClick={() => setEditing(null)} className="rounded border border-slate-700 px-2.5 py-1 text-slate-300">
                     Cancelar
                   </button>
-                  <span className="text-slate-500">Só é possível reduzir (ou reaplicar o mesmo valor). Ao atingir o teto, o NORQVA pausa só esta campanha.</span>
+                  {Number(String(value).replace(',', '.')) > cap ? (
+                    <div className="flex w-full flex-wrap items-center gap-2" data-testid="guard-raise-confirm">
+                      <span className="text-amber-300">Aumento: só até o capital aprovado na ativação. Digite o código do plano e a justificativa.</span>
+                      <input aria-label="Código do plano" value={confirmCode} onChange={e => setConfirmCode(e.target.value)} placeholder={p.code} autoComplete="off" onPaste={e => e.preventDefault()} className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
+                      <input aria-label="Justificativa" value={justification} onChange={e => setJustification(e.target.value)} placeholder="Por que aumentar? (mín. 20 caracteres)" className="min-w-[240px] flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">Reduzir ou reaplicar. Ao atingir o teto, o NORQVA pausa só esta campanha.</span>
+                  )}
                 </div>
               ) : (
                 <button onClick={() => { setEditing(p.id); setValue(''); }} className="rounded border border-sky-700/60 px-2.5 py-1 text-sky-200 hover:bg-sky-900/30">
-                  Reduzir teto
+                  Alterar teto
                 </button>
               ))}
           </div>

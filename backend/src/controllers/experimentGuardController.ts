@@ -45,7 +45,8 @@ export async function getPlanGuard(req: AuthenticatedRequest, res: Response) {
 
 /**
  * POST /api/launch-plans/:id/spend-cap (ADMIN) { max_spend_brl }.
- * Só REDUZ (ou reaplica) o teto: aumentar exige confirmação forte (H3). Atualiza o teto do plano e o
+ * Reduz ou reaplica o teto. Aumentar só até o capital aprovado na ativação (código do plano + justificativa);
+ * acima disso exige confirmação forte (H3). Atualiza o teto do plano e o
  * capital aprovado do experimento, aplica o spend_cap na campanha (H8) e roda o vigia na hora (H6/H7).
  * Registro em decision_events (fail-closed).
  */
@@ -79,7 +80,22 @@ export async function setPlanSpendCap(req: AuthenticatedRequest, res: Response) 
     return res.status(status).json({ error });
   };
   if (!Number.isFinite(newCap) || newCap <= 0) return reject(400, 'Informe o novo teto em reais (max_spend_brl).');
-  if (newCap > current + 0.001) return reject(409, `Aumentar o teto (de R$ ${current.toFixed(2)} para R$ ${newCap.toFixed(2)}) exige confirmação forte (H3). Só é possível reduzir agora.`);
+  let raise: { approved: number; justification: string } | null = null;
+  if (newCap > current + 0.001) {
+    // Aumento só até o capital aprovado pelo operador na resposta SIM (experiments.capital_requested),
+    // com o código do plano digitado e justificativa. Acima disso continua exigindo a confirmação forte (H3).
+    const exp = plan.experiment_id ? (await pool.query('SELECT capital_requested FROM experiments WHERE id = $1', [plan.experiment_id])).rows[0] : null;
+    const approved = exp ? parseFloat(exp.capital_requested) : NaN;
+    if (!Number.isFinite(approved) || newCap > approved + 0.001) {
+      return reject(409, `Aumentar o teto acima do capital aprovado na ativação${Number.isFinite(approved) ? ` (R$ ${approved.toFixed(2)})` : ''} exige confirmação forte (H3).`);
+    }
+    if (String(req.body?.confirm_code || '').trim().toUpperCase() !== String(plan.code).toUpperCase()) {
+      return reject(400, `Para aumentar o teto, digite o código do plano (${plan.code}) em confirm_code.`);
+    }
+    const justification = String(req.body?.justification || '').trim();
+    if (justification.length < 20) return reject(400, 'Para aumentar o teto, escreva a justificativa (mínimo 20 caracteres).');
+    raise = { approved, justification: justification.slice(0, 1000) };
+  }
   try {
     await pool.query(`UPDATE launch_plans SET max_spend_brl = $2, cap_alerts_sent = '{}'::jsonb, updated_at = NOW() WHERE id = $1`, [plan.id, newCap]);
     if (plan.experiment_id) {
@@ -90,7 +106,7 @@ export async function setPlanSpendCap(req: AuthenticatedRequest, res: Response) 
     const ctx: MetaMutatingSecurityContext = { userId: req.user?.id || '', userRole: 'ADMIN', isDemo: false };
     const spendCap = ExperimentGuardService.campaignOf(updated) ? await guard.applySpendCap(pool, updated, ctx) : { status: 'SKIPPED', error: 'Plano ainda sem campanha na Meta.' };
     const guardRun = ['ACTIVE', 'APPROVED'].includes(updated.status) ? await guard.run(pool, { planId: updated.id }) : null;
-    const result = { code: updated.code, previous_cap_brl: current, cap_brl: newCap, spend_cap: spendCap, guard: guardRun?.plans?.[0] ?? null };
+    const result = { code: updated.code, previous_cap_brl: current, cap_brl: newCap, raise, spend_cap: spendCap, guard: guardRun?.plans?.[0] ?? null };
     const recorded = await handle.finish('EXECUTED', { result });
     return res.status(200).json(recorded ? result : { ...result, audit_incomplete: true });
   } catch (err: any) {
