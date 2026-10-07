@@ -45,7 +45,7 @@ describe('NORQVA-0021 — ficha da campanha', () => {
       { daily_budget_brl: 20, max_spend_brl: 200, adsets: [{ name: 'A' }, { name: 'B', daily_budget_brl: 25 }], ad_adset: { 'OPP-0042-B01-C01': 'B' } },
       ctx
     );
-    expect(input.spec.ads.map(a => a.adset_name)).toEqual(['B', 'B']);
+    expect(input.spec.ads.map(a => a.adset_name)).toEqual(['B', 'A']);
     expect(input.daily_budget_brl).toBe(45);
   });
 

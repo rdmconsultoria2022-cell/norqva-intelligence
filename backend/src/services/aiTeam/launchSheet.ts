@@ -82,9 +82,24 @@ export function buildLaunchFromSheet(
     .map(c => ({ key: c.key, format: c.format, reason: 'O plano de lançamento publica só vídeo; este criativo fica só na Fábrica.' }));
   if (video.length === 0) throw new LaunchSheetError('Nenhum criativo VIDEO no plano: o plano de lançamento precisa de ao menos um vídeo.');
 
-  const ads = video.map((c, i) => {
+  // Explicit ad_adset first; the rest go to the ad set with the fewest ads (so no ad set is left empty)
+  const count = new Map(adsetNames.map(n => [n, 0]));
+  const chosen = new Map<string, string>();
+  for (const c of video) {
     const wanted = str(assign[c.key], 200);
-    const adsetName = wanted && adsetNames.includes(wanted) ? wanted : adsetNames[i % adsetNames.length];
+    if (wanted && count.has(wanted)) {
+      chosen.set(c.key, wanted);
+      count.set(wanted, (count.get(wanted) || 0) + 1);
+    }
+  }
+  for (const c of video) {
+    if (chosen.has(c.key)) continue;
+    const target = adsetNames.reduce((best, n) => ((count.get(n) || 0) < (count.get(best) || 0) ? n : best), adsetNames[0]);
+    chosen.set(c.key, target);
+    count.set(target, (count.get(target) || 0) + 1);
+  }
+  const ads = video.map(c => {
+    const adsetName = chosen.get(c.key) as string;
     return {
       name: c.key,
       adset_name: adsetName,
