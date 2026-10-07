@@ -8,6 +8,8 @@ import { writeAuditLog } from '../../db/audit';
 import { CreativeBatch, BatchCreative } from '../../data/creativeBatches';
 import { SecondOpinionProvider, gptSecondOpinion } from './gptSecondOpinion';
 import { beginDecision, DecisionContext } from '../../db/decisionEvents';
+import { buildLaunchFromSheet, LaunchSheetError } from './launchSheet';
+import { LaunchPlanService, LaunchPlanError } from '../launchPlans/launchPlanService';
 
 // NORQVA-0017 (fase 3): AI team. An opportunity (from our account ranking, the EU market or a manual brief)
 // is evaluated by Claude (routine) with a GPT second opinion, then Claude builds a campaign plan whose
@@ -61,7 +63,8 @@ export class OpportunityService {
     private secondOpinion: SecondOpinionProvider = gptSecondOpinion,
     private factory = new CreativeFactoryService(),
     private intel = new CampaignIntelligenceService(),
-    private market = new MarketEuService()
+    private market = new MarketEuService(),
+    private launchPlans = new LaunchPlanService()
   ) {}
 
   async list(pool: Pool, isDemo: boolean) {
@@ -302,7 +305,23 @@ export class OpportunityService {
       };
     });
 
-    const plan = {
+    // NORQVA-0021 (P3): campaign sheet → DRAFT launch plan (validated before anything is written)
+    let launch: ReturnType<typeof buildLaunchFromSheet> | null = null;
+    if (body?.launch !== undefined && body?.launch !== null) {
+      try {
+        launch = buildLaunchFromSheet(body.launch, {
+          opportunityHumanId: o.human_id,
+          offerHumanId: String(offer.human_id),
+          creatives: batchCreatives,
+          offerBaseUrl: process.env.NORQVA_PUBLIC_OFFER_BASE_URL
+        });
+      } catch (err) {
+        if (err instanceof LaunchSheetError) throw new OpportunityError(400, err.message);
+        throw err;
+      }
+    }
+
+    const plan: Record<string, any> = {
       by: 'Claude',
       product_id: productId,
       offer_id: offer.id,
@@ -330,6 +349,23 @@ export class OpportunityService {
     );
     const imported = await this.factory.importBatchData(pool, batch, null, o.is_demo);
     await pool.query(`UPDATE creative_batches SET imported_at = NOW() WHERE code = $1 AND is_demo = $2`, [code, o.is_demo]);
+
+    if (launch) {
+      let draft: { id: string; code: string; status: string } | null = null;
+      let note: string | null = null;
+      if (o.is_demo) {
+        note = 'Modo demonstração: ficha validada, plano de lançamento não gravado.';
+      } else {
+        try {
+          const r = await this.launchPlans.createDraft(pool, launch.input, null);
+          draft = { id: String(r.plan.id), code: r.plan.code, status: r.plan.status };
+        } catch (err) {
+          if (err instanceof LaunchPlanError) note = `Plano de lançamento não gravado: ${err.message}`;
+          else throw err;
+        }
+      }
+      plan.launch = { ...launch.sheet, draft, note };
+    }
     const out = await this.patch(pool, id, {
       status: 'PLANO_PRONTO',
       plan: JSON.stringify(plan),
