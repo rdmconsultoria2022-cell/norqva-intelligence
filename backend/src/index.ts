@@ -119,6 +119,7 @@ import {
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
+import { getAccountCredit } from './controllers/accountCreditController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
@@ -358,6 +359,8 @@ app.get('/api/admin/meta/test-insights-probe', requireRole(['ADMIN']), testInsig
 app.get('/api/meta/connection/status', requireRole(['ADMIN']), getMetaConnectionStatus);
 app.post('/api/meta/connection/validate', requireRole(['ADMIN']), validateMetaConnection);
 app.get('/api/meta/ad-accounts', requireRole(['ADMIN']), getMetaAdAccounts);
+// Painel de créditos da conta Meta (somente leitura; não altera spend_cap)
+app.get('/api/meta/account-credit', requireRole(['ADMIN']), getAccountCredit);
 app.get('/api/meta/campaigns', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaCampaigns);
 app.get('/api/meta/adsets', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAdSets);
 app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAds);
