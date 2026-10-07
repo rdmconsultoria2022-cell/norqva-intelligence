@@ -146,6 +146,7 @@ import {
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
+import { listMethodCases, getMethodCase, createMethodCase, updateMethodCase, updateMethodStage, createMethodHypothesis, updateMethodHypothesis, linkCreativeHypothesis, decideMethodCreative, createMethodLearning, hypothesisFromLearning } from './controllers/methodController';
 import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from './controllers/experimentGuardController';
 import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
 import { getAccountCredit } from './controllers/accountCreditController';
@@ -390,6 +391,20 @@ app.post('/api/launch-plans/guard/run', requireRole(['ADMIN']), runGuardNow);
 app.get('/api/launch-plans/:id/guard', requireRole(['ADMIN']), getPlanGuard);
 app.post('/api/launch-plans/:id/spend-cap', requireRole(['ADMIN']), setPlanSpendCap);
 app.post('/api/automation/experiment-guard/run', automationRunGuard);
+// NORQVA-0022: Método NORQVA de Campanhas (leitura + registros internos; nada na Meta)
+const METHOD_READ = ['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS'];
+const METHOD_WRITE = ['ADMIN', 'INTELLIGENCE'];
+app.get('/api/method/cases', requireRole(METHOD_READ), listMethodCases);
+app.post('/api/method/cases', requireRole(['ADMIN']), createMethodCase);
+app.get('/api/method/cases/:id', requireRole(METHOD_READ), getMethodCase);
+app.patch('/api/method/cases/:id', requireRole(METHOD_WRITE), updateMethodCase);
+app.patch('/api/method/cases/:id/stages/:stage', requireRole(METHOD_WRITE), updateMethodStage);
+app.post('/api/method/cases/:id/hypotheses', requireRole(METHOD_WRITE), createMethodHypothesis);
+app.patch('/api/method/hypotheses/:id', requireRole(METHOD_WRITE), updateMethodHypothesis);
+app.post('/api/method/creatives/:id/hypothesis', requireRole(METHOD_WRITE), linkCreativeHypothesis);
+app.post('/api/method/creatives/:id/decision', requireRole(['ADMIN']), decideMethodCreative);
+app.post('/api/method/learnings', requireRole(METHOD_WRITE), createMethodLearning);
+app.post('/api/method/learnings/:id/hypothesis', requireRole(METHOD_WRITE), hypothesisFromLearning);
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
