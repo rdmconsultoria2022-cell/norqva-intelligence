@@ -19,6 +19,7 @@ import {
   Bot,
   Store,
   Wallet,
+  Compass,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -50,6 +51,7 @@ export const navigationItems: NavigationItem[] = [
   { id: 'experiments', label: 'Experimentos', icon: FlaskConical },
   { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
   { id: 'meta-credit', label: 'Créditos Meta', icon: Wallet },
+  { id: 'method', label: 'Método NORQVA', icon: Compass },
   { id: 'campaign-base', label: 'Base de campanhas', icon: Database },
   { id: 'ai-team', label: 'Time de IAs', icon: Bot },
   { id: 'brands', label: 'Marcas', icon: Store },
