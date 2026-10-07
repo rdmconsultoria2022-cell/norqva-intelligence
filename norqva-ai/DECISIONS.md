@@ -67,3 +67,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - conta de anúncios nova só com justificativa registrada (padrão: uma conta, uma campanha por marca);
   - marca nasce `BRAND_ONLY`: sem avatar realista nem pessoa fictícia apresentada como real;
   - claims seguem o registro da Fábrica; D-0005 vale para todas as marcas.
+
+## D-0011 — Ponte Creative Factory → NORQVA (2026-10-04)
+
+- **Problema:** a Creative Factory (`D:\NORQVA\norqva-criativos-engine`) gera e certifica criativos, mas não grava nada no NORQVA. A Fábrica de Criativos só enxerga lotes do código ou do time de IAs, então releases certificados nunca apareciam.
+- **Decisão (operador, 2026-10-04):** uma ponte genérica, nunca específica de um criativo: Factory → release certificado → Supabase Storage → `/api/automation/creative-factory/ingest` → `creative_batches` → `importBatchData` → `creatives` → validação NORQVA → aprovação → `link-ad` → Meta → métricas.
+- **Storage:** Supabase Storage, bucket `creative-assets`. GitHub não é storage operacional.
+- **Governança:** o release entra em **DRAFT**. A certificação da Factory viaja como evidência (`factory_releases`) e não substitui a aprovação do NORQVA. A Factory certifica qualidade criativa; o NORQVA autoriza uso e publicação.
+- **Sem cadastro manual:** releases antigos entram pelo mesmo exportador (carga retroativa).
+- **Linhagem:** nenhum vínculo é inferido. O identificador "HPJ3" fica pendente até sua origem ser encontrada; não é associado a nenhum release.

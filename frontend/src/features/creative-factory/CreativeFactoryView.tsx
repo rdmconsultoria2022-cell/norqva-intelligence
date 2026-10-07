@@ -378,6 +378,14 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                     : <span className="text-slate-500">não publicado</span>}
                 </div>
                 <div><span className="text-slate-500">Lote:</span> {c.batch_code || '—'}</div>
+                {c.factory_release && (
+                  <div data-testid="factory-release-evidence" className="text-sky-300/90">
+                    <span className="text-slate-500">Origem:</span> Creative Factory
+                    {c.factory_release.factory_version ? ` ${c.factory_release.factory_version}` : ''} · {c.factory_release.campaign_id}{' '}
+                    {c.factory_release.creative_version} · certificado na Factory
+                    <span className="text-slate-500"> (aprovação de uso continua aqui)</span>
+                  </div>
+                )}
               </div>
 
               <p className="text-sm text-white font-semibold">“{c.hook}”</p>

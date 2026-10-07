@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { CreativeFactoryService, CreativeFactoryError } from '../services/creative/creativeFactoryService';
 import { resolvePeriodFilter } from '../utils/commercialTimezone';
 import { AdjustmentService, automationTokenValid } from '../services/creative/adjustmentService';
+import { FactoryIngestService } from '../services/creative/factoryIngestService';
 
 // NORQVA-0005 / G1: Creative Factory endpoints. Mode isolation follows the rest of the API
 // (?mode=demo). Writes are ADMIN-only except creating a new version (ADMIN, CREATIVE).
@@ -244,5 +245,38 @@ export async function enqueueFactoryAdjustment(req: AuthenticatedRequest, res: R
     return res.status(200).json(adj);
   } catch (err) {
     return handle(res, err, 'Falha ao enviar o ajuste.');
+  }
+}
+
+// NORQVA-0020: ponte Creative Factory → NORQVA (token X-Norqva-Automation-Token)
+const factoryIngest = new FactoryIngestService();
+
+export async function automationFactoryUploadUrl(req: AuthenticatedRequest, res: Response) {
+  if (!automationGuard(req, res)) return;
+  const pool: Pool = req.app.get('db');
+  try {
+    const b = req.body || {};
+    return res.status(200).json(
+      await factoryIngest.createUploadUrl(pool, {
+        campaign_id: String(b.campaign_id || ''),
+        creative_version: String(b.creative_version || ''),
+        sha256: String(b.sha256 || ''),
+        size_bytes: Number(b.size_bytes),
+        mime: String(b.mime || '')
+      })
+    );
+  } catch (err) {
+    return handle(res, err, 'Falha ao preparar o upload do release.');
+  }
+}
+
+export async function automationFactoryIngest(req: AuthenticatedRequest, res: Response) {
+  if (!automationGuard(req, res)) return;
+  const pool: Pool = req.app.get('db');
+  try {
+    const result = await factoryIngest.ingest(pool, req.body, isDemoReq(req));
+    return res.status(result.status === 'INGESTED' ? 201 : 200).json(result);
+  } catch (err) {
+    return handle(res, err, 'Falha ao registrar o release da Factory.');
   }
 }

@@ -189,6 +189,8 @@ export class CreativeFactoryService {
         creativesSkipped++;
         continue;
       }
+      const fileUrl = c.fileUrl ? String(c.fileUrl).trim() : null;
+      assertSafeFileUrl(fileUrl);
       const hash = computeContentHash({
         hook: c.hook,
         mechanism: c.mechanism,
@@ -197,7 +199,7 @@ export class CreativeFactoryService {
         script: c.script,
         primary_text: c.primaryText,
         headline: c.headline,
-        file_url: null
+        file_url: fileUrl
       });
       const ins = await pool.query(
         `INSERT INTO creatives (
@@ -205,14 +207,14 @@ export class CreativeFactoryService {
            status, is_demo, batch_code, hook_family, mechanism, duration_seconds, primary_text, headline,
            script, generation_source, version, lineage_code, utm_content_key, content_hash, approval_status
          ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, NULL, $9,
-           'IDEIA', $10, $11, $12, $13, $14, $15, $16,
-           $17, 'AI_ASSISTED', 1, $18, $1, $19, 'DRAFT'
+           $1, $2, $3, $4, $5, $6, $7, $8, $20, $9,
+           $22, $10, $11, $12, $13, $14, $15, $16,
+           $17, $21, 1, $18, $1, $19, 'DRAFT'
          ) RETURNING id`,
         [
           key, batch.productId, batch.offerId, c.hook, c.mechanism, c.primaryText, c.cta, c.format, userId,
           isDemo, batch.code, c.hookFamily, c.mechanism, c.durationSeconds, c.primaryText, c.headline,
-          c.script, c.key, hash
+          c.script, c.key, hash, fileUrl, c.generationSource || 'AI_ASSISTED', fileUrl ? 'REVISAO' : 'IDEIA'
         ]
       );
       const creativeId = ins.rows[0].id;
@@ -276,7 +278,16 @@ export class CreativeFactoryService {
     const claimsByCreative = new Map<string, any[]>();
     const reviewsByCreative = new Map<string, any[]>();
     const manualLinks = new Map<string, string[]>();
+    const factoryByCreative = new Map<string, any>();
     if (ids.length > 0) {
+      // NORQVA-0020: certification evidence of creatives that came from the Creative Factory
+      const factoryRows = await pool.query(
+        `SELECT creative_id, campaign_id, creative_version, factory_version, sha256, size_bytes,
+                qa_certifications, approval_timestamp, ingested_at
+         FROM factory_releases WHERE creative_id IN (${inList(ids)})`,
+        ids
+      );
+      for (const r of factoryRows.rows) factoryByCreative.set(r.creative_id, r);
       const claimRows = await pool.query(
         `SELECT cc.creative_id, cr.id, cr.human_id, cr.claim_text, cr.claim_type, cr.status, cr.valid_until
          FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id
@@ -378,6 +389,7 @@ export class CreativeFactoryService {
       return {
         ...c,
         claims,
+        factory_release: factoryByCreative.get(c.id) || null,
         claims_all_verified: claims.length > 0 && claims.every(cl => cl.status === 'VERIFIED' && (!cl.valid_until || new Date(cl.valid_until) > new Date())),
         reviews: reviewsByCreative.get(c.id) || [],
         linked_meta_ads: [...linked.keys()],
