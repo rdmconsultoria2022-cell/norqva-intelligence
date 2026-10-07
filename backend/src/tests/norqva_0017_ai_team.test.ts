@@ -135,6 +135,19 @@ describe('NORQVA-0017 — AI team', () => {
       .send({ score: 74, verdict: 'TESTAR', summary: 'Demanda validada na UE; margem apertada.', risks: ['CPA de equilíbrio baixo'], hypotheses: ['Gancho de controle mensal'] });
     expect(evalOk.body).toMatchObject({ status: 'AVALIADA', ai_score: 74, verdict: 'TESTAR' });
 
+    // NORQVA-0021 (P2): the plan needs the validator's approval first
+    const blocked = await request(app).post(`/api/ai-team/opportunities/${opp.id}/dispatch?mode=demo`).set('Authorization', `Bearer ${adminToken}`).send({ kind: 'PLAN' });
+    expect(blocked.status).toBe(409);
+    const approved = await request(app)
+      .post(`/api/automation/opportunities/${opp.id}/validation`)
+      .set('X-Norqva-Automation-Token', AUTOMATION)
+      .send({
+        verdict: 'APROVA',
+        summary: 'Amostra pequena, mas a conta fecha no teste.',
+        checklist: ['AMOSTRA', 'CONTA_FECHA', 'CLAIMS', 'SATURACAO', 'ATRIBUICAO', 'CONCORRENCIA'].map(key => ({ key, status: key === 'AMOSTRA' ? 'ALERTA' : 'OK' }))
+      });
+    expect(approved.status).toBe(200);
+
     await request(app).post(`/api/ai-team/opportunities/${opp.id}/dispatch?mode=demo`).set('Authorization', `Bearer ${adminToken}`).send({ kind: 'PLAN' });
     // A stuck plan request (EM_PLANEJAMENTO) can be re-sent
     const resend = await request(app).post(`/api/ai-team/opportunities/${opp.id}/dispatch?mode=demo`).set('Authorization', `Bearer ${adminToken}`).send({ kind: 'PLAN' });
