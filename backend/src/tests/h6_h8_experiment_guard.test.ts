@@ -41,6 +41,9 @@ describe('H6/H7/H8 — regras puras', () => {
     const realError = '[META GRAPH API ERROR]: Invalid parameter (code 100, subcode 2446307) — Limite de gastos da campanha muito baixo — O limite de gastos da campanha precisa ser pelo menos R$300,00 para essa moeda.';
     expect(minimumFromMetaError(realError)).toBe(300);
     expect(minimumFromMetaError('must be at least R$1,250.50 for this currency')).toBe(1250.5);
+    const pending = '[META GRAPH API ERROR]: Invalid parameter (code 100, subcode 1885058) — Limite de gastos da campanha muito baixo — O limite de gastos da sua campanha não pode ser inferior a R$448,62 agora porque algumas cobranças podem estar pendentes, o que elevaria os gastos da campanha para esse valor.)';
+    expect(minimumFromMetaError(pending)).toBe(448.62);
+    expect(minimumFromMetaError('Your campaign spending limit cannot be less than R$1,050.00 right now')).toBe(1050);
     expect(minimumFromMetaError('outro erro')).toBeNull();
   });
 

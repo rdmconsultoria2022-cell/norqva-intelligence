@@ -22,9 +22,13 @@ export const metaMinCampaignSpendCapBRL = (env: Record<string, string | undefine
 };
 export const metaSpendCapFor = (capBrl: number, env: Record<string, string | undefined> = process.env) => Math.max(capBrl, metaMinCampaignSpendCapBRL(env));
 
-/** Lê o mínimo citado no erro da Meta ("pelo menos R$300,00" / "at least R$300.00"). */
+/**
+ * Lê o mínimo citado no erro da Meta: "pelo menos R$300,00" (mínimo da moeda, 100/2446307) ou
+ * "não pode ser inferior a R$448,62 agora porque algumas cobranças podem estar pendentes" (100/1885058:
+ * gasto atual + R$ 300). Em inglês: "at least" / "cannot be less than".
+ */
 export function minimumFromMetaError(message: string): number | null {
-  const m = String(message || '').match(/(?:pelo menos|at least)\s*R\$\s?([\d.,]+)/i);
+  const m = String(message || '').match(/(?:pelo menos|at least|n[ãa]o pode ser inferior a|cannot be (?:less|lower) than|can't be (?:less|lower) than)\s*R\$\s?([\d.,]+)/i);
   if (!m) return null;
   const raw = m[1].replace(/[.,]$/, '');
   const n = /,\d{2}$/.test(raw) ? parseFloat(raw.replace(/\./g, '').replace(',', '.')) : parseFloat(raw.replace(/,/g, ''));
