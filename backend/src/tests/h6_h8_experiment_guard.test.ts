@@ -194,21 +194,22 @@ describe('H6/H7/H8 — vigia e endpoints', () => {
 
     const ok = await request(app).post(`/api/launch-plans/${p.id}/spend-cap`).set('Authorization', `Bearer ${adminToken}`).send({ max_spend_brl: 200 });
     expect(ok.status).toBe(200);
-    expect(ok.body).toMatchObject({ previous_cap_brl: 420, cap_brl: 200, spend_cap: { status: 'BACKSTOP', spend_cap_brl: 300 } });
-    expect(client.setCampaignSpendCap).toHaveBeenCalledWith(p.campaign, 300, expect.anything(), expect.any(Set)); // Meta minimum in BRL
+    expect(ok.body).toMatchObject({ previous_cap_brl: 420, cap_brl: 200, spend_cap: { status: 'BACKSTOP', spend_cap_brl: 510 } }); // spent 210 + Meta minimum 300
+    expect(client.setCampaignSpendCap).toHaveBeenCalledTimes(1);
+    expect(client.setCampaignSpendCap).toHaveBeenCalledWith(p.campaign, 510, expect.anything(), expect.any(Set));
     // already spent 210 ≥ 200 → paused right away
     expect(ok.body.guard.pause).toMatchObject({ paused: true });
     const after = await row(p.id);
     expect(parseFloat(after.max_spend_brl)).toBe(200);
     expect(after.spend_cap_status).toBe('BACKSTOP');
-    expect(parseFloat(after.spend_cap_applied_brl)).toBe(300);
+    expect(parseFloat(after.spend_cap_applied_brl)).toBe(510);
     expect(after.guard_state).toBe('CAPPED');
     const ev = await pool.query(`SELECT phase, decision, actor_type FROM decision_events WHERE plan_code = $1 AND action = 'LAUNCH_PLAN_SPEND_CAP'`, [p.code]);
     expect(ev.rows.map(e => e.phase).sort()).toEqual(['EXECUTED', 'REJECTED', 'REJECTED', 'REQUESTED', 'REQUESTED', 'REQUESTED']);
     expect(ev.rows.every(e => e.actor_type === 'HUMAN')).toBe(true);
 
     const guardView = await request(app).get(`/api/launch-plans/${p.id}/guard`).set('Authorization', `Bearer ${adminToken}`);
-    expect(guardView.body).toMatchObject({ cap_brl: 200, guard_state: 'CAPPED', spend_cap: { status: 'BACKSTOP', applied_brl: 300 } });
+    expect(guardView.body).toMatchObject({ cap_brl: 200, guard_state: 'CAPPED', spend_cap: { status: 'BACKSTOP', applied_brl: 510 } });
     setExperimentGuardForTesting(null);
   });
 
@@ -237,7 +238,7 @@ describe('H6/H7/H8 — vigia e endpoints', () => {
 
     const ok = await call({ max_spend_brl: 300, confirm_code: p.code.toLowerCase(), justification: 'Igualar o teto ao limite mínimo aceito pela Meta (decisão do operador).' });
     expect(ok.status).toBe(200);
-    expect(ok.body).toMatchObject({ previous_cap_brl: 200, cap_brl: 300, raise: { approved: 420 }, spend_cap: { status: 'APPLIED', spend_cap_brl: 300 } });
+    expect(ok.body).toMatchObject({ previous_cap_brl: 200, cap_brl: 300, raise: { approved: 420 }, spend_cap: { status: 'BACKSTOP', spend_cap_brl: 420 } }); // spent 120 + 300
     expect(parseFloat((await row(p.id)).max_spend_brl)).toBe(300);
     expect(parseFloat((await pool.query('SELECT capital_approved FROM experiments WHERE id = $1', [exp])).rows[0].capital_approved)).toBe(300);
     const ev = await pool.query(`SELECT phase FROM decision_events WHERE plan_code = $1 AND action = 'LAUNCH_PLAN_SPEND_CAP' AND phase = 'EXECUTED'`, [p.code]);
@@ -251,10 +252,39 @@ describe('H6/H7/H8 — vigia e endpoints', () => {
     client.setCampaignSpendCap
       .mockRejectedValueOnce(new Error('[META GRAPH API ERROR]: Limite de gastos da campanha precisa ser pelo menos R$450,00 para essa moeda.'))
       .mockResolvedValueOnce({ success: true, campaignId: p.campaign, spend_cap_brl: 450 } as any);
-    const svc = new ExperimentGuardService(() => client, null);
+    const svc = new ExperimentGuardService(() => client, null, 0);
     const r = await svc.applySpendCap(pool, await row(p.id), { userId: 'u', userRole: 'ADMIN', isDemo: false });
     expect(r).toMatchObject({ status: 'BACKSTOP', spend_cap_brl: 450 });
     expect(client.setCampaignSpendCap.mock.calls.map(c => c[1])).toEqual([420, 450]);
+  });
+
+  it('reads the spend first and asks Meta once (1 change per 30 s): spent + R$ 300', async () => {
+    const p = await mkPlan({ cap: 300 });
+    const client = fakeClient(148.62);
+    const r = await new ExperimentGuardService(() => client, null, 0).applySpendCap(pool, await row(p.id), { userId: 'u', userRole: 'ADMIN', isDemo: false });
+    expect(r).toMatchObject({ status: 'BACKSTOP', spend_cap_brl: 448.62 });
+    expect(client.setCampaignSpendCap).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits before retrying with the quoted minimum (Meta allows 1 change per 30 s)', async () => {
+    vi.useFakeTimers();
+    try {
+      const p = await mkPlan({ cap: 300 });
+      const client = fakeClient(0);
+      client.getCampaignLifetimeSpend.mockRejectedValue(new Error('read failed'));
+      client.setCampaignSpendCap
+        .mockRejectedValueOnce(new Error('não pode ser inferior a R$448,62 agora'))
+        .mockResolvedValueOnce({ success: true } as any);
+      const svc = new ExperimentGuardService(() => client, null, 31_000);
+      const pending = svc.applySpendCap(pool, await row(p.id), { userId: 'u', userRole: 'ADMIN', isDemo: false });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(client.setCampaignSpendCap).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(await pending).toMatchObject({ status: 'BACKSTOP', spend_cap_brl: 448.62 });
+      expect(client.setCampaignSpendCap).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a Meta refusal of the spend cap is recorded and the guard still protects', async () => {
