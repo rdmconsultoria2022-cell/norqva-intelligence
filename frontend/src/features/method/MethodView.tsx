@@ -81,6 +81,16 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
   useEffect(() => {
     loadCase();
   }, [loadCase]);
+  // Sem hipótese registrada, o primeiro passo é a aba Hipóteses (onde fica o formulário).
+  const caseId = data?.case?.id;
+  const noHypotheses = data ? data.hypotheses.length === 0 : false;
+  useEffect(() => {
+    if (caseId && noHypotheses) setTab('hipoteses');
+  }, [caseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const goHypotheses = () => {
+    setTab('hipoteses');
+    setTimeout(() => document.querySelector<HTMLInputElement>('[aria-label="Hipótese"]')?.focus(), 0);
+  };
 
   const act = async (fn: () => Promise<any>, ok: string) => {
     try {
@@ -164,6 +174,11 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                           <span className="text-slate-500">Evidências:</span> {s.evidence.length ? s.evidence.join(' · ') : 'SEM DADOS'}
                         </div>
                         {s.notes && <div className="text-slate-400">Notas: {s.notes}</div>}
+                        {canWrite && s.n === 5 && (
+                          <button onClick={goHypotheses} className="mr-2 rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white" data-testid="stage-go-hypotheses">
+                            Registrar hipótese
+                          </button>
+                        )}
                         {canWrite && (
                           <button
                             onClick={() => act(() => post(`/method/cases/${data.case.id}/stages/${s.n}`, { blocked: s.status !== 'BLOQUEADO' }, 'PATCH'), s.status === 'BLOQUEADO' ? 'Etapa desbloqueada.' : 'Etapa marcada como bloqueada.')}
@@ -190,7 +205,7 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
           </div>
 
           {tab === 'hipoteses' && <HypothesesTab data={data} canWrite={canWrite} onCreate={(b: any) => act(() => post(`/method/cases/${data.case.id}/hypotheses`, b), 'Hipótese registrada.')} />}
-          {tab === 'criativos' && <CreativesTab data={data} canWrite={canWrite} onLink={(cid: string, hid: string) => act(() => post(`/method/creatives/${cid}/hypothesis`, { hypothesis_id: hid }), 'Criativo ligado à hipótese.')} />}
+          {tab === 'criativos' && <CreativesTab data={data} canWrite={canWrite} onGoHypotheses={goHypotheses} onLink={(cid: string, hid: string) => act(() => post(`/method/creatives/${cid}/hypothesis`, { hypothesis_id: hid }), 'Criativo ligado à hipótese.')} />}
           {tab === 'medicao' && <MeasurementTab data={data} />}
           {tab === 'decisoes' && <DecisionsTab data={data} isAdmin={isAdmin} onDecide={(cid: string, b: any) => act(() => post(`/method/creatives/${cid}/decision`, b), 'Decisão registrada. Nada foi alterado na Meta.')} />}
           {tab === 'aprendizado' && (
@@ -269,14 +284,15 @@ const HypothesesTab: React.FC<{ data: any; canWrite: boolean; onCreate: (b: any)
         </tbody>
       </table>
       {canWrite && (
-        <div className="grid gap-2 rounded border border-dashed border-slate-700 p-3 text-xs md:grid-cols-3">
-          <input aria-label="Ângulo" placeholder="Ângulo" value={f.angle} onChange={e => setF({ ...f, angle: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1" />
-          <input aria-label="Gancho" placeholder="Gancho" value={f.hook} onChange={e => setF({ ...f, hook: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 md:col-span-2" />
-          <input aria-label="Hipótese" placeholder="Hipótese: o que exatamente queremos testar?" value={f.statement} onChange={e => setF({ ...f, statement: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 md:col-span-3" />
-          <select aria-label="Variável testada" value={f.variable_tested} onChange={e => setF({ ...f, variable_tested: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+        <div className="grid gap-2 rounded border border-dashed border-slate-700 p-3 text-xs text-slate-100 md:grid-cols-3" data-testid="hypothesis-form">
+          <div className="text-[11px] text-slate-400 md:col-span-3">Nova hipótese: preencha o campo Hipótese (mín. 5 caracteres) e clique em Registrar hipótese.</div>
+          <input aria-label="Ângulo" placeholder="Ângulo" value={f.angle} onChange={e => setF({ ...f, angle: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
+          <input aria-label="Gancho" placeholder="Gancho" value={f.hook} onChange={e => setF({ ...f, hook: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100 md:col-span-2" />
+          <input aria-label="Hipótese" placeholder="Hipótese: o que exatamente queremos testar?" value={f.statement} onChange={e => setF({ ...f, statement: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100 md:col-span-3" />
+          <select aria-label="Variável testada" value={f.variable_tested} onChange={e => setF({ ...f, variable_tested: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             {['GANCHO', 'ANGULO', 'FORMATO', 'OFERTA', 'PUBLICO', 'COPY', 'VISUAL'].map(v => <option key={v}>{v}</option>)}
           </select>
-          <input aria-label="Público da hipótese" placeholder="Público" value={f.audience} onChange={e => setF({ ...f, audience: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1" />
+          <input aria-label="Público da hipótese" placeholder="Público" value={f.audience} onChange={e => setF({ ...f, audience: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
           <button disabled={f.statement.trim().length < 5} onClick={() => { onCreate(f); setF({ ...f, statement: '', hook: '' }); }} className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white disabled:opacity-40">
             Registrar hipótese
           </button>
@@ -286,7 +302,7 @@ const HypothesesTab: React.FC<{ data: any; canWrite: boolean; onCreate: (b: any)
   );
 };
 
-const CreativesTab: React.FC<{ data: any; canWrite: boolean; onLink: (cid: string, hid: string) => void }> = ({ data, canWrite, onLink }) => (
+const CreativesTab: React.FC<{ data: any; canWrite: boolean; onLink: (cid: string, hid: string) => void; onGoHypotheses?: () => void }> = ({ data, canWrite, onLink, onGoHypotheses }) => (
   <div className="space-y-2" data-testid="method-creatives">
     {data.creatives.length === 0 && data.external_ads.length === 0 && <p className="text-sm text-slate-500">Nenhum criativo deste produto.</p>}
     {data.creatives.map((c: any) => (
@@ -306,6 +322,11 @@ const CreativesTab: React.FC<{ data: any; canWrite: boolean; onLink: (cid: strin
         </div>
         <div className="mt-2 text-slate-300">
           Hipótese: {c.hypothesis ? <span className="text-slate-100">{c.hypothesis.human_id} — {c.hypothesis.statement}</span> : <span className="text-amber-300">PENDENTE: sem hipótese registrada</span>}
+          {canWrite && data.hypotheses.length === 0 && (
+            <button onClick={onGoHypotheses} className="ml-2 rounded border border-emerald-600/60 px-1.5 py-0.5 text-[11px] text-emerald-300" data-testid="creative-go-hypotheses">
+              Registrar a hipótese primeiro (aba Hipóteses)
+            </button>
+          )}
           {canWrite && data.hypotheses.length > 0 && (
             <select aria-label={`Hipótese de ${c.human_id}`} value={c.hypothesis_id || ''} onChange={e => e.target.value && onLink(c.id, e.target.value)} className="ml-2 rounded border border-slate-700 bg-slate-950 px-1 py-0.5">
               <option value="">ligar a uma hipótese…</option>
@@ -379,18 +400,18 @@ const DecisionsTab: React.FC<{ data: any; isAdmin: boolean; onDecide: (cid: stri
       ))}
       {isAdmin && (
         <div className="grid gap-2 rounded border border-dashed border-slate-700 p-3 md:grid-cols-4">
-          <select aria-label="Criativo da decisão" value={f.creative} onChange={e => setF({ ...f, creative: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+          <select aria-label="Criativo da decisão" value={f.creative} onChange={e => setF({ ...f, creative: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             <option value="">criativo…</option>
             {data.creatives.map((c: any) => <option key={c.id} value={c.id}>{c.human_id}</option>)}
           </select>
-          <select aria-label="Decisão" value={f.decision} onChange={e => setF({ ...f, decision: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+          <select aria-label="Decisão" value={f.decision} onChange={e => setF({ ...f, decision: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             {['MATAR', 'MANTER', 'ITERAR', 'ESCALAR'].map(v => <option key={v}>{v}</option>)}
           </select>
-          <select aria-label="Confiança" value={f.confidence} onChange={e => setF({ ...f, confidence: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+          <select aria-label="Confiança" value={f.confidence} onChange={e => setF({ ...f, confidence: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             {['BAIXA', 'MEDIA', 'ALTA'].map(v => <option key={v}>{v}</option>)}
           </select>
           <input aria-label="Motivo" placeholder="Motivo (obrigatório)" value={f.reason} onChange={e => setF({ ...f, reason: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 md:col-span-4" />
-          <input aria-label="Evidências" placeholder="Evidências (as métricas atuais são anexadas automaticamente)" value={f.evidence_notes} onChange={e => setF({ ...f, evidence_notes: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 md:col-span-3" />
+          <input aria-label="Evidências" placeholder="Evidências (as métricas atuais são anexadas automaticamente)" value={f.evidence_notes} onChange={e => setF({ ...f, evidence_notes: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100 md:col-span-3" />
           <button disabled={!f.creative || f.reason.trim().length < 10} onClick={() => onDecide(f.creative, f)} className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white disabled:opacity-40">
             Registrar decisão
           </button>
@@ -422,17 +443,17 @@ const LearningTab: React.FC<{ data: any; canWrite: boolean; onCreate: (b: any) =
       ))}
       {canWrite && data.decisions.length > 0 && (
         <div className="grid gap-2 rounded border border-dashed border-slate-700 p-3 md:grid-cols-4">
-          <select aria-label="Decisão de origem" value={f.source_decision_id} onChange={e => setF({ ...f, source_decision_id: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+          <select aria-label="Decisão de origem" value={f.source_decision_id} onChange={e => setF({ ...f, source_decision_id: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             <option value="">decisão de origem…</option>
             {data.decisions.map((d: any) => <option key={d.id} value={d.id}>{d.decision} · {new Date(d.decided_at).toLocaleDateString('pt-BR')}</option>)}
           </select>
-          <select aria-label="Tipo" value={f.type} onChange={e => setF({ ...f, type: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+          <select aria-label="Tipo" value={f.type} onChange={e => setF({ ...f, type: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             {['GANCHO', 'ANGULO', 'OFERTA', 'FORMATO', 'OBJECAO', 'PADRAO_VISUAL', 'PUBLICO', 'FALHA', 'HIPOTESE'].map(v => <option key={v}>{v}</option>)}
           </select>
-          <select aria-label="Status do aprendizado" value={f.status} onChange={e => setF({ ...f, status: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+          <select aria-label="Status do aprendizado" value={f.status} onChange={e => setF({ ...f, status: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100">
             {['VENCEDOR', 'PROMISSORA', 'VALIDADA', 'REJEITADA'].map(v => <option key={v}>{v}</option>)}
           </select>
-          <input aria-label="Aprendizado" placeholder="O que aprendemos?" value={f.statement} onChange={e => setF({ ...f, statement: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 md:col-span-3" />
+          <input aria-label="Aprendizado" placeholder="O que aprendemos?" value={f.statement} onChange={e => setF({ ...f, statement: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100 md:col-span-3" />
           <button disabled={!f.source_decision_id || f.statement.trim().length < 5} onClick={() => onCreate(f)} className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white disabled:opacity-40">
             Registrar aprendizado
           </button>
