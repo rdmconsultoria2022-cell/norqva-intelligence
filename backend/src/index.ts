@@ -119,6 +119,7 @@ import {
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
+import { getShortlist, sendShortlist } from './controllers/shortlistController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
@@ -387,6 +388,9 @@ app.post('/api/launch-plans/:id/answer', requireRole(['ADMIN']), answerLaunchPla
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
 // NORQVA-0017: Base de campanhas (ranking de nichos, produtos, campanhas, conjuntos e anúncios) + importação de histórico
 app.get('/api/intelligence/campaign-base', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCampaignBase);
+// NORQVA-0021 (P1): automatic shortlist (read-only) and operator-triggered send to the Time de IAs
+app.get('/api/intelligence/shortlist', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getShortlist);
+app.post('/api/ai-team/shortlist/send', requireRole(['ADMIN', 'INTELLIGENCE']), sendShortlist);
 app.post('/api/meta/backfill', requireRole(['ADMIN']), startMetaBackfill);
 app.get('/api/meta/backfill/status', requireRole(['ADMIN', 'INTELLIGENCE', 'PERFORMANCE']), getMetaBackfillStatus);
 // NORQVA-0017 (fase 2): mercado europeu (Biblioteca de Anúncios, API oficial)
