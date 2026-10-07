@@ -215,6 +215,10 @@ export interface IntelRow {
   confidence: number;
   classification: IntelClass;
   reason: string;
+  /** First day with insights in the period (YYYY-MM-DD). */
+  first_date?: string | null;
+  /** Days with spend > 0 in the period (daily insight rows). */
+  days_active?: number;
 }
 
 export interface CampaignBaseResponse {
@@ -243,6 +247,8 @@ interface AdFacts {
   creative: IntelRow['creative'];
   targeting: any;
   totals: BaseTotals;
+  firstDate: string | null;
+  daysActive: number;
 }
 
 export class CampaignIntelligenceService {
@@ -273,7 +279,8 @@ export class CampaignIntelligenceService {
                 SUM(mi.purchases) purchases, SUM(mi.purchase_value) purchase_value,
                 SUM(mi.video_3s_views) video_3s_views, SUM(mi.thruplays) thruplays,
                 SUM(mi.video_p25) video_p25, SUM(mi.video_p50) video_p50, SUM(mi.video_p75) video_p75, SUM(mi.video_p100) video_p100,
-                MAX(mi.date_start) latest
+                MAX(mi.date_start) latest, MIN(mi.date_start) first_date,
+                SUM(CASE WHEN mi.spend > 0 THEN 1 ELSE 0 END) days_with_spend
          FROM meta_insights mi
          JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
          LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
@@ -368,7 +375,9 @@ export class CampaignIntelligenceService {
           video_id: a.video_id || null
         },
         targeting: a.targeting_summary || null,
-        totals
+        totals,
+        firstDate: ins?.first_date ? new Date(ins.first_date).toISOString().slice(0, 10) : null,
+        daysActive: f(ins?.days_with_spend)
       });
     }
 
@@ -425,6 +434,9 @@ export class CampaignIntelligenceService {
       const { m, sc } = scoreOf(g.totals, level === 'ad' ? 1 : g.facts.filter(x => x.totals.spend > 0).length);
       const first = g.facts[0];
       const productNames = [...new Set(g.facts.map(x => x.productName).filter((n): n is string => !!n))];
+      const firstDates = g.facts.map(x => x.firstDate).filter((d): d is string => !!d).sort();
+      // Aggregates: the busiest ad's day count (ads of one campaign run in parallel, not in sequence)
+      const daysActive = g.facts.reduce((mx, x) => Math.max(mx, x.daysActive), 0);
       rows.push({
         key: g.head.key,
         level,
@@ -446,7 +458,9 @@ export class CampaignIntelligenceService {
         score: sc.score,
         confidence: sc.confidence,
         classification: sc.classification,
-        reason: sc.reason
+        reason: sc.reason,
+        first_date: firstDates[0] || null,
+        days_active: daysActive
       });
     }
     rows.sort((a, b) => b.score - a.score || b.totals.revenue - a.totals.revenue || b.totals.spend - a.totals.spend);
