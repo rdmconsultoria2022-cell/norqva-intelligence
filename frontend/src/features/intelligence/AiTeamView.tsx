@@ -334,6 +334,7 @@ export const OpportunityDetail: React.FC<{ o: Opportunity }> = ({ o }) => (
         </p>
       </div>
     )}
+    {o.plan?.launch && <LaunchSheetCard l={o.plan.launch} />}
   </div>
 );
 
@@ -369,3 +370,47 @@ export const ValidationCard: React.FC<{ o: Opportunity }> = ({ o }) => {
     </div>
   );
 };
+
+const brlFmt = (v: number | null | undefined) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+
+/** NORQVA-0021 (P3): campaign sheet from the Creative AI, saved as a DRAFT launch plan. */
+export const LaunchSheetCard: React.FC<{ l: any }> = ({ l }) => (
+  <div className="rounded border border-emerald-800/50 bg-emerald-950/10 p-3" data-testid="ai-launch-sheet">
+    <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">Ficha da campanha</span>
+      {l.draft ? (
+        <span className="rounded border border-emerald-600/50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-200">
+          Plano {l.draft.code} · {l.draft.status === 'DRAFT' ? 'rascunho' : l.draft.status}
+        </span>
+      ) : (
+        <span className="text-[10px] text-slate-500">plano de lançamento não gravado</span>
+      )}
+    </div>
+    <div className="grid gap-x-6 gap-y-1 text-slate-300 sm:grid-cols-2">
+      <span>Campanha: <span className="font-mono">{l.campaign_name}</span></span>
+      <span>Objetivo: Vendas · evento Compra</span>
+      <span>Orçamento: {brlFmt(l.daily_budget_brl)}/dia</span>
+      <span>Teto do teste: {brlFmt(l.max_spend_brl)}</span>
+      <span className="sm:col-span-2 break-all">Destino: {l.destination_url}</span>
+    </div>
+    {Array.isArray(l.adsets) && (
+      <ul className="mt-2 space-y-0.5 text-slate-400">
+        {l.adsets.map((a: any) => (
+          <li key={a.name}>
+            Conjunto <span className="font-mono">{a.name}</span>: {brlFmt(a.daily_budget_brl)}/dia · {(a.targeting?.countries || []).join(', ')} · {a.targeting?.age_min}–{a.targeting?.age_max} anos
+            {a.targeting_summary ? ` · ${a.targeting_summary}` : ''} · {(l.ads || []).filter((x: any) => x.adset_name === a.name).length} anúncio(s)
+          </li>
+        ))}
+      </ul>
+    )}
+    {Array.isArray(l.excluded_creatives) && l.excluded_creatives.length > 0 && (
+      <p className="mt-1 text-amber-300/90">Fora do plano (não são vídeo): {l.excluded_creatives.map((x: any) => x.key).join(', ')}</p>
+    )}
+    {Array.isArray(l.pause_rules) && l.pause_rules.length > 0 && <p className="mt-1 text-slate-400">Regras de pausa: {l.pause_rules.join(' · ')}</p>}
+    {l.note && <p className="mt-1 text-amber-300/90">{l.note}</p>}
+    <p className="mt-2 text-slate-500">
+      Nada foi criado na Meta. Os vídeos ficam como TO_BE_FILLED até os criativos serem produzidos e aprovados; a criação (pausada) e a ativação seguem o fluxo
+      de planos de lançamento, com a sua resposta.
+    </p>
+  </div>
+);
