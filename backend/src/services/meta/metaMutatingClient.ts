@@ -1112,6 +1112,37 @@ export class MetaMutatingClient {
    * Used before every create so that a POST whose response was lost (timeout/crash) is adopted
    * instead of being created twice. Fail-closed: if the listing cannot be read, nothing is created.
    */
+  /**
+   * H8 (R-0019-01): campaign spending limit (spend_cap, lifetime, in centavos on the Graph API).
+   * Guards: feature flag + preflight. Never touches protected IDs (checked by the caller and here).
+   */
+  public async setCampaignSpendCap(
+    campaignMetaId: string,
+    capBrl: number,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; campaignId: string; spend_cap_brl: number }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    if (protectedIds.has(String(campaignMetaId))) throw new Error('[SECURITY EXCEPTION]: Protected campaign (CONTROL) cannot be changed.');
+    if (!Number.isFinite(capBrl) || capBrl <= 0) throw new Error('[VALIDATION EXCEPTION]: spend cap must be positive.');
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${campaignMetaId}`, { spend_cap: Math.round(capBrl * 100) });
+    }
+    return { success: true, campaignId: String(campaignMetaId), spend_cap_brl: Math.round(capBrl * 100) / 100 };
+  }
+
+  /** H6: lifetime spend (BRL) of a campaign, read live from the Graph API (GET only). */
+  public async getCampaignLifetimeSpend(campaignMetaId: string): Promise<{ spend: number; effective_status: string | null; spend_cap: number | null }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const ins = await this.callTransportGet(`/${campaignMetaId}/insights`, { fields: 'spend', date_preset: 'maximum' });
+    const rows: any[] = Array.isArray(ins?.data) ? ins.data : [];
+    const spend = rows.reduce((s, r) => s + (parseFloat(r?.spend) || 0), 0);
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'effective_status,spend_cap' });
+    const cap = obj?.spend_cap !== undefined && obj?.spend_cap !== null && String(obj.spend_cap) !== '' ? (parseFloat(obj.spend_cap) || 0) / 100 : null;
+    return { spend: Math.round(spend * 100) / 100, effective_status: obj?.effective_status || null, spend_cap: cap && cap > 0 ? cap : null };
+  }
+
   public async findLaunchObjectsByName(
     context: MetaMutatingSecurityContext,
     parent: 'ACCOUNT' | string,

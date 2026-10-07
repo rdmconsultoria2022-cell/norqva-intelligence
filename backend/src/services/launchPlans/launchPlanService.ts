@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { writeAuditLog } from '../../db/audit';
+import { protectedMetaIds } from '../experiments/protectedIds';
 import {
   MetaMutatingClient,
   MetaMutatingSecurityContext,
@@ -685,6 +686,9 @@ export class LaunchPlanService {
       return { plan: serializeLaunchPlan(r.rows[0]) };
     }
 
+    if (plan.guard_state === 'CAPPED') {
+      throw new LaunchPlanError(409, `O plano ${plan.code} atingiu o teto e foi pausado pelo vigia. Reabrir exige um novo plano com teto novo.`);
+    }
     const resuming = plan.status === 'APPROVED' && !!plan.decision_id && !!plan.experiment_id;
     if (plan.status !== 'AWAITING_OPERATOR' && !resuming) {
       throw new LaunchPlanError(409, `O plano está em ${plan.status}; só é possível responder quando aguarda o operador.`);
@@ -796,6 +800,17 @@ export class LaunchPlanService {
         await client.setEntityStatus(pool, 'ADSET', s.id, 'ACTIVE', ctx);
       }
       assertOwned(owned.campaignId);
+      // H8 (R-0019-01): limite de gastos da campanha na Meta = teto do plano, antes de ativar.
+      // Melhor esforço: se a Meta recusar (ex.: mínimo por moeda), registra e o vigia do teto (H6/H7) segue valendo.
+      try {
+        await client.setCampaignSpendCap(owned.campaignId, input.max_spend_brl, ctx, protectedMetaIds());
+        await pool.query(
+          `UPDATE launch_plans SET spend_cap_applied_brl = $2, spend_cap_status = 'APPLIED', spend_cap_error = NULL, spend_cap_applied_at = NOW() WHERE id = $1`,
+          [id, input.max_spend_brl]
+        );
+      } catch (capErr: any) {
+        await pool.query(`UPDATE launch_plans SET spend_cap_status = 'FAILED', spend_cap_error = $2 WHERE id = $1`, [id, errorText(capErr)]);
+      }
       await client.setEntityStatus(pool, 'CAMPAIGN', owned.campaignId, 'ACTIVE', ctx);
 
       const r = await pool.query(`UPDATE launch_plans SET status = 'ACTIVE', last_error = NULL, updated_at = NOW() WHERE id = $1 RETURNING *`, [id]);

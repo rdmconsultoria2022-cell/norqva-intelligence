@@ -146,6 +146,8 @@ import {
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
+import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from './controllers/experimentGuardController';
+import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
 import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
@@ -383,6 +385,11 @@ app.post('/api/launch-plans', requireRole(['ADMIN']), createLaunchPlan);
 app.get('/api/launch-plans/:id', requireRole(['ADMIN']), getLaunchPlan);
 app.post('/api/launch-plans/:id/create', requireRole(['ADMIN']), createLaunchPlanOnMeta);
 app.post('/api/launch-plans/:id/answer', requireRole(['ADMIN']), answerLaunchPlan);
+// H6/H7/H8 (R-0019-01): vigia do teto do experimento e limite de gastos da campanha
+app.post('/api/launch-plans/guard/run', requireRole(['ADMIN']), runGuardNow);
+app.get('/api/launch-plans/:id/guard', requireRole(['ADMIN']), getPlanGuard);
+app.post('/api/launch-plans/:id/spend-cap', requireRole(['ADMIN']), setPlanSpendCap);
+app.post('/api/automation/experiment-guard/run', automationRunGuard);
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
@@ -488,6 +495,13 @@ async function startServer() {
       registerShutdownHook(() => MetaSchedulerService.getInstance().stop());
     } catch (schedulerErr: any) {
       console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
+    }
+
+    // H6/H7: vigia do teto dos experimentos a cada 15 min (EXPERIMENT_GUARD_ENABLED=false desliga)
+    try {
+      registerShutdownHook(startExperimentGuardScheduler(pool));
+    } catch (e: any) {
+      console.error('[Server] Failed to start experiment guard (non-fatal):', e.message);
     }
 
     // NORQVA-0017: daily EU market collection (MARKET_EU_AUTO_ENABLED=true)

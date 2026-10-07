@@ -29,6 +29,7 @@ import {
 import { DashboardProps } from './dashboardTypes';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
+import { ExperimentGuardCard } from '../acquisition/ExperimentGuardCard';
 
 export function DashboardView({
   currentUser,
@@ -1021,6 +1022,7 @@ export function DashboardView({
         <div className="space-y-6">
           {/* NORQVA-0019: campanhas criadas pausadas aguardando o SIM/NÃO do operador */}
           <LaunchPlansCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
+          <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
 
           {/* 1. Global KPI Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
