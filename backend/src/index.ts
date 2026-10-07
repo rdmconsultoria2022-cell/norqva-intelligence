@@ -119,7 +119,6 @@ import {
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
-import { getAccountCredit } from './controllers/accountCreditController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
@@ -147,6 +146,7 @@ import {
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
+import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
 
