@@ -45,7 +45,7 @@ describe('NORQVA-0017 — Base de campanhas', () => {
   it('loads the ranking, filters by class and expands the detail with the creative', async () => {
     const apiFetch = setup();
     await waitFor(() => expect(screen.getAllByTestId('campaign-base-row')).toHaveLength(2));
-    expect(apiFetch.mock.calls[0][0]).toContain('level=campaign');
+    expect(apiFetch.mock.calls.find(c => String(c[0]).startsWith('/intelligence/campaign-base'))?.[0]).toContain('level=campaign');
     expect(screen.getByText(/1 venda\(s\) no período sem anúncio identificado/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Perdedor \(1\)/ }));

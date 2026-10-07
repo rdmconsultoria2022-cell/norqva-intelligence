@@ -42,7 +42,7 @@ Resultado: lote `CF-<campanha>` (`creative_batches.source = 'FACTORY'`) e criati
 
 ## Modelo
 
-Migration 039 (aditiva): `factory_releases` (chave única `campaign_id + creative_version + is_demo`, `sha256`, Storage, QA, linhagem, manifesto) e `creative_batches.source` aceita `FACTORY`.
+Migration 042 (aditiva): `factory_releases` (chave única `campaign_id + creative_version + is_demo`, `sha256`, Storage, QA, linhagem, manifesto) e `creative_batches.source` aceita `FACTORY`.
 
 ## Lado da Factory
 

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { beginDecision, decisionContextFromRequest, DecisionAuditError, metaIdsOfPlan } from '../db/decisionEvents';
 import {
   MetaMutatingClient,
   MetaMutatingSecurityContext,
@@ -121,19 +122,59 @@ export async function getMetaControlStatus(req: AuthenticatedRequest, res: Respo
   }
 }
 
+/** H1: registra a decisão antes de executar; 503 sem execução se a auditoria estiver indisponível. */
+async function beginEntityDecision(req: AuthenticatedRequest, res: Response, action: string, decision: string, riskReducing = false) {
+  try {
+    return await beginDecision(
+      req.app.get('db'),
+      decisionContextFromRequest(req),
+      { action, decision: decision.slice(0, 60) || null, metaIds: [String(req.params.id || '')] },
+      { riskReducing }
+    );
+  } catch (err) {
+    if (err instanceof DecisionAuditError) {
+      res.status(503).json({ error: err.message });
+      return null;
+    }
+    console.error('[DECISION AUDIT] unexpected error before execution — nothing executed', err);
+    res.status(500).json({ error: 'Falha ao registrar a decisão. Nada foi executado.' });
+    return null;
+  }
+}
+
 export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
   const status = String(req.body?.status || '').toUpperCase();
-  if (!entityType) return res.status(400).json({ error: 'Tipo inválido. Use campaign, adset ou ad.' });
-  if (status !== 'ACTIVE' && status !== 'PAUSED') return res.status(400).json({ error: 'Status inválido. Use ACTIVE ou PAUSED.' });
+  // Fail-safe só para PAUSED de um tipo válido: falha de auditoria bloqueia ações que aumentam
+  // exposição, mas não impede uma pausa de emergência. ACTIVE (ou qualquer outro valor) é fail-closed.
+  const isEmergencyPause = Boolean(entityType) && status === 'PAUSED';
+  const decision = await beginEntityDecision(req, res, 'META_ENTITY_STATUS', `${entityType || String(req.params.entityType || '').slice(0, 20)}:${status}`, isEmergencyPause);
+  if (!decision) return;
+  if (!entityType || (status !== 'ACTIVE' && status !== 'PAUSED')) {
+    const error = !entityType ? 'Tipo inválido. Use campaign, adset ou ad.' : 'Status inválido. Use ACTIVE ou PAUSED.';
+    await decision.finish('REJECTED', { result: { http_status: 400 }, error });
+    return res.status(400).json({ error });
+  }
+  // H7: objetos de um plano que atingiu o teto (CAPPED) não podem ser reativados por aqui.
+  if (status === 'ACTIVE') {
+    const capped = await pool.query(`SELECT code, meta_ids FROM launch_plans WHERE guard_state = 'CAPPED'`).catch(() => ({ rows: [] as any[] }));
+    const hit = capped.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
+    if (hit) {
+      const error = `Este objeto pertence ao plano ${hit.code}, que atingiu o teto e foi pausado pelo vigia. Reabrir exige um novo plano com teto novo.`;
+      await decision.finish('REJECTED', { result: { http_status: 409 }, error });
+      return res.status(409).json({ error });
+    }
+  }
 
   try {
     const result = await clientFactory().setEntityStatus(pool, entityType, String(req.params.id), status, contextFor(req));
-    return res.status(200).json(result);
+    const recorded = await decision.finish('EXECUTED', { result });
+    return res.status(200).json(recorded ? result : { ...(result as any), audit_incomplete: true });
   } catch (err: any) {
     const t = translateMetaControlError(err);
     if (t.status === 500) console.error('[META CONTROL] status change error', err);
+    await decision.finish(t.status >= 500 ? 'FAILED' : 'REJECTED', { result: { http_status: t.status }, error: err?.message || t.error });
     return res.status(t.status).json({ error: t.error });
   }
 }
@@ -141,18 +182,52 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
 export async function setMetaEntityDailyBudget(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
-  if (entityType !== 'CAMPAIGN' && entityType !== 'ADSET') {
-    return res.status(400).json({ error: 'Orçamento só pode ser alterado em campanha ou conjunto.' });
-  }
   const amount = Number(req.body?.daily_budget);
-  if (!Number.isFinite(amount)) return res.status(400).json({ error: 'Informe o orçamento diário em reais.' });
+  const decision = await beginEntityDecision(req, res, 'META_ENTITY_DAILY_BUDGET', `${entityType || String(req.params.entityType || '').slice(0, 20)}:${String(req.body?.daily_budget ?? '').slice(0, 20)}`);
+  if (!decision) return;
+  if (entityType !== 'CAMPAIGN' && entityType !== 'ADSET') {
+    const error = 'Orçamento só pode ser alterado em campanha ou conjunto.';
+    await decision.finish('REJECTED', { result: { http_status: 400 }, error });
+    return res.status(400).json({ error });
+  }
+  if (!Number.isFinite(amount)) {
+    const error = 'Informe o orçamento diário em reais.';
+    await decision.finish('REJECTED', { result: { http_status: 400 }, error });
+    return res.status(400).json({ error });
+  }
 
   try {
     const result = await clientFactory().setDailyBudget(pool, entityType, String(req.params.id), amount, contextFor(req));
-    return res.status(200).json(result);
+    const recorded = await decision.finish('EXECUTED', { result });
+    return res.status(200).json(recorded ? result : { ...(result as any), audit_incomplete: true });
   } catch (err: any) {
     const t = translateMetaControlError(err);
     if (t.status === 500) console.error('[META CONTROL] budget change error', err);
+    await decision.finish(t.status >= 500 ? 'FAILED' : 'REJECTED', { result: { http_status: t.status }, error: err?.message || t.error });
     return res.status(t.status).json({ error: t.error });
+  }
+}
+
+const AUDIT_ID = /^\d{6,25}$/;
+const auditIds = (v: unknown): string[] =>
+  String(v || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+/** GET /api/meta-control/audit?campaigns=..&adsets=..&ads=.. — leitura ao vivo na Graph API (ADMIN, somente GET). */
+export async function getMetaLiveAudit(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (isDemoReq(req)) return res.status(400).json({ error: 'Auditoria ao vivo só existe no modo real.' });
+    const input = { campaigns: auditIds(req.query.campaigns), adsets: auditIds(req.query.adsets), ads: auditIds(req.query.ads) };
+    const all = [...input.campaigns, ...input.adsets, ...input.ads];
+    if (all.length === 0 || all.length > 20 || all.some((id) => !AUDIT_ID.test(id))) {
+      return res.status(400).json({ error: 'Informe de 1 a 20 IDs numéricos da Meta em campaigns, adsets e ads.' });
+    }
+    const result = await clientFactory().auditLive(input);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[META CONTROL] live audit error', err);
+    return res.status(500).json({ error: 'Falha na auditoria ao vivo.' });
   }
 }

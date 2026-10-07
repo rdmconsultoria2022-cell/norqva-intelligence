@@ -43,6 +43,7 @@ import { AccessRecoveryView } from './features/delivery/AccessRecoveryView';
 import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
 import { CampaignBaseView } from './features/intelligence/CampaignBaseView';
+import { AccountCreditView } from './features/meta-credit/AccountCreditView';
 import { AiTeamView } from './features/intelligence/AiTeamView';
 import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
@@ -753,6 +754,10 @@ export default function App() {
 
           {activeTab === 'brands' && (
             <BrandsView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
+          )}
+
+          {activeTab === 'meta-credit' && (
+            <AccountCreditView currentUser={currentUser} isDemoView={isDemoView} apiFetch={apiFetch} showError={showError} />
           )}
 
           {activeTab === 'campaign-base' && (

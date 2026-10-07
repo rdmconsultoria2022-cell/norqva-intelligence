@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { OpportunityService, OpportunityError } from '../services/aiTeam/opportunityService';
+import { OpportunityService, OpportunityError, TASK_KINDS, TaskKind } from '../services/aiTeam/opportunityService';
+import { decisionContextFromRequest, DecisionAuditError } from '../db/decisionEvents';
 import { automationTokenValid } from '../services/creative/adjustmentService';
 import { CreativeFactoryError } from '../services/creative/creativeFactoryService';
 
@@ -40,9 +41,9 @@ export async function createAiOpportunity(req: AuthenticatedRequest, res: Respon
 export async function dispatchAiOpportunity(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const kind = String(req.body?.kind || '').toUpperCase();
-  if (kind !== 'EVALUATE' && kind !== 'PLAN') return res.status(400).json({ error: 'kind deve ser EVALUATE ou PLAN.' });
+  if (!TASK_KINDS.includes(kind as TaskKind)) return res.status(400).json({ error: 'kind deve ser EVALUATE, VALIDATE ou PLAN.' });
   try {
-    return res.status(200).json(await service.dispatch(pool, String(req.params.id), kind, isDemoReq(req)));
+    return res.status(200).json(await service.dispatch(pool, String(req.params.id), kind as TaskKind, isDemoReq(req)));
   } catch (err) {
     return fail(res, err, 'dispatch');
   }
@@ -54,6 +55,17 @@ export async function decideAiOpportunity(req: AuthenticatedRequest, res: Respon
     return res.status(200).json(await service.decide(pool, String(req.params.id), String(req.body?.decision || ''), req.user?.id || null));
   } catch (err) {
     return fail(res, err, 'decide');
+  }
+}
+
+/** NORQVA-0021 (P2): the owner overrides the validator's veto with a written justification (ADMIN). */
+export async function overrideAiValidation(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    return res.status(200).json(await service.overrideValidation(pool, String(req.params.id), req.body?.justification, decisionContextFromRequest(req as any)));
+  } catch (err) {
+    if (err instanceof DecisionAuditError) return res.status(503).json({ error: err.message });
+    return fail(res, err, 'override');
   }
 }
 
@@ -100,5 +112,14 @@ export async function automationOpportunityPlan(req: Request, res: Response) {
     return res.status(200).json(await service.reportPlan(req.app.get('db'), String(req.params.id), req.body || {}));
   } catch (err) {
     return fail(res, err, 'automation plan');
+  }
+}
+
+export async function automationOpportunityValidation(req: Request, res: Response) {
+  if (!authorized(req, res)) return;
+  try {
+    return res.status(200).json(await service.reportValidation(req.app.get('db'), String(req.params.id), req.body || {}));
+  } catch (err) {
+    return fail(res, err, 'automation validation');
   }
 }

@@ -1112,6 +1112,37 @@ export class MetaMutatingClient {
    * Used before every create so that a POST whose response was lost (timeout/crash) is adopted
    * instead of being created twice. Fail-closed: if the listing cannot be read, nothing is created.
    */
+  /**
+   * H8 (R-0019-01): campaign spending limit (spend_cap, lifetime, in centavos on the Graph API).
+   * Guards: feature flag + preflight. Never touches protected IDs (checked by the caller and here).
+   */
+  public async setCampaignSpendCap(
+    campaignMetaId: string,
+    capBrl: number,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; campaignId: string; spend_cap_brl: number }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    if (protectedIds.has(String(campaignMetaId))) throw new Error('[SECURITY EXCEPTION]: Protected campaign (CONTROL) cannot be changed.');
+    if (!Number.isFinite(capBrl) || capBrl <= 0) throw new Error('[VALIDATION EXCEPTION]: spend cap must be positive.');
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${campaignMetaId}`, { spend_cap: Math.round(capBrl * 100) });
+    }
+    return { success: true, campaignId: String(campaignMetaId), spend_cap_brl: Math.round(capBrl * 100) / 100 };
+  }
+
+  /** H6: lifetime spend (BRL) of a campaign, read live from the Graph API (GET only). */
+  public async getCampaignLifetimeSpend(campaignMetaId: string): Promise<{ spend: number; effective_status: string | null; spend_cap: number | null }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const ins = await this.callTransportGet(`/${campaignMetaId}/insights`, { fields: 'spend', date_preset: 'maximum' });
+    const rows: any[] = Array.isArray(ins?.data) ? ins.data : [];
+    const spend = rows.reduce((s, r) => s + (parseFloat(r?.spend) || 0), 0);
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'effective_status,spend_cap' });
+    const cap = obj?.spend_cap !== undefined && obj?.spend_cap !== null && String(obj.spend_cap) !== '' ? (parseFloat(obj.spend_cap) || 0) / 100 : null;
+    return { spend: Math.round(spend * 100) / 100, effective_status: obj?.effective_status || null, spend_cap: cap && cap > 0 ? cap : null };
+  }
+
   public async findLaunchObjectsByName(
     context: MetaMutatingSecurityContext,
     parent: 'ACCOUNT' | string,
@@ -1438,6 +1469,46 @@ export class MetaMutatingClient {
     const accountId = this.adAccountId.replace(/^act_/, '');
     await this.callTransportPost(`/${pixelId}/shared_accounts`, { account_id: accountId, business: businessId });
     return true;
+  }
+
+  /**
+   * Auditoria ao vivo, SOMENTE LEITURA: consulta a Graph API (GET) para os IDs informados, sem passar pelo
+   * banco. Nunca faz POST. Erros por objeto são devolvidos no próprio item (não interrompem a auditoria).
+   */
+  public async auditLive(input: { campaigns: string[]; adsets: string[]; ads: string[] }): Promise<Record<string, any>> {
+    const safeGet = async (path: string, params: Record<string, string>) => {
+      try {
+        return await this.callTransportGet(path, params);
+      } catch (err: any) {
+        return { error: String(err?.message || err).slice(0, 500) };
+      }
+    };
+    const insightsFields = 'spend,impressions,reach,clicks,inline_link_clicks,actions';
+    const insights = (id: string) => safeGet(`/${id}/insights`, { fields: insightsFields, date_preset: 'maximum' });
+    const out: Record<string, any> = { fetched_at: new Date().toISOString(), source: 'META_GRAPH_API_LIVE' };
+
+    out.campaigns = await Promise.all(input.campaigns.map(async (id) => ({
+      object: await safeGet(`/${id}`, { fields: 'id,name,status,effective_status,configured_status,objective,daily_budget,lifetime_budget,spend_cap,created_time,updated_time' }),
+      insights: await insights(id)
+    })));
+    out.adsets = await Promise.all(input.adsets.map(async (id) => ({
+      object: await safeGet(`/${id}`, { fields: 'id,name,status,effective_status,configured_status,campaign_id,daily_budget,lifetime_budget,optimization_goal,created_time,updated_time' }),
+      insights: await insights(id)
+    })));
+    out.ads = await Promise.all(input.ads.map(async (id) => {
+      const ad = await safeGet(`/${id}`, {
+        fields: 'id,name,status,effective_status,configured_status,campaign_id,adset_id,created_time,updated_time,creative{id,name,object_story_spec,asset_feed_spec,url_tags,video_id,call_to_action_type,title,body,link_url}'
+      });
+      const spec = ad?.creative?.object_story_spec?.video_data || {};
+      const videoId = spec.video_id || ad?.creative?.video_id || null;
+      const video = videoId ? await safeGet(`/${videoId}`, { fields: 'id,title,length,created_time,status' }) : null;
+      return { object: ad, video, insights: await insights(id) };
+    }));
+    const act = this.adAccountId ? (this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`) : null;
+    out.account = act
+      ? await safeGet(`/${act}`, { fields: 'id,name,account_status,disable_reason,currency,amount_spent,spend_cap,balance,funding_source_details' })
+      : { error: 'META_AD_ACCOUNT_ID ausente' };
+    return out;
   }
 
   private async callTransportGet(endpoint: string, params: Record<string, string>): Promise<any> {

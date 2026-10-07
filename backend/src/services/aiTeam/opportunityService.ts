@@ -7,6 +7,9 @@ import { breakevenByProduct } from '../alerts/adAlertService';
 import { writeAuditLog } from '../../db/audit';
 import { CreativeBatch, BatchCreative } from '../../data/creativeBatches';
 import { SecondOpinionProvider, gptSecondOpinion } from './gptSecondOpinion';
+import { beginDecision, DecisionContext } from '../../db/decisionEvents';
+import { buildLaunchFromSheet, LaunchSheetError } from './launchSheet';
+import { LaunchPlanService, LaunchPlanError } from '../launchPlans/launchPlanService';
 
 // NORQVA-0017 (fase 3): AI team. An opportunity (from our account ranking, the EU market or a manual brief)
 // is evaluated by Claude (routine) with a GPT second opinion, then Claude builds a campaign plan whose
@@ -21,6 +24,24 @@ export class OpportunityError extends Error {
 export const OPP_STATUSES = ['CAPTADA', 'EM_AVALIACAO', 'AVALIADA', 'EM_PLANEJAMENTO', 'PLANO_PRONTO', 'APROVADA', 'DESCARTADA'] as const;
 const VERDICTS = ['SEGUIR', 'TESTAR', 'DESCARTAR'] as const;
 const FORMATS = ['VIDEO', 'IMAGE', 'CAROUSEL'] as const;
+export type TaskKind = 'EVALUATE' | 'VALIDATE' | 'PLAN';
+export const TASK_KINDS: TaskKind[] = ['EVALUATE', 'VALIDATE', 'PLAN'];
+
+// NORQVA-0021 (P2): validator gate — Claude in critic mode challenges the analysis with a fixed checklist.
+export const VALIDATION_VERDICTS = ['APROVA', 'REPROVA', 'PEDE_EVIDENCIA'] as const;
+export const VALIDATION_CHECKS: { key: string; label: string }[] = [
+  { key: 'AMOSTRA', label: 'Tamanho da amostra e confiança dos dados' },
+  { key: 'CONTA_FECHA', label: 'CPA alcançável × CPA de equilíbrio (a conta fecha?)' },
+  { key: 'CLAIMS', label: 'Afirmações cobertas por claims VERIFIED do produto' },
+  { key: 'SATURACAO', label: 'Saturação do nicho, do público e do criativo' },
+  { key: 'ATRIBUICAO', label: 'Confiabilidade da atribuição das vendas' },
+  { key: 'CONCORRENCIA', label: 'Concorrência e diferenciação da oferta' }
+];
+const CHECK_STATUSES = ['OK', 'ALERTA', 'FALHA'] as const;
+export const OVERRIDE_MIN_CHARS = 20;
+
+/** The plan may only be built after the validator approved, or the owner overrode the veto. */
+export const validationPassed = (o: any) => o?.validation_verdict === 'APROVA' || !!o?.validation_override;
 const PUBLIC_API = () => (process.env.NORQVA_PUBLIC_API_URL || 'https://norqva-staging-api.onrender.com').replace(/\/+$/, '');
 
 const clip = (v: unknown, n: number) => (v === undefined || v === null ? null : String(v).trim().slice(0, n) || null);
@@ -42,7 +63,8 @@ export class OpportunityService {
     private secondOpinion: SecondOpinionProvider = gptSecondOpinion,
     private factory = new CreativeFactoryService(),
     private intel = new CampaignIntelligenceService(),
-    private market = new MarketEuService()
+    private market = new MarketEuService(),
+    private launchPlans = new LaunchPlanService()
   ) {}
 
   async list(pool: Pool, isDemo: boolean) {
@@ -109,11 +131,20 @@ export class OpportunityService {
   }
 
   /** Fires the Claude routine for EVALUATE or PLAN; EVALUATE also asks GPT for a second opinion. */
-  async dispatch(pool: Pool, id: string, kind: 'EVALUATE' | 'PLAN', isDemo: boolean) {
+  async dispatch(pool: Pool, id: string, kind: TaskKind, isDemo: boolean) {
     const o = await this.get(pool, id);
-    if (kind === 'PLAN' && !['AVALIADA', 'EM_PLANEJAMENTO', 'PLANO_PRONTO'].includes(o.status)) throw new OpportunityError(409, 'Peça a avaliação antes de montar o plano.');
+    if (!TASK_KINDS.includes(kind)) throw new OpportunityError(400, 'kind deve ser EVALUATE, VALIDATE ou PLAN.');
     if (['APROVADA', 'DESCARTADA'].includes(o.status)) throw new OpportunityError(409, 'Oportunidade já decidida.');
-    const nextStatus = kind === 'EVALUATE' ? 'EM_AVALIACAO' : 'EM_PLANEJAMENTO';
+    if (kind === 'VALIDATE' && o.status !== 'AVALIADA') throw new OpportunityError(409, 'Peça a avaliação antes da validação.');
+    if (kind === 'PLAN' && !['AVALIADA', 'EM_PLANEJAMENTO', 'PLANO_PRONTO'].includes(o.status)) throw new OpportunityError(409, 'Peça a avaliação antes de montar o plano.');
+    if (kind === 'PLAN' && !validationPassed(o)) {
+      throw new OpportunityError(409, 'O validador ainda não aprovou esta oportunidade. Peça a validação ou derrube o veto com justificativa.');
+    }
+    const nextStatus = kind === 'EVALUATE' ? 'EM_AVALIACAO' : kind === 'VALIDATE' ? 'AVALIADA' : 'EM_PLANEJAMENTO';
+    // A new analysis or a new validation supersedes the previous verdict and any override of it
+    if (kind === 'EVALUATE' || kind === 'VALIDATE') {
+      await this.patch(pool, id, { validation_verdict: null, validation_override: null });
+    }
 
     if (kind === 'EVALUATE') {
       // Second opinion runs in the background; failures are recorded, never block the flow
@@ -123,7 +154,8 @@ export class OpportunityService {
     if (isDemo || !routineConfigured()) {
       return this.patch(pool, id, {
         status: nextStatus,
-        task_kind: kind,
+        task_kind: kind === 'VALIDATE' ? null : kind,
+        task_stage: kind,
         task_status: 'NOT_CONFIGURED',
         task_response: isDemo ? 'Modo demonstração: não enviado ao Claude.' : 'Automação não configurada (CLAUDE_ROUTINE_FIRE_URL / CLAUDE_ROUTINE_TOKEN).'
       });
@@ -131,9 +163,9 @@ export class OpportunityService {
     const text = ['NORQVA_OPPORTUNITY_TASK', `opportunity_id: ${o.id}`, `kind: ${kind}`, `human_id: ${o.human_id}`, `api_base: ${PUBLIC_API()}`].join('\n');
     const fired = await this.firer(text);
     if (!fired.ok) {
-      return this.patch(pool, id, { task_kind: kind, task_status: 'FAILED', task_response: `Não consegui acionar o Claude: ${fired.error || 'erro'}` });
+      return this.patch(pool, id, { task_kind: kind === 'VALIDATE' ? null : kind, task_stage: kind, task_status: 'FAILED', task_response: `Não consegui acionar o Claude: ${fired.error || 'erro'}` });
     }
-    const out = await this.patch(pool, id, { status: nextStatus, task_kind: kind, task_status: 'DISPATCHED', task_response: null, session_url: fired.sessionUrl || null });
+    const out = await this.patch(pool, id, { status: nextStatus, task_kind: kind === 'VALIDATE' ? null : kind, task_stage: kind, task_status: 'DISPATCHED', task_response: null, session_url: fired.sessionUrl || null });
     await writeAuditLog(pool, null, 'OPPORTUNITY_DISPATCHED', `${o.human_id} → Claude (${kind})`, null, fired.sessionUrl || null, isDemo).catch(() => {});
     return out;
   }
@@ -171,7 +203,16 @@ export class OpportunityService {
 
   async taskForAutomation(pool: Pool, id: string) {
     const o = await this.get(pool, id);
-    return { opportunity: pick(o), evidence: o.evidence, second_opinion: o.second_opinion, evaluation: o.evaluation, context: await this.context(pool, o, o.is_demo) };
+    return {
+      opportunity: pick(o),
+      evidence: o.evidence,
+      second_opinion: o.second_opinion,
+      evaluation: o.evaluation,
+      validation: o.validation || null,
+      validation_override: o.validation_override || null,
+      validation_checklist: VALIDATION_CHECKS,
+      context: await this.context(pool, o, o.is_demo)
+    };
   }
 
   async reportStatus(pool: Pool, id: string, status: string, response: string | null) {
@@ -216,6 +257,7 @@ export class OpportunityService {
   async reportPlan(pool: Pool, id: string, body: any) {
     const o = await this.get(pool, id);
     if (!['EM_PLANEJAMENTO', 'AVALIADA', 'PLANO_PRONTO'].includes(o.status)) throw new OpportunityError(409, 'A oportunidade não está em planejamento.');
+    if (!validationPassed(o)) throw new OpportunityError(409, 'O validador ainda não aprovou esta oportunidade.');
     const productId = clip(body?.product_id, 64) || o.product_id;
     if (!productId) throw new OpportunityError(400, 'Informe product_id.');
     const product = (await pool.query(`SELECT id, human_id FROM products WHERE id = $1`, [productId])).rows[0];
@@ -263,7 +305,23 @@ export class OpportunityService {
       };
     });
 
-    const plan = {
+    // NORQVA-0021 (P3): campaign sheet → DRAFT launch plan (validated before anything is written)
+    let launch: ReturnType<typeof buildLaunchFromSheet> | null = null;
+    if (body?.launch !== undefined && body?.launch !== null) {
+      try {
+        launch = buildLaunchFromSheet(body.launch, {
+          opportunityHumanId: o.human_id,
+          offerHumanId: String(offer.human_id),
+          creatives: batchCreatives,
+          offerBaseUrl: process.env.NORQVA_PUBLIC_OFFER_BASE_URL
+        });
+      } catch (err) {
+        if (err instanceof LaunchSheetError) throw new OpportunityError(400, err.message);
+        throw err;
+      }
+    }
+
+    const plan: Record<string, any> = {
       by: 'Claude',
       product_id: productId,
       offer_id: offer.id,
@@ -291,6 +349,23 @@ export class OpportunityService {
     );
     const imported = await this.factory.importBatchData(pool, batch, null, o.is_demo);
     await pool.query(`UPDATE creative_batches SET imported_at = NOW() WHERE code = $1 AND is_demo = $2`, [code, o.is_demo]);
+
+    if (launch) {
+      let draft: { id: string; code: string; status: string } | null = null;
+      let note: string | null = null;
+      if (o.is_demo) {
+        note = 'Modo demonstração: ficha validada, plano de lançamento não gravado.';
+      } else {
+        try {
+          const r = await this.launchPlans.createDraft(pool, launch.input, null);
+          draft = { id: String(r.plan.id), code: r.plan.code, status: r.plan.status };
+        } catch (err) {
+          if (err instanceof LaunchPlanError) note = `Plano de lançamento não gravado: ${err.message}`;
+          else throw err;
+        }
+      }
+      plan.launch = { ...launch.sheet, draft, note };
+    }
     const out = await this.patch(pool, id, {
       status: 'PLANO_PRONTO',
       plan: JSON.stringify(plan),
@@ -301,6 +376,72 @@ export class OpportunityService {
     });
     await writeAuditLog(pool, null, 'OPPORTUNITY_PLANNED', `${o.human_id}: lote ${code} com ${imported.creativesCreated} criativos em rascunho`, null, null, o.is_demo).catch(() => {});
     return { opportunity: out, batch: imported };
+  }
+
+  /** Validator (Claude, critic mode) verdict. APROVA is refused when any checklist item failed. */
+  async reportValidation(pool: Pool, id: string, body: any) {
+    const o = await this.get(pool, id);
+    if (o.status !== 'AVALIADA') throw new OpportunityError(409, 'A oportunidade precisa estar avaliada para ser validada.');
+    if (!o.evaluation) throw new OpportunityError(409, 'Não há avaliação do analista para validar.');
+    const verdict = String(body?.verdict || '').toUpperCase();
+    if (!(VALIDATION_VERDICTS as readonly string[]).includes(verdict)) throw new OpportunityError(400, `verdict deve ser ${VALIDATION_VERDICTS.join(', ')}.`);
+    const summary = clip(body?.summary, 4000);
+    if (!summary) throw new OpportunityError(400, 'Envie o resumo (summary).');
+    const raw: any[] = Array.isArray(body?.checklist) ? body.checklist : [];
+    const checklist = VALIDATION_CHECKS.map(c => {
+      const item = raw.find(x => String(x?.key || '').toUpperCase() === c.key);
+      const status = String(item?.status || '').toUpperCase();
+      if (!item || !(CHECK_STATUSES as readonly string[]).includes(status)) {
+        throw new OpportunityError(400, `checklist: informe ${c.key} com status OK, ALERTA ou FALHA.`);
+      }
+      return { key: c.key, label: c.label, status, note: clip(item.note, 600) };
+    });
+    const failed = checklist.filter(c => c.status === 'FALHA').map(c => c.key);
+    if (verdict === 'APROVA' && failed.length) throw new OpportunityError(400, `Não é possível aprovar com itens em FALHA: ${failed.join(', ')}.`);
+    const requiredEvidence = list(body?.required_evidence, 10);
+    if (verdict === 'PEDE_EVIDENCIA' && requiredEvidence.length === 0) throw new OpportunityError(400, 'Liste em required_evidence o que precisa ser trazido.');
+    const validation = {
+      by: 'Claude (validador crítico)',
+      verdict,
+      summary,
+      checklist,
+      questions: list(body?.questions, 10),
+      required_evidence: requiredEvidence,
+      at: new Date().toISOString()
+    };
+    const out = await this.patch(pool, id, {
+      validation: JSON.stringify(validation),
+      validation_verdict: verdict,
+      validation_override: null,
+      task_status: 'DONE',
+      task_response: clip(summary, 500)
+    });
+    await writeAuditLog(pool, null, 'OPPORTUNITY_VALIDATED', `${o.human_id}: ${verdict}${failed.length ? ` (falhas: ${failed.join(', ')})` : ''}`, null, null, o.is_demo).catch(() => {});
+    return out;
+  }
+
+  /**
+   * Owner overrides the validator's veto (REPROVA / PEDE_EVIDENCIA) with a written justification.
+   * Recorded in decision_events (fail-closed: if the audit cannot be written, nothing changes).
+   */
+  async overrideValidation(pool: Pool, id: string, justification: unknown, ctx: DecisionContext) {
+    const o = await this.get(pool, id);
+    const text = clip(justification, 2000);
+    if (!text || text.length < OVERRIDE_MIN_CHARS) throw new OpportunityError(400, `Escreva a justificativa (mínimo ${OVERRIDE_MIN_CHARS} caracteres).`);
+    if (o.status !== 'AVALIADA') throw new OpportunityError(409, 'Só é possível derrubar o veto de uma oportunidade avaliada.');
+    if (!['REPROVA', 'PEDE_EVIDENCIA'].includes(o.validation_verdict)) throw new OpportunityError(409, 'Não há veto do validador para derrubar.');
+    if (o.validation_override) throw new OpportunityError(409, 'O veto já foi derrubado.');
+    const handle = await beginDecision(pool, ctx, { action: 'OPPORTUNITY_VALIDATION_OVERRIDE', decision: `OVERRIDE:${o.validation_verdict}`, planCode: o.human_id });
+    try {
+      const override = { by: ctx.userEmail || ctx.userId, user_id: ctx.userId, justification: text, overridden_verdict: o.validation_verdict, correlation_id: handle.correlationId, at: new Date().toISOString() };
+      const out = await this.patch(pool, id, { validation_override: JSON.stringify(override) });
+      const recorded = await handle.finish('EXECUTED', { result: { opportunity_id: o.id, human_id: o.human_id, overridden_verdict: o.validation_verdict, justification: text } });
+      await writeAuditLog(pool, ctx.userId, 'OPPORTUNITY_VALIDATION_OVERRIDE', `${o.human_id}: veto ${o.validation_verdict} derrubado pelo dono`, null, null, o.is_demo).catch(() => {});
+      return { ...out, audit_incomplete: !recorded || undefined };
+    } catch (err) {
+      await handle.finish('FAILED', { error: err });
+      throw err;
+    }
   }
 
   async decide(pool: Pool, id: string, decision: string, userId: string | null) {

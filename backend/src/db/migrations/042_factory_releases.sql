@@ -1,4 +1,4 @@
--- NORQVA-0020: ponte Creative Factory → NORQVA. Somente aditiva.
+-- Migration 042 — NORQVA-0020: ponte Creative Factory → NORQVA. Somente aditiva.
 -- Cada release certificado da Factory vira um criativo DRAFT na Fábrica do NORQVA.
 -- A certificação da Factory viaja como evidência, e a aprovação operacional continua no NORQVA (D-0011).
 

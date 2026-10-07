@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Database, RefreshCw, History, Trophy, TrendingUp, FlaskConical, XCircle, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { useGlobalPeriod, periodQuery, periodLabel } from '../../lib/globalPeriod';
 import { MarketEuPanel } from './MarketEuPanel';
+import { ShortlistPanel } from './ShortlistPanel';
 
 // NORQVA-0017 (fase 1): Base de campanhas — ranking of niches, products, campaigns, ad sets and ads
 // of our Meta account, with score (0–100), confidence and classification (BB-B01 test rules).
@@ -238,6 +239,15 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
           Última importação: {backfill.done} janelas ok{backfill.failed ? `, ${backfill.failed} com falha (${backfill.lastError})` : ''}.
         </div>
       )}
+
+      <ShortlistPanel
+        mode={mode}
+        periodQs={periodQuery(globalPeriod)}
+        canSend={canCreateOpp}
+        apiFetch={apiFetch}
+        showError={showError}
+        showSuccess={showSuccess}
+      />
 
       <div className="flex flex-wrap gap-1 border-b border-slate-800" role="tablist">
         {LEVELS.map(l => (

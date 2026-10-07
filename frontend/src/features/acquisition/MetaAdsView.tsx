@@ -17,6 +17,7 @@ import {
   PerfItem
 } from './MetaResults';
 import { LaunchPlansCard } from './LaunchPlansCard';
+import { ExperimentGuardCard } from './ExperimentGuardCard';
 import { 
   TrendingUp, 
   Layers, 
@@ -291,6 +292,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
       {/* NORQVA-0019: campanhas criadas pausadas aguardando o SIM/NÃO do operador */}
       <LaunchPlansCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
+      <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
 
       {/* Governance banner: read-only for non-admins; control status for admins (NORQVA-0006) */}
       {isAdmin && control.status ? (

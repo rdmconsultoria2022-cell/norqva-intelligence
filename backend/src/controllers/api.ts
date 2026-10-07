@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { anonymizeIp } from '../utils/ipPrivacy';
 import { Pool, PoolClient } from 'pg';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -4014,7 +4015,8 @@ export async function requestOrderRecovery(req: any, res: Response) {
     const tokenHash = crypto.createHash('sha256').update(rawRecoveryToken).digest('hex');
     const ttlHours = parseInt(process.env.RECOVERY_TOKEN_TTL_HOURS || '72', 10);
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
-    const clientIp = (req.ip || req.socket?.remoteAddress || 'unknown_ip').substring(0, 64);
+    // H1.1 (privacidade): só o prefixo de rede anonimizado (/24 ou /48), nunca o IP completo do comprador.
+    const clientIp = anonymizeIp(req.ip || req.socket?.remoteAddress || null);
 
     await pool.query(
       `INSERT INTO order_recovery_tokens (order_id, token_hash, status, expires_at, created_ip)
@@ -4160,7 +4162,8 @@ export async function claimOrderRecovery(req: any, res: Response) {
     const freshSessionToken = crypto.randomBytes(32).toString('hex');
     const freshSessionTokenHash = crypto.createHash('sha256').update(freshSessionToken).digest('hex');
     const sessionTokenExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-    const clientIp = (req.ip || req.socket?.remoteAddress || 'unknown_ip').substring(0, 45);
+    // H1.1 (privacidade): só o prefixo de rede anonimizado (/24 ou /48), nunca o IP completo do comprador.
+    const clientIp = anonymizeIp(req.ip || req.socket?.remoteAddress || null);
 
     await client.query(
       `INSERT INTO order_customer_sessions (order_id, session_token_hash, status, expires_at, created_ip)

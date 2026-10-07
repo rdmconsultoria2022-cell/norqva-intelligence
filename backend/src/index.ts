@@ -121,10 +121,13 @@ import {
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
+import { getShortlist, sendShortlist } from './controllers/shortlistController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
-import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan } from './controllers/aiTeamController';
-import { getMetaControlStatus, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
+import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan, automationOpportunityValidation, overrideAiValidation } from './controllers/aiTeamController';
+import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
+import { getDecisionEvents } from './controllers/decisionEventsController';
+import { purgeDecisionEventPii } from './db/decisionEvents';
 import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
@@ -145,6 +148,9 @@ import {
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
+import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from './controllers/experimentGuardController';
+import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
+import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
 
@@ -357,6 +363,8 @@ app.get('/api/admin/meta/test-insights-probe', requireRole(['ADMIN']), testInsig
 app.get('/api/meta/connection/status', requireRole(['ADMIN']), getMetaConnectionStatus);
 app.post('/api/meta/connection/validate', requireRole(['ADMIN']), validateMetaConnection);
 app.get('/api/meta/ad-accounts', requireRole(['ADMIN']), getMetaAdAccounts);
+// Painel de créditos da conta Meta (somente leitura; não altera spend_cap)
+app.get('/api/meta/account-credit', requireRole(['ADMIN']), getAccountCredit);
 app.get('/api/meta/campaigns', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaCampaigns);
 app.get('/api/meta/adsets', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAdSets);
 app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAds);
@@ -365,23 +373,33 @@ app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
 app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDestinationUrl);
 // NORQVA-0006: campaign control (pause/activate, daily budget). ADMIN only, fail-closed.
 app.get('/api/meta-control/status', requireRole(['ADMIN']), getMetaControlStatus);
+app.get('/api/meta-control/audit', requireRole(['ADMIN']), getMetaLiveAudit);
 // NORQVA-0009: ad alerts
 app.get('/api/alerts', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listAdAlerts);
 app.post('/api/alerts/evaluate', requireRole(['ADMIN']), evaluateAdAlerts);
 app.post('/api/alerts/:id/ack', requireRole(['ADMIN', 'PERFORMANCE']), acknowledgeAdAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
+app.get('/api/decision-events', requireRole(['ADMIN']), getDecisionEvents);
 // NORQVA-0019 (D-0010): planos de lançamento — criados PAUSADOS pelo Claude, ativados só pela resposta do operador
 app.get('/api/launch-plans', requireRole(['ADMIN']), listLaunchPlans);
 app.post('/api/launch-plans', requireRole(['ADMIN']), createLaunchPlan);
 app.get('/api/launch-plans/:id', requireRole(['ADMIN']), getLaunchPlan);
 app.post('/api/launch-plans/:id/create', requireRole(['ADMIN']), createLaunchPlanOnMeta);
 app.post('/api/launch-plans/:id/answer', requireRole(['ADMIN']), answerLaunchPlan);
+// H6/H7/H8 (R-0019-01): vigia do teto do experimento e limite de gastos da campanha
+app.post('/api/launch-plans/guard/run', requireRole(['ADMIN']), runGuardNow);
+app.get('/api/launch-plans/:id/guard', requireRole(['ADMIN']), getPlanGuard);
+app.post('/api/launch-plans/:id/spend-cap', requireRole(['ADMIN']), setPlanSpendCap);
+app.post('/api/automation/experiment-guard/run', automationRunGuard);
 
 // Creative Performance Intelligence Core (Gate 17 - Correlated Ad Analytics)
 app.get('/api/intelligence/creative-performance', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCreativePerformance);
 // NORQVA-0017: Base de campanhas (ranking de nichos, produtos, campanhas, conjuntos e anúncios) + importação de histórico
 app.get('/api/intelligence/campaign-base', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getCampaignBase);
+// NORQVA-0021 (P1): automatic shortlist (read-only) and operator-triggered send to the Time de IAs
+app.get('/api/intelligence/shortlist', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getShortlist);
+app.post('/api/ai-team/shortlist/send', requireRole(['ADMIN', 'INTELLIGENCE']), sendShortlist);
 app.post('/api/meta/backfill', requireRole(['ADMIN']), startMetaBackfill);
 app.get('/api/meta/backfill/status', requireRole(['ADMIN', 'INTELLIGENCE', 'PERFORMANCE']), getMetaBackfillStatus);
 // NORQVA-0017 (fase 2): mercado europeu (Biblioteca de Anúncios, API oficial)
@@ -406,6 +424,7 @@ app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRO
 app.post('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE']), createAiOpportunity);
 app.post('/api/ai-team/opportunities/:id/dispatch', requireRole(['ADMIN']), dispatchAiOpportunity);
 app.post('/api/ai-team/opportunities/:id/decision', requireRole(['ADMIN']), decideAiOpportunity);
+app.post('/api/ai-team/opportunities/:id/validation-override', requireRole(['ADMIN']), overrideAiValidation);
 
 // Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
 app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);
@@ -427,6 +446,7 @@ app.get('/api/automation/opportunities/:id', automationGetOpportunity);
 app.post('/api/automation/opportunities/:id/status', automationOpportunityStatus);
 app.post('/api/automation/opportunities/:id/evaluation', automationOpportunityEvaluation);
 app.post('/api/automation/opportunities/:id/plan', automationOpportunityPlan);
+app.post('/api/automation/opportunities/:id/validation', automationOpportunityValidation);
 // NORQVA-0020: Creative Factory → NORQVA (release certificado → Storage → criativo DRAFT)
 app.post('/api/automation/creative-factory/upload-url', automationFactoryUploadUrl);
 app.post('/api/automation/creative-factory/ingest', automationFactoryIngest);
@@ -482,11 +502,31 @@ async function startServer() {
       console.error('[Server] Failed to initialize MetaSchedulerService (non-fatal):', schedulerErr.message);
     }
 
+    // H6/H7: vigia do teto dos experimentos a cada 15 min (EXPERIMENT_GUARD_ENABLED=false desliga)
+    try {
+      registerShutdownHook(startExperimentGuardScheduler(pool));
+    } catch (e: any) {
+      console.error('[Server] Failed to start experiment guard (non-fatal):', e.message);
+    }
+
     // NORQVA-0017: daily EU market collection (MARKET_EU_AUTO_ENABLED=true)
     try {
       registerShutdownHook(startMarketEuScheduler(pool));
     } catch (e: any) {
       console.error('[Server] Failed to start market EU scheduler (non-fatal):', e.message);
+    }
+
+    // H1: retenção LGPD de IP/user-agent em decision_events (padrão 180 dias), na subida e a cada 24 h.
+    if (process.env.NODE_ENV !== 'test') {
+      const days = Math.min(Math.max(Number(process.env.DECISION_EVENTS_PII_RETENTION_DAYS) || 180, 1), 3650);
+      const runPurge = async () => {
+        const n = await purgeDecisionEventPii(pool, days);
+        if (n) console.log(`[DECISION AUDIT] PII retention: ip/user-agent removed from ${n} event(s) older than ${days} days.`);
+      };
+      void runPurge();
+      const purgeTimer = setInterval(() => void runPurge(), 24 * 60 * 60 * 1000);
+      purgeTimer.unref();
+      registerShutdownHook(() => clearInterval(purgeTimer));
     }
 
     // Initialize Automated CAPI Retry Job (Non-blocking / Isolated)

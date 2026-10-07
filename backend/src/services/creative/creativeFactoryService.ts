@@ -404,6 +404,58 @@ export class CreativeFactoryService {
       };
     });
 
+    // Visão por campanha: todas as campanhas da conta (ativas, pausadas e demais), cada uma com
+    // seus anúncios na Meta. Anúncio ligado a um criativo da Fábrica leva factory_creative_id;
+    // os demais (ex.: criados no Gerenciador ou por plano de lançamento) aparecem como externos.
+    const adToCreative = new Map<string, string>();
+    for (const it of items) {
+      for (const cp of it.campaigns) for (const adId of cp.meta_ad_ids) adToCreative.set(String(adId), String(it.id));
+      for (const adId of it.linked_meta_ads) adToCreative.set(String(adId), String(it.id));
+    }
+    const campRows = await pool.query(
+      `SELECT mc.meta_campaign_id, mc.name, mc.status, mc.effective_status,
+              ma.meta_ad_id, ma.name AS ad_name, ma.status AS ad_status, ma.effective_status AS ad_effective_status,
+              mas.name AS adset_name, ma.creative_title, ma.creative_body, ma.creative_cta,
+              ma.thumbnail_url, ma.image_url, ma.video_id
+       FROM meta_campaigns mc
+       LEFT JOIN meta_ad_sets mas ON mas.campaign_id = mc.id
+       LEFT JOIN meta_ads ma ON ma.adset_id = mas.id
+       WHERE mc.is_demo = $1
+       ORDER BY mc.name ASC, ma.name ASC`,
+      [opts.isDemo]
+    );
+    const campaignsById = new Map<string, any>();
+    for (const r of campRows.rows) {
+      const cid = String(r.meta_campaign_id);
+      if (!campaignsById.has(cid)) {
+        campaignsById.set(cid, { meta_campaign_id: cid, name: r.name, status: r.status || null, effective_status: r.effective_status || null, ads: [] });
+      }
+      if (!r.meta_ad_id) continue;
+      const perfAd = adsById.get(String(r.meta_ad_id));
+      let adMetrics: CreativeMetrics | null = null;
+      if (perfAd) {
+        adMetrics = emptyMetrics();
+        addAd(adMetrics, perfAd);
+        adMetrics.spend = Math.round(adMetrics.spend * 100) / 100;
+        adMetrics.gross_revenue = Math.round(adMetrics.gross_revenue * 100) / 100;
+      }
+      campaignsById.get(cid).ads.push({
+        meta_ad_id: String(r.meta_ad_id),
+        name: r.ad_name,
+        status: r.ad_status || null,
+        effective_status: r.ad_effective_status || null,
+        adset_name: r.adset_name || null,
+        creative_title: r.creative_title || null,
+        creative_body: r.creative_body || null,
+        creative_cta: r.creative_cta || null,
+        thumbnail_url: r.thumbnail_url || null,
+        image_url: r.image_url || null,
+        video_id: r.video_id || null,
+        factory_creative_id: adToCreative.get(String(r.meta_ad_id)) || null,
+        metrics: adMetrics
+      });
+    }
+
     const batchRows = await pool.query(
       'SELECT DISTINCT batch_code FROM creatives WHERE is_demo = $1 AND batch_code IS NOT NULL ORDER BY batch_code',
       [opts.isDemo]
@@ -419,6 +471,7 @@ export class CreativeFactoryService {
       importedBatches: batchRows.rows.map(r => r.batch_code),
       claims: claimsRes.rows,
       creatives: items,
+      campaigns: [...campaignsById.values()],
       rejectionReasons: REJECTION_REASONS,
       producedAssets: Object.fromEntries(
         Object.entries(CREATIVE_BATCHES).map(([code, b]) => [code, Object.keys(b.producedAssets || {})])
