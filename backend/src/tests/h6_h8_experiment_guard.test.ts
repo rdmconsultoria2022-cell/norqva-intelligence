@@ -209,6 +209,39 @@ describe('H6/H7/H8 — vigia e endpoints', () => {
     setExperimentGuardForTesting(null);
   });
 
+  it('raise only up to the capital approved at activation, with typed plan code and justification', async () => {
+    const tag = crypto.randomUUID().slice(0, 6).toUpperCase();
+    const prod = (await pool.query(`INSERT INTO products (human_id, name, category, description, is_demo) VALUES ($1, 'P', 'c', 'd', FALSE) RETURNING id`, [`PRD-G-${tag}`])).rows[0].id;
+    const off = (await pool.query(`INSERT INTO offers (human_id, product_id, name, price, description, is_demo) VALUES ($1, $2, 'O', 19.9, 'd', FALSE) RETURNING id`, [`OFF-G-${tag}`, prod])).rows[0].id;
+    const exp = (
+      await pool.query(
+        `INSERT INTO experiments (human_id, name, hypothesis, product_id, offer_id, start_date, status, capital_requested, capital_approved, capital_used, is_demo)
+         VALUES ($1, 'E', 'h', $2, $3, NOW(), 'ATIVO', 420, 200, 45, FALSE) RETURNING id`,
+        [`EXP-G-${tag}`, prod, off]
+      )
+    ).rows[0].id;
+    const p = await mkPlan({ cap: 200 });
+    await pool.query('UPDATE launch_plans SET experiment_id = $2 WHERE id = $1', [p.id, exp]);
+    const client = fakeClient(120);
+    setExperimentGuardForTesting(new ExperimentGuardService(() => client, null));
+    const call = (body: any) => request(app).post(`/api/launch-plans/${p.id}/spend-cap`).set('Authorization', `Bearer ${adminToken}`).send(body);
+
+    expect((await call({ max_spend_brl: 500, confirm_code: p.code, justification: 'Quero mais orçamento para o teste agora.' })).status).toBe(409);
+    const noCode = await call({ max_spend_brl: 300, justification: 'Igualar ao mínimo de limite da Meta.' });
+    expect(noCode.status).toBe(400);
+    expect(noCode.body.error).toContain(p.code);
+    expect((await call({ max_spend_brl: 300, confirm_code: p.code, justification: 'curta' })).status).toBe(400);
+
+    const ok = await call({ max_spend_brl: 300, confirm_code: p.code.toLowerCase(), justification: 'Igualar o teto ao limite mínimo aceito pela Meta (decisão do operador).' });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ previous_cap_brl: 200, cap_brl: 300, raise: { approved: 420 }, spend_cap: { status: 'APPLIED', spend_cap_brl: 300 } });
+    expect(parseFloat((await row(p.id)).max_spend_brl)).toBe(300);
+    expect(parseFloat((await pool.query('SELECT capital_approved FROM experiments WHERE id = $1', [exp])).rows[0].capital_approved)).toBe(300);
+    const ev = await pool.query(`SELECT phase FROM decision_events WHERE plan_code = $1 AND action = 'LAUNCH_PLAN_SPEND_CAP' AND phase = 'EXECUTED'`, [p.code]);
+    expect(ev.rows).toHaveLength(1);
+    setExperimentGuardForTesting(null);
+  });
+
   it('retries once with the minimum quoted by Meta', async () => {
     const p = await mkPlan({ cap: 420 });
     const client = fakeClient(10);
