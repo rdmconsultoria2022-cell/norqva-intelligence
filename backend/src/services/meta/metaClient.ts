@@ -26,6 +26,21 @@ export interface MetaAdAccountPayload {
   account_status: number;
 }
 
+export interface MetaAccountBilling {
+  id: string;
+  name: string;
+  currency: string;
+  account_status: number | null;
+  disable_reason: number | null;
+  amount_spent: number;
+  /** null = no account spending limit set (Meta returns 0/empty). */
+  spend_cap: number | null;
+  balance: number | null;
+  is_prepay_account: boolean | null;
+  funding_source: { type: number | null; display_string: string | null } | null;
+  daily_spend: { date: string; spend: number }[];
+}
+
 export interface MetaCampaignPayload {
   id: string;
   name: string;
@@ -415,6 +430,51 @@ export class MetaClient {
       timezone_name: act.timezone_name || 'America/Sao_Paulo',
       account_status: act.account_status ?? 1
     }));
+  }
+
+  /**
+   * Billing snapshot of the configured ad account (READ-ONLY, two GETs). Money fields come from Meta in
+   * minor units (centavos) and are returned here in the account currency. Never changes spend_cap.
+   */
+  public async getAccountBilling(isDemo: boolean = false): Promise<MetaAccountBilling> {
+    if (isDemo) {
+      return {
+        id: 'act_demo_12345678', name: 'NORQVA Demo Sandbox Account', currency: 'BRL', account_status: 1, disable_reason: 0,
+        amount_spent: 865.44, spend_cap: 1000, balance: 0, is_prepay_account: true,
+        funding_source: { type: 20, display_string: 'Saldo disponível (R$ 120,00 BRL)' },
+        daily_spend: [
+          { date: '2026-09-29', spend: 61.2 }, { date: '2026-09-30', spend: 58.4 }, { date: '2026-10-01', spend: 63.9 },
+          { date: '2026-10-02', spend: 60.1 }, { date: '2026-10-03', spend: 59.7 }, { date: '2026-10-04', spend: 64.3 }, { date: '2026-10-05', spend: 62.0 }
+        ]
+      };
+    }
+    if (!this.adAccountId) throw new Error('[META CONFIG ERROR]: META_AD_ACCOUNT_ID ausente.');
+    const act = this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`;
+    const a = await this.fetchGraphApi(`/${act}`, {
+      fields: 'id,name,currency,account_status,disable_reason,amount_spent,spend_cap,balance,is_prepay_account,funding_source_details'
+    });
+    let daily: { date: string; spend: number }[] = [];
+    try {
+      const ins = await this.fetchGraphApi(`/${act}/insights`, { fields: 'spend', date_preset: 'last_7d', time_increment: 1, level: 'account' });
+      daily = (Array.isArray(ins?.data) ? ins.data : []).map((d: any) => ({ date: String(d.date_start), spend: parseFloat(d.spend) || 0 }));
+    } catch {
+      daily = [];
+    }
+    const cents = (v: any) => (v === undefined || v === null || v === '' ? null : (parseFloat(v) || 0) / 100);
+    const fsd = a.funding_source_details || null;
+    return {
+      id: String(a.id),
+      name: a.name || 'Ad Account',
+      currency: a.currency || 'BRL',
+      account_status: a.account_status ?? null,
+      disable_reason: a.disable_reason ?? null,
+      amount_spent: cents(a.amount_spent) ?? 0,
+      spend_cap: cents(a.spend_cap),
+      balance: cents(a.balance),
+      is_prepay_account: typeof a.is_prepay_account === 'boolean' ? a.is_prepay_account : null,
+      funding_source: fsd ? { type: fsd.type ?? null, display_string: fsd.display_string ? String(fsd.display_string).slice(0, 120) : null } : null,
+      daily_spend: daily
+    };
   }
 
   public async getCampaigns(adAccountId: string, isDemo: boolean = false): Promise<MetaCampaignPayload[]> {

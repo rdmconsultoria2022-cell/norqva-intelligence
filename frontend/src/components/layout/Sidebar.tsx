@@ -18,6 +18,7 @@ import {
   Database,
   Bot,
   Store,
+  Wallet,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -48,6 +49,7 @@ export const navigationItems: NavigationItem[] = [
   { id: 'creative-factory', label: 'Fábrica de Criativos', icon: Factory },
   { id: 'experiments', label: 'Experimentos', icon: FlaskConical },
   { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
+  { id: 'meta-credit', label: 'Créditos Meta', icon: Wallet },
   { id: 'campaign-base', label: 'Base de campanhas', icon: Database },
   { id: 'ai-team', label: 'Time de IAs', icon: Bot },
   { id: 'brands', label: 'Marcas', icon: Store },

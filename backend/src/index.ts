@@ -146,6 +146,7 @@ import {
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
+import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
 
@@ -358,6 +359,8 @@ app.get('/api/admin/meta/test-insights-probe', requireRole(['ADMIN']), testInsig
 app.get('/api/meta/connection/status', requireRole(['ADMIN']), getMetaConnectionStatus);
 app.post('/api/meta/connection/validate', requireRole(['ADMIN']), validateMetaConnection);
 app.get('/api/meta/ad-accounts', requireRole(['ADMIN']), getMetaAdAccounts);
+// Painel de créditos da conta Meta (somente leitura; não altera spend_cap)
+app.get('/api/meta/account-credit', requireRole(['ADMIN']), getAccountCredit);
 app.get('/api/meta/campaigns', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaCampaigns);
 app.get('/api/meta/adsets', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAdSets);
 app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAds);
