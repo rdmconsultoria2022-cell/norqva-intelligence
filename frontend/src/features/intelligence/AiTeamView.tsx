@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Sparkles, ClipboardList, CheckCircle2, XCircle, ExternalLink, RefreshCw, ChevronDown, ChevronRight, Send } from 'lucide-react';
+import { Bot, Sparkles, ClipboardList, CheckCircle2, XCircle, ExternalLink, RefreshCw, ChevronDown, ChevronRight, Send, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 // NORQVA-0017 (fase 3): Time de IAs — oportunidade → avaliação (Claude + segunda opinião GPT)
 // → plano de campanha → lote de criativos em rascunho na Fábrica → aprovação do dono.
@@ -23,11 +23,27 @@ export interface Opportunity {
   plan: any;
   batch_code: string | null;
   task_kind: 'EVALUATE' | 'PLAN' | null;
+  task_stage?: 'EVALUATE' | 'VALIDATE' | 'PLAN' | null;
+  validation?: any;
+  validation_verdict?: ValidationVerdict | null;
+  validation_override?: any;
   task_status: string | null;
   task_response: string | null;
   session_url: string | null;
   updated_at: string;
 }
+
+export type ValidationVerdict = 'APROVA' | 'REPROVA' | 'PEDE_EVIDENCIA';
+export const VALIDATION_LABEL: Record<ValidationVerdict, string> = { APROVA: 'Validador aprovou', REPROVA: 'Validador reprovou', PEDE_EVIDENCIA: 'Validador pede evidência' };
+const VALIDATION_CLS: Record<ValidationVerdict, string> = {
+  APROVA: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+  REPROVA: 'bg-rose-500/15 text-rose-300 border-rose-500/40',
+  PEDE_EVIDENCIA: 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+};
+const CHECK_CLS: Record<string, string> = { OK: 'text-emerald-300', ALERTA: 'text-amber-300', FALHA: 'text-rose-300' };
+/** Same rule as the backend: plan only after the validator approved or the owner overrode the veto. */
+export const validationPassed = (o: Pick<Opportunity, 'validation_verdict' | 'validation_override'>) => o.validation_verdict === 'APROVA' || !!o.validation_override;
+const STAGE_LABEL: Record<string, string> = { EVALUATE: 'avaliação', VALIDATE: 'validação', PLAN: 'plano' };
 
 export const STAGES: { id: OppStatus; label: string }[] = [
   { id: 'CAPTADA', label: 'Captadas' },
@@ -70,6 +86,8 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
   const [open, setOpen] = useState<string | null>(null);
   const [brief, setBrief] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [overrideFor, setOverrideFor] = useState<string | null>(null);
+  const [justification, setJustification] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -125,8 +143,9 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
             <Bot className="h-5 w-5 text-violet-400" /> Time de IAs
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
-            O Claude avalia cada oportunidade com os dados da Base de campanhas e do mercado europeu, o GPT dá uma segunda opinião e, se valer a pena,
-            o Claude monta o plano de campanha e deixa os criativos em rascunho na Fábrica. Você aprova. As IAs nunca publicam nem mexem em orçamento na Meta.
+            O Claude analista avalia cada oportunidade com os dados da Base de campanhas e do mercado europeu. Um segundo Claude, em modo crítico, valida e
+            questiona a análise com um checklist fixo: só com a aprovação dele (ou a sua, com justificativa) o Claude monta o plano e deixa os criativos em
+            rascunho na Fábrica. Você aprova. As IAs nunca publicam nem mexem em orçamento na Meta.
           </p>
         </div>
         <button onClick={load} className="inline-flex items-center gap-1.5 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
@@ -166,10 +185,17 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                       <span className="truncate font-semibold text-slate-100">{o.title}</span>
                       <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">{SOURCE[o.source]}</span>
                       {o.verdict && <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VERDICT_CLS[o.verdict]}`}>{o.verdict} · {o.ai_score}</span>}
+                      {o.validation_verdict && (
+                        <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VALIDATION_CLS[o.validation_verdict]}`} data-testid="validation-badge">
+                          {VALIDATION_LABEL[o.validation_verdict]}
+                          {o.validation_override ? ' · veto derrubado' : ''}
+                        </span>
+                      )}
                     </button>
                     {o.task_status && (
                       <span className="text-[11px] text-slate-400">
                         {TASK_LABEL[o.task_status] || o.task_status}
+                        {(o.task_stage || o.task_kind) ? ` (${STAGE_LABEL[(o.task_stage || o.task_kind) as string] || ''})` : ''}
                         {o.session_url && (
                           <a href={o.session_url} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-sky-300 hover:underline">
                             sessão <ExternalLink className="h-3 w-3" />
@@ -190,7 +216,18 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                             label="Reenviar ao Claude"
                           />
                         )}
-                        {['AVALIADA', 'PLANO_PRONTO'].includes(o.status) && (
+                        {o.status === 'AVALIADA' && !o.validation_override && (
+                          <ActionBtn
+                            disabled={busy !== null}
+                            onClick={() => post(o.id, 'dispatch', { kind: 'VALIDATE' }, 'Validação pedida ao Claude crítico.')}
+                            icon={ShieldCheck}
+                            label={o.validation_verdict ? 'Validar de novo' : 'Pedir validação'}
+                          />
+                        )}
+                        {o.status === 'AVALIADA' && (o.validation_verdict === 'REPROVA' || o.validation_verdict === 'PEDE_EVIDENCIA') && !o.validation_override && (
+                          <ActionBtn disabled={busy !== null} onClick={() => { setOverrideFor(overrideFor === o.id ? null : o.id); setJustification(''); }} icon={ShieldAlert} label="Derrubar veto" />
+                        )}
+                        {['AVALIADA', 'PLANO_PRONTO'].includes(o.status) && validationPassed(o) && (
                           <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'dispatch', { kind: 'PLAN' }, 'Plano pedido ao Claude.')} icon={ClipboardList} label={o.status === 'PLANO_PRONTO' ? 'Refazer plano' : 'Montar plano'} />
                         )}
                         {o.status === 'PLANO_PRONTO' && (
@@ -202,6 +239,34 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                       </div>
                     )}
                   </div>
+                  {isAdmin && overrideFor === o.id && (
+                    <div className="space-y-2 border-t border-slate-800 bg-rose-950/10 p-3 text-xs" data-testid="override-form">
+                      <p className="text-slate-300">
+                        Derrubar o veto do validador libera o plano. Fica registrado em seu nome, com a justificativa, na auditoria de decisões.
+                      </p>
+                      <textarea
+                        aria-label="Justificativa"
+                        value={justification}
+                        onChange={e => setJustification(e.target.value)}
+                        rows={3}
+                        placeholder="Por que seguir mesmo com o veto? (mínimo 20 caracteres)"
+                        className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100"
+                      />
+                      <div className="flex gap-2">
+                        <ActionBtn
+                          primary
+                          disabled={busy !== null || justification.trim().length < 20}
+                          onClick={async () => {
+                            await post(o.id, 'validation-override', { justification: justification.trim() }, 'Veto derrubado. Agora dá para montar o plano.');
+                            setOverrideFor(null);
+                          }}
+                          icon={ShieldAlert}
+                          label="Confirmar e derrubar o veto"
+                        />
+                        <ActionBtn onClick={() => setOverrideFor(null)} icon={XCircle} label="Cancelar" />
+                      </div>
+                    </div>
+                  )}
                   {open === o.id && <OpportunityDetail o={o} />}
                 </div>
               ))}
@@ -251,6 +316,7 @@ export const OpportunityDetail: React.FC<{ o: Opportunity }> = ({ o }) => (
       <Opinion title="Avaliação — Claude" v={o.evaluation} />
       <Opinion title="Segunda opinião — GPT" v={o.second_opinion} />
     </div>
+    <ValidationCard o={o} />
     {o.plan && (
       <div className="rounded border border-violet-800/50 bg-violet-950/20 p-3" data-testid="ai-opportunity-plan">
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-violet-300">Plano de campanha</div>
@@ -270,3 +336,36 @@ export const OpportunityDetail: React.FC<{ o: Opportunity }> = ({ o }) => (
     )}
   </div>
 );
+
+export const ValidationCard: React.FC<{ o: Opportunity }> = ({ o }) => {
+  const v = o.validation;
+  if (!v && !o.validation_override) {
+    return <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-slate-500">Validação — Claude crítico: ainda não pedida.</div>;
+  }
+  return (
+    <div className="rounded border border-slate-800 bg-slate-950/60 p-3" data-testid="ai-opportunity-validation">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Validação — Claude crítico</span>
+        {o.validation_verdict && <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VALIDATION_CLS[o.validation_verdict]}`}>{VALIDATION_LABEL[o.validation_verdict]}</span>}
+      </div>
+      {v?.summary && <p className="text-slate-200">{v.summary}</p>}
+      {Array.isArray(v?.checklist) && (
+        <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+          {v.checklist.map((c: any) => (
+            <li key={c.key} className="text-slate-300">
+              <span className={`font-semibold ${CHECK_CLS[c.status] || ''}`}>{c.status}</span> · {c.label}
+              {c.note ? <span className="text-slate-500"> — {c.note}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {Array.isArray(v?.questions) && v.questions.length > 0 && <p className="mt-2 text-sky-300/90">Perguntas: {v.questions.join(' · ')}</p>}
+      {Array.isArray(v?.required_evidence) && v.required_evidence.length > 0 && <p className="mt-1 text-amber-300/90">Evidência pedida: {v.required_evidence.join(' · ')}</p>}
+      {o.validation_override && (
+        <p className="mt-2 rounded border border-rose-800/50 bg-rose-950/20 p-2 text-rose-200" data-testid="validation-override">
+          Veto derrubado por {o.validation_override.by || 'ADMIN'} em {new Date(o.validation_override.at).toLocaleString('pt-BR')}: {o.validation_override.justification}
+        </p>
+      )}
+    </div>
+  );
+};
