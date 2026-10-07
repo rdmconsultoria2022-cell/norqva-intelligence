@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { beginDecision, decisionContextFromRequest, DecisionAuditError } from '../db/decisionEvents';
+import { beginDecision, decisionContextFromRequest, DecisionAuditError, metaIdsOfPlan } from '../db/decisionEvents';
 import {
   MetaMutatingClient,
   MetaMutatingSecurityContext,
@@ -155,6 +155,16 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
     const error = !entityType ? 'Tipo inválido. Use campaign, adset ou ad.' : 'Status inválido. Use ACTIVE ou PAUSED.';
     await decision.finish('REJECTED', { result: { http_status: 400 }, error });
     return res.status(400).json({ error });
+  }
+  // H7: objetos de um plano que atingiu o teto (CAPPED) não podem ser reativados por aqui.
+  if (status === 'ACTIVE') {
+    const capped = await pool.query(`SELECT code, meta_ids FROM launch_plans WHERE guard_state = 'CAPPED'`).catch(() => ({ rows: [] as any[] }));
+    const hit = capped.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
+    if (hit) {
+      const error = `Este objeto pertence ao plano ${hit.code}, que atingiu o teto e foi pausado pelo vigia. Reabrir exige um novo plano com teto novo.`;
+      await decision.finish('REJECTED', { result: { http_status: 409 }, error });
+      return res.status(409).json({ error });
+    }
   }
 
   try {
