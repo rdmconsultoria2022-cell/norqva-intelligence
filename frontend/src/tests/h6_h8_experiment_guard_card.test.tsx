@@ -47,6 +47,13 @@ describe('Teto dos experimentos', () => {
     expect(String(showSuccess.mock.calls[0][0])).toContain('limite aplicado');
   });
 
+  it('shows the Meta backstop when the minimum is above the NORQVA cap', async () => {
+    plans[0] = { ...plans[0], max_spend_brl: '200', spend_cap_status: 'BACKSTOP', spend_cap_applied_brl: '300' } as any;
+    setup();
+    await waitFor(() => expect(screen.getByTestId('guard-spend-cap')).toHaveTextContent('R$ 300,00 aplicado como trava de segurança'));
+    expect(screen.getByTestId('guard-spend-cap')).toHaveTextContent('o NORQVA pausa em R$ 200,00');
+  });
+
   it('is ADMIN-only', () => {
     const { apiFetch } = setup('PERFORMANCE');
     expect(screen.queryByTestId('experiment-guard-card')).toBeNull();
