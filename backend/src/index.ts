@@ -146,7 +146,7 @@ import {
 import { errorHandler } from './middleware/errorHandler';
 import { setupGracefulShutdown, registerShutdownHook } from './utils/shutdown';
 import { validateProductionEnvironment } from './utils/envValidation';
-import { listMethodCases, getMethodCase, createMethodCase, updateMethodCase, updateMethodStage, createMethodHypothesis, updateMethodHypothesis, linkCreativeHypothesis, decideMethodCreative, createMethodLearning, hypothesisFromLearning } from './controllers/methodController';
+import { listMethodCases, getMethodCase, createMethodCase, updateMethodCase, updateMethodStage, createMethodHypothesis, updateMethodHypothesis, linkCreativeHypothesis, importMethodExternalAd, decideMethodCreative, createMethodLearning, hypothesisFromLearning } from './controllers/methodController';
 import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from './controllers/experimentGuardController';
 import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
 import { getAccountCredit } from './controllers/accountCreditController';
@@ -402,6 +402,7 @@ app.patch('/api/method/cases/:id/stages/:stage', requireRole(METHOD_WRITE), upda
 app.post('/api/method/cases/:id/hypotheses', requireRole(METHOD_WRITE), createMethodHypothesis);
 app.patch('/api/method/hypotheses/:id', requireRole(METHOD_WRITE), updateMethodHypothesis);
 app.post('/api/method/creatives/:id/hypothesis', requireRole(METHOD_WRITE), linkCreativeHypothesis);
+app.post('/api/method/cases/:id/external-ads/:adId/import', requireRole(['ADMIN']), importMethodExternalAd);
 app.post('/api/method/creatives/:id/decision', requireRole(['ADMIN']), decideMethodCreative);
 app.post('/api/method/learnings', requireRole(METHOD_WRITE), createMethodLearning);
 app.post('/api/method/learnings/:id/hypothesis', requireRole(METHOD_WRITE), hypothesisFromLearning);
