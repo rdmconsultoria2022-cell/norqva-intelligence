@@ -69,10 +69,33 @@ describe('Método NORQVA — tela', () => {
 
   it('creative without hypothesis shows NÃO PRONTO and its pipeline stage', async () => {
     setup();
+    await waitFor(() => expect(screen.getByTestId('method-map')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: 'Criativos' }));
     await waitFor(() => expect(screen.getByTestId('method-creative')).toBeInTheDocument());
+    expect(screen.getByTestId('creative-go-hypotheses')).toBeInTheDocument();
     expect(screen.getByTestId('creative-readiness')).toHaveTextContent('NÃO PRONTO');
     expect(screen.getByTestId('method-creative')).toHaveTextContent('PENDENTE: sem hipótese registrada');
     expect(screen.getByTestId('method-creative')).toHaveTextContent('MEDIDO');
+  });
+
+  it('with no hypothesis the Hipóteses form opens first and the Hipótese field accepts typing', async () => {
+    const apiFetch = setup();
+    const field = (await screen.findByLabelText('Hipótese')) as HTMLInputElement;
+    const btn = screen.getByRole('button', { name: 'Registrar hipótese' });
+    expect(btn).toBeDisabled();
+    fireEvent.change(field, { target: { value: 'Evitar erros gera mais intenção que receita genérica' } });
+    expect(field.value).toBe('Evitar erros gera mais intenção que receita genérica');
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]).startsWith('/method/cases/c1/hypotheses') && (c[1] as any)?.method === 'POST')).toBe(true));
+  });
+
+  it('Criativos tab shortcut leads to the hypothesis form', async () => {
+    setup();
+    await waitFor(() => expect(screen.getByTestId('method-map')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: 'Criativos' }));
+    fireEvent.click(await screen.findByTestId('creative-go-hypotheses'));
+    expect(screen.getByTestId('hypothesis-form')).toBeInTheDocument();
   });
 
   it('measurement never shows zero for missing data', async () => {
