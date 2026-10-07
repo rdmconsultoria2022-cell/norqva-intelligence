@@ -125,7 +125,6 @@ import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProd
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan, automationOpportunityValidation, overrideAiValidation } from './controllers/aiTeamController';
 import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
 import { getDecisionEvents } from './controllers/decisionEventsController';
-import { getProxyChainDiagnostics } from './controllers/proxyDiagnosticsController';
 import { purgeDecisionEventPii } from './db/decisionEvents';
 import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
@@ -378,8 +377,6 @@ app.post('/api/alerts/:id/ack', requireRole(['ADMIN', 'PERFORMANCE']), acknowled
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
 app.get('/api/decision-events', requireRole(['ADMIN']), getDecisionEvents);
-// H1.1 — TEMPORÁRIO: diagnóstico da cadeia de proxies. Remover após a certificação do TRUST_PROXY.
-app.get('/api/diagnostics/proxy-chain', requireRole(['ADMIN']), getProxyChainDiagnostics);
 // NORQVA-0019 (D-0010): planos de lançamento — criados PAUSADOS pelo Claude, ativados só pela resposta do operador
 app.get('/api/launch-plans', requireRole(['ADMIN']), listLaunchPlans);
 app.post('/api/launch-plans', requireRole(['ADMIN']), createLaunchPlan);

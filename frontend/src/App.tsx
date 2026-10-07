@@ -44,8 +44,6 @@ import { MetaAdsView } from './features/acquisition/MetaAdsView';
 import { CreativePerformanceView } from './features/intelligence/CreativePerformanceView';
 import { CampaignBaseView } from './features/intelligence/CampaignBaseView';
 import { AccountCreditView } from './features/meta-credit/AccountCreditView';
-// H1.1 — TEMPORÁRIO: remover após a certificação do H1.1
-import { ProxyChainDiagnosticsPanel } from './features/diagnostics/ProxyChainDiagnosticsPanel';
 import { AiTeamView } from './features/intelligence/AiTeamView';
 import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
@@ -1902,9 +1900,6 @@ function ConfigView({ isDemoView, currentUser, auditLogs, apiFetch, showError, s
         <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">Configurações do Sistema</h2>
         <p className="text-xs text-slate-400">Administração, variáveis de ambiente e auditoria do Core V1</p>
       </div>
-
-      {/* H1.1 — TEMPORÁRIO: remover após a certificação do H1.1 */}
-      {!isDemoView && <ProxyChainDiagnosticsPanel currentUser={currentUser} apiFetch={apiFetch} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Environment status */}
