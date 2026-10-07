@@ -265,6 +265,58 @@ export class MethodService {
     return { creative_id: c.id, hypothesis_id: h.id };
   }
 
+  /**
+   * Traz um anúncio que já roda na Meta, mas não nasceu na Fábrica (ex.: EXP02, CONTROL), para dentro da
+   * Fábrica SÓ COMO REGISTRO: cria o criativo a partir do que a sincronização já leu (título, texto, CTA) e
+   * grava o vínculo criativo → anúncio. Nenhuma chamada à Meta; o anúncio não muda. A aprovação da Fábrica
+   * não é presumida (fica DRAFT). Opcionalmente já liga a uma hipótese do caso.
+   */
+  async importExternalAd(pool: Pool, caseId: string, metaAdId: string, body: any, userId: string | null, isDemo: boolean) {
+    const c = await this.getCaseRow(pool, caseId, isDemo);
+    const adId = String(metaAdId || '').trim();
+    if (!/^\d{5,30}$/.test(adId)) throw new MethodError(400, 'ID de anúncio da Meta inválido.');
+    const already = (await pool.query(`SELECT creative_id FROM creative_meta_ads WHERE meta_ad_id = $1`, [adId])).rows[0];
+    if (already) throw new MethodError(409, 'Este anúncio já está ligado a um criativo da Fábrica.');
+    const rows = await this.adRows(pool, isDemo);
+    const ad = rows.find(r => r.meta_id && String(r.meta_id) === adId);
+    if (!ad) throw new MethodError(404, 'Anúncio não encontrado na última sincronização da Meta.');
+    if (ad.product_id !== c.product_id) throw new MethodError(400, 'O anúncio não é do produto deste caso.');
+    const byName = (await pool.query(`SELECT id FROM creatives WHERE utm_content_key = $1 OR human_id = $2`, [clip(ad.name, 100), `EXT-${String(ad.name || adId)}`.slice(0, 50)])).rows[0];
+    if (byName) throw new MethodError(409, 'Já existe um criativo da Fábrica com o nome deste anúncio.');
+
+    let hypothesisId: string | null = null;
+    if (body?.hypothesis_id) {
+      const h = (await pool.query(`SELECT id FROM creative_hypotheses WHERE id::text = $1 AND case_id = $2 AND is_demo = $3`, [String(body.hypothesis_id), c.id, isDemo])).rows[0];
+      if (!h) throw new MethodError(404, 'Hipótese não encontrada neste caso.');
+      hypothesisId = h.id;
+    }
+
+    const cr = ad.creative || null;
+    const humanId = `EXT-${String(ad.name || adId)}`.slice(0, 50);
+    const st = String(ad.status || '').toUpperCase();
+    const status = st === 'ACTIVE' ? 'ATIVO' : st === 'PAUSED' ? 'PAUSADO' : 'TESTANDO';
+    const hook = clip(cr?.title, 2000) || `NÃO REGISTRADO: anúncio ${ad.name} importado da Meta`;
+    const copy = clip(cr?.body, 4000) || 'NÃO REGISTRADO: texto não lido na sincronização';
+    const ins = await pool.query(
+      `INSERT INTO creatives (
+         human_id, product_id, offer_id, hook, concept, copy, cta, format, file_url, responsible_id,
+         status, is_demo, batch_code, primary_text, headline, generation_source, version, lineage_code,
+         utm_content_key, approval_status, hypothesis_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,$10,$11,'META_EXTERNO',$12,$13,'HUMAN',1,$14,$15,'DRAFT',$16)
+       RETURNING id, human_id`,
+      [
+        humanId, c.product_id, c.offer_id, hook, `Importado da Meta (anúncio ${adId}, campanha ${ad.campaign_name || '—'}) só como registro.`,
+        copy, clip(cr?.cta, 100) || 'NÃO REGISTRADO', cr?.video_id ? 'VIDEO' : 'IMAGE', userId, status, isDemo,
+        clip(cr?.body, 4000), clip(cr?.title, 500), humanId, clip(ad.name, 100), hypothesisId
+      ]
+    );
+    const creative = ins.rows[0];
+    await pool.query(`INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method, linked_by) VALUES ($1,$2,'MANUAL',$3) ON CONFLICT DO NOTHING`, [creative.id, adId, userId]);
+    this.perfCache = null;
+    await writeAuditLog(pool, userId, 'METHOD_EXTERNAL_AD_IMPORTED', `${creative.human_id} ← anúncio ${adId}${hypothesisId ? ' (com hipótese)' : ''}; nenhuma ação na Meta`, null, null, isDemo).catch(() => {});
+    return { creative_id: creative.id, human_id: creative.human_id, meta_ad_id: adId, hypothesis_id: hypothesisId, meta_changed: false };
+  }
+
   // ---------------- decisions and learnings
   async decide(pool: Pool, creativeId: string, body: any, ctx: DecisionContext) {
     const isDemo = ctx.isDemo;

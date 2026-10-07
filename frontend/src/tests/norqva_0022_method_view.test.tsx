@@ -98,6 +98,22 @@ describe('Método NORQVA — tela', () => {
     expect(screen.getByTestId('hypothesis-form')).toBeInTheDocument();
   });
 
+  it('ADMIN can bring an external Meta ad into the Fábrica as a record, with a hypothesis', async () => {
+    const apiFetch = setup();
+    await waitFor(() => expect(screen.getByTestId('method-map')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: 'Criativos' }));
+    fireEvent.click(await screen.findByTestId('external-ad-import'));
+    await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]).startsWith('/method/cases/c1/external-ads/a9/import') && (c[1] as any)?.method === 'POST')).toBe(true));
+  });
+
+  it('non-admin cannot import external ads', async () => {
+    setup({ role: 'INTELLIGENCE' });
+    await waitFor(() => expect(screen.getByTestId('method-map')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: 'Criativos' }));
+    expect(await screen.findByTestId('method-external-ad')).toBeInTheDocument();
+    expect(screen.queryByTestId('external-ad-import')).toBeNull();
+  });
+
   it('measurement never shows zero for missing data', async () => {
     setup();
     await waitFor(() => expect(screen.getByTestId('method-map')).toBeInTheDocument());

@@ -45,6 +45,10 @@ export const createMethodHypothesis = wrap('hypothesis', async (req, pool) => ({
 }));
 export const updateMethodHypothesis = wrap('hypothesis update', async (req, pool) => ({ body: await service.updateHypothesis(pool, String(req.params.id), req.body || {}, isDemoReq(req)) }));
 export const linkCreativeHypothesis = wrap('link', async (req, pool) => ({ body: await service.linkCreative(pool, String(req.params.id), req.body?.hypothesis_id, isDemoReq(req)) }));
+export const importMethodExternalAd = wrap('import external ad', async (req, pool) => ({
+  status: 201,
+  body: await service.importExternalAd(pool, String(req.params.id), String(req.params.adId), req.body || {}, uid(req), isDemoReq(req))
+}));
 export const decideMethodCreative = wrap('decision', async (req, pool) => ({
   status: 201,
   body: await service.decide(pool, String(req.params.id), req.body || {}, decisionContextFromRequest(req as any))

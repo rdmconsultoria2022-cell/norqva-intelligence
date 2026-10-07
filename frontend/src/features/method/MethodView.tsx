@@ -205,7 +205,7 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
           </div>
 
           {tab === 'hipoteses' && <HypothesesTab data={data} canWrite={canWrite} onCreate={(b: any) => act(() => post(`/method/cases/${data.case.id}/hypotheses`, b), 'Hipótese registrada.')} />}
-          {tab === 'criativos' && <CreativesTab data={data} canWrite={canWrite} onGoHypotheses={goHypotheses} onLink={(cid: string, hid: string) => act(() => post(`/method/creatives/${cid}/hypothesis`, { hypothesis_id: hid }), 'Criativo ligado à hipótese.')} />}
+          {tab === 'criativos' && <CreativesTab data={data} canWrite={canWrite} isAdmin={isAdmin} onImport={(adId: string, hid: string) => act(() => post(`/method/cases/${data.case.id}/external-ads/${adId}/import`, hid ? { hypothesis_id: hid } : {}), 'Anúncio trazido para a Fábrica só como registro. Nada foi alterado na Meta.')} onGoHypotheses={goHypotheses} onLink={(cid: string, hid: string) => act(() => post(`/method/creatives/${cid}/hypothesis`, { hypothesis_id: hid }), 'Criativo ligado à hipótese.')} />}
           {tab === 'medicao' && <MeasurementTab data={data} />}
           {tab === 'decisoes' && <DecisionsTab data={data} isAdmin={isAdmin} onDecide={(cid: string, b: any) => act(() => post(`/method/creatives/${cid}/decision`, b), 'Decisão registrada. Nada foi alterado na Meta.')} />}
           {tab === 'aprendizado' && (
@@ -302,7 +302,7 @@ const HypothesesTab: React.FC<{ data: any; canWrite: boolean; onCreate: (b: any)
   );
 };
 
-const CreativesTab: React.FC<{ data: any; canWrite: boolean; onLink: (cid: string, hid: string) => void; onGoHypotheses?: () => void }> = ({ data, canWrite, onLink, onGoHypotheses }) => (
+const CreativesTab: React.FC<{ data: any; canWrite: boolean; isAdmin?: boolean; onLink: (cid: string, hid: string) => void; onImport?: (adId: string, hid: string) => void; onGoHypotheses?: () => void }> = ({ data, canWrite, isAdmin, onLink, onImport, onGoHypotheses }) => (
   <div className="space-y-2" data-testid="method-creatives">
     {data.creatives.length === 0 && data.external_ads.length === 0 && <p className="text-sm text-slate-500">Nenhum criativo deste produto.</p>}
     {data.creatives.map((c: any) => (
@@ -348,15 +348,38 @@ const CreativesTab: React.FC<{ data: any; canWrite: boolean; onLink: (cid: strin
     {data.external_ads.length > 0 && (
       <div className="rounded border border-slate-800 p-3 text-xs text-slate-400">
         <div className="mb-1 font-semibold text-slate-300">Anúncios na Meta fora da Fábrica (sem hipótese registrada → NÃO PRONTO)</div>
+        {isAdmin && onImport && (
+          <div className="mb-2 text-[11px] text-slate-500">Trazer para a Fábrica cria só um registro ligado ao anúncio, para poder ligar a hipótese e medir. Nada muda na Meta.</div>
+        )}
         {data.external_ads.map((a: any) => (
-          <div key={a.meta_ad_id}>
-            {a.name} · {a.campaign_name} · <span className={LEVEL[a.measurement.data_level].cls}>{LEVEL[a.measurement.data_level].label}</span>
-          </div>
+          <ExternalAdRow key={a.meta_ad_id} ad={a} hypotheses={data.hypotheses} canImport={!!isAdmin && !!onImport} onImport={onImport} />
         ))}
       </div>
     )}
   </div>
 );
+
+const ExternalAdRow: React.FC<{ ad: any; hypotheses: any[]; canImport: boolean; onImport?: (adId: string, hid: string) => void }> = ({ ad, hypotheses, canImport, onImport }) => {
+  const [hid, setHid] = useState('');
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/60 py-1.5" data-testid="method-external-ad">
+      <span>
+        {ad.name} · {ad.campaign_name} · <span className={LEVEL[ad.measurement.data_level].cls}>{LEVEL[ad.measurement.data_level].label}</span>
+      </span>
+      {canImport && (
+        <>
+          <select aria-label={`Hipótese de ${ad.name}`} value={hid} onChange={e => setHid(e.target.value)} className="rounded border border-slate-700 bg-slate-950 px-1 py-0.5 text-slate-100">
+            <option value="">sem hipótese por enquanto</option>
+            {hypotheses.map((h: any) => <option key={h.id} value={h.id}>{h.human_id}{h.angle ? ` · ${h.angle}` : ''}</option>)}
+          </select>
+          <button onClick={() => onImport && onImport(ad.meta_ad_id, hid)} className="rounded border border-emerald-600/60 px-2 py-0.5 text-[11px] text-emerald-300" data-testid="external-ad-import">
+            Trazer para a Fábrica (só registro)
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
 
 const MeasurementTab: React.FC<{ data: any }> = ({ data }) => {
   const rows = [...data.creatives.map((c: any) => ({ id: c.id, name: c.human_id, m: c.measurement })), ...data.external_ads.map((a: any) => ({ id: a.meta_ad_id, name: a.name, m: a.measurement }))];

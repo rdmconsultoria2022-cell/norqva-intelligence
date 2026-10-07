@@ -234,6 +234,44 @@ describe('NORQVA-0022 — endpoints', () => {
     expect(crossLink.status).toBe(404);
   });
 
+  it('external Meta ad imported into the Fábrica only as a record (ADMIN), linked to its hypothesis, no Meta action', async () => {
+    const adId = `9${Date.now()}`.slice(0, 15);
+    const adName = `TR_V2_FOOD_${tag}`;
+    const row = {
+      key: adId, level: 'ad', name: adName, meta_id: adId, status: 'ACTIVE', campaign_name: 'NORQVA_TRATTORIA_EXP02_CREATIVE', adset_name: 'TR_EXP02_V2_FOOD',
+      product_id: ids.prodR, product_name: 'Trattoria em Casa', niche: null, ads_count: 1, winners_count: 0,
+      creative: { title: 'Trattoria em Casa · R$ 19,90', body: 'Massa fresca, molho de verdade.', cta: 'LEARN_MORE', thumbnail_url: null, video_id: '123' },
+      totals: { spend: 0, impressions: 0 } as any, metrics: {} as any, score: 0, confidence: 0, classification: 'SEM_DADOS' as any, reason: ''
+    };
+    const spy = vi.spyOn(MethodService.prototype as any, 'adRows').mockResolvedValue([row]);
+    try {
+      const before = await request(app).get(`/api/method/cases/${ids.caseR}`).set(auth(adminToken));
+      expect(before.body.external_ads.some((a: any) => a.meta_ad_id === adId)).toBe(true);
+
+      const notAdmin = await request(app).post(`/api/method/cases/${ids.caseR}/external-ads/${adId}/import`).set(auth(intelToken)).send({});
+      expect(notAdmin.status).toBe(403);
+      const unknown = await request(app).post(`/api/method/cases/${ids.caseR}/external-ads/123456789/import`).set(auth(adminToken)).send({});
+      expect(unknown.status).toBe(404);
+
+      const ok = await request(app).post(`/api/method/cases/${ids.caseR}/external-ads/${adId}/import`).set(auth(adminToken)).send({ hypothesis_id: ids.hypR });
+      expect(ok.status).toBe(201);
+      expect(ok.body).toMatchObject({ meta_ad_id: adId, hypothesis_id: ids.hypR, meta_changed: false });
+      const cr = (await pool.query(`SELECT approval_status, batch_code, format, utm_content_key FROM creatives WHERE id = $1`, [ok.body.creative_id])).rows[0];
+      expect(cr).toMatchObject({ approval_status: 'DRAFT', batch_code: 'META_EXTERNO', format: 'VIDEO', utm_content_key: adName });
+
+      const again = await request(app).post(`/api/method/cases/${ids.caseR}/external-ads/${adId}/import`).set(auth(adminToken)).send({});
+      expect(again.status).toBe(409);
+
+      const after = await request(app).get(`/api/method/cases/${ids.caseR}`).set(auth(adminToken));
+      expect(after.body.external_ads.some((a: any) => a.meta_ad_id === adId)).toBe(false);
+      const c = after.body.creatives.find((x: any) => x.id === ok.body.creative_id);
+      expect(c.hypothesis.id).toBe(ids.hypR);
+      expect(c.pipeline).toBe('PUBLICADO');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('nothing in this module activates, publishes, changes budget or calls Meta', () => {
     for (const s of metaSpies) expect(s).not.toHaveBeenCalled();
     const metaCalls = fetchSpy.mock.calls.filter((c: any[]) => String(c[0]).includes('graph.facebook.com'));
