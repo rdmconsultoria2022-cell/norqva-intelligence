@@ -85,7 +85,7 @@ export const ExperimentGuardCard: React.FC<{
         'real',
         currentUser
       );
-      const capMsg = r?.spend_cap?.status === 'APPLIED' ? 'limite aplicado na campanha da Meta' : `limite na Meta não aplicado (${r?.spend_cap?.error || r?.spend_cap?.status}); o vigia do NORQVA segue valendo`;
+      const capMsg = r?.spend_cap?.status === 'APPLIED' ? 'limite aplicado na campanha da Meta' : r?.spend_cap?.status === 'BACKSTOP' ? `trava de segurança de ${brl(Number(r.spend_cap.spend_cap_brl))} aplicada na Meta (mínimo aceito); o NORQVA pausa no teto` : `limite na Meta não aplicado (${r?.spend_cap?.error || r?.spend_cap?.status}); o vigia do NORQVA segue valendo`;
       showSuccess(`Teto de ${plan.code} agora é ${brl(v)}: ${capMsg}.${r?.guard?.pause?.paused ? ' A campanha foi pausada porque o gasto já chegou ao teto.' : ''}`);
       setEditing(null);
       setValue('');
@@ -132,7 +132,7 @@ export const ExperimentGuardCard: React.FC<{
             )}
             <div className="text-slate-400" data-testid="guard-spend-cap">
               Limite de gastos da campanha na Meta:{' '}
-              {p.spend_cap_status === 'APPLIED' ? <span className="text-emerald-300">{brl(applied)} aplicado</span> : p.spend_cap_status === 'FAILED' ? <span className="text-amber-300">não aplicado ({p.spend_cap_error})</span> : <span>ainda não aplicado</span>}
+              {p.spend_cap_status === 'APPLIED' ? <span className="text-emerald-300">{brl(applied)} aplicado</span> : p.spend_cap_status === 'BACKSTOP' ? <span className="text-emerald-300">{brl(applied)} aplicado como trava de segurança (mínimo da Meta); o NORQVA pausa em {brl(cap)}</span> : p.spend_cap_status === 'FAILED' ? <span className="text-amber-300">não aplicado ({p.spend_cap_error})</span> : <span>ainda não aplicado</span>}
             </div>
             {p.guard_note && <div className="text-slate-500">{p.guard_note}</div>}
             {p.guard_state !== 'CAPPED' &&
@@ -151,7 +151,7 @@ export const ExperimentGuardCard: React.FC<{
                   <button onClick={() => setEditing(null)} className="rounded border border-slate-700 px-2.5 py-1 text-slate-300">
                     Cancelar
                   </button>
-                  <span className="text-slate-500">Só é possível reduzir. Ao atingir o teto, o NORQVA pausa só esta campanha.</span>
+                  <span className="text-slate-500">Só é possível reduzir (ou reaplicar o mesmo valor). Ao atingir o teto, o NORQVA pausa só esta campanha.</span>
                 </div>
               ) : (
                 <button onClick={() => { setEditing(p.id); setValue(''); }} className="rounded border border-sky-700/60 px-2.5 py-1 text-sky-200 hover:bg-sky-900/30">

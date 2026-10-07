@@ -7,7 +7,7 @@ import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { signSupabaseToken } from '../utils/token';
 import { ExperimentGuardService, evaluateGuard, GuardClient } from '../services/experiments/experimentGuardService';
-import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds } from '../services/experiments/protectedIds';
+import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds, metaSpendCapFor, minimumFromMetaError } from '../services/experiments/protectedIds';
 import { setExperimentGuardForTesting } from '../controllers/experimentGuardController';
 import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
 
@@ -32,6 +32,16 @@ describe('H6/H7/H8 — regras puras', () => {
     expect(near.projection).toBeCloseTo(0.55, 2);
     expect(near.shouldPause).toBe(true);
     expect(evaluateGuard({ ...base, spent: 205, alertsSent: {} }).newAlerts).toEqual([80, 90, 100]);
+  });
+
+  it('Meta minimum for the campaign spend cap (BRL R$ 300) becomes a backstop', () => {
+    expect(metaSpendCapFor(200, {})).toBe(300);
+    expect(metaSpendCapFor(420, {})).toBe(420);
+    expect(metaSpendCapFor(200, { META_MIN_CAMPAIGN_SPEND_CAP_BRL: '350' })).toBe(350);
+    const realError = '[META GRAPH API ERROR]: Invalid parameter (code 100, subcode 2446307) — Limite de gastos da campanha muito baixo — O limite de gastos da campanha precisa ser pelo menos R$300,00 para essa moeda.';
+    expect(minimumFromMetaError(realError)).toBe(300);
+    expect(minimumFromMetaError('must be at least R$1,250.50 for this currency')).toBe(1250.5);
+    expect(minimumFromMetaError('outro erro')).toBeNull();
   });
 
   it('CONTROL ids are always protected, plus PROTECTED_META_IDS', () => {
@@ -181,21 +191,34 @@ describe('H6/H7/H8 — vigia e endpoints', () => {
 
     const ok = await request(app).post(`/api/launch-plans/${p.id}/spend-cap`).set('Authorization', `Bearer ${adminToken}`).send({ max_spend_brl: 200 });
     expect(ok.status).toBe(200);
-    expect(ok.body).toMatchObject({ previous_cap_brl: 420, cap_brl: 200, spend_cap: { status: 'APPLIED' } });
-    expect(client.setCampaignSpendCap).toHaveBeenCalledWith(p.campaign, 200, expect.anything(), expect.any(Set));
+    expect(ok.body).toMatchObject({ previous_cap_brl: 420, cap_brl: 200, spend_cap: { status: 'BACKSTOP', spend_cap_brl: 300 } });
+    expect(client.setCampaignSpendCap).toHaveBeenCalledWith(p.campaign, 300, expect.anything(), expect.any(Set)); // Meta minimum in BRL
     // already spent 210 ≥ 200 → paused right away
     expect(ok.body.guard.pause).toMatchObject({ paused: true });
     const after = await row(p.id);
     expect(parseFloat(after.max_spend_brl)).toBe(200);
-    expect(after.spend_cap_status).toBe('APPLIED');
+    expect(after.spend_cap_status).toBe('BACKSTOP');
+    expect(parseFloat(after.spend_cap_applied_brl)).toBe(300);
     expect(after.guard_state).toBe('CAPPED');
     const ev = await pool.query(`SELECT phase, decision, actor_type FROM decision_events WHERE plan_code = $1 AND action = 'LAUNCH_PLAN_SPEND_CAP'`, [p.code]);
     expect(ev.rows.map(e => e.phase).sort()).toEqual(['EXECUTED', 'REJECTED', 'REJECTED', 'REQUESTED', 'REQUESTED', 'REQUESTED']);
     expect(ev.rows.every(e => e.actor_type === 'HUMAN')).toBe(true);
 
     const guardView = await request(app).get(`/api/launch-plans/${p.id}/guard`).set('Authorization', `Bearer ${adminToken}`);
-    expect(guardView.body).toMatchObject({ cap_brl: 200, guard_state: 'CAPPED', spend_cap: { status: 'APPLIED' } });
+    expect(guardView.body).toMatchObject({ cap_brl: 200, guard_state: 'CAPPED', spend_cap: { status: 'BACKSTOP', applied_brl: 300 } });
     setExperimentGuardForTesting(null);
+  });
+
+  it('retries once with the minimum quoted by Meta', async () => {
+    const p = await mkPlan({ cap: 420 });
+    const client = fakeClient(10);
+    client.setCampaignSpendCap
+      .mockRejectedValueOnce(new Error('[META GRAPH API ERROR]: Limite de gastos da campanha precisa ser pelo menos R$450,00 para essa moeda.'))
+      .mockResolvedValueOnce({ success: true, campaignId: p.campaign, spend_cap_brl: 450 } as any);
+    const svc = new ExperimentGuardService(() => client, null);
+    const r = await svc.applySpendCap(pool, await row(p.id), { userId: 'u', userRole: 'ADMIN', isDemo: false });
+    expect(r).toMatchObject({ status: 'BACKSTOP', spend_cap_brl: 450 });
+    expect(client.setCampaignSpendCap.mock.calls.map(c => c[1])).toEqual([420, 450]);
   });
 
   it('a Meta refusal of the spend cap is recorded and the guard still protects', async () => {

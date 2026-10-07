@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { writeAuditLog } from '../../db/audit';
-import { protectedMetaIds } from '../experiments/protectedIds';
+import { protectedMetaIds, metaSpendCapFor } from '../experiments/protectedIds';
 import {
   MetaMutatingClient,
   MetaMutatingSecurityContext,
@@ -803,10 +803,11 @@ export class LaunchPlanService {
       // H8 (R-0019-01): limite de gastos da campanha na Meta = teto do plano, antes de ativar.
       // Melhor esforço: se a Meta recusar (ex.: mínimo por moeda), registra e o vigia do teto (H6/H7) segue valendo.
       try {
-        await client.setCampaignSpendCap(owned.campaignId, input.max_spend_brl, ctx, protectedMetaIds());
+        const metaCap = metaSpendCapFor(input.max_spend_brl);
+        await client.setCampaignSpendCap(owned.campaignId, metaCap, ctx, protectedMetaIds());
         await pool.query(
-          `UPDATE launch_plans SET spend_cap_applied_brl = $2, spend_cap_status = 'APPLIED', spend_cap_error = NULL, spend_cap_applied_at = NOW() WHERE id = $1`,
-          [id, input.max_spend_brl]
+          `UPDATE launch_plans SET spend_cap_applied_brl = $2, spend_cap_status = $3, spend_cap_error = NULL, spend_cap_applied_at = NOW() WHERE id = $1`,
+          [id, metaCap, metaCap > input.max_spend_brl + 0.001 ? 'BACKSTOP' : 'APPLIED']
         );
       } catch (capErr: any) {
         await pool.query(`UPDATE launch_plans SET spend_cap_status = 'FAILED', spend_cap_error = $2 WHERE id = $1`, [id, errorText(capErr)]);

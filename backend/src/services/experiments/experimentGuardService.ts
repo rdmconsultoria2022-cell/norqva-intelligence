@@ -5,7 +5,7 @@ import { beginDecision, DecisionContext } from '../../db/decisionEvents';
 import { writeAuditLog } from '../../db/audit';
 import { AlertEmailSender, defaultAlertEmailSender } from '../alerts/adAlertService';
 import { validateFrontendUrl } from '../emailConfig';
-import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds } from './protectedIds';
+import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds, metaSpendCapFor, minimumFromMetaError } from './protectedIds';
 
 // H6/H7/H8 — teto real do experimento (R-0019-01).
 // - H6: lê o gasto da campanha do plano na Meta (GET), abre alertas de 80/90/100% do teto (uma vez cada).
@@ -185,15 +185,31 @@ export class ExperimentGuardService {
     const campaignId = ExperimentGuardService.campaignOf(plan);
     if (!campaignId) return { status: 'SKIPPED', error: 'Plano sem campanha na Meta.' };
     const cap = parseFloat(plan.max_spend_brl);
-    try {
-      await this.clientFactory().setCampaignSpendCap(campaignId, cap, ctx, protectedMetaIds());
+    const save = async (applied: number) => {
+      const status = applied > cap + 0.001 ? 'BACKSTOP' : 'APPLIED';
       await pool.query(
-        `UPDATE launch_plans SET spend_cap_applied_brl = $2, spend_cap_status = 'APPLIED', spend_cap_error = NULL, spend_cap_applied_at = NOW(), updated_at = NOW() WHERE id = $1`,
-        [plan.id, cap]
+        `UPDATE launch_plans SET spend_cap_applied_brl = $2, spend_cap_status = $3, spend_cap_error = NULL, spend_cap_applied_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [plan.id, applied, status]
       );
-      return { status: 'APPLIED', spend_cap_brl: cap };
+      return { status, spend_cap_brl: applied, cap_brl: cap };
+    };
+    let target = metaSpendCapFor(cap);
+    try {
+      await this.clientFactory().setCampaignSpendCap(campaignId, target, ctx, protectedMetaIds());
+      return await save(target);
     } catch (err: any) {
-      const msg = String(err?.message || err).slice(0, 500);
+      let msg = String(err?.message || err).slice(0, 500);
+      // A Meta informa o mínimo aceito: tenta uma vez com ele (só se for maior que o que já tentamos)
+      const min = minimumFromMetaError(msg);
+      if (min && min > target) {
+        target = min;
+        try {
+          await this.clientFactory().setCampaignSpendCap(campaignId, target, ctx, protectedMetaIds());
+          return await save(target);
+        } catch (err2: any) {
+          msg = String(err2?.message || err2).slice(0, 500);
+        }
+      }
       await pool.query(`UPDATE launch_plans SET spend_cap_status = 'FAILED', spend_cap_error = $2, updated_at = NOW() WHERE id = $1`, [plan.id, msg]);
       return { status: 'FAILED', error: msg };
     }
