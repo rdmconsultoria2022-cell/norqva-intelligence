@@ -5,7 +5,7 @@ import { beginDecision, DecisionContext } from '../../db/decisionEvents';
 import { writeAuditLog } from '../../db/audit';
 import { AlertEmailSender, defaultAlertEmailSender } from '../alerts/adAlertService';
 import { validateFrontendUrl } from '../emailConfig';
-import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds, metaSpendCapFor, minimumFromMetaError } from './protectedIds';
+import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds, metaSpendCapFor, minimumFromMetaError, metaMinCampaignSpendCapBRL } from './protectedIds';
 
 // H6/H7/H8 — teto real do experimento (R-0019-01).
 // - H6: lê o gasto da campanha do plano na Meta (GET), abre alertas de 80/90/100% do teto (uma vez cada).
@@ -43,7 +43,11 @@ export interface GuardClient {
 }
 
 export class ExperimentGuardService {
-  constructor(private clientFactory: () => GuardClient = () => new MetaMutatingClient(), private sender: AlertEmailSender | null = defaultAlertEmailSender) {}
+  constructor(
+    private clientFactory: () => GuardClient = () => new MetaMutatingClient(),
+    private sender: AlertEmailSender | null = defaultAlertEmailSender,
+    private retryDelayMs = 31_000
+  ) {}
 
   static campaignOf(plan: any): string | null {
     const ids = normalizeMetaIds(plan.meta_ids);
@@ -193,16 +197,28 @@ export class ExperimentGuardService {
       );
       return { status, spend_cap_brl: applied, cap_brl: cap };
     };
+    // A Meta exige que o limite da campanha fique ao menos o mínimo da moeda ACIMA do que ela já gastou
+    // (erro 100/1885058). Lemos o gasto antes para acertar na primeira chamada: a Meta só aceita
+    // 1 alteração de limite a cada 30 s por campanha (erro 613/4841018).
     let target = metaSpendCapFor(cap);
+    try {
+      const reading = await this.clientFactory().getCampaignLifetimeSpend(campaignId);
+      if (reading && Number.isFinite(reading.spend) && reading.spend > 0) {
+        target = Math.max(target, Math.ceil((reading.spend + metaMinCampaignSpendCapBRL()) * 100) / 100);
+      }
+    } catch {
+      /* sem leitura: tenta com o mínimo da moeda e, se a Meta recusar, com o valor que ela informar */
+    }
     try {
       await this.clientFactory().setCampaignSpendCap(campaignId, target, ctx, protectedMetaIds());
       return await save(target);
     } catch (err: any) {
       let msg = String(err?.message || err).slice(0, 500);
-      // A Meta informa o mínimo aceito: tenta uma vez com ele (só se for maior que o que já tentamos)
+      // A Meta informa o mínimo aceito: espera a janela de 30 s e tenta uma vez com ele (só se for maior)
       const min = minimumFromMetaError(msg);
       if (min && min > target) {
         target = min;
+        await new Promise(r => setTimeout(r, this.retryDelayMs));
         try {
           await this.clientFactory().setCampaignSpendCap(campaignId, target, ctx, protectedMetaIds());
           return await save(target);
