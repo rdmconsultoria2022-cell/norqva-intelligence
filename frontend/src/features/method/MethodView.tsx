@@ -205,7 +205,7 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
           </div>
 
           {tab === 'hipoteses' && <HypothesesTab data={data} canWrite={canWrite} onCreate={(b: any) => act(() => post(`/method/cases/${data.case.id}/hypotheses`, b), 'Hipótese registrada.')} />}
-          {tab === 'criativos' && <CreativesTab data={data} canWrite={canWrite} isAdmin={isAdmin} onImport={(adId: string, hid: string) => act(() => post(`/method/cases/${data.case.id}/external-ads/${adId}/import`, hid ? { hypothesis_id: hid } : {}), 'Anúncio trazido para a Fábrica só como registro. Nada foi alterado na Meta.')} onGoHypotheses={goHypotheses} onLink={(cid: string, hid: string) => act(() => post(`/method/creatives/${cid}/hypothesis`, { hypothesis_id: hid }), 'Criativo ligado à hipótese.')} />}
+          {tab === 'criativos' && <CreativesTab data={data} canWrite={canWrite} isAdmin={isAdmin} onImport={(adId: string, hid: string) => act(() => post(`/method/cases/${data.case.id}/external-ads/${adId}/import`, hid ? { hypothesis_id: hid } : {}), 'Anúncio trazido para Criativos só como registro. Nada foi alterado na Meta.')} onGoHypotheses={goHypotheses} onLink={(cid: string, hid: string) => act(() => post(`/method/creatives/${cid}/hypothesis`, { hypothesis_id: hid }), 'Criativo ligado à hipótese.')} />}
           {tab === 'medicao' && <MeasurementTab data={data} />}
           {tab === 'decisoes' && <DecisionsTab data={data} isAdmin={isAdmin} onDecide={(cid: string, b: any) => act(() => post(`/method/creatives/${cid}/decision`, b), 'Decisão registrada. Nada foi alterado na Meta.')} />}
           {tab === 'aprendizado' && (
@@ -347,9 +347,9 @@ const CreativesTab: React.FC<{ data: any; canWrite: boolean; isAdmin?: boolean; 
     ))}
     {data.external_ads.length > 0 && (
       <div className="rounded border border-slate-800 p-3 text-xs text-slate-400">
-        <div className="mb-1 font-semibold text-slate-300">Anúncios na Meta fora da Fábrica (sem hipótese registrada → NÃO PRONTO)</div>
+        <div className="mb-1 font-semibold text-slate-300">Anúncios na Meta sem criativo no NORQVA (sem hipótese registrada → NÃO PRONTO)</div>
         {isAdmin && onImport && (
-          <div className="mb-2 text-[11px] text-slate-500">Trazer para a Fábrica cria só um registro ligado ao anúncio, para poder ligar a hipótese e medir. Nada muda na Meta.</div>
+          <div className="mb-2 text-[11px] text-slate-500">Trazer para Criativos cria só um registro ligado ao anúncio, para poder ligar a hipótese e medir. Nada muda na Meta.</div>
         )}
         {data.external_ads.map((a: any) => (
           <ExternalAdRow key={a.meta_ad_id} ad={a} hypotheses={data.hypotheses} canImport={!!isAdmin && !!onImport} onImport={onImport} />
@@ -373,7 +373,7 @@ const ExternalAdRow: React.FC<{ ad: any; hypotheses: any[]; canImport: boolean; 
             {hypotheses.map((h: any) => <option key={h.id} value={h.id}>{h.human_id}{h.angle ? ` · ${h.angle}` : ''}</option>)}
           </select>
           <button onClick={() => onImport && onImport(ad.meta_ad_id, hid)} className="rounded border border-emerald-600/60 px-2 py-0.5 text-[11px] text-emerald-300" data-testid="external-ad-import">
-            Trazer para a Fábrica (só registro)
+            Trazer para Criativos (só registro)
           </button>
         </>
       )}

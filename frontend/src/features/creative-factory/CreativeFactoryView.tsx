@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2 } from 'lucide-react';
+import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2, Plus } from 'lucide-react';
 import { UserObj } from '../../types';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { CreativePreview, isHttpUrl } from '../../components/CreativePreview';
 import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile, groupByCampaign } from '../../components/ViewModes';
+import { NewCreativeForm, NewCreativeInput, CLAIM_TYPE_LABEL } from './NewCreativeForm';
 
 // NORQVA-0005 / G1: Creative Factory — batch matrix, claims gate, human approval and
 // a deterministic scorecard per creative (Meta ad name == creative key).
@@ -14,7 +15,20 @@ export interface CreativeFactoryViewProps {
   apiFetch: (url: string, options?: RequestInit) => Promise<any>;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
+  /** NORQVA-0025: produtos e ofertas para o cadastro manual de criativo */
+  products?: any[];
+  offers?: any[];
+  /** Avisa o App para recarregar a lista global de criativos depois de um cadastro */
+  onCreativeCreated?: () => void;
 }
+
+// NORQVA-0025: de onde veio o criativo
+const ORIGIN_LABEL: Record<string, { label: string; cls: string }> = {
+  BATCH: { label: 'Lote', cls: 'border-slate-700 text-slate-300' },
+  AI_TEAM: { label: 'Time de IAs', cls: 'border-sky-700/60 text-sky-300' },
+  MANUAL: { label: 'Manual', cls: 'border-emerald-700/60 text-emerald-300' },
+  META: { label: 'Meta', cls: 'border-indigo-700/60 text-indigo-300' }
+};
 
 const APPROVAL_LABEL: Record<string, { label: string; cls: string }> = {
   DRAFT: { label: 'Aguardando revisão', cls: 'bg-slate-800 text-slate-300 border-slate-700' },
@@ -61,7 +75,16 @@ const ADJ_STATUS: Record<string, { label: string; cls: string }> = {
   FAILED: { label: 'Falhou', cls: 'bg-red-950 text-red-300' }
 };
 
-export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showError, showSuccess }: CreativeFactoryViewProps) {
+export function CreativeFactoryView({
+  currentUser,
+  isDemoView,
+  apiFetch,
+  showError,
+  showSuccess,
+  products = [],
+  offers = [],
+  onCreativeCreated
+}: CreativeFactoryViewProps) {
   const { globalPeriod } = useGlobalPeriod();
   const periodQs = periodQuery(globalPeriod);
   const mode = isDemoView ? 'demo' : 'real';
@@ -82,6 +105,8 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
   const [editing, setEditing] = useState<{ id: string; headline: string; primary_text: string; file_url: string } | null>(null);
   const [linking, setLinking] = useState<{ id: string; meta_ad_id: string } | null>(null);
   const [attaching, setAttaching] = useState<{ id: string; file_url: string } | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [claiming, setClaiming] = useState<{ id: string; product_id: string; claim_id: string; claim_text: string; claim_type: string } | null>(null);
   // NORQVA-0011: display mode (list / grid / icons) and the card to focus when opening from a tile
   const [viewMode, setViewMode] = useViewMode('norqva.factory.viewMode');
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -121,7 +146,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
       setData(res);
       loadAdjustments();
     } catch (err: any) {
-      showErrorRef.current(err.message || 'Erro ao carregar a Fábrica de Criativos.');
+      showErrorRef.current(err.message || 'Erro ao carregar os criativos.');
     } finally {
       setLoading(false);
     }
@@ -131,14 +156,17 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
     load();
   }, [load]);
 
-  const run = async (key: string, fn: () => Promise<any>, ok: string) => {
+  // Devolve true quando deu certo (NORQVA-0025: formulários só fecham em caso de sucesso)
+  const run = async (key: string, fn: () => Promise<any>, ok: string): Promise<boolean> => {
     setBusy(key);
     try {
       await fn();
       showSuccessRef.current(ok);
       await load();
+      return true;
     } catch (err: any) {
       showErrorRef.current(err.message || 'Operação falhou.');
+      return false;
     } finally {
       setBusy(null);
     }
@@ -188,6 +216,27 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
       () => post(`/creative-factory/creatives/${id}/file?mode=${mode}`, { file_url: file_url.trim() }),
       'Arquivo anexado ao criativo.'
     ).then(() => setAttaching(null));
+  };
+
+  // NORQVA-0025: cadastro manual (arquivo opcional) e promessas do criativo
+  const submitNew = (form: NewCreativeInput) =>
+    run(
+      'new-creative',
+      () => post(`/creatives?mode=${mode}`, { ...form, offer_id: form.offer_id || null, file_url: form.file_url || null }),
+      'Criativo cadastrado. Anexe o arquivo e registre as promessas para poder aprovar.'
+    ).then(ok => {
+      if (!ok) return;
+      setCreating(false);
+      onCreativeCreated?.();
+    });
+
+  const submitClaim = () => {
+    if (!claiming) return;
+    const { id, claim_id, claim_text, claim_type } = claiming;
+    const body = claim_id ? { claim_id } : { claim_text: claim_text.trim(), claim_type };
+    return run(`claim-add-${id}`, () => post(`/creative-factory/creatives/${id}/claims?mode=${mode}`, body), 'Promessa registrada.').then(ok => {
+      if (ok) setClaiming(null);
+    });
   };
 
   const attachBatchAssets = (code: string) =>
@@ -328,8 +377,8 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
           <header className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-emerald-300">{a.name}</span>
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${st.cls}`} data-testid="meta-ad-status">{st.label}</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-700 text-slate-400" title="Anúncio que não foi gerado por um lote da Fábrica">
-              fora da Fábrica
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-700 text-slate-400" title="Anúncio da campanha que não tem criativo cadastrado no NORQVA">
+              sem criativo no NORQVA
             </span>
           </header>
           {a.adset_name && <div className="text-[11px] text-slate-500">Conjunto: {a.adset_name}</div>}
@@ -362,9 +411,16 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
               <div className={viewMode === 'list' ? 'flex-1 min-w-0 space-y-3' : 'space-y-3'}>
               <header className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-mono text-xs text-emerald-300">{c.human_id}</div>
+                  <div className="font-mono text-xs text-emerald-300 flex items-center gap-1.5">
+                    {c.human_id}
+                    {ORIGIN_LABEL[c.origin] && (
+                      <span data-testid="creative-origin" className={`px-1.5 py-0.5 rounded border text-[9px] font-sans ${ORIGIN_LABEL[c.origin].cls}`}>
+                        {ORIGIN_LABEL[c.origin].label}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-slate-500">
-                    {c.hook_family} · {c.format} {c.duration_seconds ? `· ${c.duration_seconds}s` : ''} · v{c.version}
+                    {[c.hook_family, c.format, c.duration_seconds ? `${c.duration_seconds}s` : null, `v${c.version}`].filter(Boolean).join(' · ')}
                   </div>
                 </div>
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold ${st.cls}`}>{st.label}</span>
@@ -377,14 +433,15 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                     ? c.campaigns.map((cp: any) => `${cp.name}${cp.status && cp.status !== 'ACTIVE' ? ` (${cp.status === 'PAUSED' ? 'pausada' : cp.status})` : ''}`).join(' · ')
                     : <span className="text-slate-500">não publicado</span>}
                 </div>
-                <div><span className="text-slate-500">Lote:</span> {c.batch_code || '—'}</div>
+                {c.batch_code && c.origin !== 'META' && <div><span className="text-slate-500">Lote:</span> {c.batch_code}</div>}
+                {c.product_name && <div><span className="text-slate-500">Produto:</span> {c.product_name}{c.offer_name ? ` · ${c.offer_name}` : ''}</div>}
               </div>
 
               <p className="text-sm text-white font-semibold">“{c.hook}”</p>
               <div className="text-xs text-slate-300 space-y-1">
-                <div><span className="text-slate-500">Mecanismo:</span> {c.mechanism}</div>
-                <div><span className="text-slate-500">Título:</span> {c.headline}</div>
-                <div className="text-slate-400">{c.primary_text}</div>
+                {(c.mechanism || c.concept) && <div><span className="text-slate-500">{c.mechanism ? 'Mecanismo' : 'Conceito'}:</span> {c.mechanism || c.concept}</div>}
+                {c.headline && <div><span className="text-slate-500">Título:</span> {c.headline}</div>}
+                <div className="text-slate-400">{c.primary_text || c.copy}</div>
                 <div><span className="text-slate-500">CTA:</span> {c.cta}</div>
                 {!hasFile(c) && <div className="text-amber-300/80">Arquivo ainda não produzido</div>}
               </div>
@@ -403,10 +460,77 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                 ))}
                 {!c.claims_all_verified && (
                   <span className="text-[10px] text-amber-300 flex items-center gap-1">
-                    <ShieldAlert className="h-3 w-3" /> claims pendentes
+                    <ShieldAlert className="h-3 w-3" /> {(c.claims || []).length === 0 ? 'sem promessas registradas' : 'claims pendentes'}
                   </span>
                 )}
+                {canRevise && c.approval_status !== 'APPROVED' && c.approval_status !== 'SUPERSEDED' && (
+                  <button
+                    data-testid="add-claim"
+                    onClick={() => setClaiming({ id: c.id, product_id: c.product_id, claim_id: '', claim_text: '', claim_type: 'FEATURE' })}
+                    className="px-1.5 py-0.5 rounded text-[10px] border border-slate-700 text-slate-300 hover:text-white"
+                  >
+                    + Promessa
+                  </button>
+                )}
               </div>
+
+              {claiming && claiming.id === c.id && (
+                <div className="space-y-2 border-t border-slate-800 pt-2 text-xs" data-testid="claim-form">
+                  <p className="text-[11px] text-slate-500">
+                    O que este anúncio promete? Ex.: "28 receitas italianas". A promessa entra como não verificada; um ADMIN verifica antes de aprovar.
+                  </p>
+                  {claims.filter(cl => cl.product_id === c.product_id && !(c.claims || []).some((x: any) => x.id === cl.id)).length > 0 && (
+                    <select
+                      aria-label="Promessa já registrada"
+                      value={claiming.claim_id}
+                      onChange={e => { const v = e.target.value; setClaiming(prev => (prev ? { ...prev, claim_id: v } : prev)); }}
+                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    >
+                      <option value="">Nova promessa…</option>
+                      {claims
+                        .filter(cl => cl.product_id === c.product_id && !(c.claims || []).some((x: any) => x.id === cl.id))
+                        .map(cl => (
+                          <option key={cl.id} value={cl.id}>
+                            {cl.human_id} · {cl.claim_text}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                  {!claiming.claim_id && (
+                    <>
+                      <input
+                        aria-label="Texto da promessa"
+                        value={claiming.claim_text}
+                        maxLength={500}
+                        onChange={e => { const v = e.target.value; setClaiming(prev => (prev ? { ...prev, claim_text: v } : prev)); }}
+                        className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      />
+                      <select
+                        aria-label="Tipo da promessa"
+                        value={claiming.claim_type}
+                        onChange={e => { const v = e.target.value; setClaiming(prev => (prev ? { ...prev, claim_type: v } : prev)); }}
+                        className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      >
+                        {Object.entries(CLAIM_TYPE_LABEL).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={submitClaim}
+                      disabled={(!claiming.claim_id && !claiming.claim_text.trim()) || busy === `claim-add-${c.id}`}
+                      className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-50"
+                    >
+                      Registrar
+                    </button>
+                    <button onClick={() => setClaiming(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-lg bg-slate-950/70 border border-slate-800 p-2.5 text-[11px] font-mono grid grid-cols-3 gap-2">
                 <div><div className="text-slate-500">Investido</div>{brl(c.metrics?.spend ?? null)}</div>
@@ -626,12 +750,22 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
             <Factory className="h-6 w-6 text-emerald-400" />
-            Fábrica de Criativos
+            Criativos
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Lotes de criativos, claims verificadas, aprovação humana e resultado por criativo. Nada é publicado na Meta por aqui.
+            Todos os criativos num lugar só: criar, anexar o vídeo ou a imagem, registrar promessas, aprovar e ver o resultado. Nada é publicado na Meta por aqui.
           </p>
         </div>
+        <div className="flex items-center gap-2 self-start">
+        {canRevise && (
+          <button
+            onClick={() => setCreating(true)}
+            data-testid="new-creative"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400"
+          >
+            <Plus className="h-4 w-4" /> Novo criativo
+          </button>
+        )}
         <button
           onClick={load}
           disabled={loading}
@@ -640,7 +774,18 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
+        </div>
       </div>
+
+      {creating && (
+        <NewCreativeForm
+          products={products}
+          offers={offers}
+          busy={busy === 'new-creative'}
+          onSubmit={submitNew}
+          onCancel={() => setCreating(false)}
+        />
+      )}
 
       {isAdmin && notImported.length > 0 && (
         <div className="p-4 rounded-xl border border-emerald-700/40 bg-emerald-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -783,7 +928,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   )}
                   {isAdmin && cl.status === 'VERIFIED' && (
                     <button
-                      onClick={() => setClaim(cl.id, 'REJECTED', 'Revogada na Fábrica de Criativos')}
+                      onClick={() => setClaim(cl.id, 'REJECTED', 'Revogada na tela Criativos')}
                       disabled={busy === `claim-${cl.id}`}
                       className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] disabled:opacity-50"
                     >
@@ -872,8 +1017,8 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
               </span>
             )}
             <span className="text-[11px] font-normal text-slate-500">
-              {g.items.length} criativo(s) da Fábrica
-              {g.externalAds.length > 0 ? ` · ${g.externalAds.length} anúncio(s) fora da Fábrica` : ''}
+              {g.items.length} criativo(s)
+              {g.externalAds.length > 0 ? ` · ${g.externalAds.length} anúncio(s) sem criativo no NORQVA` : ''}
             </span>
           </h2>
           {g.items.length === 0 && g.externalAds.length === 0 && (
@@ -901,7 +1046,7 @@ export function CreativeFactoryView({ currentUser, isDemoView, apiFetch, showErr
                   key={`ad-${a.meta_ad_id}`}
                   mode={viewMode}
                   title={a.name}
-                  subtitle={`${(AD_STATUS[a.status] || { label: a.status || '' }).label} · fora da Fábrica`}
+                  subtitle={`${(AD_STATUS[a.status] || { label: a.status || '' }).label} · sem criativo no NORQVA`}
                   url={a.image_url || a.thumbnail_url}
                   format="IMAGE"
                   onOpen={() => openAdInList(a.meta_ad_id)}

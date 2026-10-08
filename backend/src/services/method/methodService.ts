@@ -281,7 +281,7 @@ export class MethodService {
     const ad = rows.find(r => r.meta_id && String(r.meta_id) === adId);
     if (!ad) throw new MethodError(404, 'Anúncio não encontrado na última sincronização da Meta.');
     if (ad.product_id !== c.product_id) throw new MethodError(400, 'O anúncio não é do produto deste caso.');
-    const byName = (await pool.query(`SELECT id FROM creatives WHERE utm_content_key = $1 OR human_id = $2`, [clip(ad.name, 100), `EXT-${String(ad.name || adId)}`.slice(0, 50)])).rows[0];
+    const byName = (await pool.query(`SELECT id FROM creatives WHERE utm_content_key = $1 OR human_id = $1 OR human_id = $2`, [clip(ad.name, 100), `EXT-${String(ad.name || adId)}`.slice(0, 50)])).rows[0];
     if (byName) throw new MethodError(409, 'Já existe um criativo da Fábrica com o nome deste anúncio.');
 
     let hypothesisId: string | null = null;

@@ -59,7 +59,7 @@ describe('Fábrica — todas as campanhas', () => {
 
     const ad = screen.getByTestId('meta-ad-card');
     expect(ad).toHaveTextContent('TRATTORIA_V1_AD_C_HOOK_MASSA_CASEIRA');
-    expect(ad).toHaveTextContent('fora da Fábrica');
+    expect(ad).toHaveTextContent('sem criativo no NORQVA');
     expect(ad).toHaveTextContent('Conjunto: TRATTORIA_ABO_BROAD_BR_V1');
     expect(within(ad).getByTestId('meta-ad-status')).toHaveTextContent('ativo');
     expect(ad).toHaveTextContent('Vendas: 5');

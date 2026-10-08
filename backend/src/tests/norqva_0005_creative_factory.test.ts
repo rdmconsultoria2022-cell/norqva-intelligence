@@ -285,8 +285,12 @@ describe('NORQVA-0005 G1 — Creative Factory', () => {
        RETURNING id`,
       [`LEGACY-0005-${Date.now()}`]
     );
+    // NORQVA-0025: criativo sem lote agora aparece na tela Criativos e pode ser revisado,
+    // mas continua sem poder ser aprovado sem promessas verificadas.
     const r = await as(adminToken).post(`/api/creative-factory/creatives/${legacy.rows[0].id}/review?mode=demo`, { decision: 'REJECTED', reason_code: 'OTHER' });
-    expect(r.status).toBe(404);
+    expect(r.status).toBe(200);
+    const approve = await as(adminToken).post(`/api/creative-factory/creatives/${legacy.rows[0].id}/review?mode=demo`, { decision: 'APPROVED' });
+    expect(approve.status).toBe(409);
   });
 
   it('recommendation rules follow the unit economics (breakeven R$ 26,12 / target R$ 17,15)', () => {

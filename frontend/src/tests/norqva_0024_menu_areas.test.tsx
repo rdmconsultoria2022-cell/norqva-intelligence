@@ -6,17 +6,18 @@ import { Sidebar, navigationGroups, navigationItems } from '../components/layout
 
 const admin = { id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any;
 
+// NORQVA-0025: Creative Lab ('creatives') e Fábrica viraram a tela Criativos
 const ALL_TABS = [
-  'dashboard', 'opportunities', 'products', 'offers', 'creatives', 'creative-factory', 'experiments',
+  'dashboard', 'opportunities', 'products', 'offers', 'creative-factory', 'experiments',
   'meta-ads', 'meta-credit', 'method', 'campaign-base', 'ai-team', 'brands', 'creative-performance',
   'demographics', 'decisions', 'team', 'config'
 ];
 
 describe('NORQVA-0024 — menu em áreas', () => {
-  it('mantém as 18 telas, sem repetição', () => {
+  it('mantém as telas, sem repetição', () => {
     const ids = navigationItems.map(i => i.id);
-    expect(ids).toHaveLength(18);
-    expect(new Set(ids).size).toBe(18);
+    expect(ids).toHaveLength(17);
+    expect(new Set(ids).size).toBe(17);
     expect([...ids].sort()).toEqual([...ALL_TABS].sort());
   });
 
@@ -33,13 +34,13 @@ describe('NORQVA-0024 — menu em áreas', () => {
     const setActiveTab = vi.fn();
     render(<Sidebar currentUser={admin} activeTab="dashboard" setActiveTab={setActiveTab} handleSignOut={vi.fn()} />);
     const operation = screen.getByTestId('nav-group-operation');
-    fireEvent.click(within(operation).getByText('Fábrica de Criativos'));
+    fireEvent.click(within(operation).getByText('Criativos'));
     expect(setActiveTab).toHaveBeenCalledWith('creative-factory');
 
     fireEvent.click(within(operation).getByText('Operação'));
-    expect(within(operation).queryByText('Fábrica de Criativos')).not.toBeInTheDocument();
+    expect(within(operation).queryByText('Criativos')).not.toBeInTheDocument();
     fireEvent.click(within(operation).getByText('Operação'));
-    expect(within(operation).getByText('Fábrica de Criativos')).toBeInTheDocument();
+    expect(within(operation).getByText('Criativos')).toBeInTheDocument();
   });
 
   it('a área da tela aberta não recolhe', () => {

@@ -4,7 +4,6 @@ import {
   Lightbulb,
   Package,
   Tag,
-  Film,
   FlaskConical,
   Scale,
   Users,
@@ -77,8 +76,8 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { id: 'products', label: 'Produtos', icon: Package },
       { id: 'offers', label: 'Ofertas', icon: Tag },
-      { id: 'creatives', label: 'Creative Lab', icon: Film },
-      { id: 'creative-factory', label: 'Fábrica de Criativos', icon: Factory },
+      // NORQVA-0025: Creative Lab e Fábrica viraram uma tela só ('creatives' abre a mesma tela)
+      { id: 'creative-factory', label: 'Criativos', icon: Factory },
       { id: 'method', label: 'Método NORQVA', icon: Compass },
       { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
       { id: 'experiments', label: 'Experimentos', icon: FlaskConical }

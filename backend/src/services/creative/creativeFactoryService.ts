@@ -9,6 +9,7 @@ import { campaignsForCreatives } from './creativeCampaigns';
 // deterministic scorecard per creative. Recommendations only; nothing here touches Meta.
 
 export const REVIEW_DECISIONS = ['APPROVED', 'REJECTED', 'REVISION_REQUESTED'] as const;
+export const CLAIM_TYPES = ['FEATURE', 'PRICE', 'OFFER_TERM', 'RESULT', 'SOCIAL_PROOF', 'TESTIMONIAL', 'SCARCITY', 'AUTHORITY'] as const;
 export type ReviewDecision = typeof REVIEW_DECISIONS[number];
 
 export const REJECTION_REASONS = [
@@ -253,7 +254,8 @@ export class CreativeFactoryService {
     opts: { isDemo: boolean; batchCode?: string; dateFrom?: string; dateTo?: string }
   ) {
     const params: any[] = [opts.isDemo];
-    let where = 'c.is_demo = $1 AND c.is_deleted = FALSE AND c.batch_code IS NOT NULL';
+    // NORQVA-0025: a tela Criativos mostra todos os criativos (lote, manual, Time de IAs, Meta), não só os de lote.
+    let where = 'c.is_demo = $1 AND c.is_deleted = FALSE';
     if (opts.batchCode) {
       params.push(opts.batchCode);
       where += ` AND c.batch_code = $${params.length}`;
@@ -263,9 +265,18 @@ export class CreativeFactoryService {
               c.batch_code, c.hook_family, c.mechanism, c.duration_seconds, c.primary_text, c.headline,
               c.script, c.generation_source, c.parent_creative_id, c.root_creative_id, c.version,
               c.lineage_code, c.utm_content_key, c.content_hash, c.approval_status, c.created_at,
-              o.human_id AS offer_human_id, o.name AS offer_name, o.price AS offer_price
+              c.concept, c.copy,
+              o.human_id AS offer_human_id, o.name AS offer_name, o.price AS offer_price,
+              p.name AS product_name,
+              CASE
+                WHEN c.batch_code IS NULL THEN 'MANUAL'
+                WHEN c.batch_code = 'META_EXTERNO' THEN 'META'
+                WHEN EXISTS (SELECT 1 FROM creative_batches cb WHERE cb.code = c.batch_code AND cb.source = 'AI' AND cb.is_demo = c.is_demo) THEN 'AI_TEAM'
+                ELSE 'BATCH'
+              END AS origin
        FROM creatives c
        LEFT JOIN offers o ON o.id = c.offer_id
+       LEFT JOIN products p ON p.id = c.product_id
        WHERE ${where}
        ORDER BY c.human_id ASC`,
       params
@@ -360,7 +371,11 @@ export class CreativeFactoryService {
 
     const items = creatives.map(c => {
       const linked = new Map<string, CreativeItemPerformance>();
-      for (const ad of adsByName.get(String(c.utm_content_key || '').toUpperCase()) || []) linked.set(ad.ad_id, ad);
+      // NORQVA-0025: criativo manual antigo pode não ter chave; sem chave, só vínculos manuais
+      const nameKey = c.utm_content_key || c.human_id;
+      if (nameKey) {
+        for (const ad of adsByName.get(String(nameKey).toUpperCase()) || []) linked.set(ad.ad_id, ad);
+      }
       for (const adId of manualLinks.get(c.id) || []) {
         const ad = adsById.get(adId);
         if (ad) linked.set(ad.ad_id, ad);
@@ -536,7 +551,7 @@ export class CreativeFactoryService {
     }
 
     const cRes = await pool.query(
-      'SELECT id, human_id, approval_status, content_hash FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
+      'SELECT id, human_id, approval_status, content_hash FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
       [creativeId, isDemo]
     );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
@@ -597,7 +612,7 @@ export class CreativeFactoryService {
     options: { forceNewVersion?: boolean } = {}
   ) {
     const cRes = await pool.query(
-      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
+      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
       [creativeId, isDemo]
     );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
@@ -624,7 +639,14 @@ export class CreativeFactoryService {
       file_url: changes.file_url !== undefined ? changes.file_url : cur.file_url
     };
     const hash = computeContentHash({ ...next, mechanism: cur.mechanism, format: cur.format });
-    if (hash === cur.content_hash) throw new CreativeFactoryError(400, 'Nenhuma alteração no conteúdo.');
+    // NORQVA-0025: criativos antigos podem não ter hash salvo; calcula o atual para comparar
+    const curHash =
+      cur.content_hash ||
+      computeContentHash({
+        hook: cur.hook, mechanism: cur.mechanism, cta: cur.cta, format: cur.format, script: cur.script,
+        primary_text: cur.primary_text ?? cur.copy, headline: cur.headline, file_url: cur.file_url
+      });
+    if (hash === curHash) throw new CreativeFactoryError(400, 'Nenhuma alteração no conteúdo.');
 
     // NORQVA-0007: only the file changed → attach it to this version. The approved copy stays the same,
     // and a new version (new key) would break the link with the Meta ad name.
@@ -712,7 +734,7 @@ export class CreativeFactoryService {
     if (!url) throw new CreativeFactoryError(400, 'Informe o link do arquivo.');
     assertSafeFileUrl(url);
     const cRes = await pool.query(
-      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE AND batch_code IS NOT NULL',
+      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
       [creativeId, isDemo]
     );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
@@ -764,7 +786,7 @@ export class CreativeFactoryService {
   }
 
   async linkMetaAd(pool: Pool, creativeId: string, metaAdId: string, userId: string | null, isDemo: boolean) {
-    const c = await pool.query('SELECT id, human_id FROM creatives WHERE id = $1 AND is_demo = $2 AND batch_code IS NOT NULL', [creativeId, isDemo]);
+    const c = await pool.query('SELECT id, human_id FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE', [creativeId, isDemo]);
     if (c.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
     const ad = await pool.query('SELECT meta_ad_id FROM meta_ads WHERE meta_ad_id = $1 AND is_demo = $2', [metaAdId, isDemo]);
     if (ad.rows.length === 0) throw new CreativeFactoryError(404, 'Anúncio da Meta não encontrado (sincronize antes).');
@@ -775,5 +797,67 @@ export class CreativeFactoryService {
     );
     await writeAuditLog(pool, userId, 'CREATIVE_AD_LINKED', `Criativo ${c.rows[0].human_id} ligado ao anúncio ${metaAdId}`, null, metaAdId, isDemo);
     return { creative_id: creativeId, meta_ad_id: metaAdId };
+  }
+
+  /**
+   * NORQVA-0025: registra uma promessa (claim) num criativo — uma claim já existente do mesmo produto
+   * ou uma nova, que entra como UNVERIFIED. A regra de aprovação não muda: só aprova com todas verificadas.
+   */
+  async addClaimToCreative(
+    pool: Pool,
+    creativeId: string,
+    input: { claim_id?: string | null; claim_text?: string | null; claim_type?: string | null; source?: string | null },
+    userId: string | null,
+    isDemo: boolean
+  ) {
+    const cRes = await pool.query(
+      'SELECT id, human_id, product_id, approval_status FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
+      [creativeId, isDemo]
+    );
+    if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
+    const creative = cRes.rows[0];
+    if (creative.approval_status === 'SUPERSEDED') {
+      throw new CreativeFactoryError(409, 'Registre a promessa na versão mais nova deste criativo.');
+    }
+    if (creative.approval_status === 'APPROVED') {
+      throw new CreativeFactoryError(409, 'Criativo já aprovado: para mudar as promessas, crie uma nova versão.');
+    }
+
+    let claimId: string;
+    let claimHumanId: string;
+    if (input.claim_id) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.claim_id)) {
+        throw new CreativeFactoryError(400, 'Promessa inválida.');
+      }
+      const existing = await pool.query(
+        'SELECT id, human_id, product_id FROM claims_registry WHERE id = $1 AND is_demo = $2',
+        [input.claim_id, isDemo]
+      );
+      if (existing.rows.length === 0) throw new CreativeFactoryError(404, 'Promessa não encontrada.');
+      if (existing.rows[0].product_id && String(existing.rows[0].product_id) !== String(creative.product_id)) {
+        throw new CreativeFactoryError(409, 'Esta promessa é de outro produto.');
+      }
+      claimId = existing.rows[0].id;
+      claimHumanId = existing.rows[0].human_id;
+    } else {
+      const text = String(input.claim_text || '').trim();
+      if (!text) throw new CreativeFactoryError(400, 'Escreva a promessa que o anúncio faz.');
+      if (text.length > 500) throw new CreativeFactoryError(400, 'A promessa pode ter no máximo 500 caracteres.');
+      const type = String(input.claim_type || 'FEATURE');
+      if (!(CLAIM_TYPES as readonly string[]).includes(type)) throw new CreativeFactoryError(400, 'Tipo de promessa inválido.');
+      claimHumanId = `CLM-${crypto.randomBytes(4).toString('hex').toUpperCase()}${demoSuffix(isDemo)}`;
+      const ins = await pool.query(
+        `INSERT INTO claims_registry (human_id, product_id, claim_text, claim_type, source, status, is_demo)
+         VALUES ($1, $2, $3, $4, $5, 'UNVERIFIED', $6) RETURNING id`,
+        [claimHumanId, creative.product_id, text, type, input.source ? String(input.source).slice(0, 500) : `Criativo ${creative.human_id}`, isDemo]
+      );
+      claimId = ins.rows[0].id;
+    }
+    await pool.query(
+      'INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [creativeId, claimId]
+    );
+    await writeAuditLog(pool, userId, 'CREATIVE_CLAIM_ADDED', `Promessa ${claimHumanId} registrada no criativo ${creative.human_id}`, null, claimHumanId, isDemo);
+    return { creative_id: creativeId, claim_id: claimId, claim_human_id: claimHumanId };
   }
 }

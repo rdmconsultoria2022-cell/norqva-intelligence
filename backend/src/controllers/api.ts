@@ -49,6 +49,7 @@ import {
 import { MetaCapiService } from '../services/meta/metaCapiService';
 import { resolveBrandPixelId } from '../services/brands/brandService';
 import { sendPaidOrderAccessEmail, getAccessEmailStatus } from '../services/purchaseAccessService';
+import { computeContentHash } from '../services/creative/creativeFactoryService';
 import { shouldCheckProvider, withTimeout } from '../services/paymentCheckThrottle';
 
 export const aiProvider = new MockAIProvider();
@@ -944,8 +945,13 @@ export async function createCreative(req: AuthenticatedRequest, res: Response) {
     const isDemo = req.query.mode === 'demo';
     const { product_id, offer_id, hook, concept, copy, cta, format, file_url } = req.body;
 
-    if (!product_id || !hook || !concept || !copy || !cta || !format || !file_url) {
+    // NORQVA-0025: o arquivo é opcional no cadastro (anexa depois, na tela Criativos)
+    if (!product_id || !hook || !concept || !copy || !cta || !format) {
       return res.status(400).json({ error: 'Missing mandatory creative parameters.' });
+    }
+    const fileUrl = file_url ? String(file_url).trim() : '';
+    if (fileUrl && !/^https?:\/\/[^\s]+$/i.test(fileUrl)) {
+      return res.status(400).json({ error: 'O link do arquivo precisa começar com http:// ou https://.' });
     }
 
     if (!['VIDEO', 'IMAGE', 'CAROUSEL'].includes(format)) {
@@ -973,10 +979,12 @@ export async function createCreative(req: AuthenticatedRequest, res: Response) {
     const id = crypto.randomUUID();
 
     const insertRes = await pool.query(
-      `INSERT INTO creatives (id, human_id, product_id, offer_id, hook, concept, copy, cta, format, file_url, responsible_id, status, is_demo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'IDEIA', $12)
+      `INSERT INTO creatives (id, human_id, product_id, offer_id, hook, concept, copy, primary_text, cta, format, file_url,
+                              responsible_id, status, is_demo, utm_content_key, content_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, 'IDEIA', $12, $2, $13)
        RETURNING *`,
-      [id, humanId, product_id, offer_id || null, hook, concept, copy, cta, format, file_url, req.user?.id || null, isDemo]
+      [id, humanId, product_id, offer_id || null, hook, concept, copy, cta, format, fileUrl || null, req.user?.id || null, isDemo,
+       computeContentHash({ hook, mechanism: null, cta, format, script: null, primary_text: copy, headline: null, file_url: fileUrl || null })]
     );
 
     const creative = insertRes.rows[0];
@@ -985,7 +993,10 @@ export async function createCreative(req: AuthenticatedRequest, res: Response) {
     writeAuditLog(pool, req.user?.id || null, 'CREATIVE_CREATE', `Created creative ${humanId}`, null, JSON.stringify(creative), isDemo, false);
 
     return res.status(201).json({ creative });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'Já existe um criativo com este nome. Tente de novo.' });
+    }
     console.error('Create creative error:', err);
     return res.status(500).json({ error: 'Failed to create creative.' });
   }
