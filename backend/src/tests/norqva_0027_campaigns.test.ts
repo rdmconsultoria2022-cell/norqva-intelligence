@@ -23,6 +23,7 @@ describe.sequential('NORQVA-0027 — Campanhas', () => {
   const planCode = `TST-${tag}`;
   let planId: string;
   const creatives: Record<string, string> = {};
+  const metaAdId = `12${String(Date.now()).slice(-10)}${Math.floor(Math.random() * 900 + 100)}`;
 
   const as = (token: string) => ({
     get: (url: string) => request(app).get(url).set('Authorization', `Bearer ${token}`),
@@ -192,17 +193,41 @@ describe.sequential('NORQVA-0027 — Campanhas', () => {
     expect(r.body.spec.adsets[0].targeting).toMatchObject({ countries: ['BR'], age_min: 25, age_max: 65 });
   });
 
+  it('criar na Meta recusa anúncio com criativo não aprovado, antes de falar com a Meta', async () => {
+    const dest = `${DEFAULT_OFFER_BASE_URL}/p/${offerHid}`;
+    const code = `TSG-${tag}`;
+    const name = `T${tag}-DRAFT`;
+    const r = await as(adminToken).post('/api/launch-plans', {
+      code,
+      offer_human_id: offerHid,
+      max_spend_brl: 140,
+      question_text: 'Ativar?',
+      spec: {
+        campaign: { name: `NORQVA_TSG_${tag}`, objective: 'OUTCOME_SALES' },
+        pixel_id: OFFICIAL_NORQVA_PIXEL_ID,
+        adsets: [{ name: `${code}_AS01`, daily_budget_brl: 20, targeting: { countries: ['BR'], age_min: 25, age_max: 65, advantage_audience: true } }],
+        ads: [{ name, adset_name: `${code}_AS01`, video_url: 'https://cdn.example.com/qualquer.mp4', primary_text: 'x', headline: 'y', cta: 'SEE_DETAILS', destination_url: dest, url_tags: urlTagsFor(code, name) }]
+      }
+    });
+    expect(r.status).toBe(201);
+    const create = await as(adminToken).post(`/api/launch-plans/${r.body.id}/create`);
+    expect(create.status).toBe(409);
+    expect(create.body.error).toMatch(/aprovado/);
+    const after = await pool.query('SELECT status FROM launch_plans WHERE id = $1', [r.body.id]);
+    expect(after.rows[0].status).toBe('DRAFT');
+  });
+
   it('campanha que já existe na Meta não é editável', async () => {
     await pool.query(
       `UPDATE launch_plans SET status = 'AWAITING_OPERATOR', meta_ids = $2 WHERE id = $1`,
-      [planId, JSON.stringify({ campaign: { x: '120000000000001' }, adsets: {}, videos: {}, creatives: {}, ads: { a: '120000000000099' } })]
+      [planId, JSON.stringify({ campaign: { x: '120000000000001' }, adsets: {}, videos: {}, creatives: {}, ads: { a: metaAdId } })]
     );
     const r = await as(adminToken).post(`/api/campaigns/${planId}/fields`, { fields: { 'ads.0.headline': 'x' } });
     expect(r.status).toBe(409);
   });
 
   it('Meta Ads não ativa objeto de campanha que espera o Sim', async () => {
-    const r = await as(adminToken).post('/api/meta-control/ad/120000000000099/status', { status: 'ACTIVE' });
+    const r = await as(adminToken).post(`/api/meta-control/ad/${metaAdId}/status`, { status: 'ACTIVE' });
     expect(r.status).toBe(409);
     expect(r.body.error).toMatch(/espera o seu Sim/);
   });

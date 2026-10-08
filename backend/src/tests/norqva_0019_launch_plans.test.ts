@@ -8,6 +8,7 @@ import app from '../index';
 import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { signSupabaseToken } from '../utils/token';
+import { computeContentHash } from '../services/creative/creativeFactoryService';
 import {
   MetaMutatingClient,
   OFFICIAL_NORQVA_PIXEL_ID,
@@ -173,6 +174,18 @@ describe('NORQVA-0019 — launch plans', () => {
       `INSERT INTO offers (human_id, product_id, name, description, price, status, is_demo) VALUES ($1, $2, 'Oferta T19', 'Oferta de teste', 19.90, 'ATIVA', FALSE)`,
       [offerHumanId, prd.rows[0].id]
     );
+    // NORQVA-0027: só criativo aprovado (e com o mesmo arquivo da aprovação) vai para a Meta
+    for (const key of ['T19_AD_A', 'T19_AD_B', 'T19_AD_C']) {
+      const fields = { hook: 'Gancho', mechanism: null, cta: 'Saiba mais', format: 'VIDEO', script: null, primary_text: 'Massa fresca e molho de verdade.', headline: 'Trattoria em Casa · R$ 19,90', file_url: `https://files.example.com/${key}.mp4` };
+      const hash = computeContentHash(fields);
+      await pool.query('DELETE FROM creatives WHERE human_id = $1 OR utm_content_key = $1', [key]);
+      const c = await pool.query(
+        `INSERT INTO creatives (human_id, product_id, hook, concept, copy, primary_text, headline, cta, format, file_url, status, is_demo, utm_content_key, content_hash, approval_status)
+         VALUES ($1, $2, $3, 'c', $4, $4, $5, $6, 'VIDEO', $7, 'IDEIA', FALSE, $1, $8, 'APPROVED') RETURNING id`,
+        [key, prd.rows[0].id, fields.hook, fields.primary_text, fields.headline, fields.cta, fields.file_url, hash]
+      );
+      await pool.query(`INSERT INTO creative_reviews (creative_id, content_hash, decision, is_demo) VALUES ($1, $2, 'APPROVED', FALSE)`, [c.rows[0].id, hash]);
+    }
   });
 
   beforeEach(() => {

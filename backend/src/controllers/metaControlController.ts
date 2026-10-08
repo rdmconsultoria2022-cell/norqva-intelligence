@@ -161,9 +161,14 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
     const capped = await pool.query(`SELECT code, meta_ids FROM launch_plans WHERE guard_state = 'CAPPED'`).catch(() => ({ rows: [] as any[] }));
     const hit = capped.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
     // NORQVA-0027: objetos de uma campanha que ainda não recebeu o Sim (ou recebeu Não) só ativam pela resposta Sim.
-    const unapproved = await pool
-      .query(`SELECT code, status, meta_ids FROM launch_plans WHERE status IN ('CREATING', 'CREATED_PAUSED', 'AWAITING_OPERATOR', 'REJECTED', 'FAILED')`)
-      .catch(() => ({ rows: [] as any[] }));
+    let unapproved: { rows: any[] };
+    try {
+      unapproved = await pool.query(`SELECT code, status, meta_ids FROM launch_plans WHERE status IN ('CREATING', 'CREATED_PAUSED', 'AWAITING_OPERATOR', 'REJECTED', 'FAILED')`);
+    } catch {
+      const error = 'Não foi possível conferir se este objeto pertence a uma campanha que espera o seu Sim. Nada foi ativado; tente de novo.';
+      await decision.finish('REJECTED', { result: { http_status: 503 }, error });
+      return res.status(503).json({ error });
+    }
     const waiting = unapproved.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
     if (!hit && waiting) {
       const error =

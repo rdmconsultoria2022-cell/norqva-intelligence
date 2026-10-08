@@ -74,6 +74,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const [confirmCreate, setConfirmCreate] = useState(false);
   const [creating, setCreating] = useState<{ offer: string; creative_ids: string[]; daily: string; max: string } | null>(null);
   const [newOptions, setNewOptions] = useState<any[]>([]);
+  const [cardKey, setCardKey] = useState(0);
 
   const apiRef = useRef(apiFetch);
   apiRef.current = apiFetch;
@@ -180,6 +181,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     if (r?.campaign) {
       applyCampaign(r.campaign);
       setFillResults(r.results || []);
+      loadList();
     }
   };
 
@@ -188,6 +190,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     const r = await run('meta', () => post(`/launch-plans/${selectedId}/create`), 'Campanha criada na Meta, toda pausada. Agora ela espera o seu Sim.');
     await loadList();
     if (selectedId) await loadCampaign(selectedId);
+    setCardKey(k => k + 1); // recarrega o quadro do Sim/Não
     return r;
   };
 
@@ -270,7 +273,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         </div>
       </div>
 
-      <LaunchPlansCard apiFetch={apiFetch as any} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
+      <LaunchPlansCard key={cardKey} apiFetch={apiFetch as any} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
 
       {creating && (
         <section className="rounded-xl border border-emerald-700/40 bg-emerald-950/10 p-4 space-y-3 text-xs" data-testid="new-campaign-form">

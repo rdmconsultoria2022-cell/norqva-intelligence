@@ -399,7 +399,9 @@ export function CreativeFactoryView({
   const staleApproval = (c: any) => {
     if (c.approval_status !== 'APPROVED') return false;
     const lastApproved = (c.reviews || []).find((r: any) => r.decision === 'APPROVED');
-    return !!lastApproved && !!c.content_hash && lastApproved.content_hash !== c.content_hash;
+    // sem aprovação registrada, sem hash ou aprovação antiga sem hash: precisa aprovar de novo
+    if (!lastApproved || !c.content_hash || !lastApproved.content_hash || lastApproved.content_hash === 'UNHASHED') return true;
+    return lastApproved.content_hash !== c.content_hash;
   };
 
   const renderCard = (c: any) => {

@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
 import { LaunchPlanService, LaunchPlanError } from '../services/launchPlans/launchPlanService';
+import { assertAdsReadyForMeta } from '../services/launchPlans/campaignEditorService';
 import { translateMetaControlError } from './metaControlController';
 import { beginDecision, decisionContextFromRequest, DecisionAuditError, DecisionHandle, metaIdsOfPlan } from '../db/decisionEvents';
 
@@ -101,6 +102,8 @@ export async function createLaunchPlanOnMeta(req: AuthenticatedRequest, res: Res
     return res.status(500).json({ error: 'Falha ao registrar a decisão. Nada foi executado.' });
   }
   try {
+    // NORQVA-0027: só criativo aprovado (e igual ao aprovado) vai para a Meta
+    await assertAdsReadyForMeta(pool, id);
     const result: any = await service.createOnMeta(pool, id, userOf(req), clientFactory());
     const recorded = await decision.finish('EXECUTED', { metaIds: metaIdsOfPlan(result?.plan?.meta_ids), result: planOutcome(result?.plan) });
     return res.status(200).json(recorded ? result : { ...result, audit_incomplete: true });

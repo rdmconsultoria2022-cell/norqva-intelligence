@@ -13,6 +13,7 @@ import { OFFICIAL_NORQVA_PIXEL_ID } from '../meta/metaMutatingClient';
 import {
   LaunchPlanError,
   ALLOWED_CTA_TYPES,
+  VIDEO_URL_PLACEHOLDER,
   normalizeMetaIds,
   serializeLaunchPlan,
   validateLaunchPlanInput
@@ -23,7 +24,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // Campos que o operador pode editar (modo manual)
 const AD_FIELDS = ['primary_text', 'headline', 'cta', 'destination_url'] as const;
-const FIELD_RE = /^(?:ads\.(\d{1,2})\.(primary_text|headline|cta|destination_url)|adsets\.(\d{1,2})\.daily_budget_brl|max_spend_brl|hypothesis)$/;
+const FIELD_RE = /^(?:ads\.(0|[1-9]\d?)\.(primary_text|headline|cta|destination_url)|adsets\.(0|[1-9]\d?)\.daily_budget_brl|max_spend_brl|hypothesis)$/;
 
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const parse = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return {}; } })() : v);
@@ -140,7 +141,9 @@ async function saveSpec(pool: Pool, row: any, spec: any, maxSpend: number, extra
          auto_values = COALESCE($6::jsonb, auto_values),
          ad_creatives = COALESCE($7::jsonb, ad_creatives),
          last_error = NULL, updated_at = NOW()
-     WHERE id = $1 AND status IN ('DRAFT', 'FAILED') RETURNING *`,
+     WHERE id = $1 AND status IN ('DRAFT', 'FAILED')
+       AND NOT EXISTS (SELECT 1 FROM jsonb_each(meta_ids) e WHERE e.value <> '{}'::jsonb)
+     RETURNING *`,
     [
       row.id,
       JSON.stringify(input.spec),
@@ -222,6 +225,8 @@ export class CampaignEditorService {
       const creative = await findCreativeForAd(pool, ad.name, chosen[String(i)] || null);
       const check = await checkCreativeForAd(pool, creative, offer.product_id);
       if (!check.ok) {
+        // Sem criativo aprovado e igual ao aprovado, o anúncio volta a "a preencher" (não pode ir para a Meta)
+        ad.video_url = VIDEO_URL_PLACEHOLDER;
         results.push({ index: i, ad: ad.name, status: 'SKIPPED', reason: check.reason });
         continue;
       }
@@ -300,6 +305,8 @@ export class CampaignEditorService {
     if (!Array.isArray(spec.ads) || !spec.ads[adIndex]) throw new LaunchPlanError(400, 'Anúncio não existe.');
     const chosen = obj(row.ad_creatives);
     const manual = obj(row.manual_fields);
+    const auto = obj(row.auto_values);
+    const original = spec.ads[adIndex];
     if (creativeId) {
       if (!UUID_RE.test(creativeId)) throw new LaunchPlanError(400, 'Criativo inválido.');
       const offer = await offerOf(pool, row.offer_human_id);
@@ -307,15 +314,28 @@ export class CampaignEditorService {
       const check = await checkCreativeForAd(pool, c, offer?.product_id);
       if (!check.ok) throw new LaunchPlanError(409, check.reason || 'Criativo não pode ir para o anúncio.');
       chosen[String(adIndex)] = creativeId;
+      // guarda o anúncio automático (nome, vídeo, tags) para "Voltar ao automático"
+      if (!manual[`ads.${adIndex}.creative`]) {
+        auto[`ads.${adIndex}.creative`] = { name: original.name, video_url: original.video_url, url_tags: original.url_tags };
+      }
       manual[`ads.${adIndex}.creative`] = true;
     } else {
       delete chosen[String(adIndex)];
       delete manual[`ads.${adIndex}.creative`];
+      const prev = auto[`ads.${adIndex}.creative`];
+      if (isObj(prev)) {
+        spec.ads[adIndex] = { ...original, name: prev.name, video_url: prev.video_url, url_tags: prev.url_tags };
+        delete auto[`ads.${adIndex}.creative`];
+        await saveSpec(pool, row, spec, Number(row.max_spend_brl), {});
+      }
     }
-    await pool.query(
-      `UPDATE launch_plans SET ad_creatives = $2, manual_fields = $3, updated_at = NOW() WHERE id = $1 AND status IN ('DRAFT', 'FAILED')`,
-      [row.id, JSON.stringify(chosen), JSON.stringify(manual)]
+    const upd = await pool.query(
+      `UPDATE launch_plans SET ad_creatives = $2, manual_fields = $3, auto_values = $4, updated_at = NOW()
+       WHERE id = $1 AND status IN ('DRAFT', 'FAILED')
+         AND NOT EXISTS (SELECT 1 FROM jsonb_each(meta_ids) e WHERE e.value <> '{}'::jsonb)`,
+      [row.id, JSON.stringify(chosen), JSON.stringify(manual), JSON.stringify(auto)]
     );
+    if (!upd.rowCount) throw new LaunchPlanError(409, 'A campanha mudou de situação; recarregue e tente de novo.');
     await audit(pool, userId, 'CAMPAIGN_CREATIVE_CHOSEN', `Campanha ${row.code}: anúncio ${adIndex + 1} com criativo ${creativeId || 'automático'}.`, { id: row.id, ad: adIndex, creative: creativeId });
     return this.fillFromCreatives(pool, id, userId);
   }
@@ -330,6 +350,11 @@ export class CampaignEditorService {
     const auto = obj(row.auto_values);
     let maxSpend = Number(row.max_spend_brl);
     for (const [path, value] of Object.entries(auto)) {
+      const pick = path.match(/^ads\.(\d+)\.creative$/);
+      if (pick && isObj(value) && spec.ads[Number(pick[1])]) {
+        Object.assign(spec.ads[Number(pick[1])], { name: value.name, video_url: value.video_url, url_tags: value.url_tags });
+        continue;
+      }
       const m = path.match(FIELD_RE);
       if (!m) continue;
       if (m[1] !== undefined && spec.ads[Number(m[1])]) spec.ads[Number(m[1])][m[2]] = value;
@@ -366,7 +391,7 @@ export class CampaignEditorService {
       creatives.push(c);
     }
 
-    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 12);
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 14) + crypto.randomBytes(1).toString('hex').toUpperCase();
     const code = `CMP-${offer.human_id}-${stamp}`.toUpperCase().slice(0, 40);
     const campaignName = String(body?.campaign_name || '').trim() || `NORQVA_${offer.human_id.replace(/-/g, '_')}_${stamp}`;
     const daily = Number(body?.daily_budget_brl ?? 20);
@@ -413,5 +438,27 @@ export class CampaignEditorService {
     );
     await audit(pool, userId, 'CAMPAIGN_CREATED_FROM_OFFER', `Campanha ${input.code} criada em rascunho a partir da oferta ${offer.human_id}.`, { id: ins.rows[0].id });
     return serializeCampaign(ins.rows[0]);
+  }
+}
+
+/**
+ * Trava da criação na Meta (chamada antes de LaunchPlanService.createOnMeta): cada anúncio precisa de um
+ * criativo APROVADO, com o mesmo conteúdo da aprovação, e o vídeo do anúncio tem que ser o arquivo dele.
+ */
+export async function assertAdsReadyForMeta(pool: Pool, planId: string): Promise<void> {
+  const row = await loadPlanRow(pool, planId);
+  if (!['DRAFT', 'FAILED', 'CREATING'].includes(row.status)) return; // já criado: nada novo vai para a Meta
+  const offer = await offerOf(pool, row.offer_human_id);
+  if (!offer) throw new LaunchPlanError(409, `Oferta ${row.offer_human_id} não encontrada.`);
+  const spec = obj(row.spec);
+  const chosen = obj(row.ad_creatives);
+  const ads: any[] = Array.isArray(spec.ads) ? spec.ads : [];
+  for (let i = 0; i < ads.length; i++) {
+    const creative = await findCreativeForAd(pool, ads[i].name, chosen[String(i)] || null);
+    const check = await checkCreativeForAd(pool, creative, offer.product_id);
+    if (!check.ok) throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): ${check.reason}`);
+    if (String(ads[i].video_url) !== String(check.creative.file_url)) {
+      throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): o vídeo não é o arquivo aprovado do criativo. Use "Preencher com os criativos aprovados".`);
+    }
   }
 }
