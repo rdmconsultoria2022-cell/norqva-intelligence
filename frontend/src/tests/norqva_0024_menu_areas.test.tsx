@@ -1,0 +1,52 @@
+// NORQVA-0024: menu agrupado em áreas, na ordem do fluxo; nenhuma tela some.
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import React from 'react';
+import { Sidebar, navigationGroups, navigationItems } from '../components/layout/Sidebar';
+
+const admin = { id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any;
+
+const ALL_TABS = [
+  'dashboard', 'opportunities', 'products', 'offers', 'creatives', 'creative-factory', 'experiments',
+  'meta-ads', 'meta-credit', 'method', 'campaign-base', 'ai-team', 'brands', 'creative-performance',
+  'demographics', 'decisions', 'team', 'config'
+];
+
+describe('NORQVA-0024 — menu em áreas', () => {
+  it('mantém as 18 telas, sem repetição', () => {
+    const ids = navigationItems.map(i => i.id);
+    expect(ids).toHaveLength(18);
+    expect(new Set(ids).size).toBe(18);
+    expect([...ids].sort()).toEqual([...ALL_TABS].sort());
+  });
+
+  it('agrupa nas áreas e na ordem aprovadas', () => {
+    expect(navigationGroups.map(g => g.label)).toEqual(['Visão Geral', 'Inteligência', 'Operação', 'Configurações']);
+    expect(navigationGroups[1].items.map(i => i.id)).toEqual([
+      'campaign-base', 'ai-team', 'opportunities', 'creative-performance', 'demographics', 'decisions'
+    ]);
+    expect(navigationItems.find(i => i.id === 'dashboard')?.label).toBe('Visão Geral');
+    expect(navigationItems.find(i => i.id === 'opportunities')?.label).toBe('Oportunidades');
+  });
+
+  it('mostra os títulos, navega e recolhe a área', () => {
+    const setActiveTab = vi.fn();
+    render(<Sidebar currentUser={admin} activeTab="dashboard" setActiveTab={setActiveTab} handleSignOut={vi.fn()} />);
+    const operation = screen.getByTestId('nav-group-operation');
+    fireEvent.click(within(operation).getByText('Fábrica de Criativos'));
+    expect(setActiveTab).toHaveBeenCalledWith('creative-factory');
+
+    fireEvent.click(within(operation).getByText('Operação'));
+    expect(within(operation).queryByText('Fábrica de Criativos')).not.toBeInTheDocument();
+    fireEvent.click(within(operation).getByText('Operação'));
+    expect(within(operation).getByText('Fábrica de Criativos')).toBeInTheDocument();
+  });
+
+  it('a área da tela aberta não recolhe', () => {
+    render(<Sidebar currentUser={admin} activeTab="meta-ads" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ 'meta-ads': 3 }} />);
+    const operation = screen.getByTestId('nav-group-operation');
+    fireEvent.click(within(operation).getByText('Operação'));
+    expect(within(operation).getByText('Meta Ads')).toBeInTheDocument();
+    expect(screen.getByTestId('badge-meta-ads')).toHaveTextContent('3');
+  });
+});
