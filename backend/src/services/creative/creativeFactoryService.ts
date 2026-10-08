@@ -271,7 +271,7 @@ export class CreativeFactoryService {
               CASE
                 WHEN c.batch_code IS NULL THEN 'MANUAL'
                 WHEN c.batch_code = 'META_EXTERNO' THEN 'META'
-                WHEN EXISTS (SELECT 1 FROM creative_batches cb WHERE cb.code = c.batch_code AND cb.source = 'AI') THEN 'AI_TEAM'
+                WHEN EXISTS (SELECT 1 FROM creative_batches cb WHERE cb.code = c.batch_code AND cb.source = 'AI' AND cb.is_demo = c.is_demo) THEN 'AI_TEAM'
                 ELSE 'BATCH'
               END AS origin
        FROM creatives c
@@ -372,8 +372,9 @@ export class CreativeFactoryService {
     const items = creatives.map(c => {
       const linked = new Map<string, CreativeItemPerformance>();
       // NORQVA-0025: criativo manual antigo pode não ter chave; sem chave, só vínculos manuais
-      if (c.utm_content_key) {
-        for (const ad of adsByName.get(String(c.utm_content_key).toUpperCase()) || []) linked.set(ad.ad_id, ad);
+      const nameKey = c.utm_content_key || c.human_id;
+      if (nameKey) {
+        for (const ad of adsByName.get(String(nameKey).toUpperCase()) || []) linked.set(ad.ad_id, ad);
       }
       for (const adId of manualLinks.get(c.id) || []) {
         const ad = adsById.get(adId);
@@ -638,7 +639,14 @@ export class CreativeFactoryService {
       file_url: changes.file_url !== undefined ? changes.file_url : cur.file_url
     };
     const hash = computeContentHash({ ...next, mechanism: cur.mechanism, format: cur.format });
-    if (hash === cur.content_hash) throw new CreativeFactoryError(400, 'Nenhuma alteração no conteúdo.');
+    // NORQVA-0025: criativos antigos podem não ter hash salvo; calcula o atual para comparar
+    const curHash =
+      cur.content_hash ||
+      computeContentHash({
+        hook: cur.hook, mechanism: cur.mechanism, cta: cur.cta, format: cur.format, script: cur.script,
+        primary_text: cur.primary_text ?? cur.copy, headline: cur.headline, file_url: cur.file_url
+      });
+    if (hash === curHash) throw new CreativeFactoryError(400, 'Nenhuma alteração no conteúdo.');
 
     // NORQVA-0007: only the file changed → attach it to this version. The approved copy stays the same,
     // and a new version (new key) would break the link with the Meta ad name.
@@ -818,6 +826,9 @@ export class CreativeFactoryService {
     let claimId: string;
     let claimHumanId: string;
     if (input.claim_id) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.claim_id)) {
+        throw new CreativeFactoryError(400, 'Promessa inválida.');
+      }
       const existing = await pool.query(
         'SELECT id, human_id, product_id FROM claims_registry WHERE id = $1 AND is_demo = $2',
         [input.claim_id, isDemo]

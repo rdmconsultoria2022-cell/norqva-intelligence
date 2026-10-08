@@ -156,14 +156,17 @@ export function CreativeFactoryView({
     load();
   }, [load]);
 
-  const run = async (key: string, fn: () => Promise<any>, ok: string) => {
+  // Devolve true quando deu certo (NORQVA-0025: formulários só fecham em caso de sucesso)
+  const run = async (key: string, fn: () => Promise<any>, ok: string): Promise<boolean> => {
     setBusy(key);
     try {
       await fn();
       showSuccessRef.current(ok);
       await load();
+      return true;
     } catch (err: any) {
       showErrorRef.current(err.message || 'Operação falhou.');
+      return false;
     } finally {
       setBusy(null);
     }
@@ -221,7 +224,8 @@ export function CreativeFactoryView({
       'new-creative',
       () => post(`/creatives?mode=${mode}`, { ...form, offer_id: form.offer_id || null, file_url: form.file_url || null }),
       'Criativo cadastrado. Anexe o arquivo e registre as promessas para poder aprovar.'
-    ).then(() => {
+    ).then(ok => {
+      if (!ok) return;
       setCreating(false);
       onCreativeCreated?.();
     });
@@ -230,9 +234,9 @@ export function CreativeFactoryView({
     if (!claiming) return;
     const { id, claim_id, claim_text, claim_type } = claiming;
     const body = claim_id ? { claim_id } : { claim_text: claim_text.trim(), claim_type };
-    return run(`claim-add-${id}`, () => post(`/creative-factory/creatives/${id}/claims?mode=${mode}`, body), 'Promessa registrada.').then(() =>
-      setClaiming(null)
-    );
+    return run(`claim-add-${id}`, () => post(`/creative-factory/creatives/${id}/claims?mode=${mode}`, body), 'Promessa registrada.').then(ok => {
+      if (ok) setClaiming(null);
+    });
   };
 
   const attachBatchAssets = (code: string) =>

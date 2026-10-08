@@ -993,7 +993,10 @@ export async function createCreative(req: AuthenticatedRequest, res: Response) {
     writeAuditLog(pool, req.user?.id || null, 'CREATIVE_CREATE', `Created creative ${humanId}`, null, JSON.stringify(creative), isDemo, false);
 
     return res.status(201).json({ creative });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'Já existe um criativo com este nome. Tente de novo.' });
+    }
     console.error('Create creative error:', err);
     return res.status(500).json({ error: 'Failed to create creative.' });
   }
