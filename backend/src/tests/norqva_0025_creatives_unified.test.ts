@@ -1,6 +1,6 @@
 // NORQVA-0025: tela única Criativos — criativo manual aparece, recebe arquivo e promessas,
 // e só é aprovado com as promessas verificadas (mesma regra dos lotes).
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { Pool } from 'pg';
 import crypto from 'crypto';
@@ -49,6 +49,15 @@ describe.sequential('NORQVA-0025 — Criativos numa tela só', () => {
     adminToken = await mk('admin.norqva0025@norqva.test', 'ADMIN');
     creativeToken = await mk('creative.norqva0025@norqva.test', 'CREATIVE');
     viewerToken = await mk('perf.norqva0025@norqva.test', 'PERFORMANCE');
+  });
+
+  // Banco de testes compartilhado: apaga o que este arquivo criou (o seed de outros testes usa CR-000001…)
+  afterAll(async () => {
+    const ids = [productId, otherProductId];
+    await pool.query('DELETE FROM creatives WHERE product_id = ANY($1::uuid[]) AND parent_creative_id IS NOT NULL', [ids]);
+    await pool.query('DELETE FROM creatives WHERE product_id = ANY($1::uuid[])', [ids]);
+    await pool.query('DELETE FROM claims_registry WHERE product_id = ANY($1::uuid[])', [ids]);
+    await pool.query('DELETE FROM products WHERE id = ANY($1::uuid[])', [ids]);
   });
 
   const list = async () => {
