@@ -111,7 +111,7 @@ describe.sequential('NORQVA-0026 — tela Vendas', () => {
       `INSERT INTO payments (human_id, order_id, provider, status, amount, idempotency_key, is_demo, external_reference, provider_payment_id, confirmed_at)
        VALUES ($1, $2, 'ASAAS', $3, $4, $5, true, $6, $7, $8)`,
       [`PMT-0026-${crypto.randomUUID().slice(0, 8)}`, orderId, status === 'PAID' ? 'CONFIRMED' : 'PENDING', AMOUNT, crypto.randomUUID(), crypto.randomUUID(),
-       `pay_${crypto.randomUUID().slice(0, 10)}`, status === 'PAID' ? new Date() : null]
+       `pay_${crypto.randomUUID().slice(0, 10)}`, status === 'PAID' ? new Date(Date.now() - 60 * 60 * 1000) : null]
     );
     if (delivery) {
       await pool.query(
@@ -178,6 +178,12 @@ describe.sequential('NORQVA-0026 — tela Vendas', () => {
     const claim = await request(app).get('/api/checkout/recovery/' + raw);
     expect(claim.status).toBe(200);
     expect(claim.body.status).toBe('PAID');
+
+    // novo link substitui o anterior
+    const again = await as(adminToken).post(`/api/sales/orders/${orderId}/access-link?mode=demo`);
+    expect(again.status).toBe(200);
+    const active = await pool.query("SELECT 1 FROM order_recovery_tokens WHERE order_id = $1 AND purpose = 'MANUAL' AND status = 'ACTIVE'", [orderId]);
+    expect(active.rows).toHaveLength(1);
   });
 
   it('reenviar acesso manda e-mail e marca como enviado; falha devolve erro claro', async () => {
@@ -191,8 +197,9 @@ describe.sequential('NORQVA-0026 — tela Vendas', () => {
     (emailService as any).setProvider({ sendPurchaseAccessEmail: async () => ({ success: false, error: 'DOWN' }) });
     const fail = await as(adminToken).post(`/api/sales/orders/${orderId}/resend-access?mode=demo`);
     expect(fail.status).toBe(502);
+    // falha do reenvio manual não estraga o e-mail que já tinha saído
     const after = await pool.query('SELECT status FROM order_access_emails WHERE order_id = $1', [orderId]);
-    expect(after.rows[0].status).toBe('FAILED');
+    expect(['SENT', 'SIMULATED']).toContain(after.rows[0].status);
   });
 
   it('conferir pagamento: pendente confirmado no Asaas vira pago', async () => {

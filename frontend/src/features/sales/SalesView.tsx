@@ -52,7 +52,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState<{ id: string; url: string } | null>(null);
+  const [copiedLink, setCopiedLink] = useState<{ id: string; url: string; expires: string; copied: boolean } | null>(null);
 
   const apiRef = useRef(apiFetch);
   apiRef.current = apiFetch;
@@ -92,14 +92,27 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
     }
   };
 
+  // Copia logo depois de gerar (antes de recarregar a lista), enquanto o clique ainda vale para o navegador
   const copyLink = async (id: string) => {
-    const r = await act(`link-${id}`, `/sales/orders/${id}/access-link?mode=${mode}`, () => 'Link de acesso gerado. Vale por 7 dias.');
-    if (!r?.url) return;
-    setCopiedLink({ id, url: r.url });
+    setBusy(`link-${id}`);
     try {
-      await navigator.clipboard.writeText(r.url);
-    } catch {
-      /* sem permissão de área de transferência: o link fica visível para copiar à mão */
+      const r = await apiRef.current(`/sales/orders/${id}/access-link?mode=${mode}`, { method: 'POST', body: JSON.stringify({}) });
+      if (!r?.url) throw new Error('Não foi possível gerar o link.');
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(r.url);
+        copied = true;
+      } catch {
+        /* sem permissão: o link fica visível para copiar à mão */
+      }
+      const expires = r.expires_at ? new Date(r.expires_at).toLocaleDateString('pt-BR') : '';
+      setCopiedLink({ id, url: r.url, expires, copied });
+      okRef.current(copied ? 'Link copiado. Cole na conversa do WhatsApp.' : 'Link gerado. Copie o link que aparece no pedido.');
+      await load();
+    } catch (err: any) {
+      errRef.current(err.message || 'Não foi possível gerar o link.');
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -222,7 +235,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
               )}
               {copiedLink?.id === o.id && (
                 <div className="lg:basis-full text-[11px] text-slate-400" data-testid="sales-link">
-                  Link copiado (vale 7 dias). Se não colar, copie daqui:{' '}
+                  {copiedLink.copied ? 'Link copiado' : 'Link gerado'}{copiedLink.expires ? ` (vale até ${copiedLink.expires})` : ''}. Se não colar, copie daqui:{' '}
                   <span className="font-mono text-slate-200 break-all select-all">{copiedLink.url}</span>
                 </div>
               )}

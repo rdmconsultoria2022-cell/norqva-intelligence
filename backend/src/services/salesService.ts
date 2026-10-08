@@ -31,10 +31,10 @@ export interface ListSalesOptions {
   canSeeName: boolean;
 }
 
-// "Com problema": pago sem download, entrega vencida/esgotada ou e-mail de acesso que falhou
+// "Com problema": pago há mais de 30 min sem download, entrega vencida ou e-mail de acesso que falhou
 const PROBLEM_CONDITION = `(
   o.status = 'PAID' AND (
-    COALESCE(dl.downloads, 0) = 0
+    (COALESCE(dl.downloads, 0) = 0 AND pay.confirmed_at < NOW() - INTERVAL '30 minutes')
     OR dl.expired > 0
     OR oae.status = 'FAILED'
   )
@@ -70,7 +70,7 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
      ) pay ON TRUE
      LEFT JOIN LATERAL (
        SELECT SUM(d.download_count)::int AS downloads,
-              COUNT(*) FILTER (WHERE d.status = 'EXPIRED' OR d.download_count >= d.max_downloads)::int AS expired,
+              COUNT(*) FILTER (WHERE d.status = 'EXPIRED')::int AS expired,
               CASE
                 WHEN BOOL_OR(d.status = 'ACTIVE' AND d.download_count < d.max_downloads) THEN 'ACTIVE'
                 WHEN BOOL_OR(d.status = 'ACTIVE') THEN 'EXHAUSTED'
@@ -110,7 +110,9 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
     access_email_sent_at: row.access_email_sent_at,
     problem:
       row.status === 'PAID' &&
-      ((Number(row.download_count) || 0) === 0 || Number(row.expired_deliveries) > 0 || row.access_email_status === 'FAILED')
+      (((Number(row.download_count) || 0) === 0 && !!row.confirmed_at && new Date(row.confirmed_at).getTime() < Date.now() - 30 * 60 * 1000) ||
+        Number(row.expired_deliveries) > 0 ||
+        row.access_email_status === 'FAILED')
   }));
 
   const summary = {
@@ -157,8 +159,7 @@ async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
     if (created.rows.length === 0) throw new SalesError(409, 'A oferta deste pedido não tem arquivo cadastrado para entregar.');
     return;
   }
-  const usable = existing.rows.filter(d => d.status !== 'REVOKED');
-  if (usable.length === 0) throw new SalesError(409, 'A entrega deste pedido foi revogada.');
+  if (existing.rows.some(d => d.status === 'REVOKED')) throw new SalesError(409, 'A entrega deste pedido foi revogada.');
   await pool.query(
     `UPDATE order_deliveries
      SET status = 'ACTIVE',
@@ -167,6 +168,15 @@ async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
      WHERE order_id = $1 AND status <> 'REVOKED'
        AND (status = 'EXPIRED' OR download_count >= max_downloads)`,
     [orderId]
+  );
+}
+
+/** Um link ativo por finalidade: o novo substitui o anterior. */
+async function revokePrevious(pool: Pool, orderId: string, purpose: 'MANUAL' | 'RESEND') {
+  await pool.query(
+    `UPDATE order_recovery_tokens SET status = 'REVOKED', revoked_at = NOW()
+     WHERE order_id = $1 AND purpose = $2 AND status = 'ACTIVE'`,
+    [orderId, purpose]
   );
 }
 
@@ -182,8 +192,9 @@ export async function createManualAccessLink(pool: Pool, orderId: string, isDemo
   await prepareDelivery(pool, orderId);
   const base = accessUrlBase();
   if (!base) throw new SalesError(503, 'FRONTEND_URL não configurado: não é possível montar o link.');
+  await revokePrevious(pool, orderId, 'MANUAL');
   const t = await issueAccessToken(pool, orderId, 'MANUAL');
-  await writeAuditLog(pool, userId, 'SALES_ACCESS_LINK_CREATED', `Link de acesso gerado para o pedido ${orderId}`, null, null, isDemo);
+  await writeAuditLog(pool, userId, 'SALES_ACCESS_LINK_CREATED', `Link de acesso gerado para o pedido ${orderId} (token ${t.tokenId})`, null, null, isDemo);
   return { url: `${base}/acesso/${t.rawToken}`, expires_at: t.expiresAt.toISOString() };
 }
 
@@ -194,6 +205,7 @@ export async function resendAccessEmail(pool: Pool, orderId: string, isDemo: boo
   await prepareDelivery(pool, orderId);
   const base = accessUrlBase();
   if (!base) throw new SalesError(503, 'FRONTEND_URL não configurado: não é possível montar o link.');
+  await revokePrevious(pool, orderId, 'RESEND');
   const t = await issueAccessToken(pool, orderId, 'RESEND');
   const result = await emailService.sendPurchaseAccessEmail({
     email: order.customer_email,
@@ -207,12 +219,7 @@ export async function resendAccessEmail(pool: Pool, orderId: string, isDemo: boo
   });
   if (!result.success) {
     await pool.query(`UPDATE order_recovery_tokens SET status = 'REVOKED', revoked_at = NOW() WHERE id = $1`, [t.tokenId]);
-    await pool.query(
-      `INSERT INTO order_access_emails (order_id, status, attempts, error_code)
-       VALUES ($1, 'FAILED', 1, $2)
-       ON CONFLICT (order_id) DO UPDATE SET status = 'FAILED', attempts = order_access_emails.attempts + 1, error_code = $2, updated_at = NOW()`,
-      [orderId, String(result.error || 'EMAIL_SEND_FAILED').slice(0, 120)]
-    );
+    // Falha do reenvio manual fica só na auditoria: não mexe no e-mail automático (nem na varredura).
     await writeAuditLog(pool, userId, 'SALES_ACCESS_EMAIL_FAILED', `Reenvio de acesso falhou para o pedido ${orderId}`, null, result.error || null, isDemo);
     throw new SalesError(502, 'O e-mail não pôde ser enviado. Use "Copiar link" e mande pelo WhatsApp.');
   }
@@ -220,7 +227,7 @@ export async function resendAccessEmail(pool: Pool, orderId: string, isDemo: boo
   await pool.query(
     `INSERT INTO order_access_emails (order_id, status, attempts, provider_message_id, sent_at)
      VALUES ($1, $2, 1, $3, NOW())
-     ON CONFLICT (order_id) DO UPDATE SET status = $2, attempts = order_access_emails.attempts + 1,
+     ON CONFLICT (order_id) DO UPDATE SET status = $2,
        provider_message_id = $3, error_code = NULL, sent_at = NOW(), updated_at = NOW()`,
     [orderId, status, result.messageId || null]
   );
