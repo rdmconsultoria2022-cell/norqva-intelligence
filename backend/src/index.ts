@@ -111,6 +111,7 @@ import {
   reviseFactoryCreative,
   linkFactoryCreativeAd,
   attachFactoryCreativeFile,
+  addFactoryCreativeClaim,
   attachFactoryBatchAssets,
   listFactoryAdjustments,
   retryFactoryAdjustment,
@@ -451,6 +452,7 @@ app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), r
 app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CREATIVE']), reviseFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
 app.post('/api/creative-factory/creatives/:id/file', requireRole(['ADMIN', 'CREATIVE']), attachFactoryCreativeFile);
+app.post('/api/creative-factory/creatives/:id/claims', requireRole(['ADMIN', 'CREATIVE']), addFactoryCreativeClaim);
 app.post('/api/creative-factory/batches/:code/attach-assets', requireRole(['ADMIN']), attachFactoryBatchAssets);
 // NORQVA-0013: adjustment tasks + automation API for the Claude routine (token in X-Norqva-Automation-Token)
 app.get('/api/creative-factory/adjustments', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryAdjustments);

@@ -31,7 +31,6 @@ import { Login } from './features/auth/Login';
 import { ForgotPassword } from './features/auth/ForgotPassword';
 import { PasswordRecovery } from './features/auth/PasswordRecovery';
 import { DashboardView } from './features/dashboard/DashboardView';
-import { CreativeMediaView } from './features/creative-media/CreativeMediaView';
 import { OpportunitiesView } from './features/opportunities/OpportunitiesView';
 import { ExperimentsView } from './features/experiments/ExperimentsView';
 import { CheckoutView } from './features/checkout/CheckoutView';
@@ -95,6 +94,11 @@ export default function App() {
     handleLogin,
     handleSignOut
   } = useAuth();
+
+  // NORQVA-0025: o antigo Creative Lab virou a tela Criativos
+  useEffect(() => {
+    if (activeTab === 'creatives') setActiveTab('creative-factory');
+  }, [activeTab]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -693,19 +697,6 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'creatives' && (
-            <CreativeMediaView
-              creatives={creatives}
-              products={products}
-              offers={offers}
-              isDemoView={isDemoView}
-              currentUser={currentUser}
-              showError={showError}
-              showSuccess={showSuccess}
-              refreshCreatives={refreshCreatives}
-            />
-          )}
-
           {activeTab === 'experiments' && (
             <ExperimentsView
               experiments={experiments}
@@ -733,13 +724,17 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'creative-factory' && (
+          {/* NORQVA-0025: o antigo Creative Lab ('creatives') abre a tela única Criativos */}
+          {(activeTab === 'creative-factory' || activeTab === 'creatives') && (
             <CreativeFactoryView
               currentUser={currentUser}
               isDemoView={isDemoView}
               apiFetch={apiFetch}
               showError={showError}
               showSuccess={showSuccess}
+              products={products}
+              offers={offers}
+              onCreativeCreated={refreshCreatives}
             />
           )}
 

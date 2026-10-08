@@ -146,6 +146,28 @@ export async function attachFactoryCreativeFile(req: AuthenticatedRequest, res: 
   }
 }
 
+// NORQVA-0025: registrar uma promessa (claim) no criativo
+export async function addFactoryCreativeClaim(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const result = await service.addClaimToCreative(
+      pool,
+      String(req.params.id),
+      {
+        claim_id: req.body?.claim_id ? String(req.body.claim_id) : null,
+        claim_text: req.body?.claim_text != null ? String(req.body.claim_text) : null,
+        claim_type: req.body?.claim_type ? String(req.body.claim_type) : null,
+        source: req.body?.source ? String(req.body.source) : null
+      },
+      req.user?.id || null,
+      isDemoReq(req)
+    );
+    return res.status(201).json(result);
+  } catch (err) {
+    return handle(res, err, 'Falha ao registrar a promessa.');
+  }
+}
+
 export async function attachFactoryBatchAssets(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
