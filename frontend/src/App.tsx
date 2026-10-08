@@ -61,6 +61,7 @@ import { apiFetch as apiFetchLib } from './lib/api';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './features/auth/useAuth';
 import { SalesView } from './features/sales/SalesView';
+import { CampaignsView } from './features/campaigns/CampaignsView';
 import { initMetaPixel, trackPageView, isPublicCommercialRoute } from './services/metaPixel';
 
 import { UserObj } from './types';
@@ -737,6 +738,17 @@ export default function App() {
               products={products}
               offers={offers}
               onCreativeCreated={refreshCreatives}
+            />
+          )}
+
+          {activeTab === 'campaigns' && (
+            <CampaignsView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+              offers={offers}
             />
           )}
 

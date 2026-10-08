@@ -160,6 +160,19 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
   if (status === 'ACTIVE') {
     const capped = await pool.query(`SELECT code, meta_ids FROM launch_plans WHERE guard_state = 'CAPPED'`).catch(() => ({ rows: [] as any[] }));
     const hit = capped.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
+    // NORQVA-0027: objetos de uma campanha que ainda não recebeu o Sim (ou recebeu Não) só ativam pela resposta Sim.
+    const unapproved = await pool
+      .query(`SELECT code, status, meta_ids FROM launch_plans WHERE status IN ('CREATING', 'CREATED_PAUSED', 'AWAITING_OPERATOR', 'REJECTED', 'FAILED')`)
+      .catch(() => ({ rows: [] as any[] }));
+    const waiting = unapproved.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
+    if (!hit && waiting) {
+      const error =
+        waiting.status === 'REJECTED'
+          ? `Este objeto é da campanha ${waiting.code}, que você recusou. Para veicular, crie uma campanha nova.`
+          : `Este objeto é da campanha ${waiting.code}, que ainda espera o seu Sim. Ative respondendo Sim na campanha.`;
+      await decision.finish('REJECTED', { result: { http_status: 409 }, error });
+      return res.status(409).json({ error });
+    }
     if (hit) {
       const error = `Este objeto pertence ao plano ${hit.code}, que atingiu o teto e foi pausado pelo vigia. Reabrir exige um novo plano com teto novo.`;
       await decision.finish('REJECTED', { result: { http_status: 409 }, error });

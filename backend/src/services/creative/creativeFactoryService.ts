@@ -551,11 +551,20 @@ export class CreativeFactoryService {
     }
 
     const cRes = await pool.query(
-      'SELECT id, human_id, approval_status, content_hash FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
+      'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
       [creativeId, isDemo]
     );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
     const creative = cRes.rows[0];
+    // NORQVA-0027: criativo antigo sem hash ganha o hash do conteúdo atual, para a aprovação valer
+    // exatamente para este conteúdo (a tela Campanhas compara o hash aprovado com o atual).
+    if (!creative.content_hash) {
+      creative.content_hash = computeContentHash({
+        hook: creative.hook, mechanism: creative.mechanism, cta: creative.cta, format: creative.format, script: creative.script,
+        primary_text: creative.primary_text ?? creative.copy, headline: creative.headline, file_url: creative.file_url
+      });
+      await pool.query('UPDATE creatives SET content_hash = $1 WHERE id = $2 AND content_hash IS NULL', [creative.content_hash, creativeId]);
+    }
     if (creative.approval_status === 'SUPERSEDED') {
       throw new CreativeFactoryError(409, 'Esta versão foi substituída por uma mais nova.');
     }

@@ -154,6 +154,7 @@ import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from '
 import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
 import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
+import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
@@ -400,6 +401,15 @@ app.post('/api/launch-plans/:id/answer', requireRole(['ADMIN']), answerLaunchPla
 app.post('/api/launch-plans/guard/run', requireRole(['ADMIN']), runGuardNow);
 app.get('/api/launch-plans/:id/guard', requireRole(['ADMIN']), getPlanGuard);
 app.post('/api/launch-plans/:id/spend-cap', requireRole(['ADMIN']), setPlanSpendCap);
+// NORQVA-0027: tela Campanhas (rascunho do plano; criar na Meta usa /api/launch-plans/:id/create)
+app.get('/api/campaigns', requireRole(['ADMIN']), listCampaigns);
+app.post('/api/campaigns', requireRole(['ADMIN']), createCampaignFromOffer);
+app.get('/api/campaigns/:id', requireRole(['ADMIN']), getCampaign);
+app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampaignCreativeOptions);
+app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
+app.post('/api/campaigns/:id/fields', requireRole(['ADMIN']), saveCampaignFields);
+app.post('/api/campaigns/:id/ads/:index/creative', requireRole(['ADMIN']), chooseCampaignCreative);
+app.post('/api/campaigns/:id/reset', requireRole(['ADMIN']), resetCampaign);
 app.post('/api/automation/experiment-guard/run', automationRunGuard);
 // NORQVA-0022: Método NORQVA de Campanhas (leitura + registros internos; nada na Meta)
 const METHOD_READ = ['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS'];
