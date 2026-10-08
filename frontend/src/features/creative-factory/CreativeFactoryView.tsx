@@ -474,7 +474,7 @@ export function CreativeFactoryView({
                 )}
               </div>
 
-              {claiming?.id === c.id && (
+              {claiming && claiming.id === c.id && (
                 <div className="space-y-2 border-t border-slate-800 pt-2 text-xs" data-testid="claim-form">
                   <p className="text-[11px] text-slate-500">
                     O que este anúncio promete? Ex.: "28 receitas italianas". A promessa entra como não verificada; um ADMIN verifica antes de aprovar.
