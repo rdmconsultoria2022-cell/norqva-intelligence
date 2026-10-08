@@ -130,7 +130,7 @@ describe('NORQVA-0028 — Método filtrado pela oferta', () => {
       if (url.startsWith('/method/cases?')) {
         return Promise.resolve({ cases: [{ id: 'mc1', offer_human_id: 'OFF-000001', title: 'Trattoria' }, { id: 'mc2', offer_human_id: 'OFF-000009', title: 'Outra' }] });
       }
-      return Promise.resolve({ case: { id: 'mc1', human_id: 'MC-0001', title: 'Trattoria' }, stages: [], hypotheses: [], creatives: [], decisions: [], learnings: [], principles: [], signals: {} });
+      return Promise.resolve({ case: { id: 'mc1', human_id: 'MC-0001', title: 'Trattoria' }, stages: [], hypotheses: [], creatives: [], external_ads: [], decisions: [], learnings: [], launch_plans: [], principles: [], signals: {}, product: { name: 'Trattoria' }, offer: { human_id: 'OFF-000001', price: '19.90', promotional_price: null } });
     });
     render(<MethodView currentUser={admin} isDemoView={false} apiFetch={apiFetch} showError={vi.fn()} showSuccess={vi.fn()} offerHumanId="OFF-000001" />);
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/method/cases/mc1?mode=real'));
