@@ -260,14 +260,16 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const externals = metaCampaigns.filter(m => !planMetaIds.has(String(m.meta_campaign_id)));
   const metricsOf = (metaId: string | null) => (metaId ? aggregateMetrics(perf.filter(p => String(p.campaign_id) === metaId)) : null);
   const adToCampaign = new Map(perf.map(p => [String(p.ad_id), String(p.campaign_id)]));
-  const alertsOf = (metaId: string | null, name?: string) =>
-    metaId ? alerts.filter(a => adToCampaign.get(String(a.meta_ad_id)) === metaId || (name && a.campaign_name === name)).length : 0;
+  const alertsOf = (metaId: string | null) =>
+    metaId
+      ? alerts.filter(a => (a.meta_campaign_id ? String(a.meta_campaign_id) : adToCampaign.get(String(a.meta_ad_id))) === metaId).length
+      : 0;
   const planExperimentIds = new Set(campaigns.map(c => c.experiment_id).filter(Boolean));
   const legacyExperiments = experiments.filter(e => !planExperimentIds.has(e.id));
   const selectedMeta = selectedId?.startsWith('meta:') ? metaCampaigns.find(m => `meta:${m.meta_campaign_id}` === selectedId) : null;
-  const MetricsLine = ({ metaId, name }: { metaId: string | null; name?: string }) => {
+  const metricsLine = (metaId: string | null) => {
     const m = metricsOf(metaId);
-    const n = alertsOf(metaId, name);
+    const n = alertsOf(metaId);
     if (!m) return null;
     return (
       <div className="text-[10px] font-mono text-slate-400">
@@ -330,7 +332,18 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         </div>
       </div>
 
-      <LaunchPlansCard key={cardKey} apiFetch={apiFetch as any} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
+      <LaunchPlansCard
+        key={cardKey}
+        apiFetch={apiFetch as any}
+        currentUser={currentUser}
+        isDemoView={isDemoView}
+        showError={showError}
+        showSuccess={showSuccess}
+        onAnswered={() => {
+          loadList();
+          if (selectedId && !selectedId.startsWith('meta:')) loadCampaign(selectedId);
+        }}
+      />
 
       {creating && (
         <section className="rounded-xl border border-emerald-700/40 bg-emerald-950/10 p-4 space-y-3 text-xs" data-testid="new-campaign-form">
@@ -396,7 +409,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             >
               <div className="font-mono text-slate-200 truncate">{c.spec?.campaign?.name || c.code}</div>
               <div className="text-slate-500">{CAMPAIGN_STATUS_LABEL[c.status] || c.status} · {c.offer_human_id}</div>
-              <MetricsLine metaId={planMetaId(c)} name={c.spec?.campaign?.name} />
+              {metricsLine(planMetaId(c))}
             </button>
           ))}
           {externals.length > 0 && <div className="pt-2 text-[10px] uppercase tracking-wider text-slate-500">Criadas fora do NORQVA</div>}
@@ -409,7 +422,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             >
               <div className="font-mono text-slate-200 truncate">{m.name}</div>
               <div className="text-slate-500">{m.effective_status || m.status} · criada fora do NORQVA</div>
-              <MetricsLine metaId={String(m.meta_campaign_id)} name={m.name} />
+              {metricsLine(String(m.meta_campaign_id))}
             </button>
           ))}
         </aside>

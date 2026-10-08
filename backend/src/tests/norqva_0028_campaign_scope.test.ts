@@ -137,7 +137,22 @@ describe.sequential('NORQVA-0028 — campanha completa', () => {
     expect(r.status).toBe(409);
     expect(r.body.error).toMatch(/espera o seu Sim/);
     const s = await as(adminToken).post(`/api/meta-control/adset/${A.adset}/status`, { status: 'ACTIVE', scope_campaign: A.campaign });
-    expect(s.body.error || '').not.toMatch(/não pertence/);
+    expect(s.status).toBe(409);
+    expect(s.body.error).toMatch(/espera o seu Sim/);
+  });
+
+  it('anúncio do plano ainda não sincronizado vale pelo que o plano registrou', async () => {
+    const unsynced = rnd();
+    await pool.query(
+      `UPDATE launch_plans SET meta_ids = jsonb_set(meta_ids, '{ads,b}', to_jsonb($2::text)) WHERE id = $1`,
+      [planId, unsynced]
+    );
+    const r = await as(adminToken).post(`/api/meta-control/ad/${unsynced}/status`, { status: 'ACTIVE', scope_campaign: A.campaign });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/espera o seu Sim/);
+    const other = await as(adminToken).post(`/api/meta-control/ad/${unsynced}/status`, { status: 'ACTIVE', scope_campaign: B.campaign });
+    expect(other.status).toBe(409);
+    expect(other.body.error).toMatch(/não pertence a esta campanha/);
   });
 
   it('lançar performance à mão num experimento criado pelo Sim é recusado', async () => {
@@ -155,7 +170,7 @@ describe.sequential('NORQVA-0028 — campanha completa', () => {
     const r = await as(adminToken).post(`/api/experiments/${legacyExpId}/performance?mode=real`, {
       date: '2026-10-08', source: 'META', investment: 5
     });
-    expect(r.status).not.toBe(409);
+    expect(r.status).toBe(200);
   });
 
   it('perfil de análise lê a lista e a campanha, mas não altera', async () => {
