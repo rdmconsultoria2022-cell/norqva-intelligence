@@ -197,7 +197,7 @@ export class CampaignEditorService {
        ORDER BY human_id`,
       [offer.product_id]
     );
-    const options = [];
+    const options: any[] = [];
     for (const c of r.rows) {
       const check = await checkCreativeForAd(pool, c, offer.product_id);
       options.push({ id: c.id, human_id: c.human_id, key: c.utm_content_key || c.human_id, format: c.format, file_url: c.file_url, ok: check.ok, reason: check.reason || null });
@@ -382,7 +382,7 @@ export class CampaignEditorService {
     const ids = Array.isArray(body?.creative_ids) ? body.creative_ids.map(String).filter(x => UUID_RE.test(x)) : [];
     if (ids.length < 1 || ids.length > 10) throw new LaunchPlanError(400, 'Escolha de 1 a 10 criativos aprovados.');
 
-    const creatives = [];
+    const creatives: any[] = [];
     for (const cid of ids) {
       const c = await latestApprovedInLineage(pool, cid);
       const check = await checkCreativeForAd(pool, c, offer.product_id);
