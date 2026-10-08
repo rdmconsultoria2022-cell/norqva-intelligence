@@ -3392,7 +3392,11 @@ export async function retryFailedWebhookEvent(
   );
   if (claim.rows.length === 0) return null;
   try {
-    await reconcileAndFinalizePayment(paymentId, pool);
+    // Já confirmado por outro caminho: só fecha o evento, sem repetir efeitos (Purchase, e-mail).
+    const cur = await pool.query('SELECT status FROM payments WHERE id = $1', [paymentId]);
+    if (cur.rows[0]?.status !== 'CONFIRMED') {
+      await reconcileAndFinalizePayment(paymentId, pool);
+    }
     await pool.query(
       "UPDATE payment_webhook_events SET processing_status = 'PROCESSED', processed_at = NOW() WHERE provider = 'ASAAS' AND external_event_id = $1",
       [externalEventId]
@@ -3465,8 +3469,13 @@ export async function webhookAsaas(req: any, res: Response) {
     // Check for PostgreSQL unique constraint violation (code 23505)
     if (err.code === '23505') {
       // NORQVA-0023: o mesmo evento chegou de novo e da primeira vez falhou -> processa de novo.
-      const retried = await retryFailedWebhookEvent(pool, payment.id + '_' + event, event, payment.externalReference);
-      return res.status(200).json({ received: true, processed: retried !== false, duplicate: true });
+      try {
+        const retried = await retryFailedWebhookEvent(pool, payment.id + '_' + event, event, payment.externalReference);
+        return res.status(200).json({ received: true, processed: retried !== false, duplicate: true });
+      } catch (retryErr: any) {
+        console.error('[Webhook Retry Error]:', retryErr.message);
+        return res.status(200).json({ received: true, processed: false, duplicate: true });
+      }
     }
     console.error('[Webhook DB Error]:', err);
     return res.status(500).json({ error: 'Internal database processing failure.' });

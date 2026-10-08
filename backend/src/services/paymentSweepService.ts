@@ -11,7 +11,7 @@
 
 import { Pool } from 'pg';
 import { sendPaidOrderAccessEmail, PURCHASE_ACCESS_MAX_ATTEMPTS } from './purchaseAccessService';
-import { shouldCheckProvider } from './paymentCheckThrottle';
+import { shouldCheckProvider, withTimeout } from './paymentCheckThrottle';
 
 export interface PaymentSweepDeps {
   reconcile: (paymentId: string, pool: Pool) => Promise<any>;
@@ -54,13 +54,13 @@ export async function runPaymentSweep(pool: Pool, deps: PaymentSweepDeps): Promi
     `SELECT id FROM payments
      WHERE status IN ('PENDING', 'REQUIRES_RECONCILIATION') AND provider_payment_id IS NOT NULL
        AND is_demo = FALSE AND created_at > NOW() - INTERVAL '48 hours'
-     ORDER BY created_at DESC
+     ORDER BY updated_at ASC
      LIMIT ${BATCH}`
   );
   for (const p of pending.rows) {
     if (!shouldCheckProvider(p.id, 4 * 60 * 1000)) continue;
     try {
-      await deps.reconcile(p.id, pool);
+      await withTimeout(deps.reconcile(p.id, pool), 30000);
       result.paymentsChecked++;
     } catch (err: any) {
       console.warn('[PAYMENT SWEEP] reconcile error', err?.message);
@@ -78,7 +78,9 @@ export async function runPaymentSweep(pool: Pool, deps: PaymentSweepDeps): Promi
      WHERE o.status = 'PAID' AND o.is_demo = FALSE
        AND p.confirmed_at >= (SELECT executed_at FROM schema_migrations WHERE name = '043_purchase_access_email.sql')
        AND p.confirmed_at > NOW() - INTERVAL '7 days'
-       AND (e.id IS NULL OR (e.status = 'FAILED' AND e.attempts < $1))
+       AND (e.id IS NULL
+            OR (e.status = 'FAILED' AND e.attempts < $1)
+            OR (e.status = 'SENDING' AND e.updated_at < NOW() - INTERVAL '15 minutes' AND e.attempts < $1))
      LIMIT ${BATCH}`,
     [PURCHASE_ACCESS_MAX_ATTEMPTS]
   );

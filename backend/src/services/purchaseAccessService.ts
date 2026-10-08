@@ -43,7 +43,12 @@ export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Pro
     const orderRes = await pool.query(
       `SELECT o.id, o.status, o.is_demo, c.email AS customer_email,
               (SELECT oi.offer_name_snapshot FROM order_items oi WHERE oi.order_id = o.id ORDER BY oi.created_at ASC, oi.id ASC LIMIT 1) AS offer_name,
-              EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE') AS has_active_delivery
+              EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE') AS has_active_delivery,
+              EXISTS (
+                SELECT 1 FROM payments p
+                WHERE p.order_id = o.id AND p.status = 'CONFIRMED'
+                  AND p.confirmed_at >= (SELECT executed_at FROM schema_migrations WHERE name = '043_purchase_access_email.sql')
+              ) AS paid_after_launch
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
        WHERE o.id = $1`,
@@ -54,6 +59,8 @@ export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Pro
     if (order.status !== 'PAID') return { status: 'SKIPPED', reason: 'NOT_PAID' };
     if (!order.has_active_delivery) return { status: 'SKIPPED', reason: 'NO_ACTIVE_DELIVERY' };
     if (!order.customer_email) return { status: 'SKIPPED', reason: 'NO_EMAIL' };
+    // Pedidos pagos antes desta entrega já foram atendidos (alguns à mão): não reenviar.
+    if (!order.paid_after_launch) return { status: 'SKIPPED', reason: 'PAID_BEFORE_LAUNCH' };
 
     // Claim atômico: só uma execução envia; falha anterior pode ser retomada até o limite;
     // "SENDING" preso há mais de 15 min (queda no meio do envio) pode ser retomado.
@@ -86,6 +93,13 @@ export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Pro
       return await markFailed('FRONTEND_URL_INVALID');
     }
     const frontendUrl = frontend.url || DEFAULT_FRONTEND_URL;
+
+    // Nova tentativa: links de compra de tentativas anteriores deixam de valer.
+    await pool.query(
+      `UPDATE order_recovery_tokens SET status = 'REVOKED', revoked_at = NOW()
+       WHERE order_id = $1 AND purpose = 'PURCHASE' AND status = 'ACTIVE'`,
+      [orderId]
+    );
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');

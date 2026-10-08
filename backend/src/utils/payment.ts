@@ -115,6 +115,8 @@ export class AsaasPaymentProvider {
       });
 
       req.on('error', (err) => reject(err));
+      // NORQVA-0023: uma conexão presa não pode travar a varredura nem acumular consultas.
+      req.setTimeout(15000, () => req.destroy(new Error('ASAAS_TIMEOUT')));
       if (body) {
         req.write(body);
       }
