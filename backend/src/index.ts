@@ -402,9 +402,11 @@ app.post('/api/launch-plans/guard/run', requireRole(['ADMIN']), runGuardNow);
 app.get('/api/launch-plans/:id/guard', requireRole(['ADMIN']), getPlanGuard);
 app.post('/api/launch-plans/:id/spend-cap', requireRole(['ADMIN']), setPlanSpendCap);
 // NORQVA-0027: tela Campanhas (rascunho do plano; criar na Meta usa /api/launch-plans/:id/create)
-app.get('/api/campaigns', requireRole(['ADMIN']), listCampaigns);
+// NORQVA-0028: leitura para os mesmos perfis que viam Meta Ads; ações só ADMIN
+const CAMPAIGNS_READ = ['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS'];
+app.get('/api/campaigns', requireRole(CAMPAIGNS_READ), listCampaigns);
 app.post('/api/campaigns', requireRole(['ADMIN']), createCampaignFromOffer);
-app.get('/api/campaigns/:id', requireRole(['ADMIN']), getCampaign);
+app.get('/api/campaigns/:id', requireRole(CAMPAIGNS_READ), getCampaign);
 app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampaignCreativeOptions);
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
 app.post('/api/campaigns/:id/fields', requireRole(['ADMIN']), saveCampaignFields);

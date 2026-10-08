@@ -73,9 +73,9 @@ describe('NORQVA-0009 — Meta results & alerts', () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/alerts/al1/ack?mode=real', { method: 'POST' }, 'real', admin));
   });
 
-  it('sidebar shows the open alerts badge on Meta Ads', () => {
-    render(<Sidebar currentUser={admin as any} activeTab="dashboard" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ 'meta-ads': 2 }} />);
-    expect(screen.getByTestId('badge-meta-ads')).toHaveTextContent('2');
+  it('sidebar shows the open alerts badge on Campanhas (NORQVA-0028)', () => {
+    render(<Sidebar currentUser={admin as any} activeTab="dashboard" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ campaigns: 2 }} />);
+    expect(screen.getByTestId('badge-campaigns')).toHaveTextContent('2');
   });
 });
 

@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Megaphone, RefreshCw, Wand2, RotateCcw, Eraser, Rocket, Plus, Save } from 'lucide-react';
 import { UserObj } from '../../types';
 import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
+import { ExperimentGuardCard } from '../acquisition/ExperimentGuardCard';
+import { MetaAdsView } from '../acquisition/MetaAdsView';
+import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
+import { MethodView } from '../method/MethodView';
+import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 
 // NORQVA-0027: tela Campanhas. Cada campanha é um plano de lançamento: completa com o criativo
 // aprovado, modo manual campo a campo (campo editado vira manual e o sistema não sobrescreve),
@@ -75,6 +80,14 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const [creating, setCreating] = useState<{ offer: string; creative_ids: string[]; daily: string; max: string } | null>(null);
   const [newOptions, setNewOptions] = useState<any[]>([]);
   const [cardKey, setCardKey] = useState(0);
+  // NORQVA-0028: lista única (planos + campanhas criadas fora do NORQVA), resultado, alertas e experimentos
+  const [metaCampaigns, setMetaCampaigns] = useState<any[]>([]);
+  const [perf, setPerf] = useState<PerfItem[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [experiments, setExperiments] = useState<any[]>([]);
+  const [tab, setTab] = useState<'config' | 'results' | 'cap' | 'method' | 'experiment'>('config');
+  const { globalPeriod } = useGlobalPeriod();
+  const periodQs = periodQuery(globalPeriod);
 
   const apiRef = useRef(apiFetch);
   apiRef.current = apiFetch;
@@ -86,11 +99,21 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const loadList = useCallback(async () => {
     try {
       const r = await apiRef.current('/campaigns?mode=real');
-      setCampaigns(r?.campaigns || []);
+      setCampaigns(Array.isArray(r?.campaigns) ? r.campaigns : []);
     } catch (err: any) {
       errRef.current(err.message || 'Erro ao carregar as campanhas.');
     }
-  }, []);
+    const [mc, pr, al, ex] = await Promise.all([
+      apiRef.current('/meta/campaigns?mode=real').catch(() => []),
+      apiRef.current(`/intelligence/creative-performance?mode=real&${periodQs}`).catch(() => null),
+      apiRef.current('/alerts?mode=real').catch(() => null),
+      apiRef.current('/experiments?mode=real').catch(() => null)
+    ]);
+    setMetaCampaigns(Array.isArray(mc) ? mc : []);
+    setPerf(Array.isArray(pr?.creatives) ? pr.creatives : []);
+    setAlerts(Array.isArray(al?.alerts) ? al.alerts.filter((a: any) => a.status === 'OPEN') : []);
+    setExperiments(Array.isArray(ex?.experiments) ? ex.experiments : []);
+  }, [periodQs]);
 
   const applyCampaign = (c: any) => {
     setCampaign(c);
@@ -101,21 +124,27 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
   const loadCampaign = useCallback(async (id: string) => {
     try {
-      const [c, o] = await Promise.all([apiRef.current(`/campaigns/${id}?mode=real`), apiRef.current(`/campaigns/${id}/creative-options?mode=real`)]);
+      const [c, o] = await Promise.all([
+        apiRef.current(`/campaigns/${id}?mode=real`),
+        isAdmin ? apiRef.current(`/campaigns/${id}/creative-options?mode=real`) : Promise.resolve({ options: [] })
+      ]);
       applyCampaign(c);
       setOptions(o?.options || []);
     } catch (err: any) {
       errRef.current(err.message || 'Erro ao abrir a campanha.');
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
-    if (isAdmin && !isDemoView) loadList();
-  }, [isAdmin, isDemoView, loadList]);
+    if (!isDemoView) loadList();
+  }, [isDemoView, loadList]);
 
   useEffect(() => {
     setFillResults(null);
-    if (selectedId) loadCampaign(selectedId);
+    if (selectedId && !selectedId.startsWith('meta:')) {
+      setTab('config');
+      loadCampaign(selectedId);
+    }
   }, [selectedId, loadCampaign]);
 
   const post = (url: string, body: any = {}) => apiRef.current(url, { method: 'POST', body: JSON.stringify(body) });
@@ -214,13 +243,39 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       .catch(() => setNewOptions([]));
   }, [creating?.offer, offers]);
 
-  if (!isAdmin || isDemoView) {
+  if (isDemoView) {
     return (
-      <div className="max-w-3xl mx-auto p-6 text-sm text-slate-400" data-testid="campaigns-admin-only">
-        A tela Campanhas é só para ADMIN, na conta real.
+      <div className="max-w-3xl mx-auto p-6 text-sm text-slate-400" data-testid="campaigns-demo">
+        Campanhas só existem na conta real.
       </div>
     );
   }
+
+  // ---- NORQVA-0028: lista única ----
+  const planMetaId = (c: any) => {
+    const ids = Object.values(c?.meta_ids?.campaign || {});
+    return ids.length ? String(ids[0]) : null;
+  };
+  const planMetaIds = new Set(campaigns.map(planMetaId).filter(Boolean) as string[]);
+  const externals = metaCampaigns.filter(m => !planMetaIds.has(String(m.meta_campaign_id)));
+  const metricsOf = (metaId: string | null) => (metaId ? aggregateMetrics(perf.filter(p => String(p.campaign_id) === metaId)) : null);
+  const adToCampaign = new Map(perf.map(p => [String(p.ad_id), String(p.campaign_id)]));
+  const alertsOf = (metaId: string | null, name?: string) =>
+    metaId ? alerts.filter(a => adToCampaign.get(String(a.meta_ad_id)) === metaId || (name && a.campaign_name === name)).length : 0;
+  const planExperimentIds = new Set(campaigns.map(c => c.experiment_id).filter(Boolean));
+  const legacyExperiments = experiments.filter(e => !planExperimentIds.has(e.id));
+  const selectedMeta = selectedId?.startsWith('meta:') ? metaCampaigns.find(m => `meta:${m.meta_campaign_id}` === selectedId) : null;
+  const MetricsLine = ({ metaId, name }: { metaId: string | null; name?: string }) => {
+    const m = metricsOf(metaId);
+    const n = alertsOf(metaId, name);
+    if (!m) return null;
+    return (
+      <div className="text-[10px] font-mono text-slate-400">
+        {brl(m.spend)} · {m.sales} venda(s){m.cpa !== null ? ` · CPA ${brl(m.cpa)}` : ''}
+        {n > 0 && <span className="ml-1 px-1 rounded bg-red-500 text-white">{n} alerta(s)</span>}
+      </div>
+    );
+  };
 
   const submitNew = async () => {
     if (!creating) return;
@@ -250,7 +305,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       </span>
     ) : null;
   const filled = campaign?.spec?.ads?.every((a: any) => a.video_url && a.video_url !== 'TO_BE_FILLED');
-  const editable = !!campaign?.editable;
+  const editable = !!campaign?.editable && isAdmin;
 
   return (
     <div className="space-y-5 pb-12 max-w-7xl mx-auto">
@@ -264,9 +319,11 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
           </p>
         </div>
         <div className="flex gap-2 self-start">
-          <button onClick={openNew} data-testid="new-campaign" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400">
-            <Plus className="h-4 w-4" /> Nova campanha
-          </button>
+          {isAdmin && (
+            <button onClick={openNew} data-testid="new-campaign" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400">
+              <Plus className="h-4 w-4" /> Nova campanha
+            </button>
+          )}
           <button onClick={loadList} aria-label="Atualizar" className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white">
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -339,11 +396,96 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             >
               <div className="font-mono text-slate-200 truncate">{c.spec?.campaign?.name || c.code}</div>
               <div className="text-slate-500">{CAMPAIGN_STATUS_LABEL[c.status] || c.status} · {c.offer_human_id}</div>
+              <MetricsLine metaId={planMetaId(c)} name={c.spec?.campaign?.name} />
+            </button>
+          ))}
+          {externals.length > 0 && <div className="pt-2 text-[10px] uppercase tracking-wider text-slate-500">Criadas fora do NORQVA</div>}
+          {externals.map(m => (
+            <button
+              key={`meta:${m.meta_campaign_id}`}
+              data-testid="external-campaign"
+              onClick={() => setSelectedId(`meta:${m.meta_campaign_id}`)}
+              className={`w-full text-left p-2.5 rounded-lg border text-xs ${selectedId === `meta:${m.meta_campaign_id}` ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'}`}
+            >
+              <div className="font-mono text-slate-200 truncate">{m.name}</div>
+              <div className="text-slate-500">{m.effective_status || m.status} · criada fora do NORQVA</div>
+              <MetricsLine metaId={String(m.meta_campaign_id)} name={m.name} />
             </button>
           ))}
         </aside>
 
+        {selectedMeta && (
+          <section className="space-y-3 min-w-0" data-testid="external-detail">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400">
+              <span className="text-sm font-bold text-white">{selectedMeta.name}</span> · criada fora do NORQVA: aqui você vê o resultado e pode pausar ou mudar o orçamento.
+            </div>
+            <MetaAdsView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} scopeCampaignId={String(selectedMeta.meta_campaign_id)} />
+          </section>
+        )}
+
         {campaign && selectedId === campaign.id && (
+          <div className="space-y-3 min-w-0">
+            <nav className="flex flex-wrap gap-1 border-b border-slate-800" role="tablist" data-testid="campaign-tabs">
+              {([
+                ['config', 'Configuração'],
+                ['results', 'Resultado e controle'],
+                ['cap', 'Teto e vigia'],
+                ['method', 'Método'],
+                ['experiment', 'Experimento']
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => setTab(id)}
+                  className={`px-3 py-2 text-xs font-semibold border-b-2 ${tab === id ? 'border-emerald-400 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+
+            {tab === 'results' &&
+              (planMetaId(campaign) ? (
+                <MetaAdsView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} scopeCampaignId={planMetaId(campaign)} />
+              ) : (
+                <p className="text-xs text-slate-400" data-testid="results-empty">A campanha ainda não foi criada na Meta: os resultados aparecem depois.</p>
+              ))}
+
+            {tab === 'cap' && (
+              <div className="space-y-2 text-xs" data-testid="cap-tab">
+                <p className="text-slate-400">
+                  Teto da campanha: {brl(campaign.max_spend_brl)}. O vigia pausa a campanha quando o gasto chega ao teto.
+                </p>
+                <ExperimentGuardCard apiFetch={apiFetch as any} currentUser={currentUser} isDemoView={false} showError={showError} showSuccess={showSuccess} planId={campaign.id} />
+                {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-slate-500">O vigia começa depois do seu Sim.</p>}
+              </div>
+            )}
+
+            {tab === 'method' && (
+              <MethodView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} offerHumanId={campaign.offer_human_id} />
+            )}
+
+            {tab === 'experiment' && (() => {
+              const exp = experiments.find(e => e.id === campaign.experiment_id);
+              return (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs space-y-1" data-testid="experiment-tab">
+                  {!exp ? (
+                    <p className="text-slate-400">O experimento nasce quando você responde Sim; até lá não há capital reservado.</p>
+                  ) : (
+                    <>
+                      <div className="text-sm font-bold text-white">{exp.human_id} · {exp.name}</div>
+                      <div className="text-slate-400">Situação: {exp.status}</div>
+                      <div className="text-slate-400">Capital autorizado: {brl(Number(exp.capital_approved))} · usado: {brl(Number(exp.capital_used))}</div>
+                      {exp.hypothesis && <div className="text-slate-300">Hipótese: {exp.hypothesis}</div>}
+                      <div className="text-slate-500">Resposta: {campaign.answer === 'YES' ? 'Sim' : campaign.answer === 'NO' ? 'Não' : '—'}{campaign.answered_at ? ` em ${new Date(campaign.answered_at).toLocaleString('pt-BR')}` : ''}</div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {tab === 'config' && (
           <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-4 text-xs" data-testid="campaign-detail">
             <header className="flex flex-wrap items-start justify-between gap-2">
               <div>
@@ -370,7 +512,9 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
             {!editable && (
               <p className="text-slate-400" data-testid="campaign-readonly">
-                Esta campanha já existe na Meta. Pausar, orçamento e teto ficam em Meta Ads; ativar é pelo seu Sim no quadro acima.
+                {isAdmin
+                  ? 'Esta campanha já existe na Meta. Pausar e orçamento ficam na aba Resultado e controle; o teto em Teto e vigia; ativar é pelo seu Sim no quadro acima.'
+                  : 'Só leitura: configurar, pausar e responder Sim ficam com o ADMIN.'}
               </p>
             )}
 
@@ -493,8 +637,24 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               </div>
             )}
           </section>
+            )}
+          </div>
         )}
       </div>
+
+      {legacyExperiments.length > 0 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 text-xs space-y-2" data-testid="experiment-history">
+          <h2 className="text-sm font-bold text-slate-300">Histórico de experimentos (antes das campanhas)</h2>
+          {legacyExperiments.map(e => (
+            <div key={e.id} className="flex flex-wrap gap-x-3 text-slate-400">
+              <span className="font-mono text-slate-300">{e.human_id}</span>
+              <span>{e.name}</span>
+              <span>{e.status}</span>
+              <span>capital {brl(Number(e.capital_approved))} · usado {brl(Number(e.capital_used))}</span>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

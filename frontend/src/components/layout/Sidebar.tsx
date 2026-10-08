@@ -4,13 +4,11 @@ import {
   Lightbulb,
   Package,
   Tag,
-  FlaskConical,
   Scale,
   Users,
   Settings,
   User,
   LogOut,
-  TrendingUp,
   BarChart3,
   PieChart,
   Factory,
@@ -18,7 +16,6 @@ import {
   Bot,
   Store,
   Wallet,
-  Compass,
   ShoppingCart,
   Megaphone,
   ChevronDown,
@@ -41,7 +38,7 @@ export interface SidebarProps {
   handleSignOut: () => void;
   onNavigate?: () => void;
   onClose?: () => void;
-  // NORQVA-0009: counters shown next to menu items (e.g. open ad alerts on "Meta Ads")
+  // NORQVA-0009/0028: contadores ao lado dos itens (ex.: alertas abertos em "Campanhas")
   badges?: Record<string, number>;
 }
 
@@ -82,11 +79,9 @@ export const navigationGroups: NavigationGroup[] = [
       { id: 'offers', label: 'Ofertas', icon: Tag },
       // NORQVA-0025: Creative Lab e Fábrica viraram uma tela só ('creatives' abre a mesma tela)
       { id: 'creative-factory', label: 'Criativos', icon: Factory },
-      // NORQVA-0027: campanhas (planos de lançamento) com modo manual e criação pausada na Meta
-      { id: 'campaigns', label: 'Campanhas', icon: Megaphone, roles: ['ADMIN'] },
-      { id: 'method', label: 'Método NORQVA', icon: Compass },
-      { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
-      { id: 'experiments', label: 'Experimentos', icon: FlaskConical }
+      // NORQVA-0027/0028: Campanhas reúne planos, resultado e controle da Meta, teto, Método e
+      // Experimentos ('meta-ads', 'method' e 'experiments' abrem esta tela). Só ADMIN altera.
+      { id: 'campaigns', label: 'Campanhas', icon: Megaphone }
     ]
   },
   {

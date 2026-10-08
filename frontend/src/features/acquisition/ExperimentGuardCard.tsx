@@ -35,7 +35,9 @@ export const ExperimentGuardCard: React.FC<{
   isDemoView: boolean;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
-}> = ({ apiFetch, currentUser, isDemoView, showError, showSuccess }) => {
+  /** NORQVA-0028: dentro de uma campanha, só o teto daquela campanha */
+  planId?: string | null;
+}> = ({ apiFetch, currentUser, isDemoView, showError, showSuccess, planId = null }) => {
   const enabled = currentUser?.role === 'ADMIN' && !isDemoView;
   const [plans, setPlans] = useState<GuardPlan[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
@@ -51,11 +53,15 @@ export const ExperimentGuardCard: React.FC<{
     try {
       const res = await fetchRef.current('/launch-plans', {}, 'real', currentUser);
       const list: GuardPlan[] = Array.isArray(res?.plans) ? res.plans : [];
-      setPlans(list.filter(p => ['ACTIVE', 'APPROVED'].includes(p.status) || p.guard_state === 'CAPPED'));
+      setPlans(
+        list
+          .filter(p => ['ACTIVE', 'APPROVED'].includes(p.status) || p.guard_state === 'CAPPED')
+          .filter(p => !planId || p.id === planId)
+      );
     } catch {
       setPlans([]);
     }
-  }, [enabled]);
+  }, [enabled, planId]);
 
   useEffect(() => {
     load();

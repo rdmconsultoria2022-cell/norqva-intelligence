@@ -142,6 +142,45 @@ async function beginEntityDecision(req: AuthenticatedRequest, res: Response, act
   }
 }
 
+/**
+ * NORQVA-0028: a aba Controle de uma campanha manda scope_campaign (ID da campanha na Meta).
+ * Com ele, só objetos daquela campanha são aceitos.
+ */
+async function outsideCampaignScope(pool: Pool, entityType: 'CAMPAIGN' | 'ADSET' | 'AD', id: string, scope: unknown): Promise<boolean> {
+  if (scope === undefined || scope === null || scope === '') return false;
+  const sc = String(scope);
+  if (entityType === 'CAMPAIGN') return String(id) !== sc;
+  const sql =
+    entityType === 'ADSET'
+      ? `SELECT 1 FROM meta_ad_sets s JOIN meta_campaigns c ON c.id = s.campaign_id WHERE s.meta_adset_id = $1 AND c.meta_campaign_id = $2 LIMIT 1`
+      : `SELECT 1 FROM meta_ads a JOIN meta_ad_sets s ON s.id = a.adset_id JOIN meta_campaigns c ON c.id = s.campaign_id
+         WHERE a.meta_ad_id = $1 AND c.meta_campaign_id = $2 LIMIT 1`;
+  const r = await pool.query(sql, [String(id), sc]);
+  return r.rows.length === 0;
+}
+
+const SCOPE_ERROR = 'Este objeto não pertence a esta campanha. Nada foi alterado.';
+const SCOPE_CHECK_ERROR = 'Não foi possível conferir se este objeto é desta campanha. Nada foi alterado; tente de novo.';
+
+/** NORQVA-0028: responde 409 (fora da campanha) ou 503 (consulta falhou) e devolve false; true = segue. */
+async function passesCampaignScope(req: AuthenticatedRequest, res: Response, decision: any, entityType: 'CAMPAIGN' | 'ADSET' | 'AD'): Promise<boolean> {
+  const pool: Pool = req.app.get('db');
+  let outside: boolean;
+  try {
+    outside = await outsideCampaignScope(pool, entityType, String(req.params.id), req.body?.scope_campaign);
+  } catch {
+    await decision.finish('REJECTED', { result: { http_status: 503 }, error: SCOPE_CHECK_ERROR });
+    res.status(503).json({ error: SCOPE_CHECK_ERROR });
+    return false;
+  }
+  if (outside) {
+    await decision.finish('REJECTED', { result: { http_status: 409 }, error: SCOPE_ERROR });
+    res.status(409).json({ error: SCOPE_ERROR });
+    return false;
+  }
+  return true;
+}
+
 export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
@@ -156,6 +195,7 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
     await decision.finish('REJECTED', { result: { http_status: 400 }, error });
     return res.status(400).json({ error });
   }
+  if (!(await passesCampaignScope(req, res, decision, entityType))) return;
   // H7: objetos de um plano que atingiu o teto (CAPPED) não podem ser reativados por aqui.
   if (status === 'ACTIVE') {
     const capped = await pool.query(`SELECT code, meta_ids FROM launch_plans WHERE guard_state = 'CAPPED'`).catch(() => ({ rows: [] as any[] }));
@@ -213,6 +253,7 @@ export async function setMetaEntityDailyBudget(req: AuthenticatedRequest, res: R
     await decision.finish('REJECTED', { result: { http_status: 400 }, error });
     return res.status(400).json({ error });
   }
+  if (!(await passesCampaignScope(req, res, decision, entityType))) return;
 
   try {
     const result = await clientFactory().setDailyBudget(pool, entityType, String(req.params.id), amount, contextFor(req));

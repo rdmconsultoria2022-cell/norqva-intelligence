@@ -154,7 +154,9 @@ export const MetaControlDialog: React.FC<{
   onClose: () => void;
   onDone: (message: string) => void;
   onError: (message: string) => void;
-}> = ({ action, status, isDemoView, currentUser, apiFetch, onClose, onDone, onError }) => {
+  /** NORQVA-0028: ID da campanha na Meta; o servidor recusa objetos de outra campanha */
+  scopeCampaign?: string | null;
+}> = ({ action, status, isDemoView, currentUser, apiFetch, onClose, onDone, onError, scopeCampaign }) => {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -180,7 +182,7 @@ export const MetaControlDialog: React.FC<{
       if (action.kind === 'status') {
         await apiFetch(
           `/meta-control/${target.entityType}/${encodeURIComponent(target.id)}/status?mode=${mode}`,
-          { method: 'POST', body: JSON.stringify({ status: action.next }) },
+          { method: 'POST', body: JSON.stringify({ status: action.next, ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}) }) },
           mode,
           currentUser
         );
@@ -188,7 +190,7 @@ export const MetaControlDialog: React.FC<{
       } else {
         await apiFetch(
           `/meta-control/${target.entityType}/${encodeURIComponent(target.id)}/budget?mode=${mode}`,
-          { method: 'POST', body: JSON.stringify({ daily_budget: parsed }) },
+          { method: 'POST', body: JSON.stringify({ daily_budget: parsed, ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}) }) },
           mode,
           currentUser
         );

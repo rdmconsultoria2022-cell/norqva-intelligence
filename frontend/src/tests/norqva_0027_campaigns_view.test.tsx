@@ -102,8 +102,15 @@ describe('NORQVA-0027 — tela Campanhas', () => {
     expect(screen.queryByTestId('create-on-meta')).not.toBeInTheDocument();
   });
 
-  it('perfil sem ADMIN não usa a tela', () => {
-    setup({ user: viewer });
-    expect(screen.getByTestId('campaigns-admin-only')).toBeInTheDocument();
+  // NORQVA-0028: perfis de análise veem a tela só para leitura
+  it('perfil sem ADMIN vê a campanha sem os botões de ação', async () => {
+    const apiFetch = setup({ user: viewer });
+    await open();
+    expect(screen.getByTestId('campaign-readonly')).toHaveTextContent('Só leitura');
+    expect(screen.queryByTestId('new-campaign')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('save-fields')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('create-on-meta')).not.toBeInTheDocument();
+    expect((screen.getByLabelText('Título do anúncio 1') as HTMLInputElement).disabled).toBe(true);
+    expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/creative-options'))).toBe(false);
   });
 });
