@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Lightbulb,
@@ -20,6 +20,7 @@ import {
   Store,
   Wallet,
   Compass,
+  ChevronDown,
   LucideIcon
 } from 'lucide-react';
 import { UserObj } from '../../types';
@@ -41,26 +42,60 @@ export interface SidebarProps {
   badges?: Record<string, number>;
 }
 
-export const navigationItems: NavigationItem[] = [
-  { id: 'dashboard', label: 'Visão Executiva', icon: LayoutDashboard },
-  { id: 'opportunities', label: 'Intelligence', icon: Lightbulb },
-  { id: 'products', label: 'Produtos', icon: Package },
-  { id: 'offers', label: 'Ofertas', icon: Tag },
-  { id: 'creatives', label: 'Creative Lab', icon: Film },
-  { id: 'creative-factory', label: 'Fábrica de Criativos', icon: Factory },
-  { id: 'experiments', label: 'Experimentos', icon: FlaskConical },
-  { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
-  { id: 'meta-credit', label: 'Créditos Meta', icon: Wallet },
-  { id: 'method', label: 'Método NORQVA', icon: Compass },
-  { id: 'campaign-base', label: 'Base de campanhas', icon: Database },
-  { id: 'ai-team', label: 'Time de IAs', icon: Bot },
-  { id: 'brands', label: 'Marcas', icon: Store },
-  { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
-  { id: 'demographics', label: 'Demografia', icon: PieChart },
-  { id: 'decisions', label: 'Decisões', icon: Scale },
-  { id: 'team', label: 'Equipe', icon: Users },
-  { id: 'config', label: 'Configurações', icon: Settings }
+// NORQVA-0024 (fase 1 da consolidação): telas agrupadas em áreas, na ordem do fluxo.
+// Os ids não mudam (App, atalhos, badges e período global continuam iguais).
+export interface NavigationGroup {
+  id: string;
+  label: string;
+  items: NavigationItem[];
+}
+
+export const navigationGroups: NavigationGroup[] = [
+  {
+    id: 'overview',
+    label: 'Visão Geral',
+    items: [
+      { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
+      { id: 'meta-credit', label: 'Créditos Meta', icon: Wallet }
+    ]
+  },
+  {
+    id: 'intelligence',
+    label: 'Inteligência',
+    items: [
+      { id: 'campaign-base', label: 'Base de campanhas', icon: Database },
+      { id: 'ai-team', label: 'Time de IAs', icon: Bot },
+      { id: 'opportunities', label: 'Oportunidades', icon: Lightbulb },
+      { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
+      { id: 'demographics', label: 'Demografia', icon: PieChart },
+      { id: 'decisions', label: 'Decisões', icon: Scale }
+    ]
+  },
+  {
+    id: 'operation',
+    label: 'Operação',
+    items: [
+      { id: 'products', label: 'Produtos', icon: Package },
+      { id: 'offers', label: 'Ofertas', icon: Tag },
+      { id: 'creatives', label: 'Creative Lab', icon: Film },
+      { id: 'creative-factory', label: 'Fábrica de Criativos', icon: Factory },
+      { id: 'method', label: 'Método NORQVA', icon: Compass },
+      { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
+      { id: 'experiments', label: 'Experimentos', icon: FlaskConical }
+    ]
+  },
+  {
+    id: 'settings',
+    label: 'Configurações',
+    items: [
+      { id: 'brands', label: 'Marcas', icon: Store },
+      { id: 'team', label: 'Equipe', icon: Users },
+      { id: 'config', label: 'Configurações', icon: Settings }
+    ]
+  }
 ];
+
+export const navigationItems: NavigationItem[] = navigationGroups.flatMap(g => g.items);
 
 export function Sidebar({
   currentUser,
@@ -71,9 +106,10 @@ export function Sidebar({
   onClose,
   badges
 }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   return (
     <aside className="w-64 h-full bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
-      <div>
+      <div className="flex flex-col min-h-0">
         {/* Brand Header */}
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -98,35 +134,56 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Navigation Links */}
-        <nav className="p-4 space-y-1">
-          {navigationItems.map((item) => {
-            const Icon = item.icon;
+        {/* Navigation Links — NORQVA-0024: agrupadas por área, títulos recolhíveis */}
+        <nav className="p-4 space-y-3 overflow-y-auto">
+          {navigationGroups.map((group) => {
+            const containsActive = group.items.some(i => i.id === activeTab);
+            const isOpen = containsActive || !collapsed[group.id];
             return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  onNavigate?.();
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-semibold uppercase tracking-wider transition ${
-                  activeTab === item.id
-                    ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-500/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-                {badges && badges[item.id] > 0 && (
-                  <span
-                    data-testid={`badge-${item.id}`}
-                    title="Alertas abertos"
-                    className="ml-auto min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold text-center normal-case tracking-normal"
-                  >
-                    {badges[item.id]}
-                  </span>
+              <div key={group.id} data-testid={`nav-group-${group.id}`}>
+                <button
+                  type="button"
+                  onClick={() => setCollapsed(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                  aria-expanded={isOpen}
+                  className="w-full flex items-center justify-between px-3 pb-1 text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500 hover:text-slate-300 transition"
+                >
+                  <span>{group.label}</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                </button>
+                {isOpen && (
+                  <div className="space-y-1">
+                    {group.items.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            onNavigate?.();
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-semibold uppercase tracking-wider transition ${
+                            activeTab === item.id
+                              ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-500/30'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {item.label}
+                          {badges && badges[item.id] > 0 && (
+                            <span
+                              data-testid={`badge-${item.id}`}
+                              title="Alertas abertos"
+                              className="ml-auto min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold text-center normal-case tracking-normal"
+                            >
+                              {badges[item.id]}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </nav>
