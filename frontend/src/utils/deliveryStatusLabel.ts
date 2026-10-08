@@ -22,6 +22,8 @@ export function deliveryStatusLabel(ord: DeliveryLabelInput): DeliveryLabel {
       return { text: 'VENCIDA (SEM DOWNLOAD)', tone: 'warn' };
     case 'REVOKED':
       return { text: 'REVOGADA', tone: 'warn' };
+    case 'EXHAUSTED':
+      return { text: 'LIMITE DE DOWNLOADS', tone: 'warn' };
     case null:
     case undefined:
     case '':

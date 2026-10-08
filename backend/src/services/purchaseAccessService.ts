@@ -38,6 +38,33 @@ function log(event: string, data: Record<string, unknown>) {
   console.log(JSON.stringify({ event, timestamp: new Date().toISOString(), ...data }));
 }
 
+/** NORQVA-0026: base do link /acesso (null em produção com FRONTEND_URL inválido). */
+export function accessUrlBase(): string | null {
+  const isProd = process.env.NODE_ENV === 'production';
+  const frontend = validateFrontendUrl(process.env.FRONTEND_URL, isProd);
+  if (!frontend.valid && isProd) return null;
+  return frontend.url || DEFAULT_FRONTEND_URL;
+}
+
+/** NORQVA-0026: cria um link /acesso para o pedido. Só o hash fica no banco. */
+export async function issueAccessToken(
+  pool: Pool,
+  orderId: string,
+  purpose: 'PURCHASE' | 'RESEND' | 'MANUAL'
+): Promise<{ rawToken: string; tokenId: string; expiresAt: Date; ttlHours: number }> {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const ttlHours = purchaseTokenTtlHours();
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const r = await pool.query(
+    `INSERT INTO order_recovery_tokens (order_id, token_hash, status, expires_at, max_uses, purpose)
+     VALUES ($1, $2, 'ACTIVE', $3, $4, $5)
+     RETURNING id`,
+    [orderId, tokenHash, expiresAt, purchaseTokenMaxUses(), purpose]
+  );
+  return { rawToken, tokenId: r.rows[0].id, expiresAt, ttlHours };
+}
+
 export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Promise<PurchaseAccessEmailOutcome> {
   try {
     const orderRes = await pool.query(

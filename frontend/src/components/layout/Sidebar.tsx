@@ -19,6 +19,7 @@ import {
   Store,
   Wallet,
   Compass,
+  ShoppingCart,
   ChevronDown,
   LucideIcon
 } from 'lucide-react';
@@ -28,6 +29,8 @@ interface NavigationItem {
   id: string;
   label: string;
   icon: LucideIcon;
+  /** Perfis que veem o item (ausente = todos) */
+  roles?: string[];
 }
 
 export interface SidebarProps {
@@ -84,6 +87,12 @@ export const navigationGroups: NavigationGroup[] = [
     ]
   },
   {
+    // NORQVA-0026
+    id: 'sales',
+    label: 'Vendas',
+    items: [{ id: 'sales', label: 'Vendas', icon: ShoppingCart, roles: ['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE'] }]
+  },
+  {
     id: 'settings',
     label: 'Configurações',
     items: [
@@ -135,7 +144,9 @@ export function Sidebar({
 
         {/* Navigation Links — NORQVA-0024: agrupadas por área, títulos recolhíveis */}
         <nav className="p-4 space-y-3 overflow-y-auto">
-          {navigationGroups.map((group) => {
+          {navigationGroups.map((g) => {
+            const group = { ...g, items: g.items.filter(i => !i.roles || i.roles.includes(String(currentUser?.role || ''))) };
+            if (group.items.length === 0) return null;
             const containsActive = group.items.some(i => i.id === activeTab);
             const isOpen = containsActive || !collapsed[group.id];
             return (
