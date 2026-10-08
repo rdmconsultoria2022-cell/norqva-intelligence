@@ -48,6 +48,8 @@ import {
   reconcilePayment,
   getPaymentById,
   webhookAsaas,
+  reconcileAndFinalizePayment,
+  retryFailedWebhookEvent,
   getDeliveryTokens,
   downloadDelivery,
   createDigitalAsset,
@@ -149,6 +151,7 @@ import { validateProductionEnvironment } from './utils/envValidation';
 import { listMethodCases, getMethodCase, createMethodCase, updateMethodCase, updateMethodStage, createMethodHypothesis, updateMethodHypothesis, linkCreativeHypothesis, importMethodExternalAd, decideMethodCreative, createMethodLearning, hypothesisFromLearning } from './controllers/methodController';
 import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from './controllers/experimentGuardController';
 import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
+import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
@@ -518,6 +521,16 @@ async function startServer() {
       registerShutdownHook(startExperimentGuardScheduler(pool));
     } catch (e: any) {
       console.error('[Server] Failed to start experiment guard (non-fatal):', e.message);
+    }
+
+    // NORQVA-0023: varredura de pagamentos e e-mails de acesso (PAYMENT_SWEEP_ENABLED=false desliga)
+    try {
+      registerShutdownHook(startPaymentSweepScheduler(pool, {
+        reconcile: reconcileAndFinalizePayment,
+        retryWebhookEvent: retryFailedWebhookEvent
+      }));
+    } catch (e: any) {
+      console.error('[Server] Failed to start payment sweep (non-fatal):', e.message);
     }
 
     // NORQVA-0017: daily EU market collection (MARKET_EU_AUTO_ENABLED=true)

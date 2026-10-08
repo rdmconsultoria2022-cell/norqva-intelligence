@@ -13,6 +13,10 @@ export interface SendPurchaseAccessEmailParams {
   orderId?: string;
   correlationId?: string;
   isDemo?: boolean;
+  /** NORQVA-0023: PURCHASE = enviado ao confirmar o pagamento; RECOVERY (padrão) = pedido de recuperação. */
+  kind?: 'PURCHASE' | 'RECOVERY';
+  /** Validade do link em horas (texto do e-mail de compra). */
+  validityHours?: number;
 }
 
 export interface EmailServiceResult {

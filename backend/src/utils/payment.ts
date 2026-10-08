@@ -5,6 +5,8 @@ export interface PixPaymentResponse {
   pixCopyPaste: string;
   expiresAt: string;
   status: string;
+  /** NORQVA-0023: QR Code do Pix em PNG base64, como o Asaas devolve em /pixQrCode. */
+  qrCodeImage?: string | null;
 }
 
 export interface PaymentDetailsResponse {
@@ -179,13 +181,14 @@ export class AsaasPaymentProvider {
     const paymentRes = await this.request<{ id: string; status: string; value: number }>('/payments', 'POST', payload);
     
     // Fetch QR Code dynamic details (body must be empty for GET)
-    const qrCodeRes = await this.request<{ payload: string; expirationDate: string }>(`/payments/${paymentRes.id}/pixQrCode`, 'GET');
+    const qrCodeRes = await this.request<{ payload: string; expirationDate: string; encodedImage?: string }>(`/payments/${paymentRes.id}/pixQrCode`, 'GET');
 
     return {
       providerPaymentId: paymentRes.id,
       pixCopyPaste: qrCodeRes.payload,
       expiresAt: qrCodeRes.expirationDate || tomorrow.toISOString(),
-      status: paymentRes.status
+      status: paymentRes.status,
+      qrCodeImage: qrCodeRes.encodedImage || null
     };
   }
 
@@ -193,12 +196,13 @@ export class AsaasPaymentProvider {
     const res = await this.request<{ data: { id: string; status: string; value: number }[] }>(`/payments?externalReference=${encodeURIComponent(externalReference)}`, 'GET');
     if (res.data && res.data.length > 0) {
       const p = res.data[0];
-      const qrCodeRes = await this.request<{ payload: string; expirationDate: string }>(`/payments/${p.id}/pixQrCode`, 'GET');
+      const qrCodeRes = await this.request<{ payload: string; expirationDate: string; encodedImage?: string }>(`/payments/${p.id}/pixQrCode`, 'GET');
       return {
         providerPaymentId: p.id,
         pixCopyPaste: qrCodeRes.payload,
         expiresAt: qrCodeRes.expirationDate,
-        status: p.status
+        status: p.status,
+        qrCodeImage: qrCodeRes.encodedImage || null
       };
     }
     return null;

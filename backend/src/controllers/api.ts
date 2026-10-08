@@ -48,6 +48,8 @@ import {
 } from '../utils/commercialTimezone';
 import { MetaCapiService } from '../services/meta/metaCapiService';
 import { resolveBrandPixelId } from '../services/brands/brandService';
+import { sendPaidOrderAccessEmail, getAccessEmailStatus } from '../services/purchaseAccessService';
+import { shouldCheckProvider, withTimeout } from '../services/paymentCheckThrottle';
 
 export const aiProvider = new MockAIProvider();
 
@@ -2511,6 +2513,30 @@ export async function authorizeCustomerOrderAccess(
   };
 }
 
+/**
+ * NORQVA-0023: consulta o Asaas para um pedido PENDING (pagamento com cobrança criada) e devolve o
+ * status atual do pedido. Erros e demora não afetam a resposta: segue o status que estava no banco.
+ */
+export async function confirmPendingOrderWithProvider(pool: Pool, orderId: string, fallbackStatus: string): Promise<string> {
+  try {
+    const payRes = await pool.query(
+      `SELECT id FROM payments
+       WHERE order_id = $1 AND status IN ('PENDING', 'REQUIRES_RECONCILIATION') AND provider_payment_id IS NOT NULL
+       ORDER BY created_at DESC LIMIT 1`,
+      [orderId]
+    );
+    if (payRes.rows.length === 0) return fallbackStatus;
+    const paymentId = payRes.rows[0].id;
+    if (!shouldCheckProvider(paymentId, 15 * 1000)) return fallbackStatus;
+    await withTimeout(reconcileAndFinalizePayment(paymentId, pool), 8000);
+    const fresh = await pool.query('SELECT status FROM orders WHERE id = $1', [orderId]);
+    return fresh.rows[0]?.status || fallbackStatus;
+  } catch (err: any) {
+    console.warn('[OrderStatus] provider check failed (non-fatal):', err.message);
+    return fallbackStatus;
+  }
+}
+
 export async function getOrderById(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const role = req.user?.role;
@@ -2572,10 +2598,17 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
 
       const order = auth.order;
 
+      // NORQVA-0023: se o webhook ainda não confirmou, a própria verificação da tela consulta o Asaas
+      // (no máximo a cada 15 s por pagamento, só pedidos reais). A confirmação vem do provedor.
+      let currentStatus = order.status;
+      if (order.status === 'PENDING' && !order.is_demo) {
+        currentStatus = await confirmPendingOrderWithProvider(pool, order.id, order.status);
+      }
+
       // Minimized response for status polling (Zero PII / Token exposure, canonical commerce fields included)
       return res.status(200).json({
         id: order.id,
-        status: order.status,
+        status: currentStatus,
         total_amount: parseFloat(order.total_amount),
         offer_human_id: order.offer_human_id || null,
         offer_id: order.offer_id || null,
@@ -2750,6 +2783,7 @@ export async function checkoutPix(req: any, res: Response) {
             status: dupRes.rows[0].status,
             amount: parseFloat(dupRes.rows[0].amount),
             pix_copy_paste: dupRes.rows[0].pix_copy_paste,
+            pix_qr_image: dupRes.rows[0].pix_qr_image || null,
             expires_at: dupRes.rows[0].expires_at
           });
         }
@@ -2769,6 +2803,7 @@ export async function checkoutPix(req: any, res: Response) {
       status: payment.status,
       amount: parseFloat(payment.amount),
       pix_copy_paste: payment.pix_copy_paste,
+      pix_qr_image: payment.pix_qr_image || null,
       expires_at: payment.expires_at
     });
   }
@@ -2866,9 +2901,9 @@ export async function checkoutPix(req: any, res: Response) {
     // TRANSACTION B (SUCCESS): Update local Payment to PENDING and save codes
     await pool.query(
       `UPDATE payments 
-       SET status = 'PENDING', provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, updated_at = NOW()
+       SET status = 'PENDING', provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, pix_qr_image = $5, updated_at = NOW()
        WHERE id = $4`,
-      [paymentResponse.providerPaymentId, paymentResponse.pixCopyPaste, paymentResponse.expiresAt, paymentId]
+      [paymentResponse.providerPaymentId, paymentResponse.pixCopyPaste, paymentResponse.expiresAt, paymentId, paymentResponse.qrCodeImage || null]
     );
 
     // Minimização PII: Clear local CPF/CNPJ if we successfully created the mapping
@@ -2932,6 +2967,7 @@ export async function checkoutPix(req: any, res: Response) {
       status: 'PENDING',
       amount: parseFloat(payment.amount),
       pix_copy_paste: paymentResponse.pixCopyPaste,
+      pix_qr_image: paymentResponse.qrCodeImage || null,
       expires_at: paymentResponse.expiresAt
     });
 
@@ -3270,6 +3306,12 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
     console.warn('[PostCommitEntitlement] Non-fatal provisioning warning:', entErr.message);
   }
 
+  // NORQVA-0023: link de acesso por e-mail, para o comprador não depender da aba do checkout.
+  // Envio único por pedido (order_access_emails); nunca lança exceção.
+  if (payment.order_id) {
+    await sendPaidOrderAccessEmail(pool, payment.order_id);
+  }
+
   return {
     status: 'CONFIRMED',
     reconciled: true
@@ -3323,6 +3365,46 @@ export async function getPaymentById(req: AuthenticatedRequest, res: Response) {
   } catch (err) {
     console.error('Get payment by id error:', err);
     return res.status(500).json({ error: 'Failed to query payment.' });
+  }
+}
+
+const WEBHOOK_CONFIRMED_EVENTS = ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH', 'PAYMENT_OVERDUE'];
+export const WEBHOOK_MAX_RETRIES = 5;
+
+/**
+ * NORQVA-0023: reprocessa um evento de webhook que ficou FAILED. Devolve null se não havia o que
+ * reprocessar, true se agora deu certo, false se falhou de novo. A confirmação continua vindo do
+ * Asaas (reconcileAndFinalizePayment consulta o provedor); nada é marcado pago sem isso.
+ */
+export async function retryFailedWebhookEvent(
+  pool: Pool,
+  externalEventId: string,
+  eventType: string,
+  paymentId: string
+): Promise<boolean | null> {
+  if (!WEBHOOK_CONFIRMED_EVENTS.includes(eventType)) return null;
+  const claim = await pool.query(
+    `UPDATE payment_webhook_events
+     SET processing_status = 'PROCESSING', retry_count = retry_count + 1
+     WHERE provider = 'ASAAS' AND external_event_id = $1 AND processing_status = 'FAILED' AND retry_count < $2
+     RETURNING id`,
+    [externalEventId, WEBHOOK_MAX_RETRIES]
+  );
+  if (claim.rows.length === 0) return null;
+  try {
+    await reconcileAndFinalizePayment(paymentId, pool);
+    await pool.query(
+      "UPDATE payment_webhook_events SET processing_status = 'PROCESSED', processed_at = NOW() WHERE provider = 'ASAAS' AND external_event_id = $1",
+      [externalEventId]
+    );
+    return true;
+  } catch (err: any) {
+    console.error('[Webhook Retry Exception]:', err.message);
+    await pool.query(
+      "UPDATE payment_webhook_events SET processing_status = 'FAILED' WHERE provider = 'ASAAS' AND external_event_id = $1",
+      [externalEventId]
+    );
+    return false;
   }
 }
 
@@ -3382,7 +3464,9 @@ export async function webhookAsaas(req: any, res: Response) {
   } catch (err: any) {
     // Check for PostgreSQL unique constraint violation (code 23505)
     if (err.code === '23505') {
-      return res.status(200).json({ received: true, processed: true, duplicate: true });
+      // NORQVA-0023: o mesmo evento chegou de novo e da primeira vez falhou -> processa de novo.
+      const retried = await retryFailedWebhookEvent(pool, payment.id + '_' + event, event, payment.externalReference);
+      return res.status(200).json({ received: true, processed: retried !== false, duplicate: true });
     }
     console.error('[Webhook DB Error]:', err);
     return res.status(500).json({ error: 'Internal database processing failure.' });
@@ -3512,7 +3596,13 @@ export async function getDeliveryTokens(req: any, res: Response) {
       client.release();
     }
 
-    return res.status(200).json({ orderId: order.id, deliveries: responseDeliveries });
+    // NORQVA-0023: a tela só diz que mandou e-mail se ele foi mesmo enviado.
+    const accessEmailStatus = await getAccessEmailStatus(pool, order.id);
+    return res.status(200).json({
+      orderId: order.id,
+      deliveries: responseDeliveries,
+      accessEmailSent: accessEmailStatus === 'SENT' || accessEmailStatus === 'SIMULATED'
+    });
   } catch (err: any) {
     console.error('Get delivery tokens error:', err);
     return res.status(500).json({ error: 'Failed to issue delivery tokens.' });
@@ -4138,7 +4228,7 @@ export async function claimOrderRecovery(req: any, res: Response) {
     // Atomic claim: update status to 'USED' only if it is currently 'ACTIVE' and unexpired
     const updateRes = await client.query(
       `UPDATE order_recovery_tokens
-       SET status = 'USED',
+       SET status = CASE WHEN use_count + 1 >= max_uses THEN 'USED' ELSE status END,
            last_used_at = NOW(),
            use_count = use_count + 1
        WHERE id = $1
@@ -4806,11 +4896,12 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     const recentOrdersRes = await pool.query(
       `SELECT o.id, o.total_amount, o.status, o.created_at, c.name as customer_name, c.email as customer_email,
               p.human_id as payment_human_id, p.status as payment_status,
-              od.download_count, od.status as delivery_status
+              od.download_count, od.status as delivery_status, oae.status as access_email_status
        FROM orders o
        LEFT JOIN customers c ON c.id = o.customer_id
        LEFT JOIN payments p ON p.order_id = o.id
        LEFT JOIN order_deliveries od ON od.order_id = o.id
+       LEFT JOIN order_access_emails oae ON oae.order_id = o.id
        WHERE ${recentOrderClause}
          AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)
          AND ($2::timestamptz IS NULL OR o.created_at <= $2::timestamptz)

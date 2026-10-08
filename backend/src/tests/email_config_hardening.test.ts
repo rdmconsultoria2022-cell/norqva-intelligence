@@ -96,6 +96,7 @@ describe('NORQVA — Production Email & Recovery Environment Configuration Harde
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         order_id UUID NOT NULL REFERENCES orders(id),
         token_hash VARCHAR(64) NOT NULL UNIQUE,
+        max_uses INT NOT NULL DEFAULT 1,
         status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -11,6 +11,8 @@ export interface DeliveryTokenItem {
 export interface DeliveryTokenResponse {
   orderId: string;
   deliveries: DeliveryTokenItem[];
+  /** NORQVA-0023: true só quando o e-mail de acesso foi de fato enviado. */
+  accessEmailSent?: boolean;
 }
 
 export interface DownloadResult {
