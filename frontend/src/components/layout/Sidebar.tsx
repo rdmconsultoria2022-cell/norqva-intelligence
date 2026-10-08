@@ -20,6 +20,7 @@ import {
   Wallet,
   Compass,
   ShoppingCart,
+  Megaphone,
   ChevronDown,
   LucideIcon
 } from 'lucide-react';
@@ -81,6 +82,8 @@ export const navigationGroups: NavigationGroup[] = [
       { id: 'offers', label: 'Ofertas', icon: Tag },
       // NORQVA-0025: Creative Lab e Fábrica viraram uma tela só ('creatives' abre a mesma tela)
       { id: 'creative-factory', label: 'Criativos', icon: Factory },
+      // NORQVA-0027: campanhas (planos de lançamento) com modo manual e criação pausada na Meta
+      { id: 'campaigns', label: 'Campanhas', icon: Megaphone, roles: ['ADMIN'] },
       { id: 'method', label: 'Método NORQVA', icon: Compass },
       { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
       { id: 'experiments', label: 'Experimentos', icon: FlaskConical }

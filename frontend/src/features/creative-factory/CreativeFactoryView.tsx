@@ -396,6 +396,14 @@ export function CreativeFactoryView({
     );
   };
 
+  const staleApproval = (c: any) => {
+    if (c.approval_status !== 'APPROVED') return false;
+    const lastApproved = (c.reviews || []).find((r: any) => r.decision === 'APPROVED');
+    // sem aprovação registrada, sem hash ou aprovação antiga sem hash: precisa aprovar de novo
+    if (!lastApproved || !c.content_hash || !lastApproved.content_hash || lastApproved.content_hash === 'UNHASHED') return true;
+    return lastApproved.content_hash !== c.content_hash;
+  };
+
   const renderCard = (c: any) => {
           const st = APPROVAL_LABEL[c.approval_status] || APPROVAL_LABEL.DRAFT;
           const rec = RECOMMENDATION_LABEL[c.recommendation] || RECOMMENDATION_LABEL.OBSERVING;
@@ -557,8 +565,24 @@ export function CreativeFactoryView({
                 </div>
               )}
 
+              {/* NORQVA-0027: arquivo trocado depois da aprovação não vai para anúncio sem nova aprovação */}
+              {staleApproval(c) && (
+                <div className="text-[11px] text-amber-300" data-testid="stale-approval">
+                  O arquivo mudou depois da aprovação: aprove de novo para ele poder ir para um anúncio.
+                </div>
+              )}
+
               {c.approval_status !== 'SUPERSEDED' && (
                 <footer className="flex flex-wrap gap-2 pt-1">
+                  {isAdmin && staleApproval(c) && (
+                    <button
+                      onClick={() => approve(c.id)}
+                      disabled={busy === `review-${c.id}` || !c.claims_all_verified}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar de novo
+                    </button>
+                  )}
                   {isAdmin && c.approval_status !== 'APPROVED' && (
                     <button
                       onClick={() => approve(c.id)}

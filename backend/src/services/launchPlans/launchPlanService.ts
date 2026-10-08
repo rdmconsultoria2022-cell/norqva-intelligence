@@ -457,7 +457,8 @@ export class LaunchPlanService {
       }
       const upd = await pool.query(
         `UPDATE launch_plans SET brand_id = $2, offer_human_id = $3, spec = $4, daily_budget_brl = $5, max_spend_brl = $6,
-                question_text = $7, last_error = NULL, updated_at = NOW()
+                question_text = $7, last_error = NULL, updated_at = NOW(),
+                manual_fields = '{}'::jsonb, auto_values = '{}'::jsonb, ad_creatives = '{}'::jsonb
          WHERE id = $1 AND status = 'DRAFT' RETURNING *`,
         [existing.id, brandId, input.offer_human_id, JSON.stringify(input.spec), input.daily_budget_brl, input.max_spend_brl, input.question_text]
       );
