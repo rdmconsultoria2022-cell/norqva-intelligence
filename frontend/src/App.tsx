@@ -52,7 +52,7 @@ import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'campaign-base', 'creative-performance', 'demographics', 'creative-factory'];
+const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'campaign-base', 'creative-performance', 'demographics', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -60,6 +60,7 @@ import { apiFetch as apiFetchLib } from './lib/api';
 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './features/auth/useAuth';
+import { SalesView } from './features/sales/SalesView';
 import { initMetaPixel, trackPageView, isPublicCommercialRoute } from './services/metaPixel';
 
 import { UserObj } from './types';
@@ -645,6 +646,7 @@ export default function App() {
                 setCapitalForm({ amount: parseFloat(exp.capital_approved), justification: '' });
               }}
               refreshTrigger={dashboardRefreshTrigger}
+              onViewSales={() => setActiveTab('sales')}
               showError={showError}
               showSuccess={showSuccess}
             />
@@ -735,6 +737,16 @@ export default function App() {
               products={products}
               offers={offers}
               onCreativeCreated={refreshCreatives}
+            />
+          )}
+
+          {activeTab === 'sales' && (
+            <SalesView
+              currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
             />
           )}
 

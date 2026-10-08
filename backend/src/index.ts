@@ -153,6 +153,7 @@ import { listMethodCases, getMethodCase, createMethodCase, updateMethodCase, upd
 import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from './controllers/experimentGuardController';
 import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
 import { startPaymentSweepScheduler } from './services/paymentSweepService';
+import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
 import { getAccountCredit } from './controllers/accountCreditController';
 
 dotenv.config();
@@ -360,6 +361,11 @@ app.get('/api/admin/payments/validate-connection', requireRole(['ADMIN']), valid
 app.get('/api/admin/storage/test-sign', requireRole(['ADMIN']), testStorageSign);
 app.post('/api/admin/storage/upload', requireRole(['ADMIN']), uploadStorageAsset);
 app.post('/api/admin/orders/:orderId/reissue-delivery', requireRole(['ADMIN']), reissueOrderDelivery);
+// NORQVA-0026: tela Vendas
+app.get('/api/sales/orders', requireRole(['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE']), getSales);
+app.post('/api/sales/orders/:id/access-link', requireRole(['ADMIN']), postSalesAccessLink);
+app.post('/api/sales/orders/:id/resend-access', requireRole(['ADMIN']), postSalesResendAccess);
+app.post('/api/sales/orders/:id/check-payment', requireRole(['ADMIN']), postSalesCheckPayment);
 app.get('/api/admin/meta/test-insights-probe', requireRole(['ADMIN']), testInsightsProbe);
 
 // Meta Acquisition Core (Phase A - Read-Only Ingestion)

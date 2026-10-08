@@ -9,6 +9,8 @@ export interface DashboardProps {
   onRegisterPerformance: (id: string) => void;
   onAuthorizeCapital: (exp: any) => void;
   refreshTrigger: number;
+  /** NORQVA-0026: atalho para a tela Vendas */
+  onViewSales?: () => void;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
 }

@@ -19,6 +19,7 @@ import {
   Store,
   Wallet,
   Compass,
+  ShoppingCart,
   ChevronDown,
   LucideIcon
 } from 'lucide-react';
@@ -82,6 +83,12 @@ export const navigationGroups: NavigationGroup[] = [
       { id: 'meta-ads', label: 'Meta Ads', icon: TrendingUp },
       { id: 'experiments', label: 'Experimentos', icon: FlaskConical }
     ]
+  },
+  {
+    // NORQVA-0026
+    id: 'sales',
+    label: 'Vendas',
+    items: [{ id: 'sales', label: 'Vendas', icon: ShoppingCart }]
   },
   {
     id: 'settings',

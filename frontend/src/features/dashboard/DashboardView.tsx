@@ -50,7 +50,8 @@ export function DashboardView({
   onAuthorizeCapital,
   refreshTrigger,
   showError,
-  showSuccess
+  showSuccess,
+  onViewSales
 }: DashboardProps) {
   const [activeSubView, setActiveSubView] = useState<'executive' | 'financial' | 'experiments'>('financial');
   const [execData, setExecData] = useState<any>(null);
@@ -1238,9 +1239,16 @@ export function DashboardView({
 
           {/* 4. Recent Real Orders Activity */}
           <div className="p-4 border border-slate-800 bg-slate-900/40 rounded space-y-3">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono">
-              Últimas Transações Registradas ({recentOrders.length})
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono">
+                Últimas Transações Registradas ({recentOrders.length})
+              </h3>
+              {onViewSales && (
+                <button type="button" onClick={onViewSales} data-testid="view-all-sales" className="text-[11px] text-emerald-400 hover:text-emerald-300 underline">
+                  Ver todas as vendas
+                </button>
+              )}
+            </div>
             {recentOrders.length === 0 ? (
               <div className="p-8 text-center text-slate-500 font-mono text-xs">
                 Nenhum pedido registrado no período selecionado. (Aguardando primeiras conversões da campanha).

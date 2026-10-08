@@ -5346,6 +5346,10 @@ export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Respo
       return res.status(404).json({ error: 'Order not found.' });
     }
     const order = orderRes.rows[0];
+    // NORQVA-0026: entrega só para pedido pago
+    if (order.status !== 'PAID') {
+      return res.status(409).json({ error: 'Order is not paid: delivery cannot be reissued.' });
+    }
 
     const assetRes = await pool.query('SELECT * FROM digital_assets WHERE id = $1', [assetId]);
     if (assetRes.rows.length === 0) {
