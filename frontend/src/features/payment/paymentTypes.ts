@@ -13,6 +13,8 @@ export interface PaymentInfo {
   status: PaymentStatusEnum;
   amount: number | string;
   pix_copy_paste?: string;
+  /** NORQVA-0023: QR Code do Pix (PNG em base64) devolvido pelo Asaas. */
+  pix_qr_image?: string | null;
   expires_at?: string;
 }
 

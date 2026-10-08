@@ -381,6 +381,17 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                 </div>
               )}
 
+              {payment?.pix_qr_image && (
+                <div className="flex flex-col items-center gap-1" data-testid="pix-qr-code">
+                  <img
+                    src={`data:image/png;base64,${payment.pix_qr_image}`}
+                    alt="QR Code do Pix"
+                    className="h-48 w-48 rounded bg-white p-2"
+                  />
+                  <span className="text-[11px] text-slate-400">Aponte a câmera do app do banco para o QR Code</span>
+                </div>
+              )}
+
               {payment?.pix_copy_paste && (
                 <div>
                   <label className="block text-[10px] font-mono uppercase text-slate-500 mb-1">
@@ -411,7 +422,9 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
 
             <div className="text-center">
               <p className="text-[11px] text-slate-500 font-mono">
-                Abra o app do seu banco, escolha Pix e escaneie ou cole o código acima.
+                {payment?.pix_qr_image
+                  ? 'Abra o app do seu banco, escolha Pix e escaneie o QR Code ou cole o código acima.'
+                  : 'Abra o app do seu banco, escolha Pix e cole o código acima.'}
               </p>
             </div>
           </div>

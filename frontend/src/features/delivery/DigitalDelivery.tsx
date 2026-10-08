@@ -14,6 +14,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 }) => {
   const [tokens, setTokens] = useState<DeliveryTokenItem[]>([]);
   const [orderData, setOrderData] = useState<any | null>(null);
+  const [accessEmailSent, setAccessEmailSent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -66,6 +67,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
         if (isMountedRef.current) {
           setTokens(tokensData.deliveries || []);
+          setAccessEmailSent(tokensData.accessEmailSent === true);
           if (fetchedOrder) {
             setOrderData(fetchedOrder);
           }
@@ -365,13 +367,27 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
             {/* Email info & Support card */}
             <div className="p-4 rounded-xl bg-stone-100/90 border border-stone-200/80 space-y-2 text-xs text-stone-600">
-              <div className="flex items-center gap-2 font-semibold text-stone-800">
-                <Mail className="h-4 w-4 text-[#B83B1E]" />
-                <span>Cópia de Acesso Permanente Enviada</span>
-              </div>
-              <p>
-                Enviamos também os links diretos para o seu e-mail cadastrado, garantindo que você nunca perca o acesso ao seu exemplar.
-              </p>
+              {accessEmailSent ? (
+                <>
+                  <div className="flex items-center gap-2 font-semibold text-stone-800" data-testid="access-email-sent">
+                    <Mail className="h-4 w-4 text-[#B83B1E]" />
+                    <span>Link de acesso enviado para o seu e-mail</span>
+                  </div>
+                  <p>
+                    Também mandamos um link de acesso para o e-mail da compra. Se fechar esta página, é só abrir esse e-mail para baixar de novo.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 font-semibold text-stone-800" data-testid="access-email-pending">
+                    <Mail className="h-4 w-4 text-[#B83B1E]" />
+                    <span>Baixe agora e guarde o arquivo</span>
+                  </div>
+                  <p>
+                    Se fechar esta página, use "Recuperar acesso" na página da oferta com o e-mail da compra para receber um novo link.
+                  </p>
+                </>
+              )}
               <div className="pt-2 border-t border-stone-200 text-[11px] text-stone-500 flex items-center justify-between">
                 <span>Dúvidas ou suporte: <strong>suporte@norqva.com</strong></span>
                 <span className="flex items-center gap-1 text-[#B83B1E]"><Heart className="h-3 w-3 fill-current" /> Bom apetite!</span>

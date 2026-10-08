@@ -30,6 +30,15 @@ import { DashboardProps } from './dashboardTypes';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
 import { ExperimentGuardCard } from '../acquisition/ExperimentGuardCard';
+import { deliveryStatusLabel, accessEmailLabel } from '../../utils/deliveryStatusLabel';
+
+// NORQVA-0023: cores do rótulo de entrega e do e-mail de acesso
+const LABEL_TONE_CLASS: Record<string, string> = {
+  ok: 'bg-emerald-955/40 text-emerald-400 border border-emerald-500/20',
+  info: 'bg-blue-955/40 text-blue-400 border border-blue-500/20',
+  warn: 'bg-amber-955/40 text-amber-400 border border-amber-500/20',
+  muted: 'bg-slate-800 text-slate-400'
+};
 
 export function DashboardView({
   currentUser,
@@ -1280,13 +1289,22 @@ export function DashboardView({
                           </span>
                         </td>
                         <td className="p-2.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            ord.download_count > 0 ? 'bg-emerald-955/40 text-emerald-400 border border-emerald-500/20' :
-                            ord.delivery_status === 'ACTIVE' ? 'bg-blue-955/40 text-blue-400 border border-blue-500/20' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            {ord.download_count > 0 ? `BAIXADO (${ord.download_count})` : ord.delivery_status ? 'DISPONÍVEL' : 'PENDENTE'}
-                          </span>
+                          {(() => {
+                            const dl = deliveryStatusLabel(ord);
+                            const em = accessEmailLabel(ord.access_email_status);
+                            return (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${LABEL_TONE_CLASS[dl.tone]}`}>
+                                  {dl.text}
+                                </span>
+                                {em && (
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${LABEL_TONE_CLASS[em.tone]}`}>
+                                    {em.text}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-2.5 font-mono text-slate-500 text-[10px]">
                           {new Date(ord.created_at).toLocaleString('pt-BR')}

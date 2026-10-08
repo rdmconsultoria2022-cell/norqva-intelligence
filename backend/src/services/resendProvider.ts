@@ -30,20 +30,34 @@ export class ResendEmailProvider implements IEmailProvider {
     }
 
     const fromAddress = this.defaultFrom || process.env.EMAIL_FROM || 'NORQVA <acesso@mail.norqva.com.br>';
-    const subject = 'Recupere seu acesso à sua compra NORQVA';
+    // NORQVA-0023: o mesmo e-mail serve à compra confirmada (PURCHASE) e à recuperação (RECOVERY, padrão).
+    const isPurchase = params.kind === 'PURCHASE';
+    const validityDays = Math.max(1, Math.round((params.validityHours || 168) / 24));
+    const subject = isPurchase
+      ? `Pagamento confirmado: seu acesso a ${offerName}`
+      : 'Recupere seu acesso à sua compra NORQVA';
+    const introText = isPurchase
+      ? `Seu pagamento foi confirmado. Obrigado pela compra de ${offerName}!`
+      : `Recebemos uma solicitação de recuperação de acesso para a sua compra: ${offerName}.`;
+    const noticeText = isPurchase
+      ? `Guarde este e-mail: o link vale por ${validityDays} dias e pode ser aberto mais de uma vez.`
+      : 'IMPORTANTE: Este link de acesso é de uso único e possui validade limitada de 72 horas por segurança.';
+    const closingText = isPurchase
+      ? 'Se tiver dificuldade para abrir o link, fale com o nosso atendimento que enviamos o seu material.'
+      : 'Se você não realizou esta solicitação, desconsidere este e-mail. Seus dados e seu acesso continuam seguros.';
 
     const textContent = [
       'Olá!',
       '',
-      `Recebemos uma solicitação de recuperação de acesso para a sua compra: ${offerName}.`,
+      introText,
       '',
       'Para acessar seu conteúdo e fazer o download do seu material, utilize o link de acesso exclusivo abaixo:',
       '',
       recoveryUrl,
       '',
-      'IMPORTANTE: Este link de acesso é de uso único e possui validade limitada de 72 horas por segurança.',
+      noticeText,
       '',
-      'Se você não realizou esta solicitação, desconsidere este e-mail. Seus dados e seu acesso continuam seguros.',
+      closingText,
       '',
       'Atenciosamente,',
       'Equipe NORQVA'
@@ -71,7 +85,9 @@ export class ResendEmailProvider implements IEmailProvider {
             <td style="padding: 32px;">
               <h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #f0f6fc;">Acesso à sua compra</h2>
               <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: #8b949e;">
-                Recebemos uma solicitação de acesso para a sua compra de <strong style="color: #f0f6fc;">${escapeHtml(offerName)}</strong>.
+                ${isPurchase
+                  ? `Seu pagamento foi confirmado. Obrigado pela compra de <strong style="color: #f0f6fc;">${escapeHtml(offerName)}</strong>!`
+                  : `Recebemos uma solicitação de acesso para a sua compra de <strong style="color: #f0f6fc;">${escapeHtml(offerName)}</strong>.`}
               </p>
               <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #8b949e;">
                 Clique no botão abaixo para acessar seu produto digital e realizar o download:
@@ -93,11 +109,15 @@ export class ResendEmailProvider implements IEmailProvider {
               </p>
               <div style="padding: 16px; background-color: #0d1117; border-left: 3px solid #f0883e; border-radius: 4px; margin-bottom: 24px;">
                 <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #c9d1d9;">
-                  <strong>Aviso de segurança:</strong> Este link é de <strong>uso único</strong> e expira em 72 horas. Após o primeiro acesso, o link será desativado.
+                  ${isPurchase
+                    ? `<strong>Guarde este e-mail:</strong> o link vale por ${validityDays} dias e pode ser aberto mais de uma vez.`
+                    : '<strong>Aviso de segurança:</strong> Este link é de <strong>uso único</strong> e expira em 72 horas. Após o primeiro acesso, o link será desativado.'}
                 </p>
               </div>
               <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #8b949e;">
-                Se você não solicitou esta recuperação de acesso, nenhuma ação é necessária. Apenas ignore esta mensagem.
+                ${isPurchase
+                  ? 'Se tiver dificuldade para abrir o link, fale com o nosso atendimento que enviamos o seu material.'
+                  : 'Se você não solicitou esta recuperação de acesso, nenhuma ação é necessária. Apenas ignore esta mensagem.'}
               </p>
             </td>
           </tr>

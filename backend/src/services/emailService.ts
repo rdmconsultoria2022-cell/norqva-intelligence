@@ -13,6 +13,10 @@ export interface SendPurchaseAccessEmailParams {
   orderId?: string;
   correlationId?: string;
   isDemo?: boolean;
+  /** NORQVA-0023: PURCHASE = enviado ao confirmar o pagamento; RECOVERY (padrão) = pedido de recuperação. */
+  kind?: 'PURCHASE' | 'RECOVERY';
+  /** Validade do link em horas (texto do e-mail de compra). */
+  validityHours?: number;
 }
 
 export interface EmailServiceResult {
@@ -93,8 +97,10 @@ export class TransactionalEmailService implements IEmailProvider {
       };
     }
 
-    // Capture in test / audit array
-    dispatchedEmailsForTesting.push(params);
+    // Capture in test array only (NORQVA-0023: never keep raw access links in production memory)
+    if (process.env.NODE_ENV !== 'production' || process.env.VITEST) {
+      dispatchedEmailsForTesting.push(params);
+    }
 
     const isProduction = process.env.NODE_ENV === 'production';
     const provider = this.getResolvedProvider(correlationId);
