@@ -39,9 +39,12 @@ interface Props {
   apiFetch: (url: string, options?: RequestInit) => Promise<any>;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
+  /** NORQVA-0028: dentro de uma campanha — mostra só o caso da oferta da campanha */
+  offerHumanId?: string | null;
 }
 
-export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch, showError, showSuccess }) => {
+export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch, showError, showSuccess, offerHumanId = null }) => {
+  const embedded = !!offerHumanId;
   const mode = isDemoView ? 'demo' : 'real';
   const role = currentUser?.role;
   const isAdmin = role === 'ADMIN';
@@ -58,13 +61,14 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
   const loadCases = useCallback(async () => {
     try {
       const r = await apiFetch(`/method/cases?mode=${mode}`);
-      const list = r?.cases || [];
+      let list = r?.cases || [];
+      if (offerHumanId) list = list.filter((c: any) => c.offer_human_id === offerHumanId);
       setCases(list);
-      setSelected(prev => prev || list[0]?.id || null);
+      setSelected(prev => (prev && list.some((c: any) => c.id === prev) ? prev : list[0]?.id || null));
     } catch (e: any) {
       showError(e?.message || 'Falha ao carregar o Método NORQVA.');
     }
-  }, [apiFetch, mode]);
+  }, [apiFetch, mode, offerHumanId]);
 
   const loadCase = useCallback(async () => {
     if (!selected) return setData(null);
@@ -111,7 +115,12 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
 
   return (
     <div className="space-y-5" data-testid="method-view">
-      <div>
+      {embedded && cases.length === 0 && (
+        <p className="text-sm text-slate-400" data-testid="method-no-case">
+          Ainda não há caso do Método para a oferta {offerHumanId}.
+        </p>
+      )}
+      <div className={embedded ? 'hidden' : ''}>
         <h2 className="flex items-center gap-2 text-xl font-bold text-slate-100">
           <Compass className="h-5 w-5 text-emerald-400" /> Método NORQVA
         </h2>
@@ -127,7 +136,7 @@ export const MethodView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
             {c.human_id} · {c.title}
           </button>
         ))}
-        {isAdmin && !cases.some(c => c.offer_human_id === PILOT.offer_human_id) && (
+        {isAdmin && (!embedded || offerHumanId === PILOT.offer_human_id) && !cases.some(c => c.offer_human_id === PILOT.offer_human_id) && (
           <button onClick={createPilot} className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500" data-testid="method-create-pilot">
             <Plus className="h-3.5 w-3.5" /> Criar caso TRATTORIA EM CASA (OFF-000001)
           </button>

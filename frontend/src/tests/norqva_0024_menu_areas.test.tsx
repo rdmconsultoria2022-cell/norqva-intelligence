@@ -7,17 +7,18 @@ import { Sidebar, navigationGroups, navigationItems } from '../components/layout
 const admin = { id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any;
 
 // NORQVA-0025: Creative Lab ('creatives') e Fábrica viraram a tela Criativos
+// NORQVA-0028: Meta Ads, Método NORQVA e Experimentos passaram para dentro de Campanhas
 const ALL_TABS = [
-  'dashboard', 'opportunities', 'products', 'offers', 'creative-factory', 'experiments',
-  'meta-ads', 'meta-credit', 'method', 'campaign-base', 'ai-team', 'brands', 'creative-performance',
+  'dashboard', 'opportunities', 'products', 'offers', 'creative-factory',
+  'meta-credit', 'campaign-base', 'ai-team', 'brands', 'creative-performance',
   'demographics', 'decisions', 'team', 'config', 'sales', 'campaigns'
 ];
 
 describe('NORQVA-0024 — menu em áreas', () => {
   it('mantém as telas, sem repetição', () => {
     const ids = navigationItems.map(i => i.id);
-    expect(ids).toHaveLength(19);
-    expect(new Set(ids).size).toBe(19);
+    expect(ids).toHaveLength(16);
+    expect(new Set(ids).size).toBe(16);
     expect([...ids].sort()).toEqual([...ALL_TABS].sort());
   });
 
@@ -44,10 +45,10 @@ describe('NORQVA-0024 — menu em áreas', () => {
   });
 
   it('a área da tela aberta não recolhe', () => {
-    render(<Sidebar currentUser={admin} activeTab="meta-ads" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ 'meta-ads': 3 }} />);
+    render(<Sidebar currentUser={admin} activeTab="campaigns" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ campaigns: 3 }} />);
     const operation = screen.getByTestId('nav-group-operation');
     fireEvent.click(within(operation).getByText('Operação'));
-    expect(within(operation).getByText('Meta Ads')).toBeInTheDocument();
-    expect(screen.getByTestId('badge-meta-ads')).toHaveTextContent('3');
+    expect(within(operation).getByText('Campanhas')).toBeInTheDocument();
+    expect(screen.getByTestId('badge-campaigns')).toHaveTextContent('3');
   });
 });

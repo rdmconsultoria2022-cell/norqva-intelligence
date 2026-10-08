@@ -114,8 +114,10 @@ describe.sequential('NORQVA-0027 — Campanhas', () => {
     await pool.query('DELETE FROM products WHERE id = $1', [productId]);
   });
 
-  it('só ADMIN acessa; a lista mostra a campanha editável', async () => {
-    expect((await as(perfToken).get('/api/campaigns')).status).toBe(403);
+  // NORQVA-0028: perfis de análise leem a lista; alterar continua só ADMIN
+  it('só ADMIN altera; a lista mostra a campanha editável', async () => {
+    expect((await as(perfToken).get('/api/campaigns')).status).toBe(200);
+    expect((await as(perfToken).post(`/api/campaigns/${planId}/fill`)).status).toBe(403);
     const r = await as(adminToken).get('/api/campaigns');
     expect(r.status).toBe(200);
     const c = r.body.campaigns.find((x: any) => x.id === planId);

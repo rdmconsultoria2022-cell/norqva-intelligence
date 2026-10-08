@@ -40,6 +40,8 @@ interface MetaAdsViewProps {
   apiFetch: any;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
+  /** NORQVA-0028: dentro de uma campanha — mostra só os objetos desta campanha da Meta (ID da Meta) */
+  scopeCampaignId?: string | null;
 }
 
 // Helper function to map Meta effective_status / status
@@ -120,9 +122,11 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   isDemoView,
   apiFetch,
   showError,
-  showSuccess
+  showSuccess,
+  scopeCampaignId = null
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
+  const scoped = !!scopeCampaignId;
   const [activeTab, setActiveTab] = useState<'campaigns' | 'adsets' | 'ads' | 'insights'>('campaigns');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -143,11 +147,16 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const metricsFor = (pred: (p: PerfItem) => boolean) => aggregateMetrics(perf.filter(pred));
   const openAlertByAd = new Map(alerts.filter(a => a.status !== 'RESOLVED').map(a => [String(a.meta_ad_id), a]));
 
-  const loadAlerts = async () => {
+  const loadAlerts = async (scopeAds?: any[]) => {
     const mode = isDemoView ? 'demo' : 'real';
     try {
       const r = await apiFetch(`/alerts?mode=${mode}`, {}, mode, currentUser);
-      setAlerts(Array.isArray(r?.alerts) ? r.alerts : []);
+      let list: AdAlert[] = Array.isArray(r?.alerts) ? r.alerts : [];
+      if (scopeCampaignId) {
+        const adIds = new Set((scopeAds || ads).map((a: any) => String(a.meta_ad_id)));
+        list = list.filter(a => adIds.has(String(a.meta_ad_id)));
+      }
+      setAlerts(list);
     } catch {
       setAlerts([]);
     }
@@ -210,13 +219,28 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         apiFetch(`/meta/insights?mode=${mode}&${periodQs}`, {}, mode, currentUser).catch(() => []),
         apiFetch(`/intelligence/creative-performance?mode=${mode}&${periodQs}`, {}, mode, currentUser).catch(() => null)
       ]);
-      setPerf(Array.isArray(perfRes?.creatives) ? perfRes.creatives : []);
-      loadAlerts();
+      let allCampaigns: any[] = Array.isArray(cmpRes) ? cmpRes : [];
+      let allSets: any[] = Array.isArray(setRes) ? setRes : [];
+      let allAds: any[] = Array.isArray(adRes) ? adRes : [];
+      let allInsights: any[] = Array.isArray(insRes) ? insRes : [];
+      let allPerf: PerfItem[] = Array.isArray(perfRes?.creatives) ? perfRes.creatives : [];
+      if (scopeCampaignId) {
+        // NORQVA-0028: só a campanha aberta na tela Campanhas
+        allCampaigns = allCampaigns.filter(c => String(c.meta_campaign_id) === String(scopeCampaignId));
+        const cmpDbIds = new Set(allCampaigns.map(c => String(c.id)));
+        allSets = allSets.filter(s => cmpDbIds.has(String(s.campaign_id)));
+        const setIds = new Set(allSets.map(s => String(s.id)));
+        allAds = allAds.filter(a => setIds.has(String(a.adset_id)));
+        allInsights = allInsights.filter(i => cmpDbIds.has(String(i.campaign_id)));
+        allPerf = allPerf.filter(p => String(p.campaign_id) === String(scopeCampaignId));
+      }
+      setPerf(allPerf);
+      loadAlerts(allAds);
 
-      setCampaigns(Array.isArray(cmpRes) ? cmpRes : []);
-      setAdSets(Array.isArray(setRes) ? setRes : []);
-      setAds(Array.isArray(adRes) ? adRes : []);
-      setInsights(Array.isArray(insRes) ? insRes : []);
+      setCampaigns(allCampaigns);
+      setAdSets(allSets);
+      setAds(allAds);
+      setInsights(allInsights);
     } catch (err: any) {
       showError(err.message || 'Erro ao carregar dados de Meta Ads.');
     } finally {
@@ -226,7 +250,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
   useEffect(() => {
     loadAllData();
-  }, [isDemoView, periodQs]);
+  }, [isDemoView, periodQs, scopeCampaignId]);
 
   const handleSync = async () => {
     if (syncing) return;
@@ -259,6 +283,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   return (
     <div className="space-y-6 text-sm">
       {/* Header & Controls */}
+      {!scoped && (
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -290,9 +315,11 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         </div>
       </div>
 
-      {/* NORQVA-0019: campanhas criadas pausadas aguardando o SIM/NÃO do operador */}
-      <LaunchPlansCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
-      <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />
+      )}
+
+      {/* NORQVA-0019: campanhas criadas pausadas aguardando o SIM/NÃO do operador (na campanha, o quadro fica no topo da tela Campanhas) */}
+      {!scoped && <LaunchPlansCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />}
+      {!scoped && <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />}
 
       {/* Governance banner: read-only for non-admins; control status for admins (NORQVA-0006) */}
       {isAdmin && control.status ? (
@@ -319,6 +346,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           loadAllData();
         }}
         onError={(msg) => showError(msg)}
+        scopeCampaign={scopeCampaignId}
       />
 
       <AlertsPanel

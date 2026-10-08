@@ -52,7 +52,7 @@ import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'meta-ads', 'campaign-base', 'creative-performance', 'demographics', 'creative-factory', 'sales'];
+const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'campaign-base', 'creative-performance', 'demographics', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -97,9 +97,11 @@ export default function App() {
     handleSignOut
   } = useAuth();
 
-  // NORQVA-0025: o antigo Creative Lab virou a tela Criativos
+  // NORQVA-0025: o antigo Creative Lab virou a tela Criativos.
+  // NORQVA-0028: Meta Ads, Método NORQVA e Experimentos passaram para dentro de Campanhas.
   useEffect(() => {
     if (activeTab === 'creatives') setActiveTab('creative-factory');
+    if (activeTab === 'meta-ads' || activeTab === 'method' || activeTab === 'experiments') setActiveTab('campaigns');
   }, [activeTab]);
 
   const navigate = useNavigate();
@@ -196,7 +198,7 @@ export default function App() {
     });
   }, [authMode, currentUser]);
 
-  // NORQVA-0009: open ad alerts → badge on "Meta Ads" (refreshed every 5 min and on tab change)
+  // NORQVA-0009/0028: alertas abertos → badge em "Campanhas" (refreshed every 5 min and on tab change)
   const [openAlertsCount, setOpenAlertsCount] = useState(0);
   const alertsFetchRef = React.useRef(apiFetch);
   alertsFetchRef.current = apiFetch;
@@ -617,7 +619,7 @@ export default function App() {
         activeTab,
         setActiveTab,
         handleSignOut,
-        badges: { 'meta-ads': openAlertsCount }
+        badges: { 'campaigns': openAlertsCount }
       }}
       headerProps={{
         activeTab,
@@ -700,33 +702,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'experiments' && (
-            <ExperimentsView
-              experiments={experiments}
-              products={products}
-              offers={offers}
-              creatives={creatives}
-              currentUser={currentUser}
-              isDemoView={isDemoView}
-              onSelectExperiment={setShowExpDetails}
-              onRegisterPerformance={setShowAddPerformance}
-              onAuthorizeCapital={setShowRequestCapital}
-              showError={showError}
-              showSuccess={showSuccess}
-              refreshExperiments={refreshExperiments}
-            />
-          )}
-
-          {activeTab === 'meta-ads' && (
-            <MetaAdsView
-              currentUser={currentUser}
-              isDemoView={isDemoView}
-              apiFetch={apiFetch}
-              showError={showError}
-              showSuccess={showSuccess}
-            />
-          )}
-
+          {/* NORQVA-0028: 'experiments', 'meta-ads' e 'method' abrem Campanhas (ver o efeito acima) */}
           {/* NORQVA-0025: o antigo Creative Lab ('creatives') abre a tela única Criativos */}
           {(activeTab === 'creative-factory' || activeTab === 'creatives') && (
             <CreativeFactoryView
@@ -774,10 +750,6 @@ export default function App() {
 
           {activeTab === 'brands' && (
             <BrandsView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
-          )}
-
-          {activeTab === 'method' && (
-            <MethodView currentUser={currentUser} isDemoView={isDemoView} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
           )}
 
           {activeTab === 'meta-credit' && (

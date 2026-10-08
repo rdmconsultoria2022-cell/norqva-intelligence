@@ -47,7 +47,9 @@ export const LaunchPlansCard: React.FC<{
   isDemoView: boolean;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
-}> = ({ apiFetch, currentUser, isDemoView, showError, showSuccess }) => {
+  /** NORQVA-0028: avisa a tela Campanhas para recarregar a lista e o experimento */
+  onAnswered?: () => void;
+}> = ({ apiFetch, currentUser, isDemoView, showError, showSuccess, onAnswered }) => {
   const enabled = currentUser?.role === 'ADMIN' && !isDemoView;
   const [plans, setPlans] = useState<LaunchPlan[]>([]);
   const [pending, setPending] = useState<{ plan: LaunchPlan; answer: Answer } | null>(null);
@@ -94,6 +96,7 @@ export const LaunchPlansCard: React.FC<{
       );
       setPending(null);
       await load();
+      onAnswered?.();
     } catch (err: any) {
       showError(err?.message || 'Falha ao registrar a resposta.');
     } finally {

@@ -1152,6 +1152,14 @@ export async function registerPerformance(req: AuthenticatedRequest, res: Respon
 
     const experiment = expQuery.rows[0];
 
+    // NORQVA-0028: experimento criado pelo Sim de uma campanha tem o capital reservado pelo sistema;
+    // lançar performance à mão sobrescreveria esse valor.
+    const fromPlan = await client.query('SELECT code FROM launch_plans WHERE experiment_id = $1 LIMIT 1', [id]);
+    if (fromPlan.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Este experimento é da campanha ${fromPlan.rows[0].code}: o resultado vem da Meta, não pode ser lançado à mão.` });
+    }
+
     // Scope check: Caso 3
     if (experiment.is_demo !== isDemo) {
       await client.query('ROLLBACK');
