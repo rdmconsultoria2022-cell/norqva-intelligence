@@ -233,7 +233,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                   )}
                 </div>
               )}
-              {copiedLink?.id === o.id && (
+              {copiedLink && copiedLink.id === o.id && (
                 <div className="lg:basis-full text-[11px] text-slate-400" data-testid="sales-link">
                   {copiedLink.copied ? 'Link copiado' : 'Link gerado'}{copiedLink.expires ? ` (vale até ${copiedLink.expires})` : ''}. Se não colar, copie daqui:{' '}
                   <span className="font-mono text-slate-200 break-all select-all">{copiedLink.url}</span>
