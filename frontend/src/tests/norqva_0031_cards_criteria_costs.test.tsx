@@ -61,7 +61,7 @@ describe('NORQVA-0031 — cartões de receita', () => {
     expect(within(cards).getByTestId('card-attributed')).toHaveTextContent('7 pedidos');
     expect(within(cards).getByTestId('card-organic')).toHaveTextContent('0,00');
     expect(within(cards).getByTestId('card-unattributed')).toHaveTextContent('29,90');
-    expect(within(cards).getByTestId('card-unattributed')).toHaveTextContent('1 batem com mais de uma campanha');
+    expect(within(cards).getByTestId('card-unattributed')).toHaveTextContent('1 bate com mais de uma campanha');
     expect(screen.queryByTestId('revenue-cards-mismatch')).not.toBeInTheDocument();
   });
 
@@ -116,6 +116,15 @@ describe('NORQVA-0031 — recomendação de critérios', () => {
 
 describe('NORQVA-0031 — custos da oferta', () => {
   const off = { id: 'o1', human_id: 'OFF-000001', price: '19.90', promotional_price: null, is_demo: false };
+
+  it('se a leitura falhar, não mostra o formulário (não sobrescreve custos existentes)', async () => {
+    const apiFetch = vi.fn(async () => {
+      throw new Error('403');
+    });
+    render(<OfferCosts off={off} apiFetch={apiFetch as any} showError={vi.fn()} showSuccess={vi.fn()} />);
+    expect(await screen.findByTestId('offer-costs-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('save-offer-costs')).not.toBeInTheDocument();
+  });
 
   it('sem custos cadastrados, avisa e calcula o equilíbrio ao preencher', async () => {
     const apiFetch = vi.fn(async (url: string, opts?: any) => (opts?.method === 'PUT' ? { ok: true } : { status: 'UNCONFIGURED', unit_economics: null }));

@@ -1049,7 +1049,9 @@ export function DashboardView({
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono">
                     {revenueCards?.otherOrders ?? 0} pedidos confirmados
-                    {revenueCards && revenueCards.ambiguousOrders > 0 ? ` (${revenueCards.ambiguousOrders} batem com mais de uma campanha)` : ''}
+                    {revenueCards && revenueCards.ambiguousOrders > 0
+                      ? ` (${revenueCards.ambiguousOrders} ${revenueCards.ambiguousOrders === 1 ? 'bate' : 'batem'} com mais de uma campanha)`
+                      : ''}
                   </div>
                 </div>
               </div>

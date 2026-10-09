@@ -43,6 +43,7 @@ export const OfferCosts: React.FC<{
 }> = ({ off, apiFetch, showError, showSuccess }) => {
   const mode = off.is_demo ? 'demo' : 'real';
   const [loaded, setLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [form, setForm] = useState({ tax: '0', fixed: '1,99', pct: '0', other: '0', margin: '0' });
   const [busy, setBusy] = useState(false);
@@ -59,7 +60,11 @@ export const OfferCosts: React.FC<{
         }
         setLoaded(true);
       })
-      .catch(() => !cancelled && setLoaded(true));
+      .catch(() => {
+        if (cancelled) return;
+        setLoadFailed(true);
+        setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -67,7 +72,7 @@ export const OfferCosts: React.FC<{
 
   const n = (v: string) => Number(String(v).replace(',', '.'));
   const price = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '' && parseFloat(off.promotional_price) > 0 ? parseFloat(off.promotional_price) : parseFloat(off.price);
-  const valid = [form.tax, form.fixed, form.pct, form.other, form.margin].every(v => String(v).trim() !== '' && Number.isFinite(n(v)) && n(v) >= 0);
+  const valid = Number.isFinite(price) && [form.tax, form.fixed, form.pct, form.other, form.margin].every(v => String(v).trim() !== '' && Number.isFinite(n(v)) && n(v) >= 0);
   const costPerSale = valid ? price * (n(form.tax) / 100) + n(form.fixed) + price * (n(form.pct) / 100) + n(form.other) : null;
   const breakeven = costPerSale === null ? null : Math.round((price - costPerSale) * 100) / 100;
 
@@ -89,6 +94,7 @@ export const OfferCosts: React.FC<{
   };
 
   if (!loaded) return <p className="text-[11px] text-slate-500">Carregando custos…</p>;
+  if (loadFailed) return <p className="text-[11px] text-red-300" data-testid="offer-costs-error">Não foi possível ler os custos desta oferta agora. Nada foi alterado; tente de novo.</p>;
   const field = (label: string, key: keyof typeof form, hint: string) => (
     <label className="flex flex-col gap-0.5">
       <span className="text-[10px] text-slate-400">{label}</span>
@@ -108,9 +114,13 @@ export const OfferCosts: React.FC<{
       </div>
       <div className="flex items-center justify-between gap-2">
         <span className="text-slate-300" data-testid="offer-breakeven">
-          {breakeven === null ? 'Preencha os campos com números.' : `Equilíbrio: R$ ${breakeven.toFixed(2).replace('.', ',')} por venda (custos R$ ${costPerSale!.toFixed(2).replace('.', ',')})`}
+          {breakeven === null
+            ? 'Preencha os campos com números.'
+            : breakeven <= 0
+              ? `Os custos (R$ ${costPerSale!.toFixed(2).replace('.', ',')}) já passam do preço: cada venda dá prejuízo antes do anúncio.`
+              : `Equilíbrio: R$ ${breakeven.toFixed(2).replace('.', ',')} por venda (custos R$ ${costPerSale!.toFixed(2).replace('.', ',')})`}
         </span>
-        <button onClick={save} disabled={busy || !valid || breakeven === null || breakeven <= 0} className="rounded bg-emerald-600 px-2.5 py-1 font-semibold text-white disabled:opacity-40" data-testid="save-offer-costs">
+        <button onClick={save} disabled={busy || !valid || breakeven === null} className="rounded bg-emerald-600 px-2.5 py-1 font-semibold text-white disabled:opacity-40" data-testid="save-offer-costs">
           Salvar custos
         </button>
       </div>
