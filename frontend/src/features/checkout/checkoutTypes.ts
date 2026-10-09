@@ -11,6 +11,8 @@ export interface CheckoutOffer {
   description?: string;
   bonus?: string;
   is_demo?: boolean;
+  /** NORQVA-0032: adicional na hora do Pix (o preço cobrado é sempre o do servidor) */
+  bump?: { offer_human_id: string; name: string; headline: string | null; price: number } | null;
 }
 
 export interface CheckoutCustomer {

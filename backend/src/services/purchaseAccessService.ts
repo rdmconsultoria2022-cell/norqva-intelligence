@@ -65,11 +65,13 @@ export async function issueAccessToken(
   return { rawToken, tokenId: r.rows[0].id, expiresAt, ttlHours };
 }
 
+// NORQVA-0032: com adicional, o e-mail cita os dois itens ("Principal + Adicional")
 export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Promise<PurchaseAccessEmailOutcome> {
   try {
     const orderRes = await pool.query(
       `SELECT o.id, o.status, o.is_demo, c.email AS customer_email,
-              (SELECT oi.offer_name_snapshot FROM order_items oi WHERE oi.order_id = o.id ORDER BY oi.created_at ASC, oi.id ASC LIMIT 1) AS offer_name,
+              (SELECT string_agg(oi.offer_name_snapshot, ' + ' ORDER BY oi.is_bump ASC, oi.created_at ASC, oi.id ASC)
+                 FROM order_items oi WHERE oi.order_id = o.id) AS offer_name,
               EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE') AS has_active_delivery,
               EXISTS (
                 SELECT 1 FROM payments p

@@ -812,6 +812,58 @@ export class CreativeFactoryService {
    * NORQVA-0025: registra uma promessa (claim) num criativo — uma claim já existente do mesmo produto
    * ou uma nova, que entra como UNVERIFIED. A regra de aprovação não muda: só aprova com todas verificadas.
    */
+  /** NORQVA-0032: promessas de um produto (a mesma lista que os criativos usam). */
+  async listProductClaims(pool: Pool, productId: string, isDemo: boolean) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) throw new CreativeFactoryError(404, 'Produto não encontrado.');
+    const r = await pool.query(
+      `SELECT cr.id, cr.human_id, cr.claim_text, cr.claim_type, cr.source, cr.status, cr.status_note, cr.verified_at, cr.valid_until,
+              u.name AS verified_by_name,
+              (cr.status = 'VERIFIED' AND cr.valid_until IS NOT NULL AND cr.valid_until <= NOW()) AS is_expired,
+              (SELECT COUNT(*)::int FROM creative_claims cc WHERE cc.claim_id = cr.id) AS creatives_count
+       FROM claims_registry cr LEFT JOIN users u ON u.id = cr.verified_by
+       WHERE cr.product_id = $1 AND cr.is_demo = $2
+       ORDER BY CASE cr.status WHEN 'VERIFIED' THEN 0 WHEN 'UNVERIFIED' THEN 1 ELSE 2 END, cr.created_at ASC`,
+      [productId, isDemo]
+    );
+    return r.rows;
+  }
+
+  /** NORQVA-0032: cadastra uma promessa no produto, sempre como "a verificar" (só o ADMIN verifica). */
+  async createProductClaim(
+    pool: Pool,
+    productId: string,
+    input: { claim_text?: unknown; claim_type?: unknown; source?: unknown; valid_until?: unknown },
+    userId: string | null,
+    isDemo: boolean
+  ) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) throw new CreativeFactoryError(404, 'Produto não encontrado.');
+    const p = await pool.query('SELECT id, human_id FROM products WHERE id = $1 AND is_demo = $2 AND COALESCE(is_deleted, FALSE) = FALSE', [productId, isDemo]);
+    if (p.rows.length === 0) throw new CreativeFactoryError(404, 'Produto não encontrado.');
+    const text = String(input.claim_text ?? '').trim();
+    if (!text) throw new CreativeFactoryError(400, 'Escreva a promessa.');
+    if (text.length > 500) throw new CreativeFactoryError(400, 'A promessa pode ter no máximo 500 caracteres.');
+    const type = String(input.claim_type || 'FEATURE');
+    if (!(CLAIM_TYPES as readonly string[]).includes(type)) throw new CreativeFactoryError(400, 'Tipo de promessa inválido.');
+    const dup = await pool.query(
+      `SELECT human_id FROM claims_registry WHERE product_id = $1 AND is_demo = $2 AND lower(claim_text) = lower($3) AND status IN ('UNVERIFIED', 'VERIFIED')`,
+      [productId, isDemo, text]
+    );
+    if (dup.rows.length > 0) throw new CreativeFactoryError(409, `Esta promessa já está cadastrada (${dup.rows[0].human_id}).`);
+    let validUntil: Date | null = null;
+    if (input.valid_until !== undefined && input.valid_until !== null && input.valid_until !== '') {
+      validUntil = new Date(String(input.valid_until));
+      if (Number.isNaN(validUntil.getTime()) || validUntil.getTime() <= Date.now()) throw new CreativeFactoryError(400, 'A validade precisa ser uma data futura.');
+    }
+    const humanId = `CLM-${crypto.randomBytes(4).toString('hex').toUpperCase()}${demoSuffix(isDemo)}`;
+    const ins = await pool.query(
+      `INSERT INTO claims_registry (human_id, product_id, claim_text, claim_type, source, status, valid_until, is_demo)
+       VALUES ($1, $2, $3, $4, $5, 'UNVERIFIED', $6, $7) RETURNING id, human_id, claim_text, claim_type, status, valid_until`,
+      [humanId, productId, text, type, input.source ? String(input.source).slice(0, 500) : `Produto ${p.rows[0].human_id}`, validUntil, isDemo]
+    );
+    await writeAuditLog(pool, userId, 'PRODUCT_CLAIM_ADDED', `Promessa ${humanId} cadastrada no produto ${p.rows[0].human_id}`, null, text, isDemo).catch(() => {});
+    return ins.rows[0];
+  }
+
   async addClaimToCreative(
     pool: Pool,
     creativeId: string,

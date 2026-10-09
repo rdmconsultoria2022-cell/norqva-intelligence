@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, AlertTriangle, Package, ShoppingCart, ChevronDown, ChevronRight, Tag } from 'lucide-react';
 import { DigitalAssetAdminModal } from '../delivery/DigitalAssetAdminModal';
+import { OfferBumpConfig, ProductClaims } from './ProductExtras';
 
 // NORQVA-0030 (fase 6): Produtos com as ofertas dentro. Cada produto mostra dados e procedência, as ofertas
 // dele (preço, situação, arquivos de entrega, checkout de teste) e a marca. Botões de alterar só para quem o
@@ -44,6 +45,7 @@ export const OfferCosts: React.FC<{
   const mode = off.is_demo ? 'demo' : 'real';
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [bumpStats, setBumpStats] = useState<{ orders: number; avg_bump: number; min_orders: number } | null>(null);
   const [configured, setConfigured] = useState(false);
   const [form, setForm] = useState({ tax: '0', fixed: '1,99', pct: '0', other: '0', margin: '0' });
   const [busy, setBusy] = useState(false);
@@ -53,6 +55,7 @@ export const OfferCosts: React.FC<{
       .then((r: any) => {
         if (cancelled) return;
         const u = r?.unit_economics;
+        if (r?.bump_stats) setBumpStats(r.bump_stats);
         if (u) {
           const pctStr = (v: number) => String(Math.round(v * 10000) / 100).replace('.', ',');
           setForm({ tax: pctStr(u.tax_rate), fixed: String(u.gateway_fixed_fee).replace('.', ','), pct: pctStr(u.gateway_pct_fee), other: String(u.other_variable_cost).replace('.', ','), margin: pctStr(u.target_net_margin) });
@@ -112,6 +115,14 @@ export const OfferCosts: React.FC<{
         {field('Outros custos por venda (R$)', 'other', 'ex.: entrega')}
         {field('Margem desejada (%)', 'margin', 'só referência')}
       </div>
+      {bumpStats && (
+        <p className="text-[11px] text-slate-400" data-testid="offer-bump-stats">
+          Adicional: R$ {bumpStats.avg_bump.toFixed(2).replace('.', ',')} por pedido em {bumpStats.orders} pedido(s) pagos.{' '}
+          {bumpStats.orders >= bumpStats.min_orders
+            ? 'Já entra no equilíbrio do produto.'
+            : `Entra no equilíbrio a partir de ${bumpStats.min_orders} pedidos.`}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2">
         <span className="text-slate-300" data-testid="offer-breakeven">
           {breakeven === null
@@ -136,8 +147,10 @@ export const OfferCard: React.FC<{
   onUpdateOfferStatus: (id: string, status: string) => void;
   onManageAssets: (o: any) => void;
   costs?: React.ReactNode;
-}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs }) => {
+  bumpConfig?: React.ReactNode;
+}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs, bumpConfig }) => {
   const [showCosts, setShowCosts] = useState(false);
+  const [showBump, setShowBump] = useState(false);
   const hasPromo = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '' && parseFloat(off.promotional_price) > 0;
   const isCheckoutEligible = off.status === 'TESTE' || off.status === 'ATIVA';
   const statusBtn = (label: string, next: string, cls: string) => (
@@ -181,6 +194,17 @@ export const OfferCard: React.FC<{
         </button>
       )}
       {isAdmin && showCosts && costs}
+
+      {isAdmin && bumpConfig && (
+        <button
+          onClick={() => setShowBump(!showBump)}
+          data-testid="toggle-offer-bump"
+          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
+        >
+          Adicional no Pix
+        </button>
+      )}
+      {isAdmin && showBump && bumpConfig}
 
       {isAdmin && (
         <button
@@ -240,6 +264,14 @@ export const ProductsView: React.FC<Props> = ({
   const isAdmin = role === 'ADMIN';
   const canEdit = role === 'ADMIN' || role === 'PRODUCT';
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [openClaims, setOpenClaims] = useState<Set<string>>(new Set());
+  const toggleClaims = (id: string) =>
+    setOpenClaims(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [assetOffer, setAssetOffer] = useState<any>(null);
   const [brands, setBrands] = useState<any[]>([]);
   const [brandChange, setBrandChange] = useState<{ product: any; brand: any } | null>(null);
@@ -387,6 +419,15 @@ export const ProductsView: React.FC<Props> = ({
               )}
 
               <div className="border-t border-slate-800">
+                <button onClick={() => toggleClaims(String(prd.id))} className="flex items-center gap-1 px-4 py-2 text-xs font-semibold text-slate-300" data-testid="toggle-claims">
+                  {openClaims.has(String(prd.id)) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />} Promessas
+                </button>
+                {openClaims.has(String(prd.id)) && (
+                  <ProductClaims product={prd} offers={offers} currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
+                )}
+              </div>
+
+              <div className="border-t border-slate-800">
                 <div className="flex items-center justify-between px-4 py-2">
                   <button onClick={() => toggle(String(prd.id))} className="flex items-center gap-1 text-xs font-semibold text-slate-300" data-testid="toggle-offers">
                     {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />} Ofertas ({prdOffers.length})
@@ -401,7 +442,7 @@ export const ProductsView: React.FC<Props> = ({
                   <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3" data-testid="product-offers">
                     {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
-                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
+                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
                     ))}
                   </div>
                 )}
@@ -416,7 +457,7 @@ export const ProductsView: React.FC<Props> = ({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ofertas de produtos fora desta lista</h3>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {orphanOffers.map(off => (
-              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
+              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
             ))}
           </div>
         </section>

@@ -51,6 +51,9 @@ import { resolveBrandPixelId } from '../services/brands/brandService';
 import { sendPaidOrderAccessEmail, getAccessEmailStatus } from '../services/purchaseAccessService';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
 import { shouldCheckProvider, withTimeout } from '../services/paymentCheckThrottle';
+import { OfferBumpService, OfferBumpError } from '../services/commerce/offerBumpService';
+import { bumpNetPerOrderByOffer, BUMP_BREAKEVEN_MIN_ORDERS } from '../services/alerts/adAlertService';
+const offerBumpService = new OfferBumpService();
 
 export const aiProvider = new MockAIProvider();
 
@@ -914,7 +917,9 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       bonus: offer.bonus || null,
       is_demo: offer.is_demo,
       // D-0009 (fase B): pixel da marca (null = a landing usa o pixel padrão)
-      meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer.id })
+      meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer.id }),
+      // NORQVA-0032: adicional na hora do Pix (null = não há)
+      bump: await offerBumpService.publicView(pool, offer)
     });
   } catch (err) {
     console.error('Get public offer error:', err);
@@ -2135,7 +2140,7 @@ async function fetchOrderWithItems(client: Pool | PoolClient, filterClause: stri
   const orderRes = await client.query(`SELECT * FROM orders WHERE ${filterClause}`, params);
   if (orderRes.rows.length === 0) return null;
   const order = orderRes.rows[0];
-  const itemsRes = await client.query('SELECT * FROM order_items WHERE order_id = $1', [order.id]);
+  const itemsRes = await client.query('SELECT * FROM order_items WHERE order_id = $1 ORDER BY is_bump ASC, created_at ASC', [order.id]);
   return {
     ...order,
     items: itemsRes.rows
@@ -2162,6 +2167,8 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   if (qty <= 0 || qty > 1000) {
     return res.status(400).json({ error: 'Quantity must be between 1 and 1000.' });
   }
+  // NORQVA-0032: o navegador só diz se quer o adicional; preço e oferta do adicional vêm do servidor
+  const wantsBump = req.body?.with_bump === true;
 
   const client = await pool.connect();
   let derivedIsDemo: boolean | undefined;
@@ -2238,7 +2245,13 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     // 5. Calculate Server-side Pricing
     const activePrice = offer.promotional_price !== null ? parseFloat(offer.promotional_price) : parseFloat(offer.price);
     const totalPrice = activePrice * qty;
-    const totalAmount = totalPrice;
+    // NORQVA-0032: adicional (quantidade 1) entra no mesmo pedido e no mesmo Pix, com preço do servidor
+    const bump = wantsBump ? await offerBumpService.active(client, offer) : null;
+    if (wantsBump && !bump) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'O adicional desta oferta não está disponível agora. Tente de novo sem ele.' });
+    }
+    const totalAmount = Math.round((totalPrice + (bump ? bump.price : 0)) * 100) / 100;
 
     // CHECK constraint enforcement for REAL orders
     if (!isDemo && totalAmount <= 0) {
@@ -2313,6 +2326,24 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
         derivedProvenance
       ]
     );
+
+    if (bump) {
+      await client.query(
+        `INSERT INTO order_items (id, order_id, offer_id, product_id, product_name_snapshot, offer_name_snapshot, offer_description_snapshot, unit_price, quantity, total_price, data_provenance, is_bump)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $8, $9, TRUE)`,
+        [
+          crypto.randomUUID(),
+          orderId,
+          bump.bump_offer.id,
+          bump.bump_product.id,
+          bump.bump_product.name,
+          bump.bump_offer.name,
+          bump.bump_offer.description || null,
+          bump.price,
+          derivedProvenance
+        ]
+      );
+    }
 
     await client.query('COMMIT');
 
@@ -2448,6 +2479,7 @@ export async function authorizeCustomerOrderAccess(
        LEFT JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN offers of ON of.id = oi.offer_id
        WHERE ocs.order_id = $1 AND ocs.session_token_hash = $2
+       ORDER BY oi.is_bump ASC NULLS FIRST, oi.created_at ASC
        LIMIT 1`,
       [orderId, computedHash]
     );
@@ -2494,6 +2526,7 @@ export async function authorizeCustomerOrderAccess(
      LEFT JOIN order_items oi ON oi.order_id = o.id
      LEFT JOIN offers of ON of.id = oi.offer_id
      WHERE o.id = $1
+     ORDER BY oi.is_bump ASC NULLS FIRST, oi.created_at ASC
      LIMIT 1`,
     [orderId]
   );
@@ -2639,6 +2672,14 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
         offer_human_id: order.offer_human_id || null,
         offer_id: order.offer_id || null,
         quantity: order.quantity ? parseInt(String(order.quantity), 10) : 1,
+        // NORQVA-0032: todas as ofertas do pedido (principal primeiro; o adicional depois)
+        offer_human_ids: (
+          await pool.query(
+            `SELECT of.human_id FROM order_items oi JOIN offers of ON of.id = oi.offer_id
+             WHERE oi.order_id = $1 ORDER BY oi.is_bump ASC, oi.created_at ASC`,
+            [order.id]
+          )
+        ).rows.map((r: any) => r.human_id),
         is_demo: order.is_demo,
         // D-0009 (fase B): pixel da marca para o Purchase do navegador (null = pixel padrão)
         meta_pixel_id: await resolveBrandPixelId(pool, { orderId: order.id }),
@@ -2947,7 +2988,7 @@ export async function checkoutPix(req: any, res: Response) {
            event_id, event_type, visitor_id, session_id, offer_id,
            path, fbclid, utm_source, utm_medium, utm_campaign, utm_content, is_demo
          )
-         VALUES ($1, 'PIX_GENERATED', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, 'PIX_GENERATED', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 ORDER BY is_bump ASC, created_at ASC LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (event_id, is_demo) DO NOTHING`,
         [
           `pix_gen_${payment.id}`,
@@ -3185,7 +3226,7 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
              event_id, event_type, visitor_id, session_id, offer_id,
              path, fbclid, utm_source, utm_medium, utm_campaign, utm_content, is_demo
            )
-           VALUES ($1, 'PIX_EXPIRED', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
+           VALUES ($1, 'PIX_EXPIRED', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 ORDER BY is_bump ASC, created_at ASC LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (event_id, is_demo) DO NOTHING`,
           [
             `pix_exp_${payment.id}`,
@@ -3265,6 +3306,8 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
         [pRow.order_id]
       );
       for (const item of itemsRes.rows) {
+        // NORQVA-0032: o adicional entrega só o arquivo dele; não concede acesso de produto web pelo nome
+        if (item.is_bump) continue;
         const targetProdId = resolveEntitlementProductId(
           item.product_name || item.product_name_snapshot || item.offer_name_snapshot || item.offer_human_id || ''
         );
@@ -3285,7 +3328,7 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
              event_id, event_type, visitor_id, session_id, offer_id,
              path, fbclid, utm_source, utm_medium, utm_campaign, utm_content, is_demo
            )
-           VALUES ($1, 'PAID', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
+           VALUES ($1, 'PAID', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 ORDER BY is_bump ASC, created_at ASC LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (event_id, is_demo) DO NOTHING`,
           [
             `paid_${pRow.order_id}`,
@@ -3315,6 +3358,11 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
           eventTime,
           value: parseFloat(pRow.amount),
           currency: 'BRL',
+          // NORQVA-0032: principal primeiro, adicional depois
+          contentIds: [...itemsRes.rows]
+            .sort((a: any, b: any) => Number(!!a.is_bump) - Number(!!b.is_bump))
+            .map((i: any) => i.offer_human_id)
+            .filter(Boolean),
           email: pRow.customer_email,
           phone: pRow.customer_phone,
           fbc: pRow.fbc,
@@ -4222,6 +4270,7 @@ export async function claimOrderRecovery(req: any, res: Response) {
   const client = await pool.connect();
   try {
     const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+    // NORQVA-0032: com mais de um arquivo (adicional), vale se QUALQUER entrega do pedido estiver ativa
 
     await client.query('BEGIN');
 
@@ -4230,14 +4279,14 @@ export async function claimOrderRecovery(req: any, res: Response) {
               o.status as order_status, o.is_demo,
               oi.offer_id, oi.offer_name_snapshot,
               of.human_id as offer_human_id,
-              d.status as delivery_status, d.download_count, d.max_downloads
+              (SELECT CASE WHEN bool_or(d.status = 'ACTIVE') THEN 'ACTIVE' ELSE MAX(d.status) END
+                 FROM order_deliveries d WHERE d.order_id = o.id) as delivery_status
        FROM order_recovery_tokens ort
        JOIN orders o ON ort.order_id = o.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN offers of ON of.id = oi.offer_id
-       LEFT JOIN order_deliveries d ON d.order_id = o.id
        WHERE ort.token_hash = $1
-       ORDER BY oi.id ASC NULLS LAST
+       ORDER BY oi.is_bump ASC NULLS FIRST, oi.created_at ASC NULLS LAST
        LIMIT 1`,
       [tokenHash]
     );
@@ -5380,10 +5429,32 @@ export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Respo
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-      const existingDel = await client.query('SELECT * FROM order_deliveries WHERE order_id = $1', [orderId]);
-      
+      const existingDel = await client.query('SELECT * FROM order_deliveries WHERE order_id = $1 ORDER BY created_at ASC', [orderId]);
+
+      // NORQVA-0032: pedido pode ter mais de um arquivo (adicional). Troca só UMA entrega:
+      // a indicada (deliveryId), a do mesmo arquivo, ou a única existente.
+      const wantedDeliveryId = typeof req.body?.deliveryId === 'string' ? req.body.deliveryId : null;
+      let target: any = null;
+      if (wantedDeliveryId) {
+        target = existingDel.rows.find((d: any) => String(d.id) === wantedDeliveryId) || null;
+        if (!target) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Delivery not found for this order.' });
+        }
+      } else {
+        target = existingDel.rows.find((d: any) => String(d.asset_id) === String(asset.id)) || (existingDel.rows.length === 1 ? existingDel.rows[0] : null);
+        if (!target && existingDel.rows.length > 1) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Este pedido tem mais de um arquivo: informe qual entrega trocar (deliveryId).' });
+        }
+      }
+      if (target && String(target.asset_id) !== String(asset.id) && existingDel.rows.some((d: any) => String(d.asset_id) === String(asset.id))) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Este pedido já tem uma entrega com esse arquivo.' });
+      }
+
       let deliveryRecord;
-      if (existingDel.rows.length > 0) {
+      if (target) {
         const updateRes = await client.query(
           `UPDATE order_deliveries
            SET asset_id = $1,
@@ -5392,13 +5463,13 @@ export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Respo
                delivery_token_hash = $2,
                delivery_token_expires_at = $3,
                updated_at = NOW()
-           WHERE order_id = $4
+           WHERE id = $4 AND order_id = $5
            RETURNING *`,
-          [asset.id, tokenHash, expiresAt, orderId]
+          [asset.id, tokenHash, expiresAt, target.id, orderId]
         );
         deliveryRecord = updateRes.rows[0];
       } else {
-        const itemRes = await client.query('SELECT id FROM order_items WHERE order_id = $1 LIMIT 1', [orderId]);
+        const itemRes = await client.query('SELECT id FROM order_items WHERE order_id = $1 ORDER BY is_bump ASC, created_at ASC LIMIT 1', [orderId]);
         const itemId = itemRes.rows[0]?.id || null;
         const insertRes = await client.query(
           `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status, download_count, delivery_token_hash, delivery_token_expires_at)
@@ -5719,6 +5790,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       ? `(p.data_provenance != 'COMMERCIAL_PRODUCTION' OR p.is_demo = TRUE)`
       : `(p.data_provenance = 'COMMERCIAL_PRODUCTION')`;
 
+    // NORQVA-0032: a tarifa do Pix é uma por pedido; fica no produto do item principal (não no adicional)
     const productBreakdownRes = await pool.query(
       `SELECT 
          p.id as product_id,
@@ -5726,8 +5798,8 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          p.name as product_name,
          COUNT(CASE WHEN o.status = 'PAID' THEN oi.id END)::int as units_sold,
          COALESCE(SUM(CASE WHEN o.status = 'PAID' THEN oi.total_price ELSE 0 END), 0)::numeric as gross_revenue,
-         COALESCE(SUM(CASE WHEN o.status = 'PAID' AND pay.status = 'CONFIRMED' THEN pay.provider_fee ELSE 0 END), 0)::numeric as gateway_fees,
-         COUNT(CASE WHEN o.status = 'PAID' AND pay.status = 'CONFIRMED' AND pay.provider_fee IS NULL THEN pay.id END)::int as null_fees_count
+         COALESCE(SUM(CASE WHEN o.status = 'PAID' AND pay.status = 'CONFIRMED' AND oi.is_bump = FALSE THEN pay.provider_fee ELSE 0 END), 0)::numeric as gateway_fees,
+         COUNT(CASE WHEN o.status = 'PAID' AND pay.status = 'CONFIRMED' AND oi.is_bump = FALSE AND pay.provider_fee IS NULL THEN pay.id END)::int as null_fees_count
        FROM products p
        LEFT JOIN order_items oi ON oi.product_id = p.id
        LEFT JOIN orders o ON o.id = oi.order_id 
@@ -6214,6 +6286,29 @@ export async function syncDemographicsData(req: AuthenticatedRequest, res: Respo
 // NORQVA-0001: Offer Unit Economics & Business Cost Settings
 // -------------------------------------------------------------
 
+// NORQVA-0032: configuração do adicional na hora do Pix (ADMIN)
+export async function getOfferBump(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    return res.status(200).json(await offerBumpService.get(pool, String(req.params.id)));
+  } catch (err: any) {
+    if (err instanceof OfferBumpError) return res.status(err.status).json({ error: err.message });
+    console.error('getOfferBump error:', err);
+    return res.status(500).json({ error: 'Falha ao carregar o adicional.' });
+  }
+}
+
+export async function saveOfferBump(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    return res.status(200).json(await offerBumpService.save(pool, String(req.params.id), req.body || {}, req.user?.id || null));
+  } catch (err: any) {
+    if (err instanceof OfferBumpError) return res.status(err.status).json({ error: err.message });
+    console.error('saveOfferBump error:', err);
+    return res.status(500).json({ error: 'Falha ao salvar o adicional.' });
+  }
+}
+
 export async function getOfferUnitEconomics(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
@@ -6248,10 +6343,13 @@ export async function getOfferUnitEconomics(req: AuthenticatedRequest, res: Resp
     }
 
     const row = ueRes.rows[0];
+    // NORQVA-0032: quanto o adicional rende por pedido (entra no equilíbrio a partir de N pedidos)
+    const bumpStats = (await bumpNetPerOrderByOffer(pool, isDemo)).get(String(offer.id)) || null;
     return res.status(200).json({
       status: 'CONFIGURED',
       offer_id: offer.id,
       is_demo: isDemo,
+      bump_stats: bumpStats ? { orders: bumpStats.orders, avg_bump: Math.round(bumpStats.avgBump * 100) / 100, min_orders: BUMP_BREAKEVEN_MIN_ORDERS } : null,
       unit_economics: {
         id: row.id,
         offer_id: row.offer_id,

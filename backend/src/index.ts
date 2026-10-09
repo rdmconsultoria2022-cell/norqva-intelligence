@@ -82,6 +82,8 @@ import {
   getDemographicsAnalytics,
   syncDemographicsData,
   getOfferUnitEconomics,
+  getOfferBump,
+  saveOfferBump,
   updateOfferUnitEconomics,
   getBusinessCostSettings,
   updateBusinessCostSettings
@@ -112,6 +114,8 @@ import {
   linkFactoryCreativeAd,
   attachFactoryCreativeFile,
   addFactoryCreativeClaim,
+  listProductClaims,
+  createProductClaim,
   attachFactoryBatchAssets,
   listFactoryAdjustments,
   retryFactoryAdjustment,
@@ -307,6 +311,9 @@ app.post('/api/offers', requireRole(['PRODUCT', 'ADMIN']), createOffer);
 app.put('/api/offers/:id', requireRole(['PRODUCT', 'ADMIN']), updateOffer);
 app.get('/api/offers/:id/unit-economics', requireRole(['ADMIN']), getOfferUnitEconomics);
 app.put('/api/offers/:id/unit-economics', requireRole(['ADMIN']), updateOfferUnitEconomics);
+// NORQVA-0032: adicional na hora do Pix
+app.get('/api/offers/:id/bump', requireRole(['ADMIN']), getOfferBump);
+app.put('/api/offers/:id/bump', requireRole(['ADMIN']), saveOfferBump);
 
 app.get('/api/settings/business-costs', requireRole(['ADMIN']), getBusinessCostSettings);
 app.put('/api/settings/business-costs', requireRole(['ADMIN']), updateBusinessCostSettings);
@@ -476,6 +483,9 @@ app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CR
 app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
 app.post('/api/creative-factory/creatives/:id/file', requireRole(['ADMIN', 'CREATIVE']), attachFactoryCreativeFile);
 app.post('/api/creative-factory/creatives/:id/claims', requireRole(['ADMIN', 'CREATIVE']), addFactoryCreativeClaim);
+// NORQVA-0032: promessas por produto (verificar segue no PATCH /api/creative-factory/claims/:id, só ADMIN)
+app.get('/api/products/:id/claims', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listProductClaims);
+app.post('/api/products/:id/claims', requireRole(['ADMIN', 'PRODUCT']), createProductClaim);
 app.post('/api/creative-factory/batches/:code/attach-assets', requireRole(['ADMIN']), attachFactoryBatchAssets);
 // NORQVA-0013: adjustment tasks + automation API for the Claude routine (token in X-Norqva-Automation-Token)
 app.get('/api/creative-factory/adjustments', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryAdjustments);

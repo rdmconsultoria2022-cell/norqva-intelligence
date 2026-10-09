@@ -268,3 +268,24 @@ export async function enqueueFactoryAdjustment(req: AuthenticatedRequest, res: R
     return handle(res, err, 'Falha ao enviar o ajuste.');
   }
 }
+
+// NORQVA-0032: promessas por produto (tela Produtos). Ler: todos os perfis; cadastrar: ADMIN e PRODUCT;
+// verificar continua sendo PATCH /api/creative-factory/claims/:id (só ADMIN).
+export async function listProductClaims(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    return res.status(200).json({ claims: await service.listProductClaims(pool, String(req.params.id), isDemoReq(req)) });
+  } catch (err) {
+    return handle(res, err, 'Falha ao carregar as promessas.');
+  }
+}
+
+export async function createProductClaim(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const out = await service.createProductClaim(pool, String(req.params.id), req.body || {}, req.user?.id || null, isDemoReq(req));
+    return res.status(201).json(out);
+  } catch (err) {
+    return handle(res, err, 'Falha ao cadastrar a promessa.');
+  }
+}
