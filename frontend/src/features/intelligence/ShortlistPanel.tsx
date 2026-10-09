@@ -88,6 +88,16 @@ export function criteriaQuery(c: ShortlistCriteria): string {
   return p.toString();
 }
 
+/** NORQVA-0029: sem ajuste na tela, os limites numéricos vêm dos critérios validados no servidor. */
+export function baseQuery(c: ShortlistCriteria): string {
+  return new URLSearchParams({
+    limit: String(c.limit),
+    levels: c.levels.join(','),
+    classes: c.classes.join(','),
+    require_product: String(c.require_product)
+  }).toString();
+}
+
 interface Props {
   mode: 'demo' | 'real';
   periodQs: string;
@@ -98,7 +108,8 @@ interface Props {
 }
 
 export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFetch, showError, showSuccess }) => {
-  const [criteria, setCriteria] = useState<ShortlistCriteria>(DEFAULT_SHORTLIST_CRITERIA);
+  // null = usar os limites dos critérios validados (servidor); objeto = ajuste feito só nesta tela
+  const [applied, setCriteria] = useState<ShortlistCriteria | null>(null);
   const [draft, setDraft] = useState<ShortlistCriteria>(DEFAULT_SHORTLIST_CRITERIA);
   const [data, setData] = useState<ShortlistResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,27 +120,30 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await apiFetch(`/intelligence/shortlist?mode=${mode}&${criteriaQuery(criteria)}${periodQs ? `&${periodQs}` : ''}`);
+      const q = applied ? criteriaQuery(applied) : baseQuery(DEFAULT_SHORTLIST_CRITERIA);
+      const raw = await apiFetch(`/intelligence/shortlist?mode=${mode}&${q}${periodQs ? `&${periodQs}` : ''}`);
       const r: ShortlistResponse = {
-        criteria: raw?.criteria || criteria,
+        criteria: raw?.criteria || applied || DEFAULT_SHORTLIST_CRITERIA,
         candidates: Array.isArray(raw?.candidates) ? raw.candidates : [],
         pool: raw?.pool || { campaign: 0, ad: 0 },
         excluded: raw?.excluded || { total: 0, by_reason: {} },
         note: raw?.note || null
       };
       setData(r);
+      if (!applied) setDraft(r.criteria);
       setSelected(new Set(r.candidates.filter(c => !c.opportunity).map(c => `${c.level}:${c.key}`)));
     } catch (e: any) {
       showError(e?.message || 'Falha ao montar a lista de candidatos.');
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, mode, criteria, periodQs]);
+  }, [apiFetch, mode, applied, periodQs]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const criteria: ShortlistCriteria = applied || data?.criteria || DEFAULT_SHORTLIST_CRITERIA;
   const candidates = data?.candidates || [];
   const sendable = useMemo(() => candidates.filter(c => !c.opportunity && selected.has(`${c.level}:${c.key}`)), [candidates, selected]);
 
@@ -270,12 +284,12 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
             </button>
             <button
               onClick={() => {
-                setDraft(DEFAULT_SHORTLIST_CRITERIA);
-                setCriteria(DEFAULT_SHORTLIST_CRITERIA);
+                if (!applied && data) setDraft(data.criteria);
+                setCriteria(null);
               }}
               className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
             >
-              Restaurar padrão
+              Voltar aos critérios validados
             </button>
           </div>
         </div>

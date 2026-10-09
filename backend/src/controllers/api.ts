@@ -319,6 +319,13 @@ export async function getOpportunities(req: AuthenticatedRequest, res: Response)
 }
 
 export async function createOpportunity(req: AuthenticatedRequest, res: Response) {
+  // NORQVA-0029: o módulo antigo virou Histórico (só consulta). A análise dele era simulada.
+  // Oportunidades novas nascem na tela Pesquisa (Time de IAs). Nada existente é alterado.
+  return res.status(410).json({ error: 'O módulo antigo de oportunidades não recebe oportunidades novas. Use a aba Oportunidades da tela Pesquisa.' });
+}
+
+/** Criação do módulo antigo, mantida só como referência (rota desligada na NORQVA-0029). */
+export async function createLegacyOpportunityDisabled(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
     const isDemo = req.query.mode === 'demo';

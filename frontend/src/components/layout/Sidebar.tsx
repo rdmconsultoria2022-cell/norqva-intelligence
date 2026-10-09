@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   LayoutDashboard,
-  Lightbulb,
+  Search,
   Package,
   Tag,
   Scale,
@@ -12,8 +12,6 @@ import {
   BarChart3,
   PieChart,
   Factory,
-  Database,
-  Bot,
   Store,
   Wallet,
   ShoppingCart,
@@ -63,9 +61,9 @@ export const navigationGroups: NavigationGroup[] = [
     id: 'intelligence',
     label: 'Inteligência',
     items: [
-      { id: 'campaign-base', label: 'Base de campanhas', icon: Database },
-      { id: 'ai-team', label: 'Time de IAs', icon: Bot },
-      { id: 'opportunities', label: 'Oportunidades', icon: Lightbulb },
+      // NORQVA-0029: Base de campanhas, Time de IAs e Oportunidades viraram a tela Pesquisa
+      // ('campaign-base', 'ai-team' e 'opportunities' abrem esta tela)
+      { id: 'research', label: 'Pesquisa', icon: Search },
       { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
       { id: 'demographics', label: 'Demografia', icon: PieChart },
       { id: 'decisions', label: 'Decisões', icon: Scale }

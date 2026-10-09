@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { CampaignIntelligenceService, IntelClass, IntelRow } from '../intelligence/campaignIntelligenceService';
 import { OpportunityService, OpportunityError } from './opportunityService';
 import { writeAuditLog } from '../../db/audit';
+import { CriteriaNumbers } from '../research/criteriaService';
 
 // NORQVA-0021 (P1): automatic shortlist. Picks up to N (default 30) campaigns and ads from the
 // "Base de campanhas" ranking using visible criteria, so the operator can send them to the Time de IAs.
@@ -56,20 +57,32 @@ const csv = (v: unknown): string[] | null => {
   return arr.map(x => String(x).trim()).filter(Boolean);
 };
 
+/** Padrões da seleção a partir dos critérios validados na tela Pesquisa (NORQVA-0029). */
+export function shortlistDefaults(n: Pick<CriteriaNumbers, 'shortlist_min_spend' | 'shortlist_min_impressions' | 'shortlist_min_days' | 'shortlist_max_cpa_ratio'>): ShortlistCriteria {
+  return {
+    ...DEFAULT_CRITERIA,
+    min_spend: n.shortlist_min_spend,
+    min_impressions: n.shortlist_min_impressions,
+    min_days: n.shortlist_min_days,
+    max_cpa_ratio: n.shortlist_max_cpa_ratio
+  };
+}
+
 /** Builds criteria from query/body values, falling back to the defaults and clamping every number. */
-export function parseCriteria(q: Record<string, unknown> = {}): ShortlistCriteria {
-  const levels = (csv(q.levels) || DEFAULT_CRITERIA.levels).filter((l): l is ShortlistLevel => SHORTLIST_LEVELS.includes(l as ShortlistLevel));
-  const classes = (csv(q.classes) || DEFAULT_CRITERIA.classes).map(c => c.toUpperCase()).filter((c): c is IntelClass => ALL_CLASSES.includes(c as IntelClass));
+export function parseCriteria(q: Record<string, unknown> = {}, defaults: ShortlistCriteria = DEFAULT_CRITERIA): ShortlistCriteria {
+  const D = defaults;
+  const levels = (csv(q.levels) || D.levels).filter((l): l is ShortlistLevel => SHORTLIST_LEVELS.includes(l as ShortlistLevel));
+  const classes = (csv(q.classes) || D.classes).map(c => c.toUpperCase()).filter((c): c is IntelClass => ALL_CLASSES.includes(c as IntelClass));
   const ratioRaw = q.max_cpa_ratio;
   const max_cpa_ratio =
-    ratioRaw === 'none' || ratioRaw === 'null' ? null : ratioRaw === undefined || ratioRaw === '' ? DEFAULT_CRITERIA.max_cpa_ratio : num(ratioRaw, 1.5, 0.1, 10);
+    ratioRaw === 'none' || ratioRaw === 'null' ? null : ratioRaw === undefined || ratioRaw === '' ? D.max_cpa_ratio : num(ratioRaw, 1.5, 0.1, 10);
   return {
-    limit: Math.round(num(q.limit, DEFAULT_CRITERIA.limit, 1, SHORTLIST_MAX)),
-    levels: levels.length ? [...new Set(levels)] : DEFAULT_CRITERIA.levels,
-    classes: classes.length ? [...new Set(classes)] : DEFAULT_CRITERIA.classes,
-    min_spend: num(q.min_spend, DEFAULT_CRITERIA.min_spend, 0, 100000),
-    min_impressions: Math.round(num(q.min_impressions, DEFAULT_CRITERIA.min_impressions, 0, 10_000_000)),
-    min_days: Math.round(num(q.min_days, DEFAULT_CRITERIA.min_days, 0, 365)),
+    limit: Math.round(num(q.limit, D.limit, 1, SHORTLIST_MAX)),
+    levels: levels.length ? [...new Set(levels)] : D.levels,
+    classes: classes.length ? [...new Set(classes)] : D.classes,
+    min_spend: num(q.min_spend, D.min_spend, 0, 100000),
+    min_impressions: Math.round(num(q.min_impressions, D.min_impressions, 0, 10_000_000)),
+    min_days: Math.round(num(q.min_days, D.min_days, 0, 365)),
     max_cpa_ratio,
     require_product: q.require_product === true || q.require_product === 'true' || q.require_product === '1'
   };

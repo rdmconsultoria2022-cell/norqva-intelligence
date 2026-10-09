@@ -8,27 +8,28 @@ const admin = { id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any;
 
 // NORQVA-0025: Creative Lab ('creatives') e Fábrica viraram a tela Criativos
 // NORQVA-0028: Meta Ads, Método NORQVA e Experimentos passaram para dentro de Campanhas
+// NORQVA-0029: Base de campanhas, Time de IAs e Oportunidades passaram para dentro de Pesquisa
 const ALL_TABS = [
-  'dashboard', 'opportunities', 'products', 'offers', 'creative-factory',
-  'meta-credit', 'campaign-base', 'ai-team', 'brands', 'creative-performance',
+  'dashboard', 'research', 'products', 'offers', 'creative-factory',
+  'meta-credit', 'brands', 'creative-performance',
   'demographics', 'decisions', 'team', 'config', 'sales', 'campaigns'
 ];
 
 describe('NORQVA-0024 — menu em áreas', () => {
   it('mantém as telas, sem repetição', () => {
     const ids = navigationItems.map(i => i.id);
-    expect(ids).toHaveLength(16);
-    expect(new Set(ids).size).toBe(16);
+    expect(ids).toHaveLength(14);
+    expect(new Set(ids).size).toBe(14);
     expect([...ids].sort()).toEqual([...ALL_TABS].sort());
   });
 
   it('agrupa nas áreas e na ordem aprovadas', () => {
     expect(navigationGroups.map(g => g.label)).toEqual(['Visão Geral', 'Inteligência', 'Operação', 'Vendas', 'Configurações']);
     expect(navigationGroups[1].items.map(i => i.id)).toEqual([
-      'campaign-base', 'ai-team', 'opportunities', 'creative-performance', 'demographics', 'decisions'
+      'research', 'creative-performance', 'demographics', 'decisions'
     ]);
     expect(navigationItems.find(i => i.id === 'dashboard')?.label).toBe('Visão Geral');
-    expect(navigationItems.find(i => i.id === 'opportunities')?.label).toBe('Oportunidades');
+    expect(navigationItems.find(i => i.id === 'research')?.label).toBe('Pesquisa');
   });
 
   it('mostra os títulos, navega e recolhe a área', () => {

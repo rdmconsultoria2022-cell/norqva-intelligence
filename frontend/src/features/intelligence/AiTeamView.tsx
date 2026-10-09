@@ -31,6 +31,15 @@ export interface Opportunity {
   task_response: string | null;
   session_url: string | null;
   updated_at: string;
+  /** NORQVA-0029: versão dos critérios validada quando a avaliação chegou (null = não validado) */
+  criteria_version?: number | null;
+}
+
+/** NORQVA-0029: situação dos critérios de avaliação (aba Critérios da Pesquisa) */
+export interface CriteriaStatus {
+  validated: boolean;
+  version: number | null;
+  texts_changed?: boolean;
 }
 
 export type ValidationVerdict = 'APROVA' | 'REPROVA' | 'PEDE_EVIDENCIA';
@@ -76,9 +85,12 @@ interface Props {
   apiFetch: (url: string, options?: RequestInit) => Promise<any>;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
+  /** NORQVA-0029: sem critérios validados, Aprovar plano fica travado (conta real) */
+  criteria?: CriteriaStatus | null;
 }
 
-export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch, showError, showSuccess }) => {
+export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch, showError, showSuccess, criteria = null }) => {
+  const approvalLocked = !isDemoView && !!criteria && !criteria.validated;
   const mode = isDemoView ? 'demo' : 'real';
   const isAdmin = currentUser?.role === 'ADMIN';
   const canCreate = isAdmin || currentUser?.role === 'INTELLIGENCE';
@@ -153,6 +165,14 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
         </button>
       </div>
 
+      {approvalLocked && (
+        <div className="rounded border border-amber-600/50 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="criteria-not-validated">
+          {criteria?.texts_changed
+            ? 'Os critérios de avaliação mudaram depois da última validação. Até validar de novo na aba Critérios, nenhum plano pode ser aprovado.'
+            : 'Os critérios de avaliação ainda não foram validados. As IAs seguem avaliando, mas nenhum plano pode ser aprovado até você validar na aba Critérios.'}
+        </div>
+      )}
+
       {canCreate && (
         <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded border border-dashed border-slate-700 p-3 text-xs">
           <label className="flex flex-1 flex-col gap-1">
@@ -185,6 +205,16 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                       <span className="truncate font-semibold text-slate-100">{o.title}</span>
                       <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">{SOURCE[o.source]}</span>
                       {o.verdict && <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VERDICT_CLS[o.verdict]}`}>{o.verdict} · {o.ai_score}</span>}
+                      {o.verdict && !o.criteria_version && (
+                        <span className="rounded border border-amber-600/50 px-1.5 py-0.5 text-[10px] text-amber-300" data-testid="criteria-badge">
+                          critério não validado
+                        </span>
+                      )}
+                      {o.verdict && !!o.criteria_version && (
+                        <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400" data-testid="criteria-badge">
+                          critérios v{o.criteria_version}
+                        </span>
+                      )}
                       {o.validation_verdict && (
                         <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${VALIDATION_CLS[o.validation_verdict]}`} data-testid="validation-badge">
                           {VALIDATION_LABEL[o.validation_verdict]}
@@ -231,7 +261,14 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
                           <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'dispatch', { kind: 'PLAN' }, 'Plano pedido ao Claude.')} icon={ClipboardList} label={o.status === 'PLANO_PRONTO' ? 'Refazer plano' : 'Montar plano'} />
                         )}
                         {o.status === 'PLANO_PRONTO' && (
-                          <ActionBtn primary disabled={busy !== null} onClick={() => post(o.id, 'decision', { decision: 'APROVADA' }, 'Plano aprovado. Revise e aprove os criativos na Fábrica.')} icon={CheckCircle2} label="Aprovar plano" />
+                          <ActionBtn
+                            primary
+                            disabled={busy !== null || approvalLocked}
+                            title={approvalLocked ? 'Valide os critérios na aba Critérios antes de aprovar' : undefined}
+                            onClick={() => post(o.id, 'decision', { decision: 'APROVADA' }, 'Plano aprovado. Revise e aprove os criativos na Fábrica.')}
+                            icon={CheckCircle2}
+                            label="Aprovar plano"
+                          />
                         )}
                         {!['APROVADA', 'DESCARTADA'].includes(o.status) && (
                           <ActionBtn disabled={busy !== null} onClick={() => post(o.id, 'decision', { decision: 'DESCARTADA' }, 'Oportunidade descartada.')} icon={XCircle} label="Descartar" />
@@ -278,10 +315,11 @@ export const AiTeamView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch,
   );
 };
 
-const ActionBtn: React.FC<{ onClick: () => void; icon: React.ElementType; label: string; disabled?: boolean; primary?: boolean }> = ({ onClick, icon: Icon, label, disabled, primary }) => (
+const ActionBtn: React.FC<{ onClick: () => void; icon: React.ElementType; label: string; disabled?: boolean; primary?: boolean; title?: string }> = ({ onClick, icon: Icon, label, disabled, primary, title }) => (
   <button
     onClick={onClick}
     disabled={disabled}
+    title={title}
     className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs disabled:opacity-40 ${primary ? 'bg-emerald-600 font-semibold text-white hover:bg-emerald-500' : 'border border-slate-700 text-slate-200 hover:bg-slate-800'}`}
   >
     <Icon className="h-3.5 w-3.5" /> {label}

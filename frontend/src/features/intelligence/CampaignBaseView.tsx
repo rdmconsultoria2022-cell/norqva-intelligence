@@ -38,6 +38,8 @@ export interface CampaignBase {
   rows: IntelRow[];
   summary: { entities: number; spend: number; sales: number; revenue: number; roas: number | null; by_class: Record<IntelClass, number> };
   data: { ads_with_data: number; latest_insight_date: string | null; unattributed_sales: number };
+  /** NORQVA-0029: versão dos critérios usada nas classes */
+  criteria?: { version: number | null; validated: boolean };
 }
 
 export const LEVELS: { id: Level; label: string }[] = [
@@ -194,6 +196,15 @@ export const CampaignBaseView: React.FC<Props> = ({ currentUser, isDemoView, api
             Ranking dos nichos, produtos, campanhas, conjuntos e anúncios da nossa conta Meta. Vendas = pedidos pagos do NORQVA
             atribuídos ao anúncio; compras da Meta aparecem só como referência. Período: {periodLabel(globalPeriod) || 'todo o histórico'}.
           </p>
+          {data?.criteria && (
+            <p className={`mt-1 text-[11px] ${data.criteria.validated ? 'text-slate-500' : 'text-amber-300'}`} data-testid="base-criteria">
+              {data.criteria.validated
+                ? `Classes pelos critérios v${data.criteria.version}, validados por você.`
+                : data.criteria.version
+                  ? `Classes pelos critérios v${data.criteria.version}; os textos mudaram e precisam de nova validação.`
+                  : 'Classes pelos critérios de sempre, ainda não validados (aba Critérios).'}
+            </p>
+          )}
         </div>
         {isAdmin && !isDemoView && source === 'account' && (
           <div className="flex flex-wrap items-center gap-2">

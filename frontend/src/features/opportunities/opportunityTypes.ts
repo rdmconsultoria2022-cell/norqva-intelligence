@@ -10,4 +10,6 @@ export interface OpportunitiesProps {
   refreshOpportunities: () => Promise<void>;
   refreshProducts: () => Promise<void>;
   refreshDecisions: () => Promise<void>;
+  /** NORQVA-0029: Histórico só para consulta dentro da tela Pesquisa */
+  readOnly?: boolean;
 }

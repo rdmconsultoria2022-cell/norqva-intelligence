@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { CreativePerformanceService, normalizeDateRangeBoundaries } from './creativePerformanceService';
 import { resolveCampaignProducts } from '../finance/productMediaAllocation';
 import { breakevenByProduct } from '../alerts/adAlertService';
+import { CriteriaNumbers, DEFAULT_NUMBERS, CriteriaService } from '../research/criteriaService';
 
 // NORQVA-0017 (fase 1): "Base de campanhas" — ranks niches, products, campaigns, ad sets and ads
 // of OUR Meta account. Sales truth = paid NORQVA orders attributed deterministically (D-0006);
@@ -131,7 +132,9 @@ export function scoreEntity(
   m: DerivedMetrics,
   quality: { ctrPct: number | null; hookPct: number | null },
   // Aggregates (campaign, product, niche) test several ads at once: the "no sale" budget scales with them (max 5)
-  adsInTest = 1
+  adsInTest = 1,
+  // NORQVA-0029: limites das classes vêm dos critérios validados na tela Pesquisa (padrão = valores de sempre)
+  rules: CriteriaNumbers = DEFAULT_NUMBERS
 ): ScoreResult {
   const k = Math.max(1, Math.min(5, Math.floor(adsInTest)));
   const B = m.breakeven_cpa;
@@ -157,34 +160,36 @@ export function scoreEntity(
   const ctr = m.ctr_link;
   let classification: IntelClass = 'TESTANDO';
   let reason = 'Em teste: ainda sem sinal suficiente para decidir.';
+  const R = rules;
+  const fmt = (x: number) => x.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
   if (B && B > 0) {
     const cpa = m.cpa;
-    if (t.sales >= 3 && cpa !== null && cpa <= B * 0.66) {
+    if (t.sales >= R.winner_min_sales && cpa !== null && cpa <= B * R.winner_cpa_ratio) {
       classification = 'VENCEDOR';
-      reason = `${t.sales} vendas com CPA R$ ${cpa.toFixed(2)} (até 66% do equilíbrio R$ ${B.toFixed(2)}): escalar 20% a cada 2 dias.`;
-    } else if (t.sales >= 1 && cpa !== null && cpa <= B) {
+      reason = `${t.sales} vendas com CPA R$ ${cpa.toFixed(2)} (até ${Math.round(R.winner_cpa_ratio * 100)}% do equilíbrio R$ ${B.toFixed(2)}): escalar 20% a cada 2 dias.`;
+    } else if (t.sales >= 1 && cpa !== null && cpa <= B * R.promising_cpa_ratio) {
       classification = 'PROMISSOR';
       reason = `CPA R$ ${cpa.toFixed(2)} dentro do equilíbrio (R$ ${B.toFixed(2)}): manter.`;
-    } else if (t.sales === 0 && t.spend >= 2 * B * k) {
+    } else if (t.sales === 0 && t.spend >= R.loser_spend_ratio * B * k) {
       classification = 'PERDEDOR';
       reason =
         k === 1
-          ? `Gastou R$ ${t.spend.toFixed(2)} (2× o CPA de equilíbrio) sem venda: pausar.`
-          : `Gastou R$ ${t.spend.toFixed(2)} em ${k} anúncios (2× o CPA de equilíbrio por anúncio) sem venda: rever a oferta ou o público.`;
-    } else if (t.sales === 0 && t.spend >= 15 * k && ctr !== null && ctr < 0.6) {
+          ? `Gastou R$ ${t.spend.toFixed(2)} (${fmt(R.loser_spend_ratio)}× o CPA de equilíbrio) sem venda: pausar.`
+          : `Gastou R$ ${t.spend.toFixed(2)} em ${k} anúncios (${fmt(R.loser_spend_ratio)}× o CPA de equilíbrio por anúncio) sem venda: rever a oferta ou o público.`;
+    } else if (t.sales === 0 && t.spend >= R.loser_ctr_min_spend * k && ctr !== null && ctr < R.loser_ctr_min_pct) {
       classification = 'PERDEDOR';
-      reason = `CTR de link ${ctr.toFixed(2)}% abaixo de 0,6% depois de R$ 15: o gancho não prende.`;
-    } else if (t.sales >= 1 && cpa !== null && cpa > B * 1.5 && t.spend >= 2 * B * k) {
+      reason = `CTR de link ${ctr.toFixed(2)}% abaixo de ${fmt(R.loser_ctr_min_pct)}% depois de R$ ${fmt(R.loser_ctr_min_spend)}: o gancho não prende.`;
+    } else if (t.sales >= 1 && cpa !== null && cpa > B * R.loser_cpa_ratio && t.spend >= R.loser_spend_ratio * B * k) {
       classification = 'PERDEDOR';
-      reason = `CPA R$ ${cpa.toFixed(2)} acima de 1,5× o equilíbrio com gasto relevante: pausar ou refazer.`;
-    } else if (t.sales === 0 && t.spend < B * 0.5) {
+      reason = `CPA R$ ${cpa.toFixed(2)} acima de ${fmt(R.loser_cpa_ratio)}× o equilíbrio com gasto relevante: pausar ou refazer.`;
+    } else if (t.sales === 0 && t.spend < B * R.no_data_spend_ratio) {
       classification = 'SEM_DADOS';
-      reason = `Gastou menos de metade do CPA de equilíbrio (R$ ${(B * 0.5).toFixed(2)}): esperar.`;
+      reason = `Gastou menos de ${fmt(R.no_data_spend_ratio)}× o CPA de equilíbrio (R$ ${(B * R.no_data_spend_ratio).toFixed(2)}): esperar.`;
     }
-  } else if (t.spend < 5 && t.sales === 0) {
+  } else if (t.spend < R.no_breakeven_min_spend && t.sales === 0) {
     classification = 'SEM_DADOS';
     reason = 'Investimento baixo e sem CPA de equilíbrio cadastrado para o produto.';
-  } else if (t.sales >= 3 && (m.roas ?? 0) >= 1.5) {
+  } else if (t.sales >= R.winner_min_sales && (m.roas ?? 0) >= R.no_breakeven_winner_roas) {
     classification = 'VENCEDOR';
     reason = `ROAS ${m.roas} com ${t.sales} vendas (sem CPA de equilíbrio cadastrado).`;
   }
@@ -227,6 +232,8 @@ export interface CampaignBaseResponse {
   rows: IntelRow[];
   summary: { entities: number; spend: number; sales: number; revenue: number; roas: number | null; by_class: Record<IntelClass, number> };
   data: { ads_with_data: number; latest_insight_date: string | null; unattributed_sales: number };
+  /** NORQVA-0029: versão dos critérios usada nas classes (null = valores de sempre, não validados) */
+  criteria?: { version: number | null; validated: boolean };
 }
 
 interface AdFacts {
@@ -252,12 +259,13 @@ interface AdFacts {
 }
 
 export class CampaignIntelligenceService {
-  constructor(private perf = new CreativePerformanceService()) {}
+  constructor(private perf = new CreativePerformanceService(), private criteria = new CriteriaService()) {}
 
   async getCampaignBase(pool: Pool, opts: { level: IntelLevel; date_from?: string; date_to?: string; is_demo: boolean }): Promise<CampaignBaseResponse> {
     const { level, is_demo } = opts;
     const { dateFromMeta, dateToMeta } = normalizeDateRangeBoundaries(opts.date_from, opts.date_to);
     const provenance = getMediaSpendProvenanceClause(is_demo);
+    const crit = await this.criteria.effective(pool);
 
     const [adsRes, insRes, perf, campaignProduct, breakeven, productsRes] = await Promise.all([
       pool.query(
@@ -394,7 +402,8 @@ export class CampaignIntelligenceService {
           ctrPct: percentileRank(ctrSorted, m.ctr_link),
           hookPct: m.hook_rate && m.hook_rate > 0 ? percentileRank(hookSorted, m.hook_rate) : null
         },
-        adsInTest
+        adsInTest,
+        crit.numbers
       );
       return { m, sc };
     };
@@ -485,7 +494,8 @@ export class CampaignIntelligenceService {
         ads_with_data: insRes.rows.length,
         latest_insight_date: latest,
         unattributed_sales: perf.unattributed?.unattributed_paid_orders ?? 0
-      }
+      },
+      criteria: { version: crit.version, validated: crit.validated }
     };
   }
 }

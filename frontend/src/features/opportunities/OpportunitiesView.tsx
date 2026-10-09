@@ -22,7 +22,8 @@ export function OpportunitiesView({
   showSuccess,
   refreshOpportunities,
   refreshProducts,
-  refreshDecisions
+  refreshDecisions,
+  readOnly = false
 }: OpportunitiesProps) {
   const [selectedOpp, setSelectedOpp] = useState<any | null>(null);
   const [analysisHistory, setAnalysisHistory] = useState<any[]>([]);
@@ -66,8 +67,9 @@ export function OpportunitiesView({
   const [showOverrideForm, setShowOverrideForm] = useState(false);
   const [overridePayload, setOverridePayload] = useState({ score: '', reason: '' });
 
-  const isIntelligence = currentUser ? (currentUser.role === 'INTELLIGENCE' || currentUser.role === 'ADMIN') : false;
-  const isAdmin = currentUser ? currentUser.role === 'ADMIN' : false;
+  // NORQVA-0029: dentro de Pesquisa este módulo vira Histórico, só para consulta (sem botões de ação)
+  const isIntelligence = !readOnly && (currentUser ? (currentUser.role === 'INTELLIGENCE' || currentUser.role === 'ADMIN') : false);
+  const isAdmin = !readOnly && (currentUser ? currentUser.role === 'ADMIN' : false);
 
   const activeOppIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -308,8 +310,12 @@ export function OpportunitiesView({
     <div className="space-y-6 text-sm">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">Módulo de Oportunidades & Intelligence</h2>
-          <p className="text-xs text-slate-400">Qualificação matemática, mapeamento de incertezas e governança de dados</p>
+          <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">{readOnly ? 'Histórico do módulo antigo' : 'Módulo de Oportunidades & Intelligence'}</h2>
+          <p className="text-xs text-slate-400" data-testid={readOnly ? 'legacy-readonly' : undefined}>
+            {readOnly
+              ? 'Só para consulta: a análise deste módulo era simulada e ele não recebe oportunidades novas. As novas ficam na aba Oportunidades.'
+              : 'Qualificação matemática, mapeamento de incertezas e governança de dados'}
+          </p>
         </div>
         {isIntelligence && (
           <button
