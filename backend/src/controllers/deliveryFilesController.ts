@@ -84,6 +84,9 @@ export async function getDeliveryFileCheckLink(req: AuthenticatedRequest, res: R
     const url = await generateStorageSignedUrl(a.storage_bucket, a.storage_path, 300);
     return res.status(200).json({ url, expires_in_seconds: 300 });
   } catch (e: any) {
+    if (e?.message === 'SUPABASE_STORAGE_OBJECT_NOT_FOUND') {
+      return res.status(404).json({ error: 'O arquivo cadastrado não está no armazenamento: o comprador não conseguiria baixar. Envie o PDF com "Trocar arquivo".' });
+    }
     return fail(res, e, 'Não foi possível gerar o link de conferência.');
   }
 }

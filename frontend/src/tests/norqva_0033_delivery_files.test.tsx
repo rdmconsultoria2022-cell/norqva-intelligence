@@ -2,7 +2,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { DeliveryFiles, pickProblem, fmtSize } from '../features/products/DeliveryFiles';
+import { DeliveryFiles, pickProblem, fmtSize, friendlyError } from '../features/products/DeliveryFiles';
 import { OfferCard } from '../features/products/ProductsView';
 
 const off = { id: 'off-1', human_id: 'OFF-000001', name: 'Trattoria', status: 'ATIVA', price: '19.90', is_demo: false };
@@ -32,6 +32,7 @@ describe('NORQVA-0033 — PDF entregue ao comprador', () => {
     fireEvent.click(screen.getByTestId('delivery-replace'));
     expect(apiFetch.mock.calls.some((c: any[]) => c[1]?.method === 'PUT')).toBe(false);
     expect(screen.getByTestId('delivery-confirm')).toHaveTextContent('Quem já comprou passa a receber esta versão');
+    expect(screen.getByTestId('delivery-confirm')).toHaveTextContent('Entra: TRATTORIA_EM_CASA_PREMIUM_FINAL_4.pdf');
     fireEvent.click(screen.getByTestId('delivery-confirm-replace'));
     await waitFor(() => expect(showSuccess).toHaveBeenCalled());
     const put = apiFetch.mock.calls.find((c: any[]) => c[1]?.method === 'PUT') as any;
@@ -39,6 +40,18 @@ describe('NORQVA-0033 — PDF entregue ao comprador', () => {
     expect(put[1].headers['Content-Type']).toBe('application/pdf');
     expect(decodeURIComponent(put[1].headers['x-file-name'])).toBe('TRATTORIA_EM_CASA_PREMIUM_FINAL_4.pdf');
     expect(put[1].body).toBe(f);
+  });
+
+  it('cada arquivo tem a sua escolha: o PDF escolhido num não vale para o outro', async () => {
+    const a2 = { ...asset, id: 'a2', name: 'Bônus PDF', versions: [] };
+    const apiFetch = vi.fn(async () => ({ assets: [asset, a2] }));
+    render(<DeliveryFiles off={off} apiFetch={apiFetch as any} showError={vi.fn()} showSuccess={vi.fn()} />);
+    await screen.findAllByTestId('delivery-asset');
+    const pickers = screen.getAllByLabelText('Novo PDF para trocar');
+    fireEvent.change(pickers[0], { target: { files: [pdfFile()] } });
+    const buttons = screen.getAllByTestId('delivery-replace');
+    expect(buttons[0]).not.toBeDisabled();
+    expect(buttons[1]).toBeDisabled();
   });
 
   it('volta versão com dois cliques', async () => {
@@ -69,6 +82,8 @@ describe('NORQVA-0033 — PDF entregue ao comprador', () => {
   });
 
   it('regras e formatação', () => {
+    expect(friendlyError(new SyntaxError("Unexpected token '<'"), 'x')).toMatch(/Baixar para conferir/);
+    expect(friendlyError(new Error('Esse é exatamente o arquivo'), 'x')).toBe('Esse é exatamente o arquivo');
     expect(pickProblem(null)).toBe('Escolha o PDF.');
     expect(pickProblem(pdfFile('a.pdf', 0))).toBe('O arquivo está vazio.');
     expect(pickProblem({ name: 'a.pdf', type: 'application/pdf', size: 51 * 1024 * 1024 } as any)).toBe('Arquivo maior que 50 MB.');

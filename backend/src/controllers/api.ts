@@ -3700,7 +3700,11 @@ export async function updateDigitalAsset(req: AuthenticatedRequest, res: Respons
       `UPDATE digital_assets 
        SET storage_bucket = COALESCE($1, storage_bucket),
            storage_path = COALESCE($2, storage_path),
-           name = COALESCE($3, name)
+           name = COALESCE($3, name),
+           -- NORQVA-0033: mudou o endereço à mão → os dados do arquivo enviado pela tela deixam de valer
+           file_size_bytes = CASE WHEN COALESCE($1, storage_bucket) = storage_bucket AND COALESCE($2, storage_path) = storage_path THEN file_size_bytes ELSE NULL END,
+           file_sha256 = CASE WHEN COALESCE($1, storage_bucket) = storage_bucket AND COALESCE($2, storage_path) = storage_path THEN file_sha256 ELSE NULL END,
+           file_original_name = CASE WHEN COALESCE($1, storage_bucket) = storage_bucket AND COALESCE($2, storage_path) = storage_path THEN file_original_name ELSE NULL END
        WHERE id = $4
        RETURNING *`,
       [storage_bucket, storage_path, name, id]
