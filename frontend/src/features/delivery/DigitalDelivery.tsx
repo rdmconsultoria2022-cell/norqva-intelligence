@@ -84,7 +84,8 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                 orderId: fetchedOrder.id || orderId,
                 value: Number(parseFloat(String(fetchedOrder.total_amount)) || 0),
                 currency: 'BRL',
-                contentIds: [canonicalContentId],
+                // NORQVA-0032: com adicional, as duas ofertas (principal primeiro)
+                contentIds: Array.isArray(fetchedOrder.offer_human_ids) && fetchedOrder.offer_human_ids.length ? fetchedOrder.offer_human_ids : [canonicalContentId],
                 numItems: canonicalQuantity,
                 pixelId: fetchedOrder.meta_pixel_id || null
               });

@@ -38,6 +38,8 @@ export interface SendCapiEventOptions {
   eventTime?: number;
   value?: number;
   currency?: string;
+  /** NORQVA-0032: ofertas do pedido (principal e adicional) */
+  contentIds?: string[];
   email?: string;
   phone?: string;
   fbc?: string;
@@ -152,7 +154,10 @@ export class MetaCapiService {
         custom_data: {
           currency: options.currency || 'BRL',
           value: options.value !== undefined ? options.value : undefined,
-          order_id: options.orderId
+          order_id: options.orderId,
+          ...(options.contentIds && options.contentIds.length
+            ? { content_ids: options.contentIds, content_type: 'product', num_items: options.contentIds.length }
+            : {})
         }
       };
 

@@ -36,24 +36,61 @@ export function shouldAlertSpendWithoutSale(input: {
   return { alert: input.isActive && input.paidOrders === 0 && input.spend >= threshold, threshold };
 }
 
+/** NORQVA-0032: o adicional só entra no equilíbrio depois de tantas vendas pagas com ele oferecido. */
+export const BUMP_BREAKEVEN_MIN_ORDERS = 20;
+
+/**
+ * Valor líquido médio do adicional por pedido pago da oferta principal, desde que o adicional foi configurado.
+ * Só para ofertas com pelo menos BUMP_BREAKEVEN_MIN_ORDERS pedidos pagos nesse período (antes disso, 0).
+ */
+export async function bumpNetPerOrderByOffer(pool: Pool, isDemo = false): Promise<Map<string, { orders: number; avgBump: number }>> {
+  const out = new Map<string, { orders: number; avgBump: number }>();
+  try {
+    const r = await pool.query(
+      `SELECT m.offer_id, COUNT(DISTINCT o.id)::int AS orders, COALESCE(SUM(b.total_price), 0)::numeric AS bump_revenue
+       FROM orders o
+       JOIN order_items m ON m.order_id = o.id AND m.is_bump = FALSE
+       JOIN offer_bumps ob ON ob.offer_id = m.offer_id AND ob.is_demo = $1
+       LEFT JOIN order_items b ON b.order_id = o.id AND b.is_bump = TRUE
+       WHERE o.status = 'PAID' AND o.is_demo = $1 AND o.created_at >= ob.created_at
+         AND (o.is_demo = TRUE OR o.data_provenance = 'COMMERCIAL_PRODUCTION')
+       GROUP BY m.offer_id`,
+      [isDemo]
+    );
+    for (const row of r.rows) {
+      const orders = Number(row.orders) || 0;
+      out.set(String(row.offer_id), { orders, avgBump: orders > 0 ? parseFloat(row.bump_revenue) / orders : 0 });
+    }
+  } catch {
+    // sem adicional (ou tabela ausente): equilíbrio só pelo preço principal
+  }
+  return out;
+}
+
 /** Breakeven CPA per product (lowest among its offers with unit economics configured). */
 export async function breakevenByProduct(pool: Pool, isDemo = false): Promise<Map<string, number>> {
   const r = await pool.query(
-    `SELECT o.product_id, o.price, o.promotional_price, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost
+    `SELECT o.id AS offer_id, o.product_id, o.price, o.promotional_price, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost
      FROM offers o
      JOIN offer_unit_economics ue ON ue.offer_id = o.id AND ue.is_demo = $1
      WHERE o.product_id IS NOT NULL`,
     [isDemo]
   );
+  const bumps = await bumpNetPerOrderByOffer(pool, isDemo);
   const out = new Map<string, number>();
   for (const row of r.rows) {
     const price = row.promotional_price !== null && row.promotional_price !== undefined ? parseFloat(row.promotional_price) : parseFloat(row.price);
-    const be =
+    const taxRate = parseFloat(row.tax_rate || '0');
+    const pctFee = parseFloat(row.gateway_pct_fee || '0');
+    let be =
       price -
-      (price * parseFloat(row.tax_rate || '0') +
+      (price * taxRate +
         parseFloat(row.gateway_fixed_fee || '0') +
-        price * parseFloat(row.gateway_pct_fee || '0') +
+        price * pctFee +
         parseFloat(row.other_variable_cost || '0'));
+    // NORQVA-0032: com amostra suficiente, soma o adicional líquido médio (mesmo Pix: sem tarifa fixa a mais)
+    const b = bumps.get(String(row.offer_id));
+    if (b && b.orders >= BUMP_BREAKEVEN_MIN_ORDERS) be += b.avgBump * (1 - taxRate - pctFee);
     if (!(be > 0)) continue;
     const pid = String(row.product_id);
     const cur = out.get(pid);

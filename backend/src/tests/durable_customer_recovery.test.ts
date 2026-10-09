@@ -87,7 +87,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
         offer_id UUID REFERENCES offers(id),
         offer_name_snapshot VARCHAR(255),
         quantity INT DEFAULT 1,
-        created_at TIMESTAMPTZ DEFAULT NOW()
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        is_bump BOOLEAN NOT NULL DEFAULT FALSE
       );
 
       CREATE TABLE digital_assets (

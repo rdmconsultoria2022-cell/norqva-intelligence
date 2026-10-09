@@ -179,7 +179,13 @@ export class OpportunityService {
     const [products, offers, claims, breakeven, niches] = await Promise.all([
       pool.query(`SELECT id, human_id, name, category, description FROM products WHERE is_demo = $1 AND COALESCE(is_deleted, FALSE) = FALSE`, [isDemo]),
       pool.query(`SELECT id, human_id, product_id, name, price, promotional_price, status FROM offers WHERE is_demo = $1 AND COALESCE(is_deleted, FALSE) = FALSE`, [isDemo]),
-      pool.query(`SELECT human_id, product_id, claim_text, claim_type FROM claims_registry WHERE is_demo = $1 AND status = 'VERIFIED'`, [isDemo]),
+      // NORQVA-0032: só promessas verificadas e dentro da validade; com produto definido, só as dele
+      pool.query(
+        `SELECT human_id, product_id, claim_text, claim_type FROM claims_registry
+         WHERE is_demo = $1 AND status = 'VERIFIED' AND (valid_until IS NULL OR valid_until > NOW())
+           AND ($2::uuid IS NULL OR product_id = $2::uuid)`,
+        [isDemo, o?.product_id || null]
+      ),
       breakevenByProduct(pool, isDemo),
       this.market.listNiches(pool).catch(() => [])
     ]);

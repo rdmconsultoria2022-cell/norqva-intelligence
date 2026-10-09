@@ -23,6 +23,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [customerPhone, setCustomerPhone] = useState(initialCustomer?.phone ? maskPhone(initialCustomer.phone) : '');
   const [cpfCnpj, setCpfCnpj] = useState(initialCustomer?.cpf_cnpj ? maskCpf(initialCustomer.cpf_cnpj) : '');
   const [quantity, setQuantity] = useState(1);
+  // NORQVA-0032: adicional nasce desmarcado; só entra se a pessoa marcar
+  const [withBump, setWithBump] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Field touch state for inline error display
@@ -35,9 +37,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   const isSubmittingRef = useRef(false);
 
-  const displayPrice = offer.promotional_price !== null && offer.promotional_price !== undefined
+  const basePrice = offer.promotional_price !== null && offer.promotional_price !== undefined
     ? parseFloat(String(offer.promotional_price))
     : parseFloat(String(offer.price));
+  const bump = offer.bump && Number(offer.bump.price) > 0 ? offer.bump : null;
+  const bumpPrice = bump ? Number(bump.price) : 0;
+  // Total mostrado ao comprador (o servidor recalcula e é o valor dele que vai para o Pix)
+  const displayPrice = Math.round((basePrice + (bump && withBump ? bumpPrice : 0)) * 100) / 100;
 
   // Compute field validation errors
   const nameValid = validateFullName(customerName);
@@ -154,6 +160,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
       const orderPayload = {
         offer_id: offer.id,
+        ...(bump && withBump ? { with_bump: true } : {}),
         customer_id: customerId,
         quantity: quantity,
         idempotency_key: idempotencyKey,
@@ -189,7 +196,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             orderId: orderResult.id,
             value: parseFloat(String(orderResult.total_amount)) || displayPrice * quantity,
             currency: 'BRL',
-            contentIds: [offer.human_id || offer.id],
+            contentIds: [offer.human_id || offer.id, ...(bump && withBump ? [bump.offer_human_id] : [])],
             numItems: quantity,
             pixelId: (offer as any).meta_pixel_id || null
           });
@@ -281,7 +288,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-xl font-serif font-bold text-[#B83B1E]">
-                    R${displayPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R${basePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               </div>
@@ -431,12 +438,38 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             )}
           </div>
 
+          {bump && (
+            <label
+              className={`flex items-start gap-3 rounded-xl border-2 border-dashed p-4 cursor-pointer transition ${
+                withBump ? 'border-[#2B3D2B] bg-[#EEF3EA]' : 'border-[#B83B1E]/60 bg-white'
+              }`}
+              data-testid="checkout-bump"
+            >
+              <input
+                type="checkbox"
+                checked={withBump}
+                onChange={e => setWithBump(e.target.checked)}
+                disabled={isSubmitting}
+                aria-label={`Adicionar ${bump.name} por mais R$ ${bumpPrice.toFixed(2).replace('.', ',')}`}
+                className="mt-1 h-6 w-6 shrink-0 accent-[#2B3D2B]"
+              />
+              <span className="space-y-1">
+                <span className="block text-base font-bold text-stone-900">
+                  Sim, quero levar também: {bump.name}
+                </span>
+                {bump.headline && <span className="block text-sm text-stone-700">{bump.headline}</span>}
+                <span className="block text-base font-bold text-[#B83B1E]">+ R$ {bumpPrice.toFixed(2).replace('.', ',')} no mesmo Pix</span>
+                <span className="block text-xs text-stone-500">Opcional. Os dois arquivos chegam juntos depois do pagamento.</span>
+              </span>
+            </label>
+          )}
+
           <div className="pt-3 flex items-center justify-between border-t border-stone-200 text-xs text-stone-500">
             <span className="flex items-center gap-1.5 text-[#2B3D2B] font-medium">
               <ShieldCheck className="h-4 w-4 text-[#2B3D2B]" />
               Pagamento seguro
             </span>
-            <span>Total: R$ {displayPrice.toFixed(2).replace('.', ',')}</span>
+            <span data-testid="checkout-total">Total: R$ {displayPrice.toFixed(2).replace('.', ',')}</span>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-3">

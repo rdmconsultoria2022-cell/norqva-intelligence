@@ -202,7 +202,8 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                     orderId: orderData.id || orderId,
                     value: Number(parseFloat(String(orderData.total_amount || amount)) || Number(amount) || 0),
                     currency: 'BRL',
-                    contentIds: [canonicalContentId],
+                    // NORQVA-0032: com adicional, as duas ofertas (principal primeiro)
+                    contentIds: Array.isArray(orderData.offer_human_ids) && orderData.offer_human_ids.length ? orderData.offer_human_ids : [canonicalContentId],
                     numItems: canonicalQuantity,
                     pixelId: orderData.meta_pixel_id || null
                   });

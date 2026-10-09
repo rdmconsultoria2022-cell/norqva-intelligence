@@ -142,13 +142,14 @@ export class BrandService {
 export async function resolveBrandPixelId(pool: Pool, ref: { orderId?: string | null; offerId?: string | null }): Promise<string | null> {
   try {
     if (ref.orderId) {
+      // NORQVA-0032: o pixel é o da marca do item principal (o adicional não muda o pixel da venda)
       const r = await pool.query(
         `SELECT a.external_id
          FROM order_items oi
          JOIN offers o ON o.id = oi.offer_id
          JOIN products p ON p.id = o.product_id
          JOIN brand_meta_assets a ON a.brand_id = p.brand_id AND a.asset_type = 'PIXEL' AND a.status = 'VERIFIED' AND a.routing_enabled = TRUE
-         WHERE oi.order_id = $1 AND a.external_id IS NOT NULL
+         WHERE oi.order_id = $1 AND oi.is_bump = FALSE AND a.external_id IS NOT NULL
          LIMIT 1`,
         [ref.orderId]
       );

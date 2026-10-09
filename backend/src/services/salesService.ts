@@ -40,6 +40,7 @@ const PROBLEM_CONDITION = `(
   )
 )`;
 
+// NORQVA-0032: a lista traz todos os itens do pedido (principal primeiro; o adicional marcado)
 export async function listSales(pool: Pool, opts: ListSalesOptions) {
   const where: string[] = [];
   if (opts.includeTests) where.push(`o.is_demo = ${opts.isDemo ? 'TRUE' : 'FALSE'}`);
@@ -53,7 +54,7 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
   const r = await pool.query(
     `SELECT o.id, o.status, o.total_amount, o.created_at, o.data_provenance, o.is_demo,
             c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-            item.offer_name, item.offer_human_id,
+            item.offer_name, item.offer_human_id, items.list AS items,
             pay.id AS payment_id, pay.status AS payment_status, pay.human_id AS payment_human_id, pay.confirmed_at,
             COALESCE(dl.downloads, 0) AS download_count, dl.delivery_status, COALESCE(dl.expired, 0) AS expired_deliveries,
             oae.status AS access_email_status, oae.sent_at AS access_email_sent_at
@@ -62,8 +63,13 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
      LEFT JOIN LATERAL (
        SELECT oi.offer_name_snapshot AS offer_name, of.human_id AS offer_human_id
        FROM order_items oi LEFT JOIN offers of ON of.id = oi.offer_id
-       WHERE oi.order_id = o.id ORDER BY oi.created_at ASC, oi.id ASC LIMIT 1
+       WHERE oi.order_id = o.id ORDER BY oi.is_bump ASC, oi.created_at ASC, oi.id ASC LIMIT 1
      ) item ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT json_agg(json_build_object('name', oi.offer_name_snapshot, 'is_bump', oi.is_bump, 'total', oi.total_price)
+                       ORDER BY oi.is_bump ASC, oi.created_at ASC) AS list
+       FROM order_items oi WHERE oi.order_id = o.id
+     ) items ON TRUE
      LEFT JOIN LATERAL (
        SELECT p.id, p.status, p.human_id, p.confirmed_at FROM payments p
        WHERE p.order_id = o.id ORDER BY p.created_at DESC LIMIT 1
@@ -100,6 +106,11 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
     },
     offer_name: row.offer_name,
     offer_human_id: row.offer_human_id,
+    items: (Array.isArray(row.items) ? row.items : typeof row.items === 'string' ? JSON.parse(row.items) : []).map((i: any) => ({
+      name: i.name,
+      is_bump: !!i.is_bump,
+      total: i.total !== null && i.total !== undefined ? Number(i.total) : null
+    })),
     payment_id: row.payment_id,
     payment_status: row.payment_status,
     payment_human_id: row.payment_human_id,
@@ -131,7 +142,7 @@ async function loadOrder(pool: Pool, orderId: string, isDemo: boolean) {
   }
   const r = await pool.query(
     `SELECT o.id, o.status, o.is_demo, c.email AS customer_email,
-            (SELECT oi.offer_name_snapshot FROM order_items oi WHERE oi.order_id = o.id ORDER BY oi.created_at ASC, oi.id ASC LIMIT 1) AS offer_name
+            (SELECT oi.offer_name_snapshot FROM order_items oi WHERE oi.order_id = o.id ORDER BY oi.is_bump ASC, oi.created_at ASC, oi.id ASC LIMIT 1) AS offer_name
      FROM orders o JOIN customers c ON c.id = o.customer_id
      WHERE o.id = $1 AND o.is_demo = $2`,
     [orderId, isDemo]
@@ -146,20 +157,26 @@ async function loadOrder(pool: Pool, orderId: string, isDemo: boolean) {
  */
 async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
   const existing = await pool.query('SELECT id, status FROM order_deliveries WHERE order_id = $1', [orderId]);
+  if (existing.rows.some(d => d.status === 'REVOKED')) throw new SalesError(409, 'A entrega deste pedido foi revogada.');
+  // NORQVA-0032: cria a entrega só de item que ainda não tem nenhuma (o adicional de um pedido antigo, por
+  // exemplo). Não devolve arquivo trocado pelo reenvio nem entrega arquivo novo da oferta a pedido antigo.
+  const created = await pool.query(
+    `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status)
+     SELECT oi.order_id, oi.id, oda.asset_id, 'ACTIVE'
+     FROM order_items oi JOIN offer_digital_assets oda ON oda.offer_id = oi.offer_id
+     WHERE oi.order_id = $1
+       AND NOT EXISTS (
+         SELECT 1 FROM order_deliveries d
+         WHERE d.order_id = oi.order_id AND (d.order_item_id = oi.id OR (d.order_item_id IS NULL AND oi.is_bump = FALSE))
+       )
+     ON CONFLICT (order_id, asset_id) DO NOTHING
+     RETURNING id`,
+    [orderId]
+  );
   if (existing.rows.length === 0) {
-    const created = await pool.query(
-      `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status)
-       SELECT oi.order_id, oi.id, oda.asset_id, 'ACTIVE'
-       FROM order_items oi JOIN offer_digital_assets oda ON oda.offer_id = oi.offer_id
-       WHERE oi.order_id = $1
-       ON CONFLICT (order_id, asset_id) DO NOTHING
-       RETURNING id`,
-      [orderId]
-    );
     if (created.rows.length === 0) throw new SalesError(409, 'A oferta deste pedido não tem arquivo cadastrado para entregar.');
     return;
   }
-  if (existing.rows.some(d => d.status === 'REVOKED')) throw new SalesError(409, 'A entrega deste pedido foi revogada.');
   await pool.query(
     `UPDATE order_deliveries
      SET status = 'ACTIVE',
