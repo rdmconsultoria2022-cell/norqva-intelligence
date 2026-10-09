@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, AlertTriangle, Package, ShoppingCart, ChevronDown, ChevronRight, Tag } from 'lucide-react';
 import { DigitalAssetAdminModal } from '../delivery/DigitalAssetAdminModal';
 import { OfferBumpConfig, ProductClaims } from './ProductExtras';
+import { DeliveryFiles } from './DeliveryFiles';
 
 // NORQVA-0030 (fase 6): Produtos com as ofertas dentro. Cada produto mostra dados e procedência, as ofertas
 // dele (preço, situação, arquivos de entrega, checkout de teste) e a marca. Botões de alterar só para quem o
@@ -148,8 +149,10 @@ export const OfferCard: React.FC<{
   onManageAssets: (o: any) => void;
   costs?: React.ReactNode;
   bumpConfig?: React.ReactNode;
-}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs, bumpConfig }) => {
+  deliveryFiles?: React.ReactNode;
+}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs, bumpConfig, deliveryFiles }) => {
   const [showCosts, setShowCosts] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
   const [showBump, setShowBump] = useState(false);
   const hasPromo = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '' && parseFloat(off.promotional_price) > 0;
   const isCheckoutEligible = off.status === 'TESTE' || off.status === 'ATIVA';
@@ -205,6 +208,17 @@ export const OfferCard: React.FC<{
         </button>
       )}
       {isAdmin && showBump && bumpConfig}
+
+      {isAdmin && deliveryFiles && (
+        <button
+          onClick={() => setShowFiles(!showFiles)}
+          data-testid="toggle-delivery-files"
+          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
+        >
+          PDF entregue ao comprador
+        </button>
+      )}
+      {isAdmin && showFiles && deliveryFiles}
 
       {isAdmin && (
         <button
@@ -442,7 +456,7 @@ export const ProductsView: React.FC<Props> = ({
                   <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3" data-testid="product-offers">
                     {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
-                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
+                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
                     ))}
                   </div>
                 )}
@@ -457,7 +471,7 @@ export const ProductsView: React.FC<Props> = ({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ofertas de produtos fora desta lista</h3>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {orphanOffers.map(off => (
-              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
+              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
             ))}
           </div>
         </section>
