@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import crypto from 'crypto';
 import { writeAuditLog } from '../../db/audit';
+import { isDbInMemory } from '../../db/db';
 import { VALIDATION_CHECKS, AI_RULES } from './criteriaTexts';
 
 // NORQVA-0029: critérios de avaliação da Pesquisa, com versões validadas pelo dono.
@@ -215,7 +216,8 @@ export class CriteriaService {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('LOCK TABLE research_criteria_versions IN SHARE ROW EXCLUSIVE MODE');
+      // Serializa ajustes e validações simultâneos (o banco em memória dos testes não tem LOCK)
+      if (!isDbInMemory()) await client.query('LOCK TABLE research_criteria_versions IN SHARE ROW EXCLUSIVE MODE');
       const last = await client.query(`SELECT version, status, numbers FROM research_criteria_versions WHERE status IN ('DRAFT', 'VALIDATED') ORDER BY version DESC LIMIT 1`);
       const base: CriteriaNumbers = last.rows.length ? { ...DEFAULT_NUMBERS, ...parseJson(last.rows[0].numbers) } : DEFAULT_NUMBERS;
       const numbers = checkNumbers(input?.numbers || {}, base);
@@ -248,7 +250,8 @@ export class CriteriaService {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('LOCK TABLE research_criteria_versions IN SHARE ROW EXCLUSIVE MODE');
+      // Serializa ajustes e validações simultâneos (o banco em memória dos testes não tem LOCK)
+      if (!isDbInMemory()) await client.query('LOCK TABLE research_criteria_versions IN SHARE ROW EXCLUSIVE MODE');
       const r = await client.query(`SELECT * FROM research_criteria_versions WHERE version = $1`, [version]);
       if (r.rows.length === 0) throw new CriteriaError(404, 'Versão não encontrada.');
       const row = r.rows[0];

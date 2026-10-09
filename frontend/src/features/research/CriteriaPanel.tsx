@@ -63,7 +63,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
   const [busy, setBusy] = useState(false);
 
   // Base do formulário: o rascunho em aberto, ou os números em vigor
-  const base = useMemo(() => (data ? data.draft?.numbers || data.effective.numbers : {}), [data]);
+  const base = useMemo<Record<string, number>>(() => (data ? data.draft?.numbers || data.effective.numbers : {}), [data]);
 
   const load = useCallback(async () => {
     try {

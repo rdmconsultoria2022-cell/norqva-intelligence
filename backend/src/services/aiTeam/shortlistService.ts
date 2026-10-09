@@ -75,7 +75,7 @@ export function parseCriteria(q: Record<string, unknown> = {}, defaults: Shortli
   const classes = (csv(q.classes) || D.classes).map(c => c.toUpperCase()).filter((c): c is IntelClass => ALL_CLASSES.includes(c as IntelClass));
   const ratioRaw = q.max_cpa_ratio;
   const max_cpa_ratio =
-    ratioRaw === 'none' || ratioRaw === 'null' ? null : ratioRaw === undefined || ratioRaw === '' ? D.max_cpa_ratio : num(ratioRaw, 1.5, 0.1, 10);
+    ratioRaw === 'none' || ratioRaw === 'null' ? null : ratioRaw === undefined || ratioRaw === '' ? D.max_cpa_ratio : num(ratioRaw, D.max_cpa_ratio ?? 1.5, 0.1, 10);
   return {
     limit: Math.round(num(q.limit, D.limit, 1, SHORTLIST_MAX)),
     levels: levels.length ? [...new Set(levels)] : D.levels,

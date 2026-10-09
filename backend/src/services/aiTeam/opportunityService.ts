@@ -225,7 +225,8 @@ export class OpportunityService {
     if (!(VERDICTS as readonly string[]).includes(verdict)) throw new OpportunityError(400, `verdict deve ser ${VERDICTS.join(', ')}.`);
     const summary = clip(body?.summary, 4000);
     if (!summary) throw new OpportunityError(400, 'Envie o resumo (summary).');
-    // NORQVA-0029: guarda a versão dos critérios validada no momento da avaliação (null = não validado)
+    // NORQVA-0029: guarda a versão dos critérios validada no momento da avaliação. null = nada validado ou
+    // textos mudados depois da última validação (a avaliação não seguiu critérios validados por inteiro).
     const crit = await this.criteria.effective(pool);
     const criteriaVersion = crit.validated ? crit.version : null;
     const evaluation = {

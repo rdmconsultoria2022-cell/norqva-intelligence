@@ -38,7 +38,8 @@ export const ResearchView: React.FC<Props> = ({ currentUser, isDemoView, apiFetc
       const r: CriteriaOverview = await apiFetch('/research/criteria');
       setCriteria({ validated: !!r?.effective?.validated, version: r?.effective?.version ?? null, texts_changed: !!r?.effective?.texts_changed });
     } catch {
-      setCriteria(null);
+      // Sem resposta, trata como não validado (o servidor também recusa a aprovação)
+      setCriteria({ validated: false, version: null });
     }
   }, [apiFetch]);
 

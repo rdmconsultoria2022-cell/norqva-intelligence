@@ -184,7 +184,7 @@ export function scoreEntity(
       reason = `CPA R$ ${cpa.toFixed(2)} acima de ${fmt(R.loser_cpa_ratio)}× o equilíbrio com gasto relevante: pausar ou refazer.`;
     } else if (t.sales === 0 && t.spend < B * R.no_data_spend_ratio) {
       classification = 'SEM_DADOS';
-      reason = `Gastou menos de ${fmt(R.no_data_spend_ratio)}× o CPA de equilíbrio (R$ ${(B * R.no_data_spend_ratio).toFixed(2)}): esperar.`;
+      reason = `Gastou menos ${R.no_data_spend_ratio === 0.5 ? 'de metade do' : `de ${fmt(R.no_data_spend_ratio)}× o`} CPA de equilíbrio (R$ ${(B * R.no_data_spend_ratio).toFixed(2)}): esperar.`;
     }
   } else if (t.spend < R.no_breakeven_min_spend && t.sales === 0) {
     classification = 'SEM_DADOS';
