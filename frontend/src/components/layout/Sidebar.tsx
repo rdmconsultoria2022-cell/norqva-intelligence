@@ -3,17 +3,13 @@ import {
   LayoutDashboard,
   Search,
   Package,
-  Tag,
-  Scale,
   Users,
   Settings,
   User,
   LogOut,
   BarChart3,
-  PieChart,
   Factory,
   Store,
-  Wallet,
   ShoppingCart,
   Megaphone,
   ChevronDown,
@@ -53,8 +49,8 @@ export const navigationGroups: NavigationGroup[] = [
     id: 'overview',
     label: 'Visão Geral',
     items: [
-      { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-      { id: 'meta-credit', label: 'Créditos Meta', icon: Wallet }
+      // NORQVA-0030: Créditos Meta virou aba de Resultados (o resumo fica na própria Visão Geral)
+      { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard }
     ]
   },
   {
@@ -64,17 +60,17 @@ export const navigationGroups: NavigationGroup[] = [
       // NORQVA-0029: Base de campanhas, Time de IAs e Oportunidades viraram a tela Pesquisa
       // ('campaign-base', 'ai-team' e 'opportunities' abrem esta tela)
       { id: 'research', label: 'Pesquisa', icon: Search },
-      { id: 'creative-performance', label: 'Performance de Criativos', icon: BarChart3 },
-      { id: 'demographics', label: 'Demografia', icon: PieChart },
-      { id: 'decisions', label: 'Decisões', icon: Scale }
+      // NORQVA-0030: Financeiro, Performance de Criativos, Demografia, Créditos Meta e Decisões viraram a tela
+      // Resultados ('creative-performance', 'demographics', 'meta-credit' e 'decisions' abrem esta tela)
+      { id: 'results', label: 'Resultados', icon: BarChart3 }
     ]
   },
   {
     id: 'operation',
     label: 'Operação',
     items: [
+      // NORQVA-0030: as ofertas ficam dentro de cada produto ('offers' abre esta tela)
       { id: 'products', label: 'Produtos', icon: Package },
-      { id: 'offers', label: 'Ofertas', icon: Tag },
       // NORQVA-0025: Creative Lab e Fábrica viraram uma tela só ('creatives' abre a mesma tela)
       { id: 'creative-factory', label: 'Criativos', icon: Factory },
       // NORQVA-0027/0028: Campanhas reúne planos, resultado e controle da Meta, teto, Método e

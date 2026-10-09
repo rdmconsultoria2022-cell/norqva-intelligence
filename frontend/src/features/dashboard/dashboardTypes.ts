@@ -13,4 +13,9 @@ export interface DashboardProps {
   onViewSales?: () => void;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
+  /**
+   * NORQVA-0030: 'overview' = Visão Geral (só a visão executiva); 'financial' = aba Financeiro da tela
+   * Resultados. Sem valor, mantém as três sub-telas antigas.
+   */
+  section?: 'overview' | 'financial';
 }

@@ -654,7 +654,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
         </MemoryRouter>
       );
 
-      const offersTab = await screen.findByRole('button', { name: /Ofertas/i }, { timeout: 8000 });
+      // NORQVA-0030: as ofertas ficam dentro de Produtos
+      const offersTab = await screen.findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
       // P01: Promotional price rendered as main highlighted price (17,90), full price struck through (19,90)
@@ -723,14 +724,15 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
         </MemoryRouter>
       );
 
-      const offersTab = await screen.findByRole('button', { name: /Ofertas/i }, { timeout: 8000 });
+      // NORQVA-0030: as ofertas ficam dentro de Produtos
+      const offersTab = await screen.findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
       // P03: Draft offer shows Checkout indisponível (RASCUNHO) and no checkout button for it
       expect(await screen.findByText('Checkout indisponível (RASCUNHO)')).toBeInTheDocument();
 
       // P04 & P05: TESTE and ATIVA offers render active Checkout buttons
-      const checkoutButtons = screen.getAllByRole('button', { name: /Checkout Oferta/i });
+      const checkoutButtons = screen.getAllByRole('button', { name: /Checkout da oferta/i });
       expect(checkoutButtons.length).toBe(2);
     }, 20000);
 
@@ -772,7 +774,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
         </MemoryRouter>
       );
 
-      const offersTab = await screen.findByRole('button', { name: /Ofertas/i }, { timeout: 8000 });
+      // NORQVA-0030: as ofertas ficam dentro de Produtos
+      const offersTab = await screen.findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
       // Transition button present

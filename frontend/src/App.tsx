@@ -46,6 +46,9 @@ import { AccountCreditView } from './features/meta-credit/AccountCreditView';
 import { MethodView } from './features/method/MethodView';
 import { AiTeamView } from './features/intelligence/AiTeamView';
 import { ResearchView, ResearchTab } from './features/research/ResearchView';
+import { ResultsView, ResultsTab } from './features/results/ResultsView';
+import { ProductsView } from './features/products/ProductsView';
+import { CreditSummary } from './features/dashboard/CreditSummary';
 import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
@@ -53,7 +56,7 @@ import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'creative-performance', 'demographics', 'creative-factory', 'sales'];
+const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'results', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -99,6 +102,8 @@ export default function App() {
   } = useAuth();
 
   const [researchTab, setResearchTab] = useState<ResearchTab>('base');
+  const [resultsTab, setResultsTab] = useState<ResultsTab>('financial');
+  const [productsOpenAll, setProductsOpenAll] = useState(false);
 
   // NORQVA-0025: o antigo Creative Lab virou a tela Criativos.
   // NORQVA-0028: Meta Ads, Método NORQVA e Experimentos passaram para dentro de Campanhas.
@@ -112,6 +117,20 @@ export default function App() {
       setActiveTab('research');
     } else if (activeTab !== 'research') {
       setResearchTab('base');
+    }
+    // NORQVA-0030: Ofertas ficam dentro de Produtos; as telas de resultado viraram a tela Resultados
+    const results: Record<string, ResultsTab> = { 'creative-performance': 'creatives', demographics: 'audience', 'meta-credit': 'credit', decisions: 'decisions' };
+    if (results[activeTab]) {
+      setResultsTab(results[activeTab]);
+      setActiveTab('results');
+    } else if (activeTab !== 'results') {
+      setResultsTab('financial');
+    }
+    if (activeTab === 'offers') {
+      setProductsOpenAll(true);
+      setActiveTab('products');
+    } else if (activeTab !== 'products') {
+      setProductsOpenAll(false);
     }
   }, [activeTab]);
 
@@ -645,24 +664,41 @@ export default function App() {
             <GlobalPeriodSelector appliesToScreen={PERIOD_AWARE_TABS.includes(activeTab)} />
           </div>
           {activeTab === 'dashboard' && (
-            <DashboardView
+            <div className="space-y-4">
+              {/* NORQVA-0030: Visão Geral = entrada do dia (visão executiva) + resumo do crédito Meta (ADMIN) */}
+              <CreditSummary
+                currentUser={currentUser}
+                isDemoView={isDemoView}
+                apiFetch={apiFetch}
+                onOpenDetails={() => setActiveTab('meta-credit')}
+              />
+              <DashboardView
+                section="overview"
+                currentUser={currentUser}
+                isDemoView={isDemoView}
+                experiments={experiments}
+                apiFetch={apiFetch}
+                onSelectExperiment={(exp: any) => setShowExpDetails(exp)}
+                onRegisterPerformance={() => {}}
+                onAuthorizeCapital={() => {}}
+                refreshTrigger={dashboardRefreshTrigger}
+                onViewSales={() => setActiveTab('sales')}
+                showError={showError}
+                showSuccess={showSuccess}
+              />
+            </div>
+          )}
+
+          {activeTab === 'results' && (
+            <ResultsView
               currentUser={currentUser}
               isDemoView={isDemoView}
-              experiments={experiments}
               apiFetch={apiFetch}
-              onSelectExperiment={(exp: any) => setShowExpDetails(exp)}
-              onRegisterPerformance={(id: string) => {
-                setShowAddPerformance(id);
-                setPerfForm(f => ({ ...f, date: new Date().toISOString().split('T')[0] }));
-              }}
-              onAuthorizeCapital={(exp: any) => {
-                setShowRequestCapital(exp);
-                setCapitalForm({ amount: parseFloat(exp.capital_approved), justification: '' });
-              }}
-              refreshTrigger={dashboardRefreshTrigger}
-              onViewSales={() => setActiveTab('sales')}
               showError={showError}
               showSuccess={showSuccess}
+              decisions={decisions}
+              refreshTrigger={dashboardRefreshTrigger}
+              initialTab={resultsTab}
             />
           )}
 
@@ -694,9 +730,13 @@ export default function App() {
           {activeTab === 'products' && (
             <ProductsView
               products={products}
-              users={usersList}
-              opportunities={opportunities}
+              offers={offers}
               currentUser={currentUser}
+              isDemoView={isDemoView}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+              initialOpen={productsOpenAll ? 'all' : null}
               onAddProduct={() => setShowAddProduct(true)}
               onEditProduct={(prd: any) => {
                 setShowEditProduct(prd);
@@ -708,19 +748,13 @@ export default function App() {
                   origin_notes: prd.origin_notes || ''
                 });
               }}
-            />
-          )}
-
-          {activeTab === 'offers' && (
-            <OffersView
-              offers={offers}
-              products={products}
-              onAddOffer={() => setShowAddOffer(true)}
+              onAddOffer={(productId: string) => {
+                setOfferFormState(f => ({ ...f, product_id: productId }));
+                setShowAddOffer(true);
+              }}
               onCheckout={(off: any) => setCheckoutOffer(off)}
               onUpdateOfferStatus={handleUpdateOfferStatus}
-              apiFetch={apiFetch}
-              showError={showError}
-              showSuccess={showSuccess}
+              onProductsChanged={refreshProducts}
             />
           )}
 
@@ -762,34 +796,6 @@ export default function App() {
 
           {activeTab === 'brands' && (
             <BrandsView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
-          )}
-
-          {activeTab === 'meta-credit' && (
-            <AccountCreditView currentUser={currentUser} isDemoView={isDemoView} apiFetch={apiFetch} showError={showError} />
-          )}
-
-          {activeTab === 'creative-performance' && (
-            <CreativePerformanceView
-              currentUser={currentUser}
-              isDemoView={isDemoView}
-              apiFetch={apiFetch}
-              showError={showError}
-              showSuccess={showSuccess}
-            />
-          )}
-
-          {activeTab === 'demographics' && (
-            <DemographicIntelligenceView
-              currentUser={currentUser}
-              isDemoView={isDemoView}
-              apiFetch={apiFetch}
-              showError={showError}
-              showSuccess={showSuccess}
-            />
-          )}
-
-          {activeTab === 'decisions' && (
-            <DecisionsView decisions={decisions} />
           )}
 
           {activeTab === 'team' && (
@@ -1505,306 +1511,12 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
 
 
 
-// 3. Products (Produtos) Subcomponent
-function ProductsView({ products, users, opportunities, currentUser, onAddProduct, onEditProduct }: any) {
-  const isProduct = currentUser.role === 'PRODUCT' || currentUser.role === 'ADMIN';
-
-  return (
-    <div className="space-y-6 text-sm">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">Módulo de Produtos</h2>
-          <p className="text-xs text-slate-400">Controle e rastreabilidade da origem dos produtos de performance</p>
-        </div>
-        {isProduct && (
-          <button
-            onClick={onAddProduct}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-slate-950 font-bold rounded hover:bg-emerald-400 transition"
-          >
-            <Plus className="h-4 w-4" />
-            Planejar Produto
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {products.length === 0 ? (
-          <div className="col-span-2 p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">
-            Nenhum produto cadastrado.
-          </div>
-        ) : (
-          products.map((prd: any) => (
-            <div key={prd.id} className="p-4 border border-slate-800 bg-slate-900/30 rounded flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-emerald-400 font-bold text-xs">{prd.human_id}</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                    prd.status === 'PRONTO' || prd.status === 'ATIVO' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {prd.status}
-                  </span>
-                </div>
-                <h3 className="text-md font-bold text-slate-200 mt-2">{prd.name}</h3>
-                <div className="text-xs text-slate-400 font-mono">{prd.category}</div>
-                <p className="text-xs text-slate-300 mt-2 line-clamp-2">{prd.description}</p>
-              </div>
-
-              {/* Provenance info display */}
-              <div className="p-2.5 rounded bg-slate-950/60 border border-slate-850 text-xs space-y-1">
-                <div className="text-[10px] font-mono text-slate-500 uppercase font-bold">Rastreabilidade / Procedência</div>
-                {prd.origin_provenance ? (
-                  <div className="space-y-1">
-                    <div className="text-slate-300">
-                      Origem: <span className="font-mono text-emerald-400 font-semibold">{prd.origin_provenance}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 font-mono">
-                      Evidência: {prd.origin_evidence}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-red-400/80 italic font-mono text-[10px] flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" />
-                    Procedência ausente. Status PRONTO bloqueado no banco.
-                  </div>
-                )}
-              </div>
-
-              {/* Action buttons */}
-              {isProduct && (
-                <div className="flex justify-end pt-1">
-                  <button
-                    onClick={() => onEditProduct(prd)}
-                    className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold text-xs transition"
-                  >
-                    Atualizar Status & Procedência
-                  </button>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// 4. Offers (Ofertas) Subcomponent
-function OffersView({ offers, products, onAddOffer, onCheckout, onUpdateOfferStatus, apiFetch, showError, showSuccess }: any) {
-  const [managingAssetOffer, setManagingAssetOffer] = React.useState<any>(null);
-
-  return (
-    <div className="space-y-6 text-sm">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">Módulo de Ofertas comercial</h2>
-          <p className="text-xs text-slate-400">Gestão das ofertas específicas associadas aos produtos</p>
-        </div>
-        <button
-          onClick={onAddOffer}
-          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-slate-950 font-bold rounded hover:bg-emerald-400 transition"
-        >
-          <Plus className="h-4 w-4" />
-          Nova Oferta
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {offers.length === 0 ? (
-          <div className="col-span-3 p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">
-            Nenhuma oferta cadastrada.
-          </div>
-        ) : (
-          offers.map((off: any) => {
-            const hasPromo = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '';
-            const isCheckoutEligible = off.status === 'TESTE' || off.status === 'ATIVA';
-
-            return (
-              <div key={off.id} className="p-4 border border-slate-800 bg-slate-900/30 rounded flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-emerald-400 font-bold text-xs">{off.human_id}</span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                      off.status === 'ATIVA' ? 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-400' :
-                      off.status === 'TESTE' ? 'bg-cyan-950/60 border border-cyan-500/30 text-cyan-400' :
-                      off.status === 'PAUSADA' ? 'bg-amber-950/60 border border-amber-500/30 text-amber-400' :
-                      'bg-slate-800 text-slate-400'
-                    }`}>
-                      {off.status}
-                    </span>
-                  </div>
-                  <h3 className="text-md font-bold text-slate-200 mt-2">{off.name}</h3>
-                  <div className="text-[10px] text-slate-400 font-mono uppercase mt-0.5">Prod: {off.product_name}</div>
-                  
-                  <div className="mt-3 flex items-baseline gap-2">
-                    {hasPromo ? (
-                      <>
-                        <span className="text-xl font-bold font-mono text-emerald-400">
-                          R${parseFloat(off.promotional_price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <span className="text-xs line-through text-slate-500 font-mono">
-                          R${parseFloat(off.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-xl font-bold font-mono text-emerald-400">
-                        R${parseFloat(off.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <p className="text-xs text-slate-300 mt-2 line-clamp-2">{off.description}</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="text-xs bg-slate-950/40 p-2.5 rounded font-mono space-y-1 text-slate-400">
-                    <div><span className="text-slate-500">Bônus:</span> {off.bonus || 'Nenhum'}</div>
-                    {off.upsell && <div><span className="text-slate-500">Upsell:</span> {off.upsell}</div>}
-                    {off.cross_sell && <div><span className="text-slate-500">Cross:</span> {off.cross_sell}</div>}
-                  </div>
-
-                  {/* Digital Assets Admin Link Button */}
-                  <button
-                    onClick={() => setManagingAssetOffer(off)}
-                    className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition flex items-center justify-center gap-1.5"
-                  >
-                    <Package className="h-3.5 w-3.5 text-emerald-400" />
-                    Ativos Digitais
-                  </button>
-
-                  {/* Status transition controls */}
-                  {onUpdateOfferStatus && (
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60">
-                      {off.status === 'RASCUNHO' && (
-                        <button
-                          onClick={() => onUpdateOfferStatus(off.id, 'TESTE')}
-                          className="flex-1 py-1 px-2 rounded bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-900/40 text-[11px] font-mono font-semibold transition text-center"
-                        >
-                          Ativar para Teste (TESTE)
-                        </button>
-                      )}
-                      {off.status === 'TESTE' && (
-                        <>
-                          <button
-                            onClick={() => onUpdateOfferStatus(off.id, 'ATIVA')}
-                            className="flex-1 py-1 px-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40 text-[11px] font-mono font-semibold transition text-center"
-                          >
-                            Ativar Oferta (ATIVA)
-                          </button>
-                          <button
-                            onClick={() => onUpdateOfferStatus(off.id, 'PAUSADA')}
-                            className="py-1 px-2 rounded bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700 text-[11px] font-mono transition"
-                          >
-                            Pausar
-                          </button>
-                        </>
-                      )}
-                      {off.status === 'ATIVA' && (
-                        <button
-                          onClick={() => onUpdateOfferStatus(off.id, 'PAUSADA')}
-                          className="flex-1 py-1 px-2 rounded bg-amber-950/40 border border-amber-500/30 text-amber-400 hover:bg-amber-900/40 text-[11px] font-mono font-semibold transition text-center"
-                        >
-                          Pausar Oferta (PAUSADA)
-                        </button>
-                      )}
-                      {off.status === 'PAUSADA' && (
-                        <button
-                          onClick={() => onUpdateOfferStatus(off.id, 'ATIVA')}
-                          className="flex-1 py-1 px-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40 text-[11px] font-mono font-semibold transition text-center"
-                        >
-                          Reativar (ATIVA)
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Checkout button or blocker notice */}
-                  {isCheckoutEligible ? (
-                    onCheckout && (
-                      <button
-                        onClick={() => onCheckout(off)}
-                        className="w-full py-1.5 px-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5"
-                      >
-                        <ShoppingCart className="h-3.5 w-3.5" />
-                        Checkout Oferta
-                      </button>
-                    )
-                  ) : (
-                    <div
-                      className="w-full py-1.5 px-3 rounded bg-slate-950/60 border border-slate-850 text-slate-500 text-[11px] font-mono text-center flex items-center justify-center gap-1.5 select-none"
-                      title="Checkout bloqueado: status da oferta deve ser TESTE ou ATIVA"
-                    >
-                      <AlertTriangle className="h-3 w-3 text-slate-500" />
-                      Checkout indisponível ({off.status})
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {managingAssetOffer && (
-        <DigitalAssetAdminModal
-          offer={managingAssetOffer}
-          apiFetch={apiFetch}
-          onClose={() => setManagingAssetOffer(null)}
-          showError={showError || console.error}
-          showSuccess={showSuccess || console.log}
-        />
-      )}
-    </div>
-  );
-}
 
 
 
 
 
-// 7. Decisions Log Subcomponent
-function DecisionsView({ decisions }: any) {
-  return (
-    <div className="space-y-6 text-sm">
-      <div>
-        <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">Log de Decisões Estratégicas</h2>
-        <p className="text-xs text-slate-400">Rastreabilidade completa de todas as alterações estratégicas do CORE</p>
-      </div>
 
-      <div className="space-y-4">
-        {decisions.length === 0 ? (
-          <div className="p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">
-            Nenhuma decisão registrada.
-          </div>
-        ) : (
-          decisions.map((dec: any) => (
-            <div key={dec.id} className="p-4 border border-slate-800 bg-slate-900/40 rounded flex items-start gap-4">
-              <div className="p-2 rounded bg-slate-950 border border-slate-800 text-emerald-400 mt-1 shrink-0 font-mono text-xs font-bold">
-                {dec.human_id}
-              </div>
-              <div className="space-y-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-200">{dec.decision_text}</span>
-                    <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-slate-800 text-slate-400 font-bold uppercase">
-                      {dec.type}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Data: {new Date(dec.created_at).toLocaleString('pt-BR')} • Autor: {dec.responsible_name}
-                  </div>
-                </div>
-                <div className="text-xs text-slate-350 bg-slate-950/30 p-2.5 rounded border border-slate-850">
-                  <span className="text-[9px] font-mono text-slate-500 uppercase block">Justificativa estratégica</span>
-                  <p className="mt-0.5 italic">"{dec.justification}"</p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
 
 // 8. Team (Equipe) Subcomponent
 function TeamView({ users }: any) {
