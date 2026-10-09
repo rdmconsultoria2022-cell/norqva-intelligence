@@ -93,7 +93,7 @@ describe('NORQVA-0030 — Produtos com as ofertas dentro', () => {
     await waitFor(() => expect(within(select).getAllByRole('option').length).toBe(3));
     fireEvent.change(select, { target: { value: 'b2' } });
     expect(screen.getByTestId('confirm-brand')).toHaveTextContent('pixel');
-    expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/products/p1'))).toBe(false);
+    expect(apiFetch.mock.calls.some((c: any[]) => String(c[0]).includes('/products/p1'))).toBe(false);
     fireEvent.click(within(screen.getByTestId('confirm-brand')).getByRole('button', { name: 'Confirmar' }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/brands/b2/products/p1', expect.objectContaining({ method: 'PUT' })));
     await waitFor(() => expect(onProductsChanged).toHaveBeenCalled());
