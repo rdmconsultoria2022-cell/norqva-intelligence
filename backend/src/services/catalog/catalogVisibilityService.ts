@@ -25,7 +25,8 @@ export class CatalogVisibilityService {
        WHERE p.is_demo = FALSE AND p.is_deleted = FALSE AND p.data_provenance = 'UNKNOWN'
        ORDER BY p.created_at DESC LIMIT 50`
     );
-    return { products: r.rows };
+    const t = await this.pool.query(`SELECT count(*)::int AS n FROM products WHERE is_demo = FALSE AND is_deleted = FALSE AND data_provenance = 'UNKNOWN'`);
+    return { products: r.rows, total: t.rows[0].n };
   }
 
   async promote(productId: string, userId: string | null) {
@@ -37,7 +38,10 @@ export class CatalogVisibilityService {
       if (!p) throw new CatalogVisibilityError(404, 'Produto não encontrado.');
       if (p.is_demo) throw new CatalogVisibilityError(409, 'Produto de demonstração não entra na conta real.');
       if (p.data_provenance !== 'UNKNOWN') {
-        throw new CatalogVisibilityError(409, p.data_provenance === 'COMMERCIAL_PRODUCTION' ? 'Este produto já está na lista.' : 'Este produto é de teste e não entra na lista.');
+        throw new CatalogVisibilityError(
+          409,
+          p.data_provenance === 'COMMERCIAL_PRODUCTION' ? 'Este produto já está na lista.' : `Este produto tem outra classificação (${p.data_provenance}) e não é trazido por aqui.`
+        );
       }
       await client.query(`UPDATE products SET data_provenance = 'COMMERCIAL_PRODUCTION' WHERE id = $1`, [p.id]);
       const offers = await client.query(

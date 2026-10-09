@@ -12,7 +12,7 @@ describe('NORQVA-0034 — produtos fora da lista', () => {
         hidden = [];
         return { product_id: 'p9', human_id: 'PRD-000009', offers: [] };
       }
-      return { products: hidden };
+      return { products: hidden, total: hidden.length };
     });
     const onChanged = vi.fn();
     const showSuccess = vi.fn();

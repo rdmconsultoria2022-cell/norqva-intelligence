@@ -18,7 +18,7 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 ## D-0003 — Modo DEMO removido da produção (2026-09-27)
 
-- **Decisão:** o frontend de produção sempre opera em modo REAL. O seletor DEMO/REAL, o aviso de ambiente demo e o botão "limpar base demo" só existem em testes automatizados ou com `VITE_ENABLE_DEMO_MODE=true` no desenvolvimento local. **Aprovado pelo operador.**
+- **Decisão:** o frontend de produção sempre opera em modo REAL. O seletor DEMO/REAL, o aviso de ambiente demo e o botão "limpar base demo" só existem em testes automatizados. **Aprovado pelo operador.** (NORQVA-0034: `VITE_ENABLE_DEMO_MODE` deixou de religar o modo demo, a pedido do Ricardo em 09/10/2026.)
 - **Mantido:** o suporte a `mode=demo` no backend e o seed de demonstração, que a suíte de testes usa.
 
 ## D-0004 — Aprovação de criativos em `creative_reviews`, não em `decisions` (2026-09-27)
@@ -67,3 +67,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - conta de anúncios nova só com justificativa registrada (padrão: uma conta, uma campanha por marca);
   - marca nasce `BRAND_ONLY`: sem avatar realista nem pessoa fictícia apresentada como real;
   - claims seguem o registro da Fábrica; D-0005 vale para todas as marcas.
+
+## D-0034 — Conta real = produção comercial; sem modo demo nas telas (2026-10-09)
+
+- **Decisão:** produto e oferta criados pela tela na conta real nascem `COMMERCIAL_PRODUCTION` (oferta herda a procedência do produto). Os que ficaram `UNKNOWN` voltam para a lista só quando o ADMIN clica em "Trazer para a lista". O modo demonstração não existe mais em nenhuma tela publicada. **Aprovado pelo operador** ("essa divisão mais atrapalha do que ajuda").
+- **Consequência aceita:** como já acontecia com as ofertas da Trattoria, um "Checkout da oferta" feito pelo operador com Pix real é um pedido comercial. Compras internas de teste são reclassificadas depois, como em D-0002.

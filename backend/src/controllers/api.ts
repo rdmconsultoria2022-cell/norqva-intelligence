@@ -492,10 +492,10 @@ export async function approveOpportunity(req: AuthenticatedRequest, res: Respons
     const prdId = crypto.randomUUID();
 
     const prdRes = await client.query(
-      `INSERT INTO products (id, human_id, name, category, description, responsible_id, status, opportunity_id, estimated_cost, is_demo)
-       VALUES ($1, $2, $3, $4, $5, $6, 'PLANEJADO', $7, 0.00, $8)
+      `INSERT INTO products (id, human_id, name, category, description, responsible_id, status, opportunity_id, estimated_cost, is_demo, data_provenance)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PLANEJADO', $7, 0.00, $8, $9)
        RETURNING *`,
-      [prdId, prdHumanId, `Draft Product: ${opp.title}`, opp.category, opp.description, req.user?.id || null, opp.id, isDemo]
+      [prdId, prdHumanId, `Draft Product: ${opp.title}`, opp.category, opp.description, req.user?.id || null, opp.id, isDemo, isDemo ? 'DEMO_SEED' : 'COMMERCIAL_PRODUCTION']
     );
 
     const product = prdRes.rows[0];
@@ -786,7 +786,7 @@ export async function createOffer(req: AuthenticatedRequest, res: Response) {
        RETURNING *`,
       // NORQVA-0034: a oferta herda a procedência do produto (produto comercial → oferta comercial)
       [id, humanId, product_id, name, price, promotional_price || null, bonus || null, description, upsell || null, cross_sell || null, isDemo,
-        isDemo ? 'DEMO_SEED' : (checkProduct.rows[0].data_provenance === 'COMMERCIAL_PRODUCTION' ? 'COMMERCIAL_PRODUCTION' : 'UNKNOWN')]
+        isDemo ? 'DEMO_SEED' : (checkProduct.rows[0].data_provenance || 'UNKNOWN')]
     );
 
     const offer = insertRes.rows[0];
@@ -1726,10 +1726,10 @@ export async function decideOpportunity(req: AuthenticatedRequest, res: Response
       const prdId = crypto.randomUUID();
 
       const prdRes = await client.query(
-        `INSERT INTO products (id, human_id, name, category, description, responsible_id, status, opportunity_id, estimated_cost, is_demo)
-         VALUES ($1, $2, $3, $4, $5, $6, 'PLANEJADO', $7, 0.00, $8)
+        `INSERT INTO products (id, human_id, name, category, description, responsible_id, status, opportunity_id, estimated_cost, is_demo, data_provenance)
+         VALUES ($1, $2, $3, $4, $5, $6, 'PLANEJADO', $7, 0.00, $8, $9)
          RETURNING *`,
-        [prdId, prdHumanId, `Draft Product: ${opp.title}`, opp.category, opp.description, req.user?.id || null, opp.id, opp.is_demo]
+        [prdId, prdHumanId, `Draft Product: ${opp.title}`, opp.category, opp.description, req.user?.id || null, opp.id, opp.is_demo, opp.is_demo ? 'DEMO_SEED' : 'COMMERCIAL_PRODUCTION']
       );
       product = prdRes.rows[0];
 

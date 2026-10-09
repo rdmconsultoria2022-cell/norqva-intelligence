@@ -13,12 +13,14 @@ export const HiddenProducts: React.FC<{
   onChanged?: () => void;
 }> = ({ apiFetch, showError, showSuccess, onChanged }) => {
   const [items, setItems] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await apiFetch('/products/hidden');
       setItems(r?.products || []);
+      setTotal(Number(r?.total) || (r?.products || []).length);
     } catch {
       setItems([]);
     }
@@ -47,10 +49,10 @@ export const HiddenProducts: React.FC<{
   return (
     <div className="space-y-2 rounded border border-amber-500/30 bg-amber-950/10 p-3 text-xs" data-testid="hidden-products">
       <div className="inline-flex items-center gap-1.5 font-semibold text-amber-200">
-        <EyeOff className="h-3.5 w-3.5" /> Criados pela tela e fora da lista ({items.length})
+        <EyeOff className="h-3.5 w-3.5" /> Fora da lista ({total}){total > items.length ? ` · mostrando os ${items.length} mais recentes` : ''}
       </div>
       <p className="text-[11px] text-slate-400">
-        Estes produtos foram criados antes de uma correção e ficaram escondidos. Traga para a lista os que são de verdade; o que for teste pode ficar aqui.
+        Produtos da conta real sem a marca de produção comercial: não aparecem na lista nem podem ser vendidos como adicional. Traga para a lista os que são de verdade; o que for teste pode ficar aqui.
       </p>
       {items.map(p => (
         <div key={p.id} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/40 p-2" data-testid="hidden-product">
