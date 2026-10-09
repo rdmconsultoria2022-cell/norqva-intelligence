@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, AlertTriangle, Save, RotateCcw } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Save, RotateCcw, Sparkles } from 'lucide-react';
+import { RECOMMENDED_CRITERIA } from './recommendation';
 
 // NORQVA-0029: aba Critérios da tela Pesquisa. Mostra as regras em português; ADMIN ajusta (nova versão em
 // rascunho) e valida. Só a versão validada vale para a Base, a seleção de candidatos e o mercado europeu.
@@ -173,7 +174,15 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
               const draftDiff = draft && draft.numbers[d.key] !== eff.numbers[d.key];
               return (
                 <div key={d.key} className="grid grid-cols-1 items-center gap-2 p-2 text-xs sm:grid-cols-[1fr_8rem_9rem]">
-                  <span className="text-slate-200">{d.label}</span>
+                  <span className="text-slate-200">
+                    {d.label}
+                    {RECOMMENDED_CRITERIA[d.key] && (
+                      <span className="block text-[11px] text-violet-300/90" data-testid={`recommended-${d.key}`}>
+                        Claude recomenda {fmt(RECOMMENDED_CRITERIA[d.key].value)}
+                        {RECOMMENDED_CRITERIA[d.key].value !== eff.numbers[d.key] ? ' (muda)' : ''}: {RECOMMENDED_CRITERIA[d.key].why}
+                      </span>
+                    )}
+                  </span>
                   <span className="text-slate-400" title="Valor em vigor">
                     em vigor: <span className="font-mono text-slate-200">{fmt(eff.numbers[d.key])}</span> {d.unit}
                   </span>
@@ -197,6 +206,18 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
 
       {isAdmin && (
         <div className="flex flex-wrap items-end gap-2 rounded border border-dashed border-slate-700 p-3 text-xs">
+          <button
+            onClick={() => {
+              const next = { ...form };
+              for (const [k, r] of Object.entries(RECOMMENDED_CRITERIA)) if (k in next) next[k] = String(r.value);
+              setForm(next);
+              if (!note.trim()) setNote('Recomendação do Claude (análise NORQVA-0031)');
+            }}
+            data-testid="use-recommendation"
+            className="inline-flex items-center gap-1 rounded bg-violet-600 px-3 py-1.5 font-semibold text-white hover:bg-violet-500"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Usar a recomendação do Claude
+          </button>
           <label className="flex flex-1 flex-col gap-1">
             <span className="text-slate-400">Motivo do ajuste (opcional)</span>
             <input value={note} onChange={e => setNote(e.target.value)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100" />

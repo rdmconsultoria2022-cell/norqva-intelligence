@@ -228,6 +228,24 @@ export function DashboardView({
   const dataQuality = perf?.dataQuality || null;
   const globalTruth = perf?.globalCommercialTruth || null;
   const mediaTruth = perf?.attributedMediaTruth || null;
+  // NORQVA-0031: os três cartões de receita vêm do resumo comercial da mídia (antes liam nomes que não existem)
+  const rollup = mediaTruth?.commercialRollup || null;
+  const money = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
+  const revenueCards = rollup
+    ? {
+        attributedRevenue: money(rollup.attributedRevenue),
+        attributedOrders: Number(rollup.attributedPaidOrders) || 0,
+        organicRevenue: money(rollup.organicRevenue),
+        organicOrders: Number(rollup.organicOrdersCount) || 0,
+        ambiguousRevenue: money(rollup.ambiguousRevenue),
+        ambiguousOrders: Number(rollup.ambiguousOrdersCount) || 0,
+        otherRevenue: money(Number(rollup.unattributedRevenue || 0) + Number(rollup.ambiguousRevenue || 0)),
+        otherOrders: (Number(rollup.unattributedOrdersCount) || 0) + (Number(rollup.ambiguousOrdersCount) || 0)
+      }
+    : null;
+  const cardsTotal = revenueCards ? money(revenueCards.attributedRevenue + revenueCards.organicRevenue + revenueCards.otherRevenue) : 0;
+  const paidRevenue = globalTruth ? money(globalTruth.grossRevenue) : null;
+  const cardsMismatch = revenueCards !== null && paidRevenue !== null && Math.abs(cardsTotal - paidRevenue) > 0.01;
   const funnel = perf?.funnelIntegrity || null;
   const rawCampaigns = (Array.isArray(perf?.byCampaign) && perf.byCampaign.length > 0)
     ? perf.byCampaign
@@ -990,50 +1008,64 @@ export function DashboardView({
                 )}
               </div>
 
-              {/* 5. RECONCILIAÇÃO GLOBAL: ATRIBUÍDO VS ORGÂNICO VS NÃO ATRIBUÍDO */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* 5. RECONCILIAÇÃO GLOBAL: ATRIBUÍDO VS ORGÂNICO VS NÃO ATRIBUÍDO (NORQVA-0031) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="revenue-cards">
                 {/* Atribuído Meta */}
-                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2">
+                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2" data-testid="card-attributed">
                   <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
                     <span>Receita Atribuída (Meta)</span>
                     <TrendingUp className="h-4 w-4 text-emerald-400" />
                   </div>
                   <div className="text-xl font-bold font-mono text-emerald-400">
-                    R$ {(mediaTruth?.totalAttributedRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {(revenueCards?.attributedRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono">
-                    {mediaTruth?.totalAttributedPaidOrders ?? 0} pedidos confirmados
+                    {revenueCards?.attributedOrders ?? 0} pedidos confirmados
                   </div>
                 </div>
 
                 {/* Orgânico */}
-                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2">
+                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2" data-testid="card-organic">
                   <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
                     <span>Receita Orgânica</span>
                     <Layers className="h-4 w-4 text-blue-400" />
                   </div>
                   <div className="text-xl font-bold font-mono text-blue-400">
-                    R$ {(globalTruth?.organicRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {(revenueCards?.organicRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono">
-                    {globalTruth?.organicOrdersCount ?? 0} pedidos confirmados
+                    {revenueCards?.organicOrders ?? 0} pedidos confirmados
                   </div>
                 </div>
 
-                {/* Não Atribuído */}
-                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2">
+                {/* Não Atribuído (inclui os ambíguos: venda que bate com mais de uma campanha) */}
+                <div className="p-4 border border-slate-800 bg-slate-900/50 rounded-xl space-y-2" data-testid="card-unattributed">
                   <div className="flex justify-between items-center text-xs font-mono uppercase text-slate-400">
                     <span>Não Atribuído (Outros)</span>
                     <HelpCircle className="h-4 w-4 text-amber-400" />
                   </div>
                   <div className="text-xl font-bold font-mono text-amber-400">
-                    R$ {(globalTruth?.unattributedRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {(revenueCards?.otherRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono">
-                    {globalTruth?.unattributedOrdersCount ?? 0} pedidos confirmados
+                    {revenueCards?.otherOrders ?? 0} pedidos confirmados
+                    {revenueCards && revenueCards.ambiguousOrders > 0
+                      ? ` (${revenueCards.ambiguousOrders} ${revenueCards.ambiguousOrders === 1 ? 'bate' : 'batem'} com mais de uma campanha)`
+                      : ''}
                   </div>
                 </div>
               </div>
+              {!revenueCards && (
+                <p className="text-[11px] text-slate-500 font-mono" data-testid="revenue-cards-missing">
+                  A divisão da receita por origem não veio nesta consulta.
+                </p>
+              )}
+              {cardsMismatch && (
+                <p className="text-[11px] text-amber-300 font-mono" data-testid="revenue-cards-mismatch">
+                  Atenção: os três cartões somam R$ {cardsTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, mas o faturamento do período é R${' '}
+                  {(paidRevenue ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Confira a atribuição.
+                </p>
+              )}
             </>
           )}
         </div>
