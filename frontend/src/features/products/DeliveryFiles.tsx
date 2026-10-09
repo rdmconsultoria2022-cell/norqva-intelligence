@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FileText, Upload, History, ExternalLink } from 'lucide-react';
 
-// NORQVA-0033: o PDF que o comprador recebe, por oferta (só ADMIN). Trocar guarda antes uma cópia do arquivo
-// atual; o novo entra no mesmo endereço, então quem já comprou passa a receber a versão nova.
+// NORQVA-0033: o PDF que o comprador recebe, por oferta (só ADMIN). Trocar sobe o novo num endereço novo e o
+// cadastro passa a apontar para ele; o anterior fica guardado no histórico. Quem já comprou recebe a versão nova.
 
 type ApiFetch = (url: string, options?: RequestInit) => Promise<any>;
 const MAX_BYTES = 50 * 1024 * 1024;

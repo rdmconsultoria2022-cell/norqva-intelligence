@@ -354,7 +354,7 @@ export class DeliveryFileService {
     let assetId: string;
     try {
       await client.query('BEGIN');
-      await client.query('SELECT id FROM offers WHERE id = $1 FOR UPDATE', [offer.id]);
+      await client.query('SELECT id FROM offers WHERE id = $1 FOR NO KEY UPDATE', [offer.id]);
       const again = await client.query('SELECT 1 FROM offer_digital_assets WHERE offer_id = $1 LIMIT 1', [offer.id]);
       if (again.rows.length > 0) throw new DeliveryFileError(409, 'Esta oferta já tem arquivo de entrega. Use "Trocar arquivo".');
       const ins = await client.query(
