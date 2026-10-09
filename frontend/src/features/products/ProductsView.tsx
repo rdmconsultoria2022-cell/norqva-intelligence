@@ -3,6 +3,7 @@ import { Plus, AlertTriangle, Package, ShoppingCart, ChevronDown, ChevronRight, 
 import { DigitalAssetAdminModal } from '../delivery/DigitalAssetAdminModal';
 import { OfferBumpConfig, ProductClaims } from './ProductExtras';
 import { DeliveryFiles } from './DeliveryFiles';
+import { HiddenProducts } from './HiddenProducts';
 
 // NORQVA-0030 (fase 6): Produtos com as ofertas dentro. Cada produto mostra dados e procedência, as ofertas
 // dele (preço, situação, arquivos de entrega, checkout de teste) e a marca. Botões de alterar só para quem o
@@ -263,6 +264,7 @@ export const ProductsView: React.FC<Props> = ({
   products,
   offers,
   currentUser,
+  isDemoView = false,
   apiFetch,
   showError,
   showSuccess,
@@ -339,6 +341,8 @@ export const ProductsView: React.FC<Props> = ({
           </button>
         )}
       </div>
+
+      {isAdmin && !isDemoView && <HiddenProducts apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onChanged={onProductsChanged} />}
 
       {products.length === 0 && (
         <div className="p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">Nenhum produto cadastrado.</div>

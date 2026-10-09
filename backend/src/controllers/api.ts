@@ -602,10 +602,11 @@ export async function createProduct(req: AuthenticatedRequest, res: Response) {
     const id = crypto.randomUUID();
 
     const prdRes = await pool.query(
-      `INSERT INTO products (id, human_id, name, category, description, responsible_id, status, opportunity_id, estimated_cost, observations, is_demo)
-       VALUES ($1, $2, $3, $4, $5, $6, 'PLANEJADO', $7, $8, $9, $10)
+      `INSERT INTO products (id, human_id, name, category, description, responsible_id, status, opportunity_id, estimated_cost, observations, is_demo, data_provenance)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PLANEJADO', $7, $8, $9, $10, $11)
        RETURNING *`,
-      [id, humanId, name, category, description, req.user?.id || null, opportunity_id || null, estimated_cost || 0.00, observations || null, isDemo]
+      // NORQVA-0034: criado pela tela na conta real = produção comercial (antes nascia UNKNOWN e sumia da lista)
+      [id, humanId, name, category, description, req.user?.id || null, opportunity_id || null, estimated_cost || 0.00, observations || null, isDemo, isDemo ? 'DEMO_SEED' : 'COMMERCIAL_PRODUCTION']
     );
 
     const product = prdRes.rows[0];
@@ -766,7 +767,7 @@ export async function createOffer(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'Missing mandatory offer fields.' });
     }
 
-    const checkProduct = await pool.query('SELECT is_demo FROM products WHERE id = $1 AND is_deleted = FALSE', [product_id]);
+    const checkProduct = await pool.query('SELECT is_demo, data_provenance FROM products WHERE id = $1 AND is_deleted = FALSE', [product_id]);
     if (checkProduct.rows.length === 0) {
       return res.status(404).json({ error: 'Associated product not found.' });
     }
@@ -780,10 +781,12 @@ export async function createOffer(req: AuthenticatedRequest, res: Response) {
     const id = crypto.randomUUID();
 
     const insertRes = await pool.query(
-      `INSERT INTO offers (id, human_id, product_id, name, price, promotional_price, bonus, description, upsell, cross_sell, status, is_demo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'RASCUNHO', $11)
+      `INSERT INTO offers (id, human_id, product_id, name, price, promotional_price, bonus, description, upsell, cross_sell, status, is_demo, data_provenance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'RASCUNHO', $11, $12)
        RETURNING *`,
-      [id, humanId, product_id, name, price, promotional_price || null, bonus || null, description, upsell || null, cross_sell || null, isDemo]
+      // NORQVA-0034: a oferta herda a procedência do produto (produto comercial → oferta comercial)
+      [id, humanId, product_id, name, price, promotional_price || null, bonus || null, description, upsell || null, cross_sell || null, isDemo,
+        isDemo ? 'DEMO_SEED' : (checkProduct.rows[0].data_provenance === 'COMMERCIAL_PRODUCTION' ? 'COMMERCIAL_PRODUCTION' : 'UNKNOWN')]
     );
 
     const offer = insertRes.rows[0];
@@ -970,7 +973,7 @@ export async function createCreative(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'Invalid creative format.' });
     }
 
-    const checkProduct = await pool.query('SELECT is_demo FROM products WHERE id = $1 AND is_deleted = FALSE', [product_id]);
+    const checkProduct = await pool.query('SELECT is_demo, data_provenance FROM products WHERE id = $1 AND is_deleted = FALSE', [product_id]);
     if (checkProduct.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found.' });
     }

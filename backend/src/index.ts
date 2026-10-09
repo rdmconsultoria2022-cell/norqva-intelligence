@@ -161,6 +161,7 @@ import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
+import { getHiddenProducts, promoteHiddenProduct } from './controllers/catalogVisibilityController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
@@ -305,6 +306,9 @@ app.post('/api/opportunities/:id/analyze', requireRole(['INTELLIGENCE', 'ADMIN']
 
 app.get('/api/products', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getProducts);
 app.post('/api/products', requireRole(['PRODUCT', 'ADMIN']), createProduct);
+// NORQVA-0034: produtos da conta real que ficaram fora da lista (procedência UNKNOWN)
+app.get('/api/products/hidden', requireRole(['ADMIN']), getHiddenProducts);
+app.post('/api/products/:id/bring-to-list', requireRole(['ADMIN']), promoteHiddenProduct);
 app.put('/api/products/:id', requireRole(['PRODUCT', 'ADMIN']), updateProduct);
 
 app.get('/api/offers', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOffers);
