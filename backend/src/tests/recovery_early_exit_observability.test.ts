@@ -357,8 +357,9 @@ describe('NORQVA — Recovery Early Exit Observability & Canonical Schema Suite'
     const offB = (await pool.query("INSERT INTO offers (human_id, name) VALUES ('OFF-MULTI-B', 'Item B') RETURNING id")).rows[0];
     const ord = (await pool.query(`INSERT INTO orders (customer_id, status) VALUES ('${cust.id}', 'PAID') RETURNING id`)).rows[0];
 
-    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${offA.id}', 'Snapshot Item A')`);
-    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot) VALUES ('${ord.id}', '${offB.id}', 'Snapshot Item B')`);
+    // horários explícitos: inseridos no mesmo milissegundo, o desempate cairia no id aleatório (teste instável)
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot, created_at) VALUES ('${ord.id}', '${offA.id}', 'Snapshot Item A', '2026-01-01T00:00:00Z')`);
+    await pool.query(`INSERT INTO order_items (order_id, offer_id, offer_name_snapshot, created_at) VALUES ('${ord.id}', '${offB.id}', 'Snapshot Item B', '2026-01-01T00:00:01Z')`);
 
     const ast = (await pool.query("INSERT INTO digital_assets (name, storage_bucket, storage_path) VALUES ('Asset Multi', 'bucket', 'multi.pdf') RETURNING id")).rows[0];
     await pool.query(`INSERT INTO order_deliveries (order_id, asset_id, status) VALUES ('${ord.id}', '${ast.id}', 'ACTIVE')`);
