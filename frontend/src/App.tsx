@@ -45,6 +45,7 @@ import { CampaignBaseView } from './features/intelligence/CampaignBaseView';
 import { AccountCreditView } from './features/meta-credit/AccountCreditView';
 import { MethodView } from './features/method/MethodView';
 import { AiTeamView } from './features/intelligence/AiTeamView';
+import { ResearchView, ResearchTab } from './features/research/ResearchView';
 import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
@@ -52,7 +53,7 @@ import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'campaign-base', 'creative-performance', 'demographics', 'creative-factory', 'sales'];
+const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'creative-performance', 'demographics', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
@@ -97,11 +98,21 @@ export default function App() {
     handleSignOut
   } = useAuth();
 
+  const [researchTab, setResearchTab] = useState<ResearchTab>('base');
+
   // NORQVA-0025: o antigo Creative Lab virou a tela Criativos.
   // NORQVA-0028: Meta Ads, Método NORQVA e Experimentos passaram para dentro de Campanhas.
   useEffect(() => {
     if (activeTab === 'creatives') setActiveTab('creative-factory');
     if (activeTab === 'meta-ads' || activeTab === 'method' || activeTab === 'experiments') setActiveTab('campaigns');
+    // NORQVA-0029: Base de campanhas, Time de IAs e Oportunidades viraram a tela Pesquisa
+    const research: Record<string, ResearchTab> = { 'campaign-base': 'base', 'ai-team': 'opportunities', opportunities: 'history' };
+    if (research[activeTab]) {
+      setResearchTab(research[activeTab]);
+      setActiveTab('research');
+    } else if (activeTab !== 'research') {
+      setResearchTab('base');
+    }
   }, [activeTab]);
 
   const navigate = useNavigate();
@@ -655,17 +666,28 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'opportunities' && (
-            <OpportunitiesView
-              opportunities={opportunities}
-              users={usersList}
+          {activeTab === 'research' && (
+            <ResearchView
               currentUser={currentUser}
               isDemoView={isDemoView}
+              apiFetch={apiFetch}
               showError={showError}
               showSuccess={showSuccess}
-              refreshOpportunities={refreshOpportunities}
-              refreshProducts={refreshProducts}
-              refreshDecisions={refreshDecisions}
+              initialTab={researchTab}
+              history={
+                <OpportunitiesView
+                  readOnly
+                  opportunities={opportunities}
+                  users={usersList}
+                  currentUser={currentUser}
+                  isDemoView={isDemoView}
+                  showError={showError}
+                  showSuccess={showSuccess}
+                  refreshOpportunities={refreshOpportunities}
+                  refreshProducts={refreshProducts}
+                  refreshDecisions={refreshDecisions}
+                />
+              }
             />
           )}
 
@@ -738,32 +760,12 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'ai-team' && (
-            <AiTeamView
-              currentUser={currentUser}
-              isDemoView={isDemoView}
-              apiFetch={apiFetch}
-              showError={showError}
-              showSuccess={showSuccess}
-            />
-          )}
-
           {activeTab === 'brands' && (
             <BrandsView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
           )}
 
           {activeTab === 'meta-credit' && (
             <AccountCreditView currentUser={currentUser} isDemoView={isDemoView} apiFetch={apiFetch} showError={showError} />
-          )}
-
-          {activeTab === 'campaign-base' && (
-            <CampaignBaseView
-              currentUser={currentUser}
-              isDemoView={isDemoView}
-              apiFetch={apiFetch}
-              showError={showError}
-              showSuccess={showSuccess}
-            />
           )}
 
           {activeTab === 'creative-performance' && (

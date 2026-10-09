@@ -10,6 +10,10 @@ import { SecondOpinionProvider, gptSecondOpinion } from './gptSecondOpinion';
 import { beginDecision, DecisionContext } from '../../db/decisionEvents';
 import { buildLaunchFromSheet, LaunchSheetError } from './launchSheet';
 import { LaunchPlanService, LaunchPlanError } from '../launchPlans/launchPlanService';
+import { VALIDATION_CHECKS, AI_RULES } from '../research/criteriaTexts';
+import { CriteriaService } from '../research/criteriaService';
+
+export { VALIDATION_CHECKS };
 
 // NORQVA-0017 (fase 3): AI team. An opportunity (from our account ranking, the EU market or a manual brief)
 // is evaluated by Claude (routine) with a GPT second opinion, then Claude builds a campaign plan whose
@@ -29,14 +33,7 @@ export const TASK_KINDS: TaskKind[] = ['EVALUATE', 'VALIDATE', 'PLAN'];
 
 // NORQVA-0021 (P2): validator gate — Claude in critic mode challenges the analysis with a fixed checklist.
 export const VALIDATION_VERDICTS = ['APROVA', 'REPROVA', 'PEDE_EVIDENCIA'] as const;
-export const VALIDATION_CHECKS: { key: string; label: string }[] = [
-  { key: 'AMOSTRA', label: 'Tamanho da amostra e confiança dos dados' },
-  { key: 'CONTA_FECHA', label: 'CPA alcançável × CPA de equilíbrio (a conta fecha?)' },
-  { key: 'CLAIMS', label: 'Afirmações cobertas por claims VERIFIED do produto' },
-  { key: 'SATURACAO', label: 'Saturação do nicho, do público e do criativo' },
-  { key: 'ATRIBUICAO', label: 'Confiabilidade da atribuição das vendas' },
-  { key: 'CONCORRENCIA', label: 'Concorrência e diferenciação da oferta' }
-];
+// NORQVA-0029: o checklist fica em services/research/criteriaTexts.ts (validado na tela Pesquisa)
 const CHECK_STATUSES = ['OK', 'ALERTA', 'FALHA'] as const;
 export const OVERRIDE_MIN_CHARS = 20;
 
@@ -64,7 +61,8 @@ export class OpportunityService {
     private factory = new CreativeFactoryService(),
     private intel = new CampaignIntelligenceService(),
     private market = new MarketEuService(),
-    private launchPlans = new LaunchPlanService()
+    private launchPlans = new LaunchPlanService(),
+    private criteria = new CriteriaService()
   ) {}
 
   async list(pool: Pool, isDemo: boolean) {
@@ -186,18 +184,16 @@ export class OpportunityService {
       this.market.listNiches(pool).catch(() => [])
     ]);
     const adRank = await this.intel.getCampaignBase(pool, { level: 'ad', is_demo: isDemo }).catch(() => null);
+    const crit = await this.criteria.effective(pool);
     return {
       products: products.rows.map(p => ({ ...p, description: clip(p.description, 600), breakeven_cpa: breakeven.get(String(p.id)) ?? null })),
       offers: offers.rows,
       verified_claims: claims.rows,
       account_top_ads: adRank ? adRank.rows.slice(0, 10).map(r => ({ name: r.name, product: r.product_name, score: r.score, classification: r.classification, spend: r.totals.spend, sales: r.totals.sales, ctr_link: r.metrics.ctr_link, hook_rate: r.metrics.hook_rate, reason: r.reason, creative: r.creative })) : [],
       eu_niches: (niches as any[]).map(n => ({ id: n.id, name: n.name, score: n.score, classification: n.classification, stats: n.stats })),
-      rules: [
-        'Nunca publicar, pausar ou mudar orçamento na Meta; o dono aprova.',
-        'Só usar afirmações das claims VERIFIED do produto escolhido (claim_codes).',
-        'Nunca prometer acesso vitalício nem resultado financeiro garantido.',
-        'Nome do anúncio = chave do criativo = utm_content.'
-      ]
+      rules: AI_RULES,
+      // NORQVA-0029: limites numéricos em vigor e se o dono já os validou
+      criteria: { version: crit.version, validated: crit.validated, numbers: crit.numbers }
     };
   }
 
@@ -229,8 +225,13 @@ export class OpportunityService {
     if (!(VERDICTS as readonly string[]).includes(verdict)) throw new OpportunityError(400, `verdict deve ser ${VERDICTS.join(', ')}.`);
     const summary = clip(body?.summary, 4000);
     if (!summary) throw new OpportunityError(400, 'Envie o resumo (summary).');
+    // NORQVA-0029: guarda a versão dos critérios validada no momento da avaliação. null = nada validado ou
+    // textos mudados depois da última validação (a avaliação não seguiu critérios validados por inteiro).
+    const crit = await this.criteria.effective(pool);
+    const criteriaVersion = crit.validated ? crit.version : null;
     const evaluation = {
       by: 'Claude',
+      criteria_version: criteriaVersion,
       score,
       verdict,
       summary,
@@ -244,6 +245,7 @@ export class OpportunityService {
       status: 'AVALIADA',
       ai_score: score,
       verdict,
+      criteria_version: criteriaVersion,
       evaluation: JSON.stringify(evaluation),
       task_status: 'DONE',
       task_response: clip(body?.summary, 500),
@@ -449,6 +451,18 @@ export class OpportunityService {
     const d = String(decision || '').toUpperCase();
     if (d === 'APROVADA' && o.status !== 'PLANO_PRONTO') throw new OpportunityError(409, 'Só é possível aprovar um plano pronto.');
     if (!['APROVADA', 'DESCARTADA'].includes(d)) throw new OpportunityError(400, 'Decisão deve ser APROVADA ou DESCARTADA.');
+    // NORQVA-0029: na conta real, aprovar plano exige critérios validados pelo dono (aba Critérios da Pesquisa)
+    if (d === 'APROVADA' && !o.is_demo) {
+      const crit = await this.criteria.effective(pool);
+      if (!crit.validated) {
+        throw new OpportunityError(
+          409,
+          crit.texts_changed
+            ? 'Os critérios mudaram depois da última validação. Valide-os de novo na aba Critérios antes de aprovar o plano.'
+            : 'Os critérios de avaliação ainda não foram validados. Valide-os na aba Critérios antes de aprovar o plano.'
+        );
+      }
+    }
     const out = await this.patch(pool, id, { status: d, decided_by: userId, decided_at: new Date().toISOString() });
     await writeAuditLog(pool, userId, 'OPPORTUNITY_DECIDED', `${o.human_id}: ${d}`, null, null, o.is_demo).catch(() => {});
     return out;

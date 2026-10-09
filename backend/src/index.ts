@@ -123,6 +123,7 @@ import {
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
 import { getShortlist, sendShortlist } from './controllers/shortlistController';
+import { getResearchCriteria, createResearchCriteriaDraft, validateResearchCriteria } from './controllers/researchController';
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan, automationOpportunityValidation, overrideAiValidation } from './controllers/aiTeamController';
@@ -456,7 +457,11 @@ app.post('/api/brands/:id/provision/pixel', requireRole(['ADMIN']), provisionBra
 app.post('/api/brands/:id/verify', requireRole(['ADMIN']), verifyBrandAssets);
 app.put('/api/brands/:id/pixel-routing', requireRole(['ADMIN']), setBrandPixelRouting);
 // NORQVA-0017 (fase 3): time de IAs (oportunidade → avaliação → plano → lote na Fábrica)
-app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE']), listAiOpportunities);
+// NORQVA-0029: tela Pesquisa — leitura para os mesmos perfis das telas antigas (inclui OPERATIONS)
+app.get('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listAiOpportunities);
+app.get('/api/research/criteria', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getResearchCriteria);
+app.post('/api/research/criteria/drafts', requireRole(['ADMIN']), createResearchCriteriaDraft);
+app.post('/api/research/criteria/:version/validate', requireRole(['ADMIN']), validateResearchCriteria);
 app.post('/api/ai-team/opportunities', requireRole(['ADMIN', 'INTELLIGENCE']), createAiOpportunity);
 app.post('/api/ai-team/opportunities/:id/dispatch', requireRole(['ADMIN']), dispatchAiOpportunity);
 app.post('/api/ai-team/opportunities/:id/decision', requireRole(['ADMIN']), decideAiOpportunity);

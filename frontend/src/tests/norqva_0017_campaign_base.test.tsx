@@ -75,8 +75,9 @@ describe('NORQVA-0017 — Base de campanhas', () => {
     expect(screen.queryByRole('button', { name: /Importar histórico/ })).toBeNull();
   });
 
-  it('is in the sidebar', () => {
+  // NORQVA-0029: a Base fica dentro da tela Pesquisa
+  it('is in the sidebar (inside Pesquisa)', () => {
     render(<Sidebar currentUser={{ id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any} activeTab="dashboard" setActiveTab={vi.fn()} handleSignOut={vi.fn()} />);
-    expect(screen.getByText('Base de campanhas')).toBeInTheDocument();
+    expect(screen.getByText('Pesquisa')).toBeInTheDocument();
   });
 });

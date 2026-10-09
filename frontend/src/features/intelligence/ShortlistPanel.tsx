@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, Send, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { ClassBadge, ScoreBar, brl, pct, CLASS_META, IntelClass } from './CampaignBaseView';
 
@@ -88,6 +88,16 @@ export function criteriaQuery(c: ShortlistCriteria): string {
   return p.toString();
 }
 
+/** NORQVA-0029: sem ajuste na tela, os limites numéricos vêm dos critérios validados no servidor. */
+export function baseQuery(c: ShortlistCriteria): string {
+  return new URLSearchParams({
+    limit: String(c.limit),
+    levels: c.levels.join(','),
+    classes: c.classes.join(','),
+    require_product: String(c.require_product)
+  }).toString();
+}
+
 interface Props {
   mode: 'demo' | 'real';
   periodQs: string;
@@ -98,9 +108,15 @@ interface Props {
 }
 
 export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFetch, showError, showSuccess }) => {
-  const [criteria, setCriteria] = useState<ShortlistCriteria>(DEFAULT_SHORTLIST_CRITERIA);
+  // null = usar os limites dos critérios validados (servidor); objeto = ajuste feito só nesta tela
+  const [applied, setCriteria] = useState<ShortlistCriteria | null>(null);
   const [draft, setDraft] = useState<ShortlistCriteria>(DEFAULT_SHORTLIST_CRITERIA);
   const [data, setData] = useState<ShortlistResponse | null>(null);
+  const draftTouched = useRef(false);
+  const editDraft = (c: ShortlistCriteria) => {
+    draftTouched.current = true;
+    setDraft(c);
+  };
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showCriteria, setShowCriteria] = useState(false);
@@ -109,27 +125,31 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await apiFetch(`/intelligence/shortlist?mode=${mode}&${criteriaQuery(criteria)}${periodQs ? `&${periodQs}` : ''}`);
+      const q = applied ? criteriaQuery(applied) : baseQuery(DEFAULT_SHORTLIST_CRITERIA);
+      const raw = await apiFetch(`/intelligence/shortlist?mode=${mode}&${q}${periodQs ? `&${periodQs}` : ''}`);
       const r: ShortlistResponse = {
-        criteria: raw?.criteria || criteria,
+        criteria: raw?.criteria || applied || DEFAULT_SHORTLIST_CRITERIA,
         candidates: Array.isArray(raw?.candidates) ? raw.candidates : [],
         pool: raw?.pool || { campaign: 0, ad: 0 },
         excluded: raw?.excluded || { total: 0, by_reason: {} },
         note: raw?.note || null
       };
       setData(r);
+      // Formulário segue os critérios do servidor só enquanto ninguém mexeu nele
+      if (!applied && !draftTouched.current) setDraft(r.criteria);
       setSelected(new Set(r.candidates.filter(c => !c.opportunity).map(c => `${c.level}:${c.key}`)));
     } catch (e: any) {
       showError(e?.message || 'Falha ao montar a lista de candidatos.');
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, mode, criteria, periodQs]);
+  }, [apiFetch, mode, applied, periodQs]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const criteria: ShortlistCriteria = applied || data?.criteria || DEFAULT_SHORTLIST_CRITERIA;
   const candidates = data?.candidates || [];
   const sendable = useMemo(() => candidates.filter(c => !c.opportunity && selected.has(`${c.level}:${c.key}`)), [candidates, selected]);
 
@@ -171,7 +191,7 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
         step={step}
         aria-label={label}
         value={draft[field]}
-        onChange={e => setDraft({ ...draft, [field]: Number(e.target.value) })}
+        onChange={e => editDraft({ ...draft, [field]: Number(e.target.value) })}
         className="w-28 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
       />
     </label>
@@ -236,7 +256,7 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
                 aria-label="Teto do CPA"
                 value={draft.max_cpa_ratio ?? ''}
                 placeholder="sem teto"
-                onChange={e => setDraft({ ...draft, max_cpa_ratio: e.target.value === '' ? null : Number(e.target.value) })}
+                onChange={e => editDraft({ ...draft, max_cpa_ratio: e.target.value === '' ? null : Number(e.target.value) })}
                 className="w-28 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
               />
             </label>
@@ -245,19 +265,19 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
             <span className="text-[11px] text-slate-500">Níveis:</span>
             {(['campaign', 'ad'] as ShortLevel[]).map(l => (
               <label key={l} className="inline-flex items-center gap-1">
-                <input type="checkbox" checked={draft.levels.includes(l)} onChange={() => setDraft({ ...draft, levels: toggleIn(draft.levels, l) })} />
+                <input type="checkbox" checked={draft.levels.includes(l)} onChange={() => editDraft({ ...draft, levels: toggleIn(draft.levels, l) })} />
                 {l === 'campaign' ? 'Campanhas' : 'Anúncios'}
               </label>
             ))}
             <span className="ml-2 text-[11px] text-slate-500">Classes:</span>
             {(Object.keys(CLASS_META) as IntelClass[]).map(c => (
               <label key={c} className="inline-flex items-center gap-1">
-                <input type="checkbox" checked={draft.classes.includes(c)} onChange={() => setDraft({ ...draft, classes: toggleIn(draft.classes, c) })} />
+                <input type="checkbox" checked={draft.classes.includes(c)} onChange={() => editDraft({ ...draft, classes: toggleIn(draft.classes, c) })} />
                 {CLASS_META[c].label}
               </label>
             ))}
             <label className="ml-2 inline-flex items-center gap-1">
-              <input type="checkbox" checked={draft.require_product} onChange={() => setDraft({ ...draft, require_product: !draft.require_product })} />
+              <input type="checkbox" checked={draft.require_product} onChange={() => editDraft({ ...draft, require_product: !draft.require_product })} />
               Só com produto identificado
             </label>
           </div>
@@ -270,12 +290,13 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
             </button>
             <button
               onClick={() => {
-                setDraft(DEFAULT_SHORTLIST_CRITERIA);
-                setCriteria(DEFAULT_SHORTLIST_CRITERIA);
+                draftTouched.current = false;
+                if (!applied && data) setDraft(data.criteria);
+                setCriteria(null);
               }}
               className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
             >
-              Restaurar padrão
+              Voltar aos critérios validados
             </button>
           </div>
         </div>

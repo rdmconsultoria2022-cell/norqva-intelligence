@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { ShortlistService, parseCriteria } from '../services/aiTeam/shortlistService';
+import { ShortlistService, parseCriteria, shortlistDefaults } from '../services/aiTeam/shortlistService';
+import { CriteriaService } from '../services/research/criteriaService';
 import { OpportunityError } from '../services/aiTeam/opportunityService';
 import { resolvePeriodFilter } from '../utils/commercialTimezone';
 
@@ -28,7 +29,9 @@ function period(req: AuthenticatedRequest) {
 export async function getShortlist(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
-    const out = await service.build(pool, parseCriteria(req.query as Record<string, unknown>), { ...period(req), is_demo: isDemoReq(req) });
+    // NORQVA-0029: os padrões vêm dos critérios validados (sem validação = valores de sempre)
+    const defaults = shortlistDefaults((await new CriteriaService().effective(pool)).numbers);
+    const out = await service.build(pool, parseCriteria(req.query as Record<string, unknown>, defaults), { ...period(req), is_demo: isDemoReq(req) });
     return res.status(200).json(out);
   } catch (err) {
     console.error('[SHORTLIST]', err);
@@ -39,7 +42,8 @@ export async function getShortlist(req: AuthenticatedRequest, res: Response) {
 export async function sendShortlist(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
-    const criteria = req.body?.criteria ? parseCriteria(req.body.criteria) : null;
+    const defaults = shortlistDefaults((await new CriteriaService().effective(pool)).numbers);
+    const criteria = req.body?.criteria ? parseCriteria(req.body.criteria, defaults) : null;
     const out = await service.send(pool, req.body?.items, criteria, req.user?.id || null, isDemoReq(req));
     return res.status(out.created.length ? 201 : 200).json(out);
   } catch (err) {

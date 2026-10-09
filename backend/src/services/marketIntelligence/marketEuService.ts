@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { CriteriaNumbers, DEFAULT_NUMBERS, CriteriaService } from '../research/criteriaService';
 
 // NORQVA-0017 (fase 2): European market via the official Ad Library API (ads_archive).
 // Meta only returns third-party COMMERCIAL ads delivered in the EU (DSA); Brazil is out of reach
@@ -129,13 +130,21 @@ export interface NicheStats {
  * Validation score 0–100 (log scales, so a few giants don't dominate):
  * 40% long-running active ads, 25% distinct advertisers, 20% EU reach, 15% momentum (new ads in 7 days).
  */
-export function scoreNiche(s: NicheStats): { score: number; classification: NicheClass; reason: string } {
-  if (s.ads_total < 5) {
-    return { score: 0, classification: 'SEM_DADOS', reason: 'Menos de 5 anúncios encontrados: ajuste os termos de busca ou aguarde a próxima coleta.' };
+export function scoreNiche(s: NicheStats, rules: CriteriaNumbers = DEFAULT_NUMBERS): { score: number; classification: NicheClass; reason: string } {
+  // NORQVA-0029: pesos e notas de corte vêm dos critérios validados na tela Pesquisa
+  const R = rules;
+  if (s.ads_total < R.eu_min_ads) {
+    return { score: 0, classification: 'SEM_DADOS', reason: `Menos de ${R.eu_min_ads} anúncios encontrados: ajuste os termos de busca ou aguarde a próxima coleta.` };
   }
   const lg = (x: number, full: number) => Math.min(1, Math.log10(1 + Math.max(0, x)) / Math.log10(1 + full));
-  const score = Math.round(100 * (0.4 * lg(s.long_runners, 50) + 0.25 * lg(s.advertisers, 30) + 0.2 * lg(s.total_reach, 10_000_000) + 0.15 * Math.min(1, s.new_ads_7d / 20)));
-  const classification: NicheClass = score >= 70 ? 'VALIDADO' : score >= 45 ? 'PROMISSOR' : 'FRACO';
+  const score = Math.round(
+    100 *
+      (R.eu_w_long_runners * lg(s.long_runners, 50) +
+        R.eu_w_advertisers * lg(s.advertisers, 30) +
+        R.eu_w_reach * lg(s.total_reach, 10_000_000) +
+        R.eu_w_momentum * Math.min(1, s.new_ads_7d / 20))
+  );
+  const classification: NicheClass = score >= R.eu_validated_min ? 'VALIDADO' : score >= R.eu_promising_min ? 'PROMISSOR' : 'FRACO';
   const reason =
     `${s.long_runners} anúncio(s) ativos há 30+ dias, ${s.advertisers} anunciante(s), ` +
     `alcance UE ${s.total_reach.toLocaleString('pt-BR')}, ${s.new_ads_7d} novo(s) em 7 dias.`;
@@ -168,6 +177,7 @@ export class MarketEuService {
 
   async listNiches(pool: Pool) {
     const today = new Date().toISOString().slice(0, 10);
+    const crit = await new CriteriaService().effective(pool);
     const [niches, ads, growth] = await Promise.all([
       pool.query(`SELECT * FROM market_niches ORDER BY is_active DESC, name`),
       pool.query(`SELECT niche_id, page_id, start_date, stop_date, is_active, eu_total_reach FROM market_eu_ads`),
@@ -205,7 +215,7 @@ export class MarketEuService {
       const st: NicheStats = s
         ? { ads_total: s.ads_total, active_ads: s.active_ads, advertisers: s.pages.size, long_runners: s.long_runners, total_reach: s.total_reach, new_ads_7d: s.new_ads_7d, reach_growth_7d: growthBy.get(String(n.id)) || 0 }
         : { ads_total: 0, active_ads: 0, advertisers: 0, long_runners: 0, total_reach: 0, new_ads_7d: 0, reach_growth_7d: 0 };
-      return { ...n, stats: st, ...scoreNiche(st) };
+      return { ...n, stats: st, ...scoreNiche(st, crit.numbers) };
     }).sort((a: any, b: any) => Number(b.is_active) - Number(a.is_active) || b.score - a.score);
   }
 
