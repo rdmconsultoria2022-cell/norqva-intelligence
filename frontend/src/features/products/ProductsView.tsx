@@ -140,12 +140,14 @@ export const ProductsView: React.FC<Props> = ({
     if (initialOpen === 'all') setOpen(new Set(products.map(p => String(p.id))));
   }, [initialOpen, products.length]);
 
+  // Marcas: leitura para os perfis que o servidor aceita; trocar continua só ADMIN
+  const canReadBrands = ['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE'].includes(role);
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canReadBrands) return;
     apiFetch('/brands')
       .then((r: any) => setBrands(Array.isArray(r?.brands) ? r.brands : []))
       .catch(() => setBrands([]));
-  }, [isAdmin, apiFetch]);
+  }, [canReadBrands, apiFetch]);
 
   const toggle = (id: string) =>
     setOpen(prev => {
