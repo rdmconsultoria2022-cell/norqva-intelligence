@@ -33,6 +33,91 @@ const STATUS_CLS: Record<string, string> = {
   PAUSADA: 'bg-amber-950/60 border border-amber-500/30 text-amber-400'
 };
 
+
+/** NORQVA-0031: custos por venda da oferta (ADMIN) e o CPA de equilíbrio que sai deles. */
+export const OfferCosts: React.FC<{
+  off: any;
+  apiFetch: (url: string, options?: RequestInit) => Promise<any>;
+  showError: (msg: string) => void;
+  showSuccess: (msg: string) => void;
+}> = ({ off, apiFetch, showError, showSuccess }) => {
+  const mode = off.is_demo ? 'demo' : 'real';
+  const [loaded, setLoaded] = useState(false);
+  const [configured, setConfigured] = useState(false);
+  const [form, setForm] = useState({ tax: '0', fixed: '1,99', pct: '0', other: '0', margin: '0' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/offers/${off.id}/unit-economics?mode=${mode}`)
+      .then((r: any) => {
+        if (cancelled) return;
+        const u = r?.unit_economics;
+        if (u) {
+          const pctStr = (v: number) => String(Math.round(v * 10000) / 100).replace('.', ',');
+          setForm({ tax: pctStr(u.tax_rate), fixed: String(u.gateway_fixed_fee).replace('.', ','), pct: pctStr(u.gateway_pct_fee), other: String(u.other_variable_cost).replace('.', ','), margin: pctStr(u.target_net_margin) });
+          setConfigured(true);
+        }
+        setLoaded(true);
+      })
+      .catch(() => !cancelled && setLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [off.id, mode, apiFetch]);
+
+  const n = (v: string) => Number(String(v).replace(',', '.'));
+  const price = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '' && parseFloat(off.promotional_price) > 0 ? parseFloat(off.promotional_price) : parseFloat(off.price);
+  const valid = [form.tax, form.fixed, form.pct, form.other, form.margin].every(v => String(v).trim() !== '' && Number.isFinite(n(v)) && n(v) >= 0);
+  const costPerSale = valid ? price * (n(form.tax) / 100) + n(form.fixed) + price * (n(form.pct) / 100) + n(form.other) : null;
+  const breakeven = costPerSale === null ? null : Math.round((price - costPerSale) * 100) / 100;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await apiFetch(`/offers/${off.id}/unit-economics?mode=${mode}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tax_rate: n(form.tax) / 100, gateway_fixed_fee: n(form.fixed), gateway_pct_fee: n(form.pct) / 100, other_variable_cost: n(form.other), target_net_margin: n(form.margin) / 100 })
+      });
+      setConfigured(true);
+      showSuccess(`Custos de ${off.human_id} salvos. Equilíbrio: R$ ${breakeven?.toFixed(2).replace('.', ',')} por venda.`);
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível salvar os custos.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!loaded) return <p className="text-[11px] text-slate-500">Carregando custos…</p>;
+  const field = (label: string, key: keyof typeof form, hint: string) => (
+    <label className="flex flex-col gap-0.5">
+      <span className="text-[10px] text-slate-400">{label}</span>
+      <input aria-label={label} inputMode="decimal" value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-slate-100" />
+      <span className="text-[10px] text-slate-500">{hint}</span>
+    </label>
+  );
+  return (
+    <div className="space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2 text-xs" data-testid="offer-costs">
+      {!configured && <p className="text-amber-300 text-[11px]">Custos ainda não cadastrados: o sistema não sabe o equilíbrio desta oferta.</p>}
+      <div className="grid grid-cols-2 gap-2">
+        {field('Imposto (%)', 'tax', 'sobre o preço')}
+        {field('Tarifa fixa do gateway (R$)', 'fixed', 'Asaas Pix: 1,99')}
+        {field('Tarifa do gateway (%)', 'pct', 'sobre o preço')}
+        {field('Outros custos por venda (R$)', 'other', 'ex.: entrega')}
+        {field('Margem desejada (%)', 'margin', 'só referência')}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-slate-300" data-testid="offer-breakeven">
+          {breakeven === null ? 'Preencha os campos com números.' : `Equilíbrio: R$ ${breakeven.toFixed(2).replace('.', ',')} por venda (custos R$ ${costPerSale!.toFixed(2).replace('.', ',')})`}
+        </span>
+        <button onClick={save} disabled={busy || !valid || breakeven === null || breakeven <= 0} className="rounded bg-emerald-600 px-2.5 py-1 font-semibold text-white disabled:opacity-40" data-testid="save-offer-costs">
+          Salvar custos
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const OfferCard: React.FC<{
   off: any;
   canEdit: boolean;
@@ -40,7 +125,9 @@ export const OfferCard: React.FC<{
   onCheckout: (o: any) => void;
   onUpdateOfferStatus: (id: string, status: string) => void;
   onManageAssets: (o: any) => void;
-}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets }) => {
+  costs?: React.ReactNode;
+}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs }) => {
+  const [showCosts, setShowCosts] = useState(false);
   const hasPromo = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '' && parseFloat(off.promotional_price) > 0;
   const isCheckoutEligible = off.status === 'TESTE' || off.status === 'ATIVA';
   const statusBtn = (label: string, next: string, cls: string) => (
@@ -73,6 +160,17 @@ export const OfferCard: React.FC<{
           {off.cross_sell ? ` · Cross: ${off.cross_sell}` : ''}
         </div>
       </div>
+
+      {isAdmin && costs && (
+        <button
+          onClick={() => setShowCosts(!showCosts)}
+          data-testid="toggle-offer-costs"
+          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
+        >
+          Custos e equilíbrio
+        </button>
+      )}
+      {isAdmin && showCosts && costs}
 
       {isAdmin && (
         <button
@@ -293,7 +391,7 @@ export const ProductsView: React.FC<Props> = ({
                   <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3" data-testid="product-offers">
                     {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
-                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} />
+                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
                     ))}
                   </div>
                 )}
@@ -308,7 +406,7 @@ export const ProductsView: React.FC<Props> = ({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ofertas de produtos fora desta lista</h3>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {orphanOffers.map(off => (
-              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} />
+              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
             ))}
           </div>
         </section>
