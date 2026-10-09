@@ -2452,6 +2452,11 @@ export interface AuthorizedCustomerAccess {
   statusCode?: number;
 }
 
+/** NORQVA-0032: entre as linhas de um pedido (uma por item), a do item principal; sem item, a primeira. */
+function pickMainItemRow(rows: any[]): any {
+  return rows.find(r => r.is_bump === false) || rows.find(r => !r.is_bump) || rows[0];
+}
+
 export async function authorizeCustomerOrderAccess(
   pool: Pool,
   orderId: string,
@@ -2472,20 +2477,19 @@ export async function authorizeCustomerOrderAccess(
     const sessionRes = await pool.query(
       `SELECT ocs.id as session_id, ocs.order_id, ocs.status as session_status, ocs.expires_at,
               o.id, o.status, o.total_amount, o.is_demo, o.created_at, o.updated_at,
-              oi.offer_id, oi.quantity,
+              oi.offer_id, oi.quantity, oi.is_bump,
               of.human_id as offer_human_id, of.name as offer_name
        FROM order_customer_sessions ocs
        JOIN orders o ON ocs.order_id = o.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN offers of ON of.id = oi.offer_id
-       WHERE ocs.order_id = $1 AND ocs.session_token_hash = $2
-       ORDER BY oi.is_bump ASC, oi.created_at ASC
-       LIMIT 1`,
+       WHERE ocs.order_id = $1 AND ocs.session_token_hash = $2`,
       [orderId, computedHash]
     );
 
     if (sessionRes.rows.length > 0) {
-      const session = sessionRes.rows[0];
+      // NORQVA-0032: com adicional há uma linha por item; vale a do item principal
+      const session = pickMainItemRow(sessionRes.rows);
 
       if (session.session_status !== 'ACTIVE') {
         return {
@@ -2520,14 +2524,12 @@ export async function authorizeCustomerOrderAccess(
   const orderRes = await pool.query(
     `SELECT o.id, o.status, o.total_amount, o.is_demo, o.created_at, o.updated_at,
             o.checkout_token_hash, o.checkout_token_expires_at, o.checkout_token_revoked_at,
-            oi.offer_id, oi.quantity,
+            oi.offer_id, oi.quantity, oi.is_bump,
             of.human_id as offer_human_id, of.name as offer_name
      FROM orders o
      LEFT JOIN order_items oi ON oi.order_id = o.id
      LEFT JOIN offers of ON of.id = oi.offer_id
-     WHERE o.id = $1
-     ORDER BY oi.is_bump ASC, oi.created_at ASC
-     LIMIT 1`,
+     WHERE o.id = $1`,
     [orderId]
   );
 
@@ -2539,7 +2541,7 @@ export async function authorizeCustomerOrderAccess(
     };
   }
 
-  const legacyOrder = orderRes.rows[0];
+  const legacyOrder = pickMainItemRow(orderRes.rows);
 
   if (legacyOrder.checkout_token_hash !== computedHash) {
     return {
@@ -2673,13 +2675,10 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
         offer_id: order.offer_id || null,
         quantity: order.quantity ? parseInt(String(order.quantity), 10) : 1,
         // NORQVA-0032: todas as ofertas do pedido (principal primeiro; o adicional depois)
-        offer_human_ids: (
-          await pool.query(
-            `SELECT of.human_id FROM order_items oi JOIN offers of ON of.id = oi.offer_id
-             WHERE oi.order_id = $1 ORDER BY oi.is_bump ASC, oi.created_at ASC`,
-            [order.id]
-          )
-        ).rows.map((r: any) => r.human_id),
+        offer_human_ids: await pool
+          .query(`SELECT of.human_id, oi.is_bump FROM order_items oi JOIN offers of ON of.id = oi.offer_id WHERE oi.order_id = $1`, [order.id])
+          .then(r => [...r.rows].sort((a: any, b: any) => Number(!!a.is_bump) - Number(!!b.is_bump)).map((x: any) => x.human_id))
+          .catch(() => (order.offer_human_id ? [order.offer_human_id] : [])),
         is_demo: order.is_demo,
         // D-0009 (fase B): pixel da marca para o Purchase do navegador (null = pixel padrão)
         meta_pixel_id: await resolveBrandPixelId(pool, { orderId: order.id }),
@@ -4278,15 +4277,15 @@ export async function claimOrderRecovery(req: any, res: Response) {
       `SELECT ort.id as recovery_id, ort.order_id, ort.status as recovery_status, ort.expires_at,
               o.status as order_status, o.is_demo,
               oi.offer_id, oi.offer_name_snapshot,
-              of.human_id as offer_human_id,
-              EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE') as has_active_delivery
+              of.human_id as offer_human_id, oi.is_bump,
+              d.status as delivery_status
        FROM order_recovery_tokens ort
        JOIN orders o ON ort.order_id = o.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN offers of ON of.id = oi.offer_id
+       LEFT JOIN order_deliveries d ON d.order_id = o.id
        WHERE ort.token_hash = $1
-       ORDER BY oi.is_bump ASC, oi.created_at ASC
-       LIMIT 1`,
+       ORDER BY oi.id ASC NULLS LAST`,
       [tokenHash]
     );
 
@@ -4295,7 +4294,7 @@ export async function claimOrderRecovery(req: any, res: Response) {
       return res.status(404).json({ error: 'Chave de recuperação não encontrada ou inválida.' });
     }
 
-    const row = result.rows[0];
+    const row = { ...pickMainItemRow(result.rows), has_active_delivery: result.rows.some((r: any) => r.delivery_status === 'ACTIVE') };
 
     // Check order and delivery eligibility FIRST
     if (row.order_status !== 'PAID') {

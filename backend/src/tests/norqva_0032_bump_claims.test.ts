@@ -78,8 +78,8 @@ describe.sequential('NORQVA-0032 — adicional no Pix e promessas', () => {
     );
     for (const [id, path] of [[mainAsset, 'books/0032-main.pdf'], [bumpAsset, 'books/0032-bump.pdf']]) {
       await pool.query(
-        `INSERT INTO digital_assets (id, name, storage_provider, storage_bucket, storage_path, is_demo) VALUES ($1, $2, 'SUPABASE', 'digital-products', $2, true)`,
-        [id, path]
+        `INSERT INTO digital_assets (id, name, storage_provider, storage_bucket, storage_path, is_demo) VALUES ($1, $2, 'SUPABASE', 'digital-products', $3, true)`,
+        [id, path, path]
       );
     }
     await pool.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [mainOffer, mainAsset]);
