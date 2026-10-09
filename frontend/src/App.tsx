@@ -754,7 +754,7 @@ export default function App() {
               }}
               onCheckout={(off: any) => setCheckoutOffer(off)}
               onUpdateOfferStatus={handleUpdateOfferStatus}
-              onProductsChanged={refreshProducts}
+              onProductsChanged={() => { refreshProducts(); refreshOffers(); }}
             />
           )}
 
