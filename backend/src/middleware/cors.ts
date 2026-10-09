@@ -39,7 +39,7 @@ export function configureCors() {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader(
         'Access-Control-Allow-Headers',
-        'Authorization, Content-Type, x-checkout-token, x-request-id, x-correlation-id, x-user-id, x-user-role, asaas-access-token'
+        'Authorization, Content-Type, x-checkout-token, x-request-id, x-correlation-id, x-user-id, x-user-role, asaas-access-token, x-file-name'
       );
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
       res.setHeader('Access-Control-Max-Age', '86400');

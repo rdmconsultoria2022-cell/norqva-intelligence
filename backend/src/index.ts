@@ -161,6 +161,7 @@ import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
+import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
 
@@ -364,6 +365,12 @@ app.put('/api/digital-assets/:id', requireRole(['ADMIN']), updateDigitalAsset);
 app.post('/api/offers/:id/digital-assets', requireRole(['ADMIN']), linkOfferDigitalAsset);
 app.get('/api/offers/:id/digital-assets', requireRole(['ADMIN', 'OPERATIONS', 'PRODUCT', 'INTELLIGENCE']), getOfferDigitalAssets);
 app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), unlinkOfferDigitalAsset);
+// NORQVA-0033: PDF entregue ao comprador, trocado pela tela (cópia de segurança antes de trocar)
+app.get('/api/offers/:id/delivery-files', requireRole(['ADMIN']), getOfferDeliveryFiles);
+app.post('/api/offers/:id/delivery-files', requireRole(['ADMIN']), pdfBody, createOfferDeliveryFile);
+app.put('/api/digital-assets/:id/file', requireRole(['ADMIN']), pdfBody, replaceDeliveryFile);
+app.post('/api/digital-assets/:id/versions/:versionId/restore', requireRole(['ADMIN']), restoreDeliveryFileVersion);
+app.get('/api/digital-assets/:id/check-link', requireRole(['ADMIN']), getDeliveryFileCheckLink);
 
 // Payment Core Diagnostics (Admin Read-Only)
 app.get('/api/admin/payments/validate-connection', requireRole(['ADMIN']), validatePaymentConnection);
