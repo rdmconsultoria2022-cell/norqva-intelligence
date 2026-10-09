@@ -1,6 +1,6 @@
 -- NORQVA-0033: arquivo de entrega trocado pela tela, com cópia de segurança. Só aditiva.
 -- digital_assets ganha os dados do arquivo que está no endereço hoje (preenchidos quando o envio é feito pela tela).
--- digital_asset_versions: cada troca sobe o PDF novo num endereço NOVO e o cadastro passa a apontar para ele; o
+-- digital_asset_versions: cada troca sobe o PDF novo num endereço NOVO e o cadastro passa a apontar para ele, e o
 --   endereço anterior (com o arquivo intacto) entra aqui. Arquivos enviados antes desta tela não têm tamanho/sha.
 
 ALTER TABLE digital_assets ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT;
