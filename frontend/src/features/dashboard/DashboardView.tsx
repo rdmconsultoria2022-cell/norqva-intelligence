@@ -51,9 +51,10 @@ export function DashboardView({
   refreshTrigger,
   showError,
   showSuccess,
-  onViewSales
+  onViewSales,
+  section
 }: DashboardProps) {
-  const [activeSubView, setActiveSubView] = useState<'executive' | 'financial' | 'experiments'>('financial');
+  const [activeSubView, setActiveSubView] = useState<'executive' | 'financial' | 'experiments'>(section === 'overview' ? 'executive' : 'financial');
   const [execData, setExecData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
@@ -139,6 +140,7 @@ export function DashboardView({
   };
 
   useEffect(() => {
+    if (section === 'financial') return;
     fetchExecutiveData();
     return () => {
       if (activeControllerRef.current) {
@@ -148,6 +150,7 @@ export function DashboardView({
   }, [isDemoView, periodQs, refreshTrigger, apiFetch]);
 
   useEffect(() => {
+    if (section === 'overview') return;
     fetchFinancialData();
     return () => {
       if (activeFinControllerRef.current) {
@@ -316,7 +319,12 @@ export function DashboardView({
     <div className="space-y-5 sm:space-y-6 text-sm w-full max-w-full">
       {/* Top Controls: View Switcher & Data Freshness */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 sm:p-4 border border-slate-800 rounded-xl bg-slate-900/60 shadow-sm">
-        {/* Sub-view Switcher Tabs */}
+        {/* Sub-view Switcher Tabs (NORQVA-0030: some quando a tela já escolheu a seção) */}
+        {section ? (
+          <h2 className="text-sm font-bold text-slate-200" data-testid="dashboard-section-title">
+            {section === 'overview' ? 'Hoje: o que precisa de você e como estão as vendas' : 'Financeiro do período'}
+          </h2>
+        ) : (
         <div className="grid grid-cols-1 sm:flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setActiveSubView('financial')}
@@ -349,6 +357,7 @@ export function DashboardView({
             <Layers className="h-3.5 w-3.5" /> Experimentos ({experiments?.length || 0})
           </button>
         </div>
+        )}
 
         {/* Data Freshness Badges */}
         <div className="flex flex-wrap items-center gap-2 text-[10px] sm:text-[11px] font-mono text-slate-400">
