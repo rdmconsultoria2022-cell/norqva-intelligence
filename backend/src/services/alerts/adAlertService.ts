@@ -36,7 +36,6 @@ export function shouldAlertSpendWithoutSale(input: {
   return { alert: input.isActive && input.paidOrders === 0 && input.spend >= threshold, threshold };
 }
 
-/** Breakeven CPA per product (lowest among its offers with unit economics configured). */
 /** NORQVA-0032: o adicional só entra no equilíbrio depois de tantas vendas pagas com ele oferecido. */
 export const BUMP_BREAKEVEN_MIN_ORDERS = 20;
 
@@ -54,6 +53,7 @@ export async function bumpNetPerOrderByOffer(pool: Pool, isDemo = false): Promis
        JOIN offer_bumps ob ON ob.offer_id = m.offer_id AND ob.is_demo = $1
        LEFT JOIN order_items b ON b.order_id = o.id AND b.is_bump = TRUE
        WHERE o.status = 'PAID' AND o.is_demo = $1 AND o.created_at >= ob.created_at
+         AND (o.is_demo = TRUE OR o.data_provenance = 'COMMERCIAL_PRODUCTION')
        GROUP BY m.offer_id`,
       [isDemo]
     );
@@ -67,6 +67,7 @@ export async function bumpNetPerOrderByOffer(pool: Pool, isDemo = false): Promis
   return out;
 }
 
+/** Breakeven CPA per product (lowest among its offers with unit economics configured). */
 export async function breakevenByProduct(pool: Pool, isDemo = false): Promise<Map<string, number>> {
   const r = await pool.query(
     `SELECT o.id AS offer_id, o.product_id, o.price, o.promotional_price, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost

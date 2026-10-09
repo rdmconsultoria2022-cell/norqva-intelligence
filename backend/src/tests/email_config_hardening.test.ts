@@ -80,7 +80,8 @@ describe('NORQVA — Production Email & Recovery Environment Configuration Harde
         offer_id UUID REFERENCES offers(id),
         offer_name_snapshot VARCHAR(255) NOT NULL,
         quantity INT NOT NULL DEFAULT 1,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        is_bump BOOLEAN NOT NULL DEFAULT FALSE
       );
 
       CREATE TABLE order_deliveries (

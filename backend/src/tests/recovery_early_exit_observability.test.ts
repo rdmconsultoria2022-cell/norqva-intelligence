@@ -95,7 +95,8 @@ describe('NORQVA — Recovery Early Exit Observability & Canonical Schema Suite'
         offer_id UUID NOT NULL REFERENCES offers(id),
         offer_name_snapshot VARCHAR(255) NOT NULL,
         quantity INT NOT NULL DEFAULT 1,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        is_bump BOOLEAN NOT NULL DEFAULT FALSE
       );
 
       CREATE TABLE order_deliveries (

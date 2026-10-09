@@ -158,12 +158,17 @@ async function loadOrder(pool: Pool, orderId: string, isDemo: boolean) {
 async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
   const existing = await pool.query('SELECT id, status FROM order_deliveries WHERE order_id = $1', [orderId]);
   if (existing.rows.some(d => d.status === 'REVOKED')) throw new SalesError(409, 'A entrega deste pedido foi revogada.');
-  // NORQVA-0032: cria a entrega de cada arquivo que ainda falta (pedido com adicional tem mais de um)
+  // NORQVA-0032: cria a entrega só de item que ainda não tem nenhuma (o adicional de um pedido antigo, por
+  // exemplo). Não devolve arquivo trocado pelo reenvio nem entrega arquivo novo da oferta a pedido antigo.
   const created = await pool.query(
     `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status)
      SELECT oi.order_id, oi.id, oda.asset_id, 'ACTIVE'
      FROM order_items oi JOIN offer_digital_assets oda ON oda.offer_id = oi.offer_id
      WHERE oi.order_id = $1
+       AND NOT EXISTS (
+         SELECT 1 FROM order_deliveries d
+         WHERE d.order_id = oi.order_id AND (d.order_item_id = oi.id OR (d.order_item_id IS NULL AND oi.is_bump = FALSE))
+       )
      ON CONFLICT (order_id, asset_id) DO NOTHING
      RETURNING id`,
     [orderId]

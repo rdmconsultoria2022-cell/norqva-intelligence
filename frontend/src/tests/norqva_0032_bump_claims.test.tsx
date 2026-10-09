@@ -119,7 +119,7 @@ describe('NORQVA-0032 — promessas por produto', () => {
       if (url.startsWith('/products/p1/claims') && opts?.method === 'POST') {
         const b = JSON.parse(opts.body);
         claims.push({ id: `c${claims.length + 1}`, claim_text: b.claim_text, status: 'UNVERIFIED' });
-        return claims.at(-1);
+        return claims[claims.length - 1];
       }
       if (url.startsWith('/products/p1/claims')) return { claims };
       if (url.startsWith('/creative-factory/claims/')) {

@@ -808,10 +808,6 @@ export class CreativeFactoryService {
     return { creative_id: creativeId, meta_ad_id: metaAdId };
   }
 
-  /**
-   * NORQVA-0025: registra uma promessa (claim) num criativo — uma claim já existente do mesmo produto
-   * ou uma nova, que entra como UNVERIFIED. A regra de aprovação não muda: só aprova com todas verificadas.
-   */
   /** NORQVA-0032: promessas de um produto (a mesma lista que os criativos usam). */
   async listProductClaims(pool: Pool, productId: string, isDemo: boolean) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) throw new CreativeFactoryError(404, 'Produto não encontrado.');
@@ -864,6 +860,10 @@ export class CreativeFactoryService {
     return ins.rows[0];
   }
 
+  /**
+   * NORQVA-0025: registra uma promessa (claim) num criativo — uma claim já existente do mesmo produto
+   * ou uma nova, que entra como UNVERIFIED. A regra de aprovação não muda: só aprova com todas verificadas.
+   */
   async addClaimToCreative(
     pool: Pool,
     creativeId: string,

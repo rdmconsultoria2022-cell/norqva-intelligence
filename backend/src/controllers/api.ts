@@ -2479,7 +2479,7 @@ export async function authorizeCustomerOrderAccess(
        LEFT JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN offers of ON of.id = oi.offer_id
        WHERE ocs.order_id = $1 AND ocs.session_token_hash = $2
-       ORDER BY oi.is_bump ASC NULLS FIRST, oi.created_at ASC
+       ORDER BY oi.is_bump ASC, oi.created_at ASC
        LIMIT 1`,
       [orderId, computedHash]
     );
@@ -2526,7 +2526,7 @@ export async function authorizeCustomerOrderAccess(
      LEFT JOIN order_items oi ON oi.order_id = o.id
      LEFT JOIN offers of ON of.id = oi.offer_id
      WHERE o.id = $1
-     ORDER BY oi.is_bump ASC NULLS FIRST, oi.created_at ASC
+     ORDER BY oi.is_bump ASC, oi.created_at ASC
      LIMIT 1`,
     [orderId]
   );
@@ -4146,7 +4146,7 @@ export async function requestOrderRecovery(req: any, res: Response) {
       WHERE LOWER(c.email) = $1
         AND o.status = 'PAID'
         ${offerHumanId ? 'AND (of.human_id = $2 OR oi.offer_id::text = $2)' : ''}
-      ORDER BY o.created_at DESC, oi.created_at ASC, oi.id ASC
+      ORDER BY o.created_at DESC, oi.is_bump ASC, oi.created_at ASC, oi.id ASC
       LIMIT 1
     `;
     const params = offerHumanId ? [normalizedEmail, offerHumanId] : [normalizedEmail];
@@ -4279,14 +4279,13 @@ export async function claimOrderRecovery(req: any, res: Response) {
               o.status as order_status, o.is_demo,
               oi.offer_id, oi.offer_name_snapshot,
               of.human_id as offer_human_id,
-              (SELECT CASE WHEN bool_or(d.status = 'ACTIVE') THEN 'ACTIVE' ELSE MAX(d.status) END
-                 FROM order_deliveries d WHERE d.order_id = o.id) as delivery_status
+              EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE') as has_active_delivery
        FROM order_recovery_tokens ort
        JOIN orders o ON ort.order_id = o.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
        LEFT JOIN offers of ON of.id = oi.offer_id
        WHERE ort.token_hash = $1
-       ORDER BY oi.is_bump ASC NULLS FIRST, oi.created_at ASC NULLS LAST
+       ORDER BY oi.is_bump ASC, oi.created_at ASC
        LIMIT 1`,
       [tokenHash]
     );
@@ -4304,7 +4303,7 @@ export async function claimOrderRecovery(req: any, res: Response) {
       return res.status(403).json({ error: 'Acesso negado: Este pedido ainda não foi confirmado como pago.' });
     }
 
-    if (row.delivery_status !== 'ACTIVE') {
+    if (row.has_active_delivery !== true) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Acesso negado: A entrega digital para este pedido não está ativa.' });
     }
