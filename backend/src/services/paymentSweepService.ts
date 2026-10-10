@@ -12,6 +12,7 @@
 import { Pool } from 'pg';
 import { sendPaidOrderAccessEmail, PURCHASE_ACCESS_MAX_ATTEMPTS } from './purchaseAccessService';
 import { shouldCheckProvider, withTimeout } from './paymentCheckThrottle';
+import { sweepWhatsAppDeliveries } from './whatsapp/whatsappDelivery';
 
 export interface PaymentSweepDeps {
   reconcile: (paymentId: string, pool: Pool) => Promise<any>;
@@ -91,6 +92,13 @@ export async function runPaymentSweep(pool: Pool, deps: PaymentSweepDeps): Promi
     } catch (err: any) {
       console.warn('[PAYMENT SWEEP] access email error', err?.message);
     }
+  }
+
+  // 4. NORQVA-0046: acesso pelo WhatsApp para pedidos feitos na conversa (só com o servidor do WhatsApp ligado)
+  try {
+    await sweepWhatsAppDeliveries(pool);
+  } catch (err: any) {
+    console.warn('[PAYMENT SWEEP] whatsapp delivery error', err?.message);
   }
 
   return result;

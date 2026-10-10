@@ -14,7 +14,7 @@
 ## Etapas
 
 1. **Branch `ai/NORQVA-0046-whatsapp-etapa1`:** migration 056, camada do motor, números (cadastro, QR Code, status, trocar, excluir), webhook, conversas (ver, responder, assumir/devolver), tela WhatsApp na área Vendas.
-2. Entrega pelo WhatsApp após pagamento confirmado pelo Asaas.
+2. **Branch `ai/NORQVA-0046-whatsapp-etapa2`:** entrega pelo WhatsApp após pagamento confirmado pelo Asaas (migration 057, link `/acesso` próprio com finalidade WHATSAPP, uma vez por pedido, até 3 tentativas pela varredura; respeita o "parar"; o código do link não fica no histórico da conversa).
 3. Atendente com IA, condições de atendimento com versões, Pix na conversa e link do cartão.
 4. Resultados por número.
 5. Teste com o número do Ricardo e liberação.
