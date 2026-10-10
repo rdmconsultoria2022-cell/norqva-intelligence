@@ -50,6 +50,7 @@ import {
 import { MetaCapiService } from '../services/meta/metaCapiService';
 import { resolveBrandPixelId } from '../services/brands/brandService';
 import { sendPaidOrderAccessEmail, getAccessEmailStatus } from '../services/purchaseAccessService';
+import { sendPaidOrderWhatsApp } from '../services/whatsapp/whatsappDelivery';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
 import { shouldCheckProvider, withTimeout } from '../services/paymentCheckThrottle';
 import { OfferBumpService, OfferBumpError } from '../services/commerce/offerBumpService';
@@ -3746,6 +3747,8 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   // Envio único por pedido (order_access_emails); nunca lança exceção.
   if (payment.order_id) {
     await sendPaidOrderAccessEmail(pool, payment.order_id);
+    // NORQVA-0046: pedido feito pelo WhatsApp também recebe o acesso na conversa (nunca lança exceção)
+    await sendPaidOrderWhatsApp(pool, payment.order_id);
   }
 
   return {

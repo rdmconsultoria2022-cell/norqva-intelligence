@@ -50,7 +50,7 @@ export function accessUrlBase(): string | null {
 export async function issueAccessToken(
   pool: Pool,
   orderId: string,
-  purpose: 'PURCHASE' | 'RESEND' | 'MANUAL'
+  purpose: 'PURCHASE' | 'RESEND' | 'MANUAL' | 'WHATSAPP'
 ): Promise<{ rawToken: string; tokenId: string; expiresAt: Date; ttlHours: number }> {
   const rawToken = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');

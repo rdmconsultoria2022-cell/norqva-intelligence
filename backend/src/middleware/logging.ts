@@ -75,7 +75,8 @@ export function sanitizePayload(data: any): any {
 export function maskPath(p: string): string {
   return String(p || '')
     .replace(/(\/api\/whatsapp\/webhook\/[^/]+\/)[^/?]+/, '$1***')
-    .replace(/(\/api\/delivery\/)[^/?]+/, '$1***');
+    .replace(/(\/api\/delivery\/)[^/?]+/, '$1***')
+    .replace(/(\/api\/checkout\/recovery\/)(?!request)[^/?]+/, '$1***');
 }
 
 export function structuredLogger() {
