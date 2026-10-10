@@ -22,6 +22,8 @@ export interface PaymentInfo {
   installments?: number;
   /** null quando as parcelas não são iguais (o Asaas ajusta a última). */
   installment_value?: number | null;
+  /** NORQVA-0041: true quando as parcelas escolhidas têm juros (repassados ao comprador). */
+  interest?: boolean;
 }
 
 export interface PaymentStatusProps {
@@ -32,6 +34,12 @@ export interface PaymentStatusProps {
   initialPayment?: PaymentInfo | null;
   /** NORQVA-0038: meio escolhido no checkout (padrão Pix). */
   paymentMethod?: 'PIX' | 'CREDIT_CARD';
+  /** NORQVA-0041: parcelas escolhidas pelo comprador no checkout (só cartão). */
+  installments?: number;
+  /** NORQVA-0041: 'light' = visual do produto (creme e terracota); 'dark' = padrão. */
+  look?: 'dark' | 'light';
+  /** NORQVA-0041: cor principal do produto no visual 'light' (padrão terracota #B83B1E). */
+  accent?: string;
   onPaymentConfirmed?: () => void;
   onClose?: () => void;
   onBackToCheckout?: () => void;

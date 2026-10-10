@@ -651,6 +651,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
             checkoutToken={activePaymentOrder.checkout_token}
             amount={activePaymentOrder.total_amount || activePrice}
             paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
+            installments={activePaymentOrder.installments}
             isDemo={offer.is_demo}
             onPaymentConfirmed={() => {
               updatePurchaseSessionStatus(activePaymentOrder.id, 'PAID');
@@ -1101,6 +1102,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           checkoutToken={activePaymentOrder.checkout_token}
           amount={activePaymentOrder.total_amount || activePrice}
           paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
+          installments={activePaymentOrder.installments}
+          look="light"
           isDemo={offer.is_demo}
           onPaymentConfirmed={() => {
             updatePurchaseSessionStatus(activePaymentOrder.id, 'PAID');

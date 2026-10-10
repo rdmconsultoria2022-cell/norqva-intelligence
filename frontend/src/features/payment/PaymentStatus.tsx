@@ -36,6 +36,9 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   isDemo,
   initialPayment = null,
   paymentMethod = 'PIX',
+  installments,
+  look = 'dark',
+  accent = '#B83B1E',
   onPaymentConfirmed,
   onClose,
   onBackToCheckout,
@@ -86,7 +89,11 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               'Content-Type': 'application/json',
               'x-checkout-token': checkoutToken
             },
-            body: JSON.stringify({ idempotency_key: idempotencyKey }),
+            // NORQVA-0041: parcelas escolhidas pelo comprador; o servidor recalcula e valida
+            body: JSON.stringify({
+              idempotency_key: idempotencyKey,
+              ...(method === 'CREDIT_CARD' && installments && installments > 0 ? { installments } : {})
+            }),
             signal: controller.signal
           });
 
@@ -277,6 +284,144 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   const isFailed = status === 'FAILED' || status === 'EXPIRED';
   const isCard = (payment?.payment_method || paymentMethod) === 'CREDIT_CARD';
   const shownAmount = payment?.amount !== undefined && payment?.amount !== null ? payment.amount : amount;
+  const nInst = payment?.installments || 1;
+  const cardHeadline = nInst > 1
+    ? (payment?.installment_value ? `${nInst}x de ${brl(payment?.installment_value)}` : `em ${nInst}x`)
+    : brl(shownAmount);
+  const cardSubline = nInst > 1
+    ? `${payment?.interest ? 'com juros' : 'sem juros'} · total ${brl(shownAmount)}`
+    : 'à vista no cartão';
+
+  // NORQVA-0041: visual do produto (creme, terracota, títulos com serifa), no mesmo tom do checkout.
+  if (look === 'light') {
+    const accentStyle = { ['--pay-accent' as any]: accent } as React.CSSProperties;
+    const btn = 'w-full py-3.5 px-4 rounded-xl bg-[var(--pay-accent)] text-white hover:brightness-90 font-semibold text-sm tracking-wide flex items-center justify-center gap-2 transition shadow-md';
+    const box = 'p-5 rounded-2xl bg-white border border-stone-200 text-center';
+    const waiting = (
+      <div className="flex items-center justify-center gap-2 text-xs text-stone-500">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--pay-accent)] opacity-60"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--pay-accent)]"></span>
+        </span>
+        Aguardando o pagamento. Esta tela atualiza sozinha.
+      </div>
+    );
+    return (
+      <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4" style={accentStyle} data-testid="payment-look-light">
+        <div className="bg-[#FAF7F2] border border-stone-200 rounded-2xl max-w-md w-full p-6 text-sm text-stone-800 shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar">
+          <div className="flex items-start justify-between mb-5 pb-4 border-b border-stone-200">
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white shadow ${isConfirmed ? 'bg-[#2B5D3A]' : isFailed ? 'bg-stone-500' : 'bg-[var(--pay-accent)]'}`}>
+                {isConfirmed ? <Check className="h-5 w-5" /> : isFailed ? <AlertCircle className="h-5 w-5" /> : isCard ? <CreditCard className="h-5 w-5" /> : <QrCode className="h-5 w-5" />}
+              </div>
+              <div>
+                <h3 className="text-lg font-serif font-bold text-stone-900 leading-tight">
+                  {isConfirmed ? 'Pagamento confirmado' : isFailed ? 'Pagamento não concluído' : isCard ? 'Aguardando pagamento com cartão' : 'Aguardando pagamento Pix'}
+                </h3>
+                <p className="text-[11px] text-stone-500 mt-0.5">Pedido #{orderId.substring(0, 8)}</p>
+              </div>
+            </div>
+            {onClose && (
+              <button onClick={onClose} aria-label="Fechar" className="p-1 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition">
+                <X className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-3 text-stone-500 text-sm">
+              <Loader2 className="h-8 w-8 text-[var(--pay-accent)] animate-spin" />
+              {isCard ? 'Preparando o pagamento com cartão...' : 'Gerando o seu Pix...'}
+            </div>
+          ) : isConfirmed ? (
+            <div className="py-4 text-center space-y-4">
+              <div>
+                <h4 className="text-xl font-serif font-bold text-stone-900">Tudo certo, obrigado!</h4>
+                <p className="text-sm text-stone-600 mt-1">Seu pagamento foi confirmado e o acesso aos livros está sendo liberado.</p>
+              </div>
+              <div className={box}>
+                <div className="text-[11px] uppercase tracking-widest text-stone-500">Valor pago</div>
+                <div className="text-2xl font-serif font-bold text-[var(--pay-accent)] mt-1">{brl(shownAmount)}</div>
+              </div>
+            </div>
+          ) : isFailed ? (
+            <div className="py-4 text-center space-y-4">
+              <div>
+                <h4 className="text-lg font-serif font-bold text-stone-900">{isCard ? 'Não foi possível concluir o pagamento com cartão' : 'Não foi possível gerar o Pix'}</h4>
+                <p className="text-sm text-stone-600 mt-1">{errorMessage || 'O prazo para pagar terminou ou o pagamento não foi aprovado. Você pode tentar de novo.'}</p>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                {onBackToCheckout && (
+                  <button type="button" onClick={onBackToCheckout} className="px-5 py-2.5 rounded-xl bg-[var(--pay-accent)] text-white hover:brightness-90 text-sm font-semibold transition shadow">
+                    Tentar novamente
+                  </button>
+                )}
+                {onClose && (
+                  <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl border border-stone-300 bg-white text-stone-700 hover:bg-stone-100 text-sm font-semibold transition">
+                    Fechar
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : isCard ? (
+            <div className="space-y-4" data-testid="card-payment">
+              <div className={box}>
+                <div className="text-[11px] uppercase tracking-widest text-stone-500">No cartão de crédito</div>
+                <div className="text-3xl font-serif font-bold text-[var(--pay-accent)] mt-1">{cardHeadline}</div>
+                <div className="text-xs text-stone-600 mt-1" data-testid="card-terms">{cardSubline}</div>
+              </div>
+              {payment?.invoice_url ? (
+                <a href={payment.invoice_url} target="_blank" rel="noopener noreferrer" data-testid="card-invoice-link" className={btn}>
+                  <CreditCard className="h-4 w-4" />
+                  Pagar com cartão em ambiente seguro
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              ) : (
+                <p className="text-xs text-stone-500 text-center">O link de pagamento está chegando. Aguarde alguns segundos.</p>
+              )}
+              {waiting}
+              {rateLimitNotice && <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">{rateLimitNotice}</div>}
+              <p className="text-xs text-stone-500 text-center leading-relaxed">
+                Os dados do cartão são digitados na página do Asaas, nosso processador de pagamentos. Depois de pagar, volte a esta tela: o acesso é liberado assim que o pagamento for confirmado.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className={box}>
+                <div className="text-[11px] uppercase tracking-widest text-stone-500">Valor a pagar</div>
+                <div className="text-3xl font-serif font-bold text-[var(--pay-accent)] mt-1">{brl(amount)}</div>
+              </div>
+              {payment?.pix_qr_image && (
+                <div className="flex flex-col items-center gap-2" data-testid="pix-qr-code">
+                  <img src={`data:image/png;base64,${payment.pix_qr_image}`} alt="QR Code do Pix" className="h-48 w-48 rounded-xl bg-white p-2 border border-stone-200" />
+                  <span className="text-xs text-stone-500">Aponte a câmera do app do banco para o QR Code</span>
+                </div>
+              )}
+              {payment?.pix_copy_paste && (
+                <div>
+                  <label className="block text-[11px] uppercase tracking-widest text-stone-500 mb-1">Pix copia e cola</label>
+                  <div className="p-3 rounded-xl bg-white border border-stone-200 text-xs text-stone-600 break-all max-h-24 overflow-y-auto custom-scrollbar select-all">
+                    {payment.pix_copy_paste}
+                  </div>
+                  <button onClick={handleCopyPix} className={`mt-2 ${btn}`}>
+                    {copied ? (<><Check className="h-4 w-4" />Código copiado!</>) : (<><Copy className="h-4 w-4" />Copiar código Pix</>)}
+                  </button>
+                </div>
+              )}
+              {waiting}
+              {rateLimitNotice && <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">{rateLimitNotice}</div>}
+              <p className="text-xs text-stone-500 text-center">
+                {payment?.pix_qr_image
+                  ? 'Abra o app do seu banco, escolha Pix e escaneie o QR Code ou cole o código acima.'
+                  : 'Abra o app do seu banco, escolha Pix e cole o código acima.'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -379,12 +524,10 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
               <div className="text-[10px] font-mono text-slate-500 uppercase">No cartão de crédito</div>
               <div className="text-2xl font-black font-mono text-emerald-400 mt-0.5">
-                {(payment?.installments || 1) > 1
-                  ? (payment?.installment_value ? `${payment?.installments}x de ${brl(payment?.installment_value)}` : `em ${payment?.installments}x`)
-                  : brl(shownAmount)}
+                {cardHeadline}
               </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                {(payment?.installments || 1) > 1 ? `sem juros · total ${brl(shownAmount)}` : 'à vista no cartão'}
+              <div className="text-[11px] text-slate-400 mt-1" data-testid="card-terms">
+                {cardSubline}
               </div>
             </div>
             {payment?.invoice_url ? (

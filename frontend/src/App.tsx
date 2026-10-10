@@ -1466,6 +1466,7 @@ export default function App() {
           checkoutToken={activePaymentOrder.checkout_token || ''}
           amount={activePaymentOrder.total_amount}
           paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
+          installments={activePaymentOrder.installments}
           isDemo={isDemoView}
           onPaymentConfirmed={() => {
             const current = activePaymentOrder;
