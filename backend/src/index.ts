@@ -163,8 +163,13 @@ import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
 import {
   getWhatsAppNumbers, postWhatsAppNumber, patchWhatsAppNumber, postWhatsAppConnect, getWhatsAppNumberStatus, postWhatsAppSwap,
-  deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook
+  deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook,
+  getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler
 } from './controllers/whatsappController';
+import { attendantInboundHandler } from './services/whatsapp/attendant';
+
+// NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
+if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
@@ -378,6 +383,9 @@ app.get('/api/whatsapp/conversations', requireRole(['ADMIN', 'OPERATIONS']), get
 app.get('/api/whatsapp/conversations/:id/messages', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppMessages);
 app.post('/api/whatsapp/conversations/:id/messages', requireRole(['ADMIN', 'OPERATIONS']), postWhatsAppMessage);
 app.post('/api/whatsapp/conversations/:id/mode', requireRole(['ADMIN', 'OPERATIONS']), postWhatsAppConversationMode);
+app.get('/api/whatsapp/conditions', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConditions);
+app.put('/api/whatsapp/conditions', requireRole(['ADMIN']), putWhatsAppConditions);
+app.get('/api/whatsapp/conditions/history', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConditionHistory);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
 

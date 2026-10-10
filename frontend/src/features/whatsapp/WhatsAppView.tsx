@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageCircle, QrCode, RefreshCw, Trash2, Repeat, Send, X, UserCheck, Bot, Search } from 'lucide-react';
+import { MessageCircle, QrCode, RefreshCw, Trash2, Repeat, Send, X, UserCheck, Bot, Search, History } from 'lucide-react';
 import { UserObj } from '../../types';
 
 // NORQVA-0046: área WhatsApp — números (até 100), conexão por QR Code, troca de número e conversas.
@@ -78,7 +78,7 @@ const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString('pt-BR', {
 
 export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: WhatsAppViewProps) {
   const isAdmin = currentUser?.role === 'ADMIN';
-  const [tab, setTab] = useState<'numbers' | 'conversations'>('conversations');
+  const [tab, setTab] = useState<'numbers' | 'conversations' | 'conditions'>('conversations');
   const api = useRef(apiFetch);
   api.current = apiFetch;
 
@@ -90,21 +90,23 @@ export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: 
           <h2 className="text-lg font-bold text-slate-100">WhatsApp</h2>
         </div>
         <div className="flex gap-1 rounded border border-slate-800 p-0.5 text-xs">
-          {(['conversations', 'numbers'] as const).map(t => (
+          {(['conversations', 'numbers', 'conditions'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               aria-pressed={tab === t}
               className={`rounded px-3 py-1 ${tab === t ? 'bg-emerald-950/50 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              {t === 'conversations' ? 'Conversas' : 'Números'}
+              {t === 'conversations' ? 'Conversas' : t === 'numbers' ? 'Números' : 'Condições de atendimento'}
             </button>
           ))}
         </div>
       </div>
       {tab === 'numbers'
         ? <NumbersPanel isAdmin={isAdmin} api={api} showError={showError} showSuccess={showSuccess} />
-        : <ConversationsPanel api={api} showError={showError} />}
+        : tab === 'conditions'
+          ? <ConditionsPanel isAdmin={isAdmin} api={api} showError={showError} showSuccess={showSuccess} />
+          : <ConversationsPanel api={api} showError={showError} />}
     </div>
   );
 }
@@ -113,6 +115,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
   const [numbers, setNumbers] = useState<WaNumber[]>([]);
   const [max, setMax] = useState(100);
   const [configured, setConfigured] = useState(true);
+  const [aiReady, setAiReady] = useState(true);
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([]);
   const [label, setLabel] = useState('');
   const [brandId, setBrandId] = useState('');
@@ -127,6 +130,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
       setNumbers(r?.numbers || []);
       setMax(r?.max || 100);
       setConfigured(r?.server_configured !== false);
+      setAiReady(r?.ai_configured !== false);
     } catch (e: any) {
       showError(e?.message || 'Falha ao carregar os números.');
     }
@@ -202,6 +206,12 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
     await load();
   });
 
+  const toggleBot = (n: WaNumber) => run(`bot-${n.id}`, async () => {
+    await api.current(`/whatsapp/numbers/${n.id}`, { method: 'PATCH', body: JSON.stringify({ bot_enabled: !n.bot_enabled }) });
+    showSuccess(n.bot_enabled ? 'Atendente automático pausado neste número.' : 'Atendente automático ligado neste número.');
+    await load();
+  });
+
   const refresh = (n: WaNumber) => run(`refresh-${n.id}`, async () => {
     await api.current(`/whatsapp/numbers/${n.id}/status`);
     await load();
@@ -218,6 +228,12 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
       {!configured && (
         <div className="rounded border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="wa-not-configured">
           O servidor do WhatsApp ainda não está ligado ao NORQVA. Você já pode cadastrar os números; para conectar, falta configurar o servidor.
+        </div>
+      )}
+
+      {!aiReady && (
+        <div className="rounded border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="wa-ai-missing">
+          A inteligência do atendente ainda não está configurada (falta a chave OPENAI_API_KEY no servidor). Sem ela, as mensagens chegam aqui e uma pessoa responde.
         </div>
       )}
 
@@ -249,7 +265,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
               Cadastrar
             </button>
           </div>
-          <p className="text-[11px] text-slate-500">Cada número fica ligado a uma marca e só oferece os produtos dela. O atendente automático nasce desligado.</p>
+          <p className="text-[11px] text-slate-500">Cada número fica ligado a uma marca e só oferece os produtos dela (sem marca, oferece todos os produtos à venda). O atendente automático nasce desligado.</p>
         </div>
       )}
 
@@ -285,6 +301,16 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                 {n.status_reason && n.status !== 'CONNECTED' && <p className="text-[11px] text-amber-300">{n.status_reason}</p>}
                 <div className="text-[11px] text-slate-500">
                   {n.conversations ?? 0} conversa(s){n.needs_human ? ` · ${n.needs_human} precisando de pessoa` : ''}
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded border border-slate-800 px-2 py-1.5">
+                  <span className="text-[11px] text-slate-300">
+                    Atendente automático: <b className={n.bot_enabled ? 'text-emerald-300' : 'text-slate-400'} data-testid="wa-bot-state">{n.bot_enabled ? 'ligado' : 'pausado'}</b>
+                  </span>
+                  {isAdmin && (
+                    <button onClick={() => toggleBot(n)} disabled={!!busy} className={`rounded border px-2 py-0.5 text-[11px] disabled:opacity-40 ${n.bot_enabled ? 'border-amber-500/30 text-amber-300' : 'border-emerald-500/30 text-emerald-300'}`}>
+                      {n.bot_enabled ? 'Pausar' : 'Ligar'}
+                    </button>
+                  )}
                 </div>
                 {isAdmin && editing?.id !== n.id && (
                   <div className="flex flex-wrap gap-1.5">
@@ -540,6 +566,131 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Modelo sugerido de condições (o Ricardo ajusta à vontade). As regras fixas de segurança ficam no servidor.
+export const SUGGESTED_CONDITIONS = `Quem somos: uma editora de livros digitais de cozinha italiana caseira, com receitas testadas, medidas em gramas e xícaras, tempo e nível de dificuldade em cada receita.
+
+Como atender:
+- Cumprimente pelo nome quando souber e pergunte o que a pessoa gosta de cozinhar.
+- Recomende primeiro o Kit Cozinha Italiana (os dois livros juntos sai mais em conta). Se a pessoa quiser só massas e molhos, ofereça o Trattoria em Casa; se quiser só sobremesas, o Dolci della Nonna.
+- Deixe claro que são livros digitais (PDF), para ler no celular, tablet ou computador, e que podem ser impressos. Não existe versão física.
+- A entrega é automática, aqui no WhatsApp e no e-mail, assim que o pagamento é confirmado (Pix confirma em segundos).
+- Formas de pagamento: Pix (mais barato) ou cartão de crédito (até 4x sem juros; acima disso com juros, sempre conforme o catálogo).
+- Se a pessoa disser que não recebeu o livro ou teve problema no pagamento, chame uma pessoa da equipe.
+
+O que tem nos livros:
+- Trattoria em Casa (28 receitas): massa clássica aos ovos, massa de sêmola e água, massa verde de espinafre, tagliatelle e fettuccine na faca, pappardelle rústico, nhoque de batata, pomodoro e basilico, ragù alla bolognese, cacio e pepe, carbonara, amatriciana, pesto alla genovese, burro e salvia, aglio olio e peperoncino, ravioli de ricota e espinafre, tortellini de queijo e ervas, lasanha alla bolognese, cannelloni de frango com ervas, nhoque gratinado aos quatro queijos, rondelli de queijos ao molho rosé, sugo rápido de tomate-cereja, molho de gorgonzola e nozes, molho alla puttanesca, molho de cogumelos com manteiga e tomilho, molho bechamel, massa de pizza de fermentação lenta, focaccia genovese com alecrim e bruschetta de tomate e manjericão.
+- Dolci della Nonna (10 doces): tiramisù, panna cotta, torta della nonna, torta caprese, cantucci, affogato al caffè, zabaione com frutas, crostata di marmellata, budino al cioccolato e cannoli em taça.
+
+Horário: o atendimento automático responde a qualquer hora.`;
+
+function ConditionsPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boolean; api: React.MutableRefObject<ApiFetch>; showError: (m: string) => void; showSuccess: (m: string) => void }) {
+  const [data, setData] = useState<{ global: string; numbers: { id: string; label: string; conditions: string }[] } | null>(null);
+  const [target, setTarget] = useState('');
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState<{ id: string; conditions: string; created_at: string; changed_by_name: string | null }[] | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api.current('/whatsapp/conditions');
+      setData({ global: r?.global || '', numbers: r?.numbers || [] });
+      return r;
+    } catch (e: any) {
+      showError(e?.message || 'Falha ao carregar as condições.');
+      return null;
+    }
+  }, [api, showError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!data) return;
+    setText(target ? (data.numbers.find(n => n.id === target)?.conditions || '') : data.global);
+    setHistory(null);
+  }, [target, data]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.current('/whatsapp/conditions', { method: 'PUT', body: JSON.stringify({ number_id: target || null, conditions: text }) });
+      showSuccess('Condições salvas. O atendente já usa a versão nova.');
+      await load();
+    } catch (e: any) {
+      showError(e?.message || 'Falha ao salvar.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openHistory = async () => {
+    try {
+      const r = await api.current(`/whatsapp/conditions/history${target ? `?number_id=${target}` : ''}`);
+      setHistory(r?.versions || []);
+    } catch (e: any) {
+      showError(e?.message || 'Falha ao carregar o histórico.');
+    }
+  };
+
+  const original = data ? (target ? data.numbers.find(n => n.id === target)?.conditions || '' : data.global) : '';
+
+  return (
+    <div className="space-y-3" data-testid="wa-conditions">
+      <p className="text-xs text-slate-400">
+        Escreva aqui como o atendente deve atender: tom de voz, o que oferecer primeiro, respostas para as dúvidas comuns. O texto geral vale para todos os números; cada número pode ter um texto a mais.
+        Preço, parcelas, entrega só com pagamento confirmado e o "parar" do cliente são regras fixas: o texto não muda isso.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label="Condições de" value={target} onChange={e => setTarget(e.target.value)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100">
+          <option value="">Geral (todos os números)</option>
+          {(data?.numbers || []).map(n => <option key={n.id} value={n.id}>Só o número: {n.label}</option>)}
+        </select>
+        <button onClick={() => void openHistory()} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+          <History className="h-3.5 w-3.5" /> Versões anteriores
+        </button>
+        {isAdmin && !target && (
+          <button onClick={() => setText(SUGGESTED_CONDITIONS)} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+            Usar modelo sugerido
+          </button>
+        )}
+      </div>
+      <textarea
+        aria-label="Texto das condições"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        readOnly={!isAdmin}
+        rows={16}
+        maxLength={8000}
+        className="w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100"
+        placeholder="Ex.: Atenda com simpatia. Ofereça primeiro o kit. Se perguntarem sobre versão impressa, explique que é PDF e pode ser impresso."
+      />
+      <div className="flex items-center justify-between text-[11px] text-slate-500">
+        <span>{text.length} de 8.000 letras</span>
+        {isAdmin && (
+          <button onClick={() => void save()} disabled={saving || text === original} className="rounded border border-emerald-500/30 bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 disabled:opacity-40">
+            {saving ? 'Salvando…' : 'Salvar'}
+          </button>
+        )}
+      </div>
+      {history && (
+        <div className="space-y-2 rounded border border-slate-800 p-2" data-testid="wa-conditions-history">
+          {history.length === 0 && <div className="text-[11px] text-slate-500">Nenhuma versão salva ainda.</div>}
+          {history.map(v => (
+            <div key={v.id} className="rounded border border-slate-800 p-2 text-[11px] text-slate-300">
+              <div className="mb-1 flex items-center justify-between text-slate-500">
+                <span>{new Date(v.created_at).toLocaleString('pt-BR')}{v.changed_by_name ? ` · ${v.changed_by_name}` : ''}</span>
+                {isAdmin && <button onClick={() => setText(v.conditions)} className="rounded border border-slate-700 px-2 py-0.5 text-slate-300">Voltar para esta versão</button>}
+              </div>
+              <div className="max-h-24 overflow-y-auto whitespace-pre-wrap">{v.conditions || '(vazio)'}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

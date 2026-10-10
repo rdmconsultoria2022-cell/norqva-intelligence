@@ -15,7 +15,7 @@
 
 1. **Branch `ai/NORQVA-0046-whatsapp-etapa1`:** migration 056, camada do motor, números (cadastro, QR Code, status, trocar, excluir), webhook, conversas (ver, responder, assumir/devolver), tela WhatsApp na área Vendas.
 2. **Branch `ai/NORQVA-0046-whatsapp-etapa2`:** entrega pelo WhatsApp após pagamento confirmado pelo Asaas (migration 057, link `/acesso` próprio com finalidade WHATSAPP, uma vez por pedido, até 3 tentativas pela varredura; respeita o "parar"; o código do link não fica no histórico da conversa).
-3. Atendente com IA, condições de atendimento com versões, Pix na conversa e link do cartão.
+3. **Branch `ai/NORQVA-0046-whatsapp-etapa3`:** atendente com IA (`services/whatsapp/attendant.ts`, OpenAI com ferramentas: Pix, cartão, conferir pagamento, chamar pessoa). Cobranças passam pelos mesmos controladores do checkout do site (cliente, pedido, Pix/cartão), com `orders.whatsapp_conversation_id` e `utm_source=whatsapp`. Catálogo = ofertas ATIVAS da marca do número. CPF reconhecido pelo dígito verificador: mascarado no banco, guardado só na memória por 1 h e nunca enviado à IA. Limites: 20 respostas por conversa e 150 mensagens por número por hora (passou, chama pessoa). Pix repetido em 30 min reaproveita a mesma cobrança. Condições de atendimento (geral e por número) com versões; modelo sugerido com o conteúdo dos livros. Sem `OPENAI_API_KEY`, a conversa é marcada para uma pessoa.
 4. Resultados por número.
 5. Teste com o número do Ricardo e liberação.
 
