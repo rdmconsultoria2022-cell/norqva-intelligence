@@ -639,7 +639,7 @@ describe('Auth System Regression', () => {
       fireEvent.click(productsTab);
 
       // Open Edit Product Modal
-      const editButtons = await screen.findAllByText(/Atualizar situação e procedência/i, {}, { timeout: 8000 });
+      const editButtons = await screen.findAllByText(/Editar produto \(nome, situação e procedência\)/i, {}, { timeout: 8000 });
       fireEvent.click(editButtons[0]);
 
       // R04: Provenance responsible selector contains Real Admin User
