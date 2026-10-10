@@ -595,9 +595,9 @@ export async function numberResults(pool: Pool, daysArg: any) {
        (SELECT COUNT(*)::int FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id
           WHERE c.number_id = n.id AND o.created_at > NOW() - make_interval(days => $1)) AS orders_created,
        (SELECT COUNT(*)::int FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id
-          WHERE c.number_id = n.id AND o.status = 'PAID' AND o.is_demo = FALSE AND o.created_at > NOW() - make_interval(days => $1)) AS orders_paid,
+          WHERE c.number_id = n.id AND o.status = 'PAID' AND o.is_demo = FALSE AND o.data_provenance = 'COMMERCIAL_PRODUCTION' AND o.created_at > NOW() - make_interval(days => $1)) AS orders_paid,
        (SELECT COALESCE(SUM(o.total_amount), 0)::numeric FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id
-          WHERE c.number_id = n.id AND o.status = 'PAID' AND o.is_demo = FALSE AND o.created_at > NOW() - make_interval(days => $1)) AS revenue
+          WHERE c.number_id = n.id AND o.status = 'PAID' AND o.is_demo = FALSE AND o.data_provenance = 'COMMERCIAL_PRODUCTION' AND o.created_at > NOW() - make_interval(days => $1)) AS revenue
      FROM whatsapp_numbers n
      LEFT JOIN brands b ON b.id = n.brand_id
      WHERE n.is_deleted = FALSE
