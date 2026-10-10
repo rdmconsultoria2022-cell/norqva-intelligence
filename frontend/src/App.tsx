@@ -1463,8 +1463,9 @@ export default function App() {
           isDemo={isDemoView}
           currentUser={currentUser}
           onOrderCreated={(orderResult) => {
+            // NORQVA-0043: guarda o nome da oferta para a tela de pagamento usar o visual do produto
+            setActivePaymentOrder({ ...orderResult, offer_name_for_look: checkoutOffer?.name || '' });
             setCheckoutOffer(null);
-            setActivePaymentOrder(orderResult);
           }}
           onCancel={() => setCheckoutOffer(null)}
           showError={showError}
@@ -1480,6 +1481,7 @@ export default function App() {
           amount={activePaymentOrder.total_amount}
           paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
           installments={activePaymentOrder.installments}
+          look={/bolso/i.test(String(activePaymentOrder.offer_name_for_look || '')) ? 'dark' : 'light'}
           isDemo={isDemoView}
           onPaymentConfirmed={() => {
             const current = activePaymentOrder;
