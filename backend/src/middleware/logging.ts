@@ -71,6 +71,13 @@ export function sanitizePayload(data: any): any {
   return data;
 }
 
+/** NORQVA-0046: segredos que vão no endereço (webhook do WhatsApp, link de download) não vão para o log. */
+export function maskPath(p: string): string {
+  return String(p || '')
+    .replace(/(\/api\/whatsapp\/webhook\/[^/]+\/)[^/?]+/, '$1***')
+    .replace(/(\/api\/delivery\/)[^/?]+/, '$1***');
+}
+
 export function structuredLogger() {
   return (req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
@@ -87,7 +94,8 @@ export function structuredLogger() {
         level: res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARN' : 'INFO',
         requestId: req.id || 'unknown',
         method: req.method,
-        path: req.originalUrl || req.url,
+        // NORQVA-0046: segredos que vão no endereço (webhook do WhatsApp, link de download) não vão para o log
+        path: maskPath(req.originalUrl || req.url),
         status: res.statusCode,
         durationMs,
         ip: req.ip || req.socket.remoteAddress || 'unknown'

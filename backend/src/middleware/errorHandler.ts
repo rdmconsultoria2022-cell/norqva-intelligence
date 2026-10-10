@@ -1,3 +1,4 @@
+import { maskPath } from './logging';
 ﻿import { Request, Response, NextFunction } from 'express';
 
 export function errorHandler() {
@@ -17,7 +18,7 @@ export function errorHandler() {
         level: 'ERROR',
         requestId: req.id || 'unknown',
         method: req.method,
-        path: req.originalUrl || req.url,
+        path: maskPath(req.originalUrl || req.url),
         status,
         error: isProduction ? 'Internal Server Error' : err.message,
         stack: isProduction ? undefined : err.stack

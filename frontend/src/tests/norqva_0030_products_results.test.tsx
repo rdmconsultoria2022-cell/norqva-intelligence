@@ -174,13 +174,14 @@ describe('NORQVA-0030 — Visão Geral', () => {
 });
 
 describe('NORQVA-0030 — menu final', () => {
-  it('fica com 10 itens nas cinco áreas', () => {
-    expect(navigationItems).toHaveLength(10);
+  // NORQVA-0046: WhatsApp entra na área Vendas
+  it('fica com 11 itens nas cinco áreas', () => {
+    expect(navigationItems).toHaveLength(11);
     expect(navigationGroups.map(g => g.items.map(i => i.label))).toEqual([
       ['Visão Geral'],
       ['Pesquisa', 'Resultados'],
       ['Produtos', 'Criativos', 'Campanhas'],
-      ['Vendas'],
+      ['Vendas', 'WhatsApp'],
       ['Marcas', 'Equipe', 'Configurações']
     ]);
   });
