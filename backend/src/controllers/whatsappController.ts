@@ -20,6 +20,7 @@ import {
   getConditions,
   saveConditions,
   conditionHistory,
+  numberResults,
   InboundMessage
 } from '../services/whatsapp/whatsappService';
 import { aiConfigured } from '../services/whatsapp/attendant';
@@ -157,6 +158,14 @@ export async function getWhatsAppConditionHistory(req: AuthenticatedRequest, res
     return res.status(200).json(await conditionHistory(db(req), req.query.number_id));
   } catch (err) {
     return handle(res, err, 'Falha ao carregar o histórico.');
+  }
+}
+
+export async function getWhatsAppResults(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await numberResults(db(req), req.query.days));
+  } catch (err) {
+    return handle(res, err, 'Falha ao carregar os resultados.');
   }
 }
 

@@ -164,7 +164,7 @@ import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPay
 import {
   getWhatsAppNumbers, postWhatsAppNumber, patchWhatsAppNumber, postWhatsAppConnect, getWhatsAppNumberStatus, postWhatsAppSwap,
   deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook,
-  getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler
+  getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler, getWhatsAppResults
 } from './controllers/whatsappController';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
 
@@ -386,6 +386,7 @@ app.post('/api/whatsapp/conversations/:id/mode', requireRole(['ADMIN', 'OPERATIO
 app.get('/api/whatsapp/conditions', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConditions);
 app.put('/api/whatsapp/conditions', requireRole(['ADMIN']), putWhatsAppConditions);
 app.get('/api/whatsapp/conditions/history', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConditionHistory);
+app.get('/api/whatsapp/results', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppResults);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
 

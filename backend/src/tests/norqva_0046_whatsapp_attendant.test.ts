@@ -245,4 +245,20 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     const too = await request(app).put('/api/whatsapp/conditions').set('Authorization', `Bearer ${admin}`).send({ conditions: 'x'.repeat(8001) });
     expect(too.status).toBe(400);
   });
+
+  it('resultados por número contam conversas, pedidos e vendas pagas', async () => {
+    const conv = (await pool.query('SELECT id FROM whatsapp_conversations WHERE number_id = $1 LIMIT 1', [numberId])).rows[0].id;
+    const o = (await pool.query('SELECT id FROM orders WHERE whatsapp_conversation_id IS NOT NULL AND whatsapp_conversation_id IN (SELECT id FROM whatsapp_conversations WHERE number_id = $1) LIMIT 1', [numberId])).rows[0];
+    await pool.query(`UPDATE orders SET status = 'PAID' WHERE id = $1`, [o.id]);
+    const r = await request(app).get('/api/whatsapp/results').set('Authorization', `Bearer ${admin}`).query({ days: 7 });
+    expect(r.status).toBe(200);
+    const row = r.body.numbers.find((n: any) => n.id === numberId);
+    expect(row.new_conversations).toBeGreaterThanOrEqual(6);
+    expect(row.orders_created).toBeGreaterThanOrEqual(2);
+    expect(row.orders_paid).toBe(1);
+    expect(row.revenue).toBeGreaterThan(0);
+    expect(row.conversion).toBeGreaterThan(0);
+    expect(conv).toBeTruthy();
+  });
 });
+
