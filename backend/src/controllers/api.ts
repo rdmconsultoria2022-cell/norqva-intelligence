@@ -5485,13 +5485,23 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     // 5. Recent Activity Stream (Top 10 Orders)
     const recentOrderClause = getCommercialOrderClause('o', isDemo);
     const recentOrdersRes = await pool.query(
+      // NORQVA-0045: uma linha por pedido (o kit tem 2 arquivos e o pedido pode ter mais de uma cobrança)
       `SELECT o.id, o.total_amount, o.status, o.created_at, c.name as customer_name, c.email as customer_email,
-              p.human_id as payment_human_id, p.status as payment_status,
-              od.download_count, od.status as delivery_status, oae.status as access_email_status
+              (SELECT p.human_id FROM payments p WHERE p.order_id = o.id
+                ORDER BY CASE WHEN p.status = 'CONFIRMED' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 1) as payment_human_id,
+              (SELECT p.status FROM payments p WHERE p.order_id = o.id
+                ORDER BY CASE WHEN p.status = 'CONFIRMED' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 1) as payment_status,
+              (SELECT p.payment_method FROM payments p WHERE p.order_id = o.id
+                ORDER BY CASE WHEN p.status = 'CONFIRMED' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 1) as payment_method,
+              (SELECT p.amount FROM payments p WHERE p.order_id = o.id
+                ORDER BY CASE WHEN p.status = 'CONFIRMED' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 1) as payment_amount,
+              (SELECT COALESCE(SUM(od.download_count), 0) FROM order_deliveries od WHERE od.order_id = o.id) as download_count,
+              (SELECT COUNT(*) FROM order_deliveries od WHERE od.order_id = o.id) as delivery_count,
+              (SELECT od.status FROM order_deliveries od WHERE od.order_id = o.id
+                ORDER BY CASE WHEN od.status = 'ACTIVE' THEN 0 ELSE 1 END LIMIT 1) as delivery_status,
+              oae.status as access_email_status
        FROM orders o
        LEFT JOIN customers c ON c.id = o.customer_id
-       LEFT JOIN payments p ON p.order_id = o.id
-       LEFT JOIN order_deliveries od ON od.order_id = o.id
        LEFT JOIN order_access_emails oae ON oae.order_id = o.id
        WHERE ${recentOrderClause}
          AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)
@@ -5537,7 +5547,11 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
         completedDownloads,
         pendingDownloads
       },
-      recentOrders: recentOrdersRes.rows,
+      recentOrders: recentOrdersRes.rows.map((r: any) => ({
+        ...r,
+        download_count: r.download_count === null || r.download_count === undefined ? null : Number(r.download_count),
+        delivery_count: Number(r.delivery_count) || 0
+      })),
       period: range ? { period: range.period, start: range.metaStart, end: range.metaStop } : { period: 'all', start: null, end: null }
     });
   } catch (err: any) {

@@ -1303,7 +1303,7 @@ export function DashboardView({
                       <th className="p-2.5">Cliente</th>
                       <th className="p-2.5">Valor</th>
                       <th className="p-2.5">Status do Pedido</th>
-                      <th className="p-2.5">Pagamento (Pix)</th>
+                      <th className="p-2.5">Pagamento</th>
                       <th className="p-2.5">Entrega Digital</th>
                       <th className="p-2.5">Data/Hora</th>
                     </tr>
@@ -1318,6 +1318,9 @@ export function DashboardView({
                         </td>
                         <td className="p-2.5 font-mono text-slate-100 font-bold">
                           R$ {parseFloat(ord.total_amount).toFixed(2)}
+                          {ord.payment_method === 'CREDIT_CARD' && ord.payment_amount !== null && ord.payment_amount !== undefined && Math.abs(Number(ord.payment_amount) - Number(ord.total_amount)) > 0.001 && (
+                            <div className="text-[10px] font-normal text-slate-400">cartão: R$ {Number(ord.payment_amount).toFixed(2)}</div>
+                          )}
                         </td>
                         <td className="p-2.5">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
@@ -1336,6 +1339,9 @@ export function DashboardView({
                           }`}>
                             {ord.payment_status || 'NÃO INICIADO'}
                           </span>
+                          {ord.payment_method && (
+                            <div className="mt-1 text-[10px] font-mono text-slate-500">{ord.payment_method === 'CREDIT_CARD' ? 'Cartão' : 'Pix'}</div>
+                          )}
                         </td>
                         <td className="p-2.5">
                           {(() => {
