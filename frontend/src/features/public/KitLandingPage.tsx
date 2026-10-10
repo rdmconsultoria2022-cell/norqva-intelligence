@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../lib/api';
 import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
+import { rateLabel } from '../../lib/cardInstallments';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { savePurchaseSession, updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
@@ -21,7 +22,7 @@ type PublicKitOffer = {
   is_demo: boolean;
   meta_pixel_id?: string | null;
   bump?: any;
-  card?: { max_installments: number; total: number; installment_value: number; options?: { n: number; installment_value: number | null; total: number; interest: boolean }[] } | null;
+  card?: { max_installments: number; total: number; installment_value: number; interest_monthly?: number; options?: { n: number; installment_value: number | null; total: number; interest: boolean }[] } | null;
 };
 
 /** Depoimentos reais (nome, cidade, texto), só com autorização do cliente. Vazio = a seção não aparece. */
@@ -373,7 +374,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                     <span style={{ fontSize: 26, fontWeight: 600, color: '#8a3a26' }}>{card.max_installments}x</span>
                     <span className="serif price" style={{ fontSize: 80, fontWeight: 600, lineHeight: 0.9, color: '#8a3a26' }} data-testid="kit-installment">{brl(card.installment_value)}</span>
                   </div>
-                  <div style={{ fontSize: 14, color: '#5a5249' }}>sem juros no cartão de crédito · total {brl(card.total)}{maxWithInterest > card.max_installments ? ` · ou em até ${maxWithInterest}x com juros` : ''}</div>
+                  <div style={{ fontSize: 14, color: '#5a5249' }}>sem juros no cartão de crédito · total {brl(card.total)}{maxWithInterest > card.max_installments ? ` · ou em até ${maxWithInterest}x com juros de ${rateLabel(Number(card.interest_monthly) || 0)}` : ''}</div>
                   <div style={{ padding: '14px 18px', background: '#f4eee4', borderRadius: 4, fontSize: 16 }} data-testid="kit-pix">
                     ou <strong>{brl(pix)}</strong> à vista no Pix{savings > 0 ? ` · economia de ${brl(savings)}` : ''}
                   </div>

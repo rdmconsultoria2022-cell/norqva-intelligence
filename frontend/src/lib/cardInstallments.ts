@@ -29,4 +29,6 @@ export function installmentOptions(baseCents: number, plan: CardPlan): Installme
 }
 
 export const brlCents = (c: number) => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
-export const rateLabel = (r: number) => `${r.toFixed(2).replace('.', ',')}% ao mês`;
+// CDC art. 52: mostrar também a taxa efetiva anual
+export const annualRate = (r: number) => (Math.pow(1 + r / 100, 12) - 1) * 100;
+export const rateLabel = (r: number) => `${r.toFixed(2).replace('.', ',')}% ao mês (${annualRate(r).toFixed(2).replace('.', ',')}% ao ano)`;

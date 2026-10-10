@@ -316,7 +316,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               </div>
               <div>
                 <h3 className="text-lg font-serif font-bold text-stone-900 leading-tight">
-                  {isConfirmed ? 'Pagamento confirmado' : isFailed ? 'Pagamento não concluído' : isCard ? 'Pagamento com cartão' : 'Pagamento com Pix'}
+                  {isConfirmed ? 'Pagamento confirmado' : isFailed ? 'Pagamento não concluído' : isCard ? 'Aguardando pagamento com cartão' : 'Aguardando pagamento Pix'}
                 </h3>
                 <p className="text-[11px] text-stone-500 mt-0.5">Pedido #{orderId.substring(0, 8)}</p>
               </div>

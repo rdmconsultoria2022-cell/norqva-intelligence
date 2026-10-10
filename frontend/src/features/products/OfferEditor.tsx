@@ -55,7 +55,7 @@ export const OfferEditor: React.FC<{
   const cardProblem = !form.card_enabled ? null
     : !Number.isInteger(installments) || installments < 1 || installments > 12 ? 'Máximo de parcelas: de 1 a 12.'
     : !Number.isInteger(freeN) || freeN < 1 || freeN > installments ? 'Parcelas sem juros: de 1 até o máximo de parcelas.'
-    : !(rate >= 0) || rate > 10 ? 'Juros ao mês: de 0 a 10 (ex.: 2,99).'
+    : !(rate >= 0) || rate > 10 || Math.abs(Math.round(rate * 100) - rate * 100) > 1e-6 ? 'Juros ao mês: de 0 a 10, com até 2 casas (ex.: 2,99).'
     : freeN < installments && !(rate > 0) ? 'Informe os juros ao mês para as parcelas acima das sem juros (ou deixe todas sem juros).'
     : cardTotal !== null && !(cardTotal > 0) ? 'Total no cartão inválido (ou deixe em branco para usar o preço do Pix).'
     : effectiveCard < pixPrice ? 'O total no cartão não pode ser menor que o preço no Pix.'
