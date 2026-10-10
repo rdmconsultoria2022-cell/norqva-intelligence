@@ -84,7 +84,10 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
     }
   };
 
+  // NORQVA-0040: remover arquivo pede confirmação (um clique sem querer deixou o Trattoria sem PDF)
+  const [confirmUnlink, setConfirmUnlink] = useState<string | null>(null);
   const handleUnlinkAsset = async (assetId: string) => {
+    setConfirmUnlink(null);
     try {
       setSubmitting(true);
       await apiFetch(`/offers/${offer.id}/digital-assets/${assetId}`, {
@@ -184,14 +187,31 @@ export const DigitalAssetAdminModal: React.FC<DigitalAssetAdminModalProps> = ({
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleUnlinkAsset(asset.id)}
-                    disabled={submitting}
-                    className="p-1 text-red-400 hover:bg-red-950/40 rounded transition"
-                    title="Desvincular ativo"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {confirmUnlink === asset.id ? (
+                    <div className="flex items-center gap-1 shrink-0" data-testid="unlink-confirm">
+                      <span className="text-[10px] text-amber-300">Quem comprar deixa de receber este arquivo. Remover?</span>
+                      <button
+                        onClick={() => handleUnlinkAsset(asset.id)}
+                        disabled={submitting}
+                        className="px-2 py-0.5 text-[10px] rounded border border-red-500/40 text-red-300"
+                      >
+                        Remover
+                      </button>
+                      <button onClick={() => setConfirmUnlink(null)} className="px-2 py-0.5 text-[10px] rounded border border-slate-700 text-slate-300">
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmUnlink(asset.id)}
+                      disabled={submitting}
+                      className="p-1 text-red-400 hover:bg-red-950/40 rounded transition"
+                      title="Remover este arquivo da oferta"
+                      aria-label="Remover este arquivo da oferta"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
