@@ -72,3 +72,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão:** produto e oferta criados pela tela na conta real nascem `COMMERCIAL_PRODUCTION` (oferta herda a procedência do produto). Os que ficaram `UNKNOWN` voltam para a lista só quando o ADMIN clica em "Trazer para a lista". O modo demonstração não existe mais em nenhuma tela publicada. **Aprovado pelo operador** ("essa divisão mais atrapalha do que ajuda").
 - **Consequência aceita:** como já acontecia com as ofertas da Trattoria, um "Checkout da oferta" feito pelo operador com Pix real é um pedido comercial. Compras internas de teste são reclassificadas depois, como em D-0002.
+
+## D-0037 — Regra de aprovação (2026-10-10)
+
+- **Decisão:** o Claude faz sem pedir aprovação as mudanças de tela, texto e conteúdo (inclusive PDFs dos produtos) e as correções de erro. O "Aprovado" do operador continua obrigatório antes de qualquer mudança que mexa em pagamento, entrega ao comprador, gasto na Meta, dados de clientes ou que não possa ser desfeita. Na dúvida, vale a aprovação. **Aprovado pelo operador** em 10/10/2026 13h47 ("Pode seguir com essa regra").
+- **Continua igual:** branch, arquivo de tarefa, revisão independente, CI verde e merge pelo Claude; todas as regras de segurança (PAID do Asaas, migrations aditivas, tudo nasce pausado na Meta).
+- **Passagem entre tarefas:** `CLAUDE.md` na raiz do repositório resume regras, fluxo, estado e pendências; fontes dos livros em `norqva-ai/produtos/`.
