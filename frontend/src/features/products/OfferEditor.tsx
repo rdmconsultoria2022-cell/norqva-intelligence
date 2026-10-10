@@ -78,9 +78,10 @@ export const OfferEditor: React.FC<{
           promotional_price: promo,
           description: form.description.trim(),
           bonus: form.bonus.trim() || null,
-          card_enabled: form.card_enabled,
-          card_max_installments: installments,
-          card_total_price: form.card_enabled ? cardTotal : (off.card_total_price ?? null)
+          // NORQVA-0038: campos do cartão só quando o cartão está ou estava ligado
+          ...(form.card_enabled || off.card_enabled
+            ? { card_enabled: form.card_enabled, card_max_installments: installments, card_total_price: form.card_enabled ? cardTotal : (off.card_total_price ?? null) }
+            : {})
         })
       });
       showSuccess('Oferta atualizada.');
