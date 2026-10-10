@@ -134,6 +134,13 @@ export const webhookRateLimiter = createRateLimiter({
   name: 'webhook'
 });
 
+// NORQVA-0046: até 100 números de WhatsApp chegam do mesmo servidor
+export const whatsappWebhookRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 60000,
+  name: 'whatsapp-webhook'
+});
+
 export const recoveryRequestRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,

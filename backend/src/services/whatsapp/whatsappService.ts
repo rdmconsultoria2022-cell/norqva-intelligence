@@ -162,6 +162,8 @@ export async function connectNumber(pool: Pool, provider: WhatsAppProvider | nul
   const p = requireProvider(provider);
   const n = await loadNumber(pool, id);
   const url = await rotateWebhook(pool, id, baseUrl);
+  // se o servidor do WhatsApp falhar, volta o segredo antigo (o servidor continua usando o endereço antigo)
+  const restoreSecret = () => pool.query('UPDATE whatsapp_numbers SET webhook_secret_hash = $1 WHERE id = $2', [n.webhook_secret_hash, id]).catch(() => {});
   let qr: { base64: string | null; state: string };
   try {
     let exists = true;
@@ -178,6 +180,7 @@ export async function connectNumber(pool: Pool, provider: WhatsAppProvider | nul
       qr = await p.connect(n.instance_name);
     }
   } catch (err) {
+    await restoreSecret();
     providerFail(err);
   }
   if (qr.state === 'open') {
@@ -185,7 +188,7 @@ export async function connectNumber(pool: Pool, provider: WhatsAppProvider | nul
     await applyInfo(pool, id, { ...info, state: 'open' });
   } else {
     await pool.query(
-      `UPDATE whatsapp_numbers SET status = 'CONNECTING', status_reason = NULL, last_qr_base64 = $1, last_qr_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      `UPDATE whatsapp_numbers SET status = 'CONNECTING', status_reason = NULL, last_qr_base64 = COALESCE($1, last_qr_base64), last_qr_at = NOW(), updated_at = NOW() WHERE id = $2`,
       [qr.base64, id]
     );
   }

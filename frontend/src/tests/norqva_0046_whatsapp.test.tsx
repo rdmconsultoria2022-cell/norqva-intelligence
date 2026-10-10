@@ -59,6 +59,7 @@ describe('NORQVA-0046 — tela WhatsApp', () => {
     fireEvent.change(screen.getByLabelText('Marca do número'), { target: { value: 'b1' } });
     fireEvent.click(screen.getByText('Cadastrar'));
     await waitFor(() => expect(api).toHaveBeenCalledWith('/whatsapp/numbers', expect.objectContaining({ method: 'POST', body: JSON.stringify({ label: 'Dolci 1', brand_id: 'b1' }) })));
+    await waitFor(() => expect(screen.getByText('Conectar').closest('button')).not.toBeDisabled());
     fireEvent.click(screen.getByText('Conectar'));
     const qr = await screen.findByTestId('wa-qr');
     expect(within(qr).getByAltText('QR Code do WhatsApp')).toHaveAttribute('src', 'data:image/png;base64,QRDATA');

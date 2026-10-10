@@ -150,6 +150,7 @@ import {
   orderStatusRateLimiter,
   deliveryRateLimiter,
   webhookRateLimiter,
+  whatsappWebhookRateLimiter,
   recoveryRequestRateLimiter
 } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
@@ -365,7 +366,7 @@ app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentByI
 // Sprint 2.5D Webhook & Digital Deliveries endpoints
 app.post('/api/webhooks/asaas', webhookRateLimiter, webhookAsaas);
 // NORQVA-0046: WhatsApp (contrato aprovado 10/10/2026 19h38). Números: ADMIN. Conversas: ADMIN e OPERATIONS.
-app.post('/api/whatsapp/webhook/:numberId/:secret', webhookRateLimiter, postWhatsAppWebhook);
+app.post('/api/whatsapp/webhook/:numberId/:secret', whatsappWebhookRateLimiter, postWhatsAppWebhook);
 app.get('/api/whatsapp/numbers', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppNumbers);
 app.post('/api/whatsapp/numbers', requireRole(['ADMIN']), postWhatsAppNumber);
 app.patch('/api/whatsapp/numbers/:id', requireRole(['ADMIN']), patchWhatsAppNumber);
