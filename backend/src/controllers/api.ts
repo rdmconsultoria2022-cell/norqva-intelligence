@@ -4940,12 +4940,13 @@ export async function unlinkOfferDigitalAsset(req: AuthenticatedRequest, res: Re
     // NORQVA-0040: oferta à venda nunca fica sem arquivo de entrega (o comprador pagaria e não receberia nada).
     const guard = await pool.query(
       `SELECT o.status, o.human_id,
-              (SELECT COUNT(*)::int FROM offer_digital_assets x WHERE x.offer_id = o.id) AS n
+              (SELECT COUNT(*)::int FROM offer_digital_assets x WHERE x.offer_id = o.id) AS n,
+              (SELECT COUNT(*)::int FROM offer_digital_assets y WHERE y.offer_id = o.id AND y.asset_id = $2) AS linked
        FROM offers o WHERE o.id = $1`,
-      [offerId]
+      [offerId, assetId]
     );
     const g = guard.rows[0];
-    if (g && (g.status === 'ATIVA' || g.status === 'TESTE') && Number(g.n) <= 1) {
+    if (g && Number(g.linked) > 0 && (g.status === 'ATIVA' || g.status === 'TESTE') && Number(g.n) <= 1) {
       return res.status(409).json({
         error: `A oferta ${g.human_id} está à venda e este é o único arquivo que ela entrega. Para trocar o PDF use "Trocar arquivo"; para remover, pause a oferta antes.`
       });
