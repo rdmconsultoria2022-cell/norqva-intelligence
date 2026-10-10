@@ -12,6 +12,7 @@ import {
   Store,
   ShoppingCart,
   Megaphone,
+  MessageCircle,
   ChevronDown,
   LucideIcon
 } from 'lucide-react';
@@ -82,7 +83,11 @@ export const navigationGroups: NavigationGroup[] = [
     // NORQVA-0026
     id: 'sales',
     label: 'Vendas',
-    items: [{ id: 'sales', label: 'Vendas', icon: ShoppingCart, roles: ['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE'] }]
+    items: [
+      { id: 'sales', label: 'Vendas', icon: ShoppingCart, roles: ['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE'] },
+      // NORQVA-0046: números, conversas e atendente do WhatsApp
+      { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, roles: ['ADMIN', 'OPERATIONS'] }
+    ]
   },
   {
     id: 'settings',

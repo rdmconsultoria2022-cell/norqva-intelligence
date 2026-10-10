@@ -66,6 +66,7 @@ import { apiFetch as apiFetchLib, API_BASE as API_BASE_LIB } from './lib/api';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './features/auth/useAuth';
 import { SalesView } from './features/sales/SalesView';
+import { WhatsAppView } from './features/whatsapp/WhatsAppView';
 import { CampaignsView } from './features/campaigns/CampaignsView';
 import { initMetaPixel, trackPageView, isPublicCommercialRoute } from './services/metaPixel';
 
@@ -822,6 +823,10 @@ export default function App() {
               showError={showError}
               showSuccess={showSuccess}
             />
+          )}
+
+          {activeTab === 'whatsapp' && (
+            <WhatsAppView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
           )}
 
           {activeTab === 'brands' && (

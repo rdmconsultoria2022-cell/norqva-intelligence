@@ -11,14 +11,14 @@ const admin = { id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any;
 // NORQVA-0029: Base de campanhas, Time de IAs e Oportunidades passaram para dentro de Pesquisa
 // NORQVA-0030: Ofertas dentro de Produtos; Financeiro, Criativos, Demografia, Créditos Meta e Decisões em Resultados
 const ALL_TABS = [
-  'dashboard', 'research', 'results', 'products', 'creative-factory', 'campaigns', 'sales', 'brands', 'team', 'config'
+  'dashboard', 'research', 'results', 'products', 'creative-factory', 'campaigns', 'sales', 'whatsapp', 'brands', 'team', 'config'
 ];
 
 describe('NORQVA-0024 — menu em áreas', () => {
   it('mantém as telas, sem repetição', () => {
     const ids = navigationItems.map(i => i.id);
-    expect(ids).toHaveLength(10);
-    expect(new Set(ids).size).toBe(10);
+    expect(ids).toHaveLength(11);
+    expect(new Set(ids).size).toBe(11);
     expect([...ids].sort()).toEqual([...ALL_TABS].sort());
   });
 

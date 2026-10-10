@@ -87,7 +87,10 @@ export function structuredLogger() {
         level: res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARN' : 'INFO',
         requestId: req.id || 'unknown',
         method: req.method,
-        path: req.originalUrl || req.url,
+        // NORQVA-0046: segredos que vão no endereço (webhook do WhatsApp, link de download) não vão para o log
+        path: String(req.originalUrl || req.url)
+          .replace(/(\/api\/whatsapp\/webhook\/[^/]+\/)[^/?]+/, '$1***')
+          .replace(/(\/api\/delivery\/)[^/?]+/, '$1***'),
         status: res.statusCode,
         durationMs,
         ip: req.ip || req.socket.remoteAddress || 'unknown'

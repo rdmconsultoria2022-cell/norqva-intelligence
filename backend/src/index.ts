@@ -160,6 +160,11 @@ import { getPlanGuard, setPlanSpendCap, runGuardNow, automationRunGuard } from '
 import { startExperimentGuardScheduler } from './services/experiments/experimentGuardService';
 import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
+import {
+  getWhatsAppNumbers, postWhatsAppNumber, patchWhatsAppNumber, postWhatsAppConnect, getWhatsAppNumberStatus, postWhatsAppSwap,
+  deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook
+} from './controllers/whatsappController';
+import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
@@ -216,7 +221,8 @@ app.get('/ready', async (_req, res) => {
 });
 
 // 3. Apply Tiered Rate Limiters to API routes
-app.use('/api/', generalRateLimiter);
+// NORQVA-0046: o webhook do WhatsApp tem limite próprio (muitas mensagens vêm do mesmo servidor)
+app.use('/api/', (req, res, next) => (req.path.startsWith('/whatsapp/webhook/') ? next() : generalRateLimiter(req, res, next)));
 
 // 4. Auth REST Endpoints (Supabase Auth emulation - DEMO/TEST ONLY)
 app.post('/api/auth/login', authRateLimiter, async (req, res) => {
@@ -358,6 +364,19 @@ app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentByI
 
 // Sprint 2.5D Webhook & Digital Deliveries endpoints
 app.post('/api/webhooks/asaas', webhookRateLimiter, webhookAsaas);
+// NORQVA-0046: WhatsApp (contrato aprovado 10/10/2026 19h38). Números: ADMIN. Conversas: ADMIN e OPERATIONS.
+app.post('/api/whatsapp/webhook/:numberId/:secret', webhookRateLimiter, postWhatsAppWebhook);
+app.get('/api/whatsapp/numbers', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppNumbers);
+app.post('/api/whatsapp/numbers', requireRole(['ADMIN']), postWhatsAppNumber);
+app.patch('/api/whatsapp/numbers/:id', requireRole(['ADMIN']), patchWhatsAppNumber);
+app.post('/api/whatsapp/numbers/:id/connect', requireRole(['ADMIN']), postWhatsAppConnect);
+app.get('/api/whatsapp/numbers/:id/status', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppNumberStatus);
+app.post('/api/whatsapp/numbers/:id/swap', requireRole(['ADMIN']), postWhatsAppSwap);
+app.delete('/api/whatsapp/numbers/:id', requireRole(['ADMIN']), deleteWhatsAppNumber);
+app.get('/api/whatsapp/conversations', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConversations);
+app.get('/api/whatsapp/conversations/:id/messages', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppMessages);
+app.post('/api/whatsapp/conversations/:id/messages', requireRole(['ADMIN', 'OPERATIONS']), postWhatsAppMessage);
+app.post('/api/whatsapp/conversations/:id/mode', requireRole(['ADMIN', 'OPERATIONS']), postWhatsAppConversationMode);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
 
@@ -599,6 +618,19 @@ async function startServer() {
         if (n) console.log(`[DECISION AUDIT] PII retention: ip/user-agent removed from ${n} event(s) older than ${days} days.`);
       };
       void runPurge();
+      // NORQVA-0046: mensagens do WhatsApp com mais de 180 dias são apagadas
+      const runWhatsAppPurge = async () => {
+        try {
+          const n = await purgeOldWhatsAppMessages(pool);
+          if (n) console.log(`[WhatsApp] retenção: ${n} mensagem(ns) com mais de 180 dias apagada(s).`);
+        } catch (e: any) {
+          console.error('[WhatsApp] retenção falhou (não fatal):', e?.message || e);
+        }
+      };
+      void runWhatsAppPurge();
+      const waPurgeTimer = setInterval(() => void runWhatsAppPurge(), 24 * 60 * 60 * 1000);
+      waPurgeTimer.unref();
+      registerShutdownHook(() => clearInterval(waPurgeTimer));
       const purgeTimer = setInterval(() => void runPurge(), 24 * 60 * 60 * 1000);
       purgeTimer.unref();
       registerShutdownHook(() => clearInterval(purgeTimer));
