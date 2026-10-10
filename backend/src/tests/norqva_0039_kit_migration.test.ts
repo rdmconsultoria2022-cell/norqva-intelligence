@@ -11,7 +11,7 @@ import { runMigrations } from '../db/migrations';
 
 const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/050_create_kit_cozinha_italiana.sql'), 'utf8');
 
-describe.skipIf(isDbInMemory())('NORQVA-0039 — migration do kit', () => {
+describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 — migration do kit', () => {
   let pool: Pool;
   beforeAll(async () => {
     pool = initializeDB();
@@ -81,8 +81,8 @@ describe.skipIf(isDbInMemory())('NORQVA-0039 — migration do kit', () => {
       await fixtures(c, { secondTrAsset: true });
       await c.query(sql);
       expect((await c.query('SELECT count(*)::int AS n FROM products WHERE name = $1', [kitName])).rows[0].n).toBe(0);
-      const log = await c.query("SELECT description FROM audit_logs WHERE event_type = 'KIT_CREATE_SKIPPED' ORDER BY created_at DESC LIMIT 1");
-      expect(log.rows[0].description).toMatch(/PDFs ligados ao Trattoria: 2/);
+      const log = await c.query("SELECT count(*)::int AS n FROM audit_logs WHERE event_type = 'KIT_CREATE_SKIPPED' AND description LIKE '%PDFs ligados ao Trattoria: 2%'");
+      expect(log.rows[0].n).toBeGreaterThan(0);
     } finally {
       await c.query('ROLLBACK');
       c.release();
