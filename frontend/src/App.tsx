@@ -193,7 +193,7 @@ export default function App() {
 
   const [showEditProduct, setShowEditProduct] = useState<any | null>(null);
   const [editProductForm, setEditProductForm] = useState({
-    status: '', origin_provenance: '', origin_responsible_id: '', origin_evidence: '', origin_notes: ''
+    name: '', category: '', status: '', origin_provenance: '', origin_responsible_id: '', origin_evidence: '', origin_notes: ''
   });
 
   const [showAddOffer, setShowAddOffer] = useState(false);
@@ -423,6 +423,9 @@ export default function App() {
     if (!showEditProduct) return;
     try {
       const payload: any = { status: editProductForm.status };
+      // NORQVA-0035: nome e categoria editáveis
+      if (editProductForm.name.trim()) payload.name = editProductForm.name.trim();
+      if (editProductForm.category.trim()) payload.category = editProductForm.category.trim();
       if (editProductForm.origin_provenance) payload.origin_provenance = editProductForm.origin_provenance;
       if (editProductForm.origin_responsible_id) payload.origin_responsible_id = editProductForm.origin_responsible_id;
       if (editProductForm.origin_evidence) payload.origin_evidence = editProductForm.origin_evidence;
@@ -741,6 +744,8 @@ export default function App() {
               onEditProduct={(prd: any) => {
                 setShowEditProduct(prd);
                 setEditProductForm({
+                  name: prd.name || '',
+                  category: prd.category || '',
                   status: prd.status,
                   origin_provenance: prd.origin_provenance || '',
                   origin_responsible_id: prd.origin_responsible_id || '',
@@ -913,13 +918,33 @@ export default function App() {
           <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm overflow-y-auto max-h-[90vh] custom-scrollbar">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 uppercase">
-                Atualizar Status do Produto
+                Editar Produto
               </h3>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400">
                 {showEditProduct.human_id}
               </span>
             </div>
             <form onSubmit={handleEditProduct} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Nome do Produto</label>
+                <input
+                  aria-label="Nome do produto"
+                  required
+                  value={editProductForm.name}
+                  onChange={e => setEditProductForm({ ...editProductForm, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Categoria</label>
+                <input
+                  aria-label="Categoria do produto"
+                  required
+                  value={editProductForm.category}
+                  onChange={e => setEditProductForm({ ...editProductForm, category: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                />
+              </div>
               <div>
                 <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Status</label>
                 <select

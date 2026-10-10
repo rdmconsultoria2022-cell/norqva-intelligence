@@ -671,8 +671,13 @@ export async function updateProduct(req: AuthenticatedRequest, res: Response) {
       }
     }
 
-    const updatedName = name !== undefined ? name : existingProduct.name;
-    const updatedCategory = category !== undefined ? category : existingProduct.category;
+    // NORQVA-0035: nome e categoria editáveis pela tela, nunca vazios
+    if ((name !== undefined && String(name).trim() === '') || (category !== undefined && String(category).trim() === '')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Nome e categoria do produto não podem ficar vazios.' });
+    }
+    const updatedName = name !== undefined ? String(name).trim() : existingProduct.name;
+    const updatedCategory = category !== undefined ? String(category).trim() : existingProduct.category;
     const updatedDesc = description !== undefined ? description : existingProduct.description;
     const updatedCost = estimated_cost !== undefined ? estimated_cost : existingProduct.estimated_cost;
     const updatedStatus = status !== undefined ? status : existingProduct.status;
@@ -832,6 +837,21 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
       return res.status(409).json({ error: 'Conflito de escopo: A oferta pertence a um escopo diferente.' });
     }
 
+    // NORQVA-0035: edição pela tela — nome não vazio, preço válido (vale só para os próximos pedidos)
+    if (name !== undefined && (typeof name !== 'string' || name.trim() === '')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'O nome da oferta não pode ficar vazio.' });
+    }
+    if (price !== undefined && !(Number.isFinite(Number(price)) && Number(price) > 0)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Preço inválido: use um valor maior que zero.' });
+    }
+    if (promotional_price !== undefined && promotional_price !== null && promotional_price !== '' &&
+        !(Number.isFinite(Number(promotional_price)) && Number(promotional_price) > 0)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Preço promocional inválido: deixe em branco ou use um valor maior que zero.' });
+    }
+
     if (status && status !== existingOffer.status) {
       const allowed = VALID_OFFER_TRANSITIONS[existingOffer.status] || [];
       if (!allowed.includes(status)) {
@@ -840,9 +860,9 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
       }
     }
 
-    const updatedName = name !== undefined ? name : existingOffer.name;
-    const updatedPrice = price !== undefined ? price : existingOffer.price;
-    const updatedPromo = promotional_price !== undefined ? promotional_price : existingOffer.promotional_price;
+    const updatedName = name !== undefined ? String(name).trim() : existingOffer.name;
+    const updatedPrice = price !== undefined ? Number(price) : existingOffer.price;
+    const updatedPromo = promotional_price !== undefined ? (promotional_price === '' || promotional_price === null ? null : Number(promotional_price)) : existingOffer.promotional_price;
     const updatedBonus = bonus !== undefined ? bonus : existingOffer.bonus;
     const updatedDesc = description !== undefined ? description : existingOffer.description;
     const updatedUpsell = upsell !== undefined ? upsell : existingOffer.upsell;
@@ -866,8 +886,8 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     writeAuditLog(
       pool,
       req.user?.id || null,
-      'OFFER_STATUS_UPDATE',
-      `Updated offer ${existingOffer.human_id} status to ${updatedStatus}`,
+      updatedStatus !== existingOffer.status ? 'OFFER_STATUS_UPDATE' : 'OFFER_UPDATE',
+      updatedStatus !== existingOffer.status ? `Updated offer ${existingOffer.human_id} status to ${updatedStatus}` : `Oferta ${existingOffer.human_id} editada pela tela`,
       JSON.stringify(existingOffer),
       JSON.stringify(offer),
       isDemo,

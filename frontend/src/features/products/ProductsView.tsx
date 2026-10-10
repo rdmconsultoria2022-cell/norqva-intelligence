@@ -4,6 +4,7 @@ import { DigitalAssetAdminModal } from '../delivery/DigitalAssetAdminModal';
 import { OfferBumpConfig, ProductClaims } from './ProductExtras';
 import { DeliveryFiles } from './DeliveryFiles';
 import { HiddenProducts } from './HiddenProducts';
+import { OfferEditor } from './OfferEditor';
 
 // NORQVA-0030 (fase 6): Produtos com as ofertas dentro. Cada produto mostra dados e procedência, as ofertas
 // dele (preço, situação, arquivos de entrega, checkout de teste) e a marca. Botões de alterar só para quem o
@@ -151,7 +152,10 @@ export const OfferCard: React.FC<{
   costs?: React.ReactNode;
   bumpConfig?: React.ReactNode;
   deliveryFiles?: React.ReactNode;
-}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs, bumpConfig, deliveryFiles }) => {
+  /** NORQVA-0035: editor da oferta; recebe a função de fechar */
+  editor?: (close: () => void) => React.ReactNode;
+}> = ({ off, canEdit, isAdmin, onCheckout, onUpdateOfferStatus, onManageAssets, costs, bumpConfig, deliveryFiles, editor }) => {
+  const [editing, setEditing] = useState(false);
   const [showCosts, setShowCosts] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showBump, setShowBump] = useState(false);
@@ -187,6 +191,17 @@ export const OfferCard: React.FC<{
           {off.cross_sell ? ` · Cross: ${off.cross_sell}` : ''}
         </div>
       </div>
+
+      {canEdit && editor && !editing && (
+        <button
+          onClick={() => setEditing(true)}
+          data-testid="edit-offer"
+          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
+        >
+          Editar oferta
+        </button>
+      )}
+      {canEdit && editor && editing && editor(() => setEditing(false))}
 
       {isAdmin && costs && (
         <button
@@ -413,7 +428,7 @@ export const ProductsView: React.FC<Props> = ({
                   </div>
                   {canEdit && (
                     <button onClick={() => onEditProduct(prd)} className="w-full px-3 py-1.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold transition">
-                      Atualizar situação e procedência
+                      Editar produto (nome, situação e procedência)
                     </button>
                   )}
                 </div>
@@ -460,7 +475,7 @@ export const ProductsView: React.FC<Props> = ({
                   <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3" data-testid="product-offers">
                     {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
-                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
+                      <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} editor={close => <OfferEditor off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onSaved={onProductsChanged} onClose={close} />} />
                     ))}
                   </div>
                 )}
@@ -475,7 +490,7 @@ export const ProductsView: React.FC<Props> = ({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ofertas de produtos fora desta lista</h3>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {orphanOffers.map(off => (
-              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} />
+              <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} editor={close => <OfferEditor off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onSaved={onProductsChanged} onClose={close} />} />
             ))}
           </div>
         </section>
