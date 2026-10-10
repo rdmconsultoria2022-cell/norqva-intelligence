@@ -400,7 +400,7 @@ export function CreativeFactoryView({
             <span>Cliques no link: {a.metrics ? a.metrics.link_clicks.toLocaleString('pt-BR') : '—'}</span>
             <span>Vendas: {a.metrics ? a.metrics.paid_orders : '—'}</span>
           </div>
-          <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />
+          {!isDemoView && <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />}
         </div>
       </article>
     );
@@ -455,7 +455,7 @@ export function CreativeFactoryView({
                         <span className="font-mono text-[11px] text-slate-400">Anúncio {a.name}</span>
                         <DeliveryBadge d={adDelivery(a)} />
                       </div>
-                      <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />
+                      {!isDemoView && <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />}
                     </div>
                   ))}
                 </div>

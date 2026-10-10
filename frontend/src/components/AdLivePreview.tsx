@@ -22,9 +22,15 @@ export function adDelivery(ad: { status?: string | null; effective_status?: stri
   const set = String(ad.adset_effective_status || '').toUpperCase();
   const camp = String(ad.campaign_effective_status || '').toUpperCase();
   const paused = (reason: string): Delivery => ({ key: 'PAUSED', label: 'pausado', reason, cls: 'bg-slate-800 text-slate-300' });
+  const parent = (st: string, who: 'campanha' | 'conjunto'): Delivery => {
+    const quem = who === 'campanha' ? 'a campanha' : 'o conjunto';
+    if (st === 'IN_PROCESS' || st === 'PENDING_REVIEW') return { key: 'REVIEW', label: 'em análise', reason: `${quem} está em análise`, cls: 'bg-amber-950 text-amber-300' };
+    if (st === 'WITH_ISSUES') return { key: 'ISSUES', label: 'com problema', reason: `${quem} tem um problema: veja no Gerenciador`, cls: 'bg-red-950 text-red-300' };
+    return paused(who === 'campanha' ? 'a campanha não está ativa' : 'o conjunto não está ativo');
+  };
   if (eff === 'ACTIVE') {
-    if (camp && camp !== 'ACTIVE') return paused('a campanha não está ativa');
-    if (set && set !== 'ACTIVE') return paused('o conjunto não está ativo');
+    if (camp && camp !== 'ACTIVE') return parent(camp, 'campanha');
+    if (set && set !== 'ACTIVE') return parent(set, 'conjunto');
     return { key: 'RUNNING', label: 'rodando', reason: null, cls: 'bg-emerald-950 text-emerald-300' };
   }
   if (eff === 'PAUSED') return paused('o anúncio está pausado');
@@ -49,7 +55,7 @@ export const DeliveryBadge: React.FC<{ d: Delivery }> = ({ d }) => (
 export const MetaImage: React.FC<{ url?: string | null; alt: string; className?: string }> = ({ url, alt, className = '' }) => {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [url]);
-  const ok = !!url && /^https?:\/\//i.test(url) && !failed;
+  const ok = !!url && /^https:\/\//i.test(url) && !failed;
   if (!ok) {
     return (
       <div className={`${className} bg-black flex items-center justify-center text-[10px] text-slate-500 text-center px-1`} data-testid={url ? 'meta-image-expired' : 'meta-image-none'}>
@@ -74,17 +80,25 @@ export const AdPreviewButton: React.FC<{ metaAdId: string; apiFetch: ApiFetch }>
 
   // Cada formato é pedido uma vez só (o App recria apiFetch a cada render; o ref evita pedidos repetidos).
   const requested = useRef<Set<string>>(new Set());
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!open || requested.current.has(fmt)) return;
     requested.current.add(fmt);
     setState(s => ({ ...s, [fmt]: 'loading' }));
     apiFetch(`/meta/ads/${encodeURIComponent(metaAdId)}/preview?format=${fmt}`)
       .then((r: any) => setState(s => ({ ...s, [fmt]: { src: r?.src || null, error: r?.error || null, manager_url: r?.manager_url || null } })))
-      .catch((e: any) => {
-        requested.current.delete(fmt); // deixa tentar de novo ao reabrir
-        setState(s => ({ ...s, [fmt]: { src: null, error: e?.message || 'Não foi possível buscar a prévia.' } }));
-      });
-  }, [open, fmt, metaAdId, apiFetch]);
+      .catch((e: any) => setState(s => ({ ...s, [fmt]: { src: null, error: e?.message || 'Não foi possível buscar a prévia.' } })));
+  }, [open, fmt, metaAdId, apiFetch, attempt]);
+
+  const retry = () => {
+    requested.current.delete(fmt);
+    setState(s => {
+      const n = { ...s };
+      delete n[fmt];
+      return n;
+    });
+    setAttempt(a => a + 1);
+  };
 
   const cur = state[fmt];
   const f = FORMATS.find(x => x.key === fmt)!;
@@ -126,11 +140,18 @@ export const AdPreviewButton: React.FC<{ metaAdId: string; apiFetch: ApiFetch }>
               height={f.h}
               loading="lazy"
               data-testid="ad-preview-iframe"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
               className="max-w-full rounded border border-slate-800 bg-white"
               style={{ border: 0 }}
             />
           ) : (
-            <p className="text-amber-300" data-testid="ad-preview-error">{cur.error || 'A Meta não gerou a prévia deste formato.'}</p>
+            <div className="space-y-1">
+              <p className="text-amber-300" data-testid="ad-preview-error">{cur.error || 'A Meta não gerou a prévia deste formato.'}</p>
+              <button type="button" onClick={retry} data-testid="ad-preview-retry" className="rounded border border-slate-700 px-2 py-0.5 text-slate-300">
+                Tentar de novo
+              </button>
+            </div>
           )}
           {managerUrl?.manager_url && (
             <a href={managerUrl.manager_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-300 underline" data-testid="ad-manager-link">

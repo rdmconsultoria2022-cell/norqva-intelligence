@@ -70,6 +70,7 @@ describe.sequential('NORQVA-0036 — prévia do anúncio', () => {
     const spy = vi.spyOn(MetaClient.prototype, 'getAdPreview').mockResolvedValue('https://www.facebook.com/x');
     expect((await get(`/api/meta/ads/${adId}/preview?format=DESKTOP_RIGHT_COLUMN`)).status).toBe(400);
     expect((await get(`/api/meta/ads/abc/preview`)).status).toBe(400);
+    expect((await get(`/api/meta/ads/${adId}/preview?format=constructor`)).status).toBe(400);
     expect((await get(`/api/meta/ads/${otherAd}/preview`)).status).toBe(404);
     expect(spy).not.toHaveBeenCalled();
     expect((await request(app).get(`/api/meta/ads/${adId}/preview`)).status).toBe(401);
@@ -80,7 +81,7 @@ describe.sequential('NORQVA-0036 — prévia do anúncio', () => {
     const r = await get(`/api/meta/ads/${adId}/preview?format=MOBILE_FEED_STANDARD`);
     expect(r.status).toBe(200);
     expect(r.body.src).toBeNull();
-    expect(r.body.error).toMatch(/não gerou a prévia/);
+    expect(r.body.error).toMatch(/não tem prévia em Facebook feed/);
   });
 
   it('a lista de criativos leva a situação do conjunto e da campanha', async () => {

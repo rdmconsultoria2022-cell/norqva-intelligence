@@ -90,5 +90,12 @@ describe('NORQVA-0036 — componentes', () => {
     render(<AdPreviewButton metaAdId="1202" apiFetch={apiFetch as any} />);
     fireEvent.click(screen.getByTestId('ad-preview-toggle'));
     expect(await screen.findByTestId('ad-preview-error')).toHaveTextContent('não gerou a prévia');
+    fireEvent.click(screen.getByTestId('ad-preview-retry'));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it('campanha em análise não aparece como pausada', () => {
+    expect(adDelivery({ effective_status: 'ACTIVE', campaign_effective_status: 'IN_PROCESS' }).label).toBe('em análise');
+    expect(adDelivery({ effective_status: 'ACTIVE', adset_effective_status: 'WITH_ISSUES' }).label).toBe('com problema');
   });
 });

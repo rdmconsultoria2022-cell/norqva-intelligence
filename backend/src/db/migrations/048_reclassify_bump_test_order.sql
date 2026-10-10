@@ -30,7 +30,7 @@ BEGIN
     VALUES (gen_random_uuid(), NULL, 'ORDER_RECLASSIFIED_TEST',
             'Compra de teste do adicional (10/10/2026 08:18) tirada do faturamento, a pedido do operador (migration 048)',
             'COMMERCIAL_PRODUCTION', 'STAGING_SANDBOX_QA', FALSE);
-  ELSE
+  ELSIF n > 1 THEN
     INSERT INTO audit_logs (id, user_id, event_type, description, previous_value, new_value, is_demo)
     VALUES (gen_random_uuid(), NULL, 'ORDER_RECLASSIFY_SKIPPED',
             'Migration 048: ' || n || ' pedidos encontrados no critério (esperado 1); nada foi reclassificado',
