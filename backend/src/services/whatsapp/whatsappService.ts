@@ -10,7 +10,7 @@ export const MESSAGE_RETENTION_DAYS = 180;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OPT_OUT_RE = /^\s*(parar|pare|sair|stop|cancelar|não quero mais|nao quero mais)\s*[.!]*\s*$/i;
 
-const CPF_CANDIDATE_RE = /(?<!\d)(\d{3}\.?\d{3}\.?\d{3}-?\d{2})(?!\d)/g;
+const CPF_CANDIDATE_RE = /(?<!\d)(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2})(?!\d)/g;
 
 /** CPFs válidos encontrados no texto (só dígitos). */
 export function findCpfs(text: string): string[] {
@@ -487,11 +487,11 @@ export async function recordOutgoing(pool: Pool, convId: string, author: 'BOT' |
      VALUES ($1, 'OUT', $2, $3, $4, $5, $6, $7)
      ON CONFLICT (conversation_id, provider_message_id) WHERE provider_message_id IS NOT NULL
      DO UPDATE SET author = EXCLUDED.author, body = EXCLUDED.body, kind = EXCLUDED.kind, sent_by = EXCLUDED.sent_by`,
-    [convId, author, body.slice(0, 4000), opts.kind || 'TEXT', providerId, opts.failed ? 'FAILED' : 'OK', opts.userId || null]
+    [convId, author, maskCpfInText(body).slice(0, 4000), opts.kind || 'TEXT', providerId, opts.failed ? 'FAILED' : 'OK', opts.userId || null]
   );
   await pool.query(
     `UPDATE whatsapp_conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
-    [body.slice(0, 160), convId]
+    [maskCpfInText(body).slice(0, 160), convId]
   );
 }
 

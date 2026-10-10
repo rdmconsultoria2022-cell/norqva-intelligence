@@ -86,6 +86,9 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     await q('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [orders]);
     await q('DELETE FROM orders WHERE id = ANY($1::uuid[])', [orders]);
     await q('DELETE FROM whatsapp_numbers WHERE id = $1', [numberId]);
+    const custs = (await pool.query(`SELECT id FROM customers WHERE email LIKE $1`, [`%.0046.${tag}@example.com`])).rows.map((r: any) => r.id);
+    await q('DELETE FROM payment_provider_customers WHERE customer_id = ANY($1::uuid[])', [custs]);
+    await q('DELETE FROM customers WHERE id = ANY($1::uuid[])', [custs]);
     await q('DELETE FROM offers WHERE id = $1', [offerId]);
     await q('DELETE FROM products WHERE id = $1', [productId]);
     await q('DELETE FROM brands WHERE id = $1', [brandId]);
@@ -120,6 +123,7 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
   it('CPF é reconhecido e mascarado; telefone não', () => {
     expect(findCpfs('meu cpf é 529.982.247-25')).toEqual([CPF]);
     expect(maskCpfInText('cpf 52998224725 tel 21977776666')).toBe('cpf [CPF final 25] tel 21977776666');
+    expect(maskCpfInText('cpf 529 982 247 25')).toBe('cpf [CPF final 25]');
   });
 
   it('responde com o catálogo da marca e o CPF nunca vai para a IA nem para o banco', async () => {

@@ -26,8 +26,16 @@ const pending = new Map<string, { timer: ReturnType<typeof setTimeout> | null }>
 const running = new Set<string>();
 
 function rememberCpf(convId: string, cpf: string) {
-  cpfMemory.set(convId, { cpf, at: Date.now() });
+  const now = Date.now();
+  // limpa os vencidos (o CPF não fica na memória mais de 1 hora)
+  for (const [k, v] of cpfMemory) if (now - v.at > CPF_TTL_MS) cpfMemory.delete(k);
+  cpfMemory.set(convId, { cpf, at: now });
 }
+const cpfSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of cpfMemory) if (now - v.at > CPF_TTL_MS) cpfMemory.delete(k);
+}, 10 * 60 * 1000);
+cpfSweep.unref?.();
 function recallCpf(convId: string): string | null {
   const m = cpfMemory.get(convId);
   if (!m) return null;
@@ -265,6 +273,8 @@ interface Ctx {
   number: any;
   catalog: Awaited<ReturnType<typeof loadCatalog>>;
   queue: Outgoing[];
+  /** no máximo uma cobrança por resposta (evita várias cobranças de uma vez) */
+  charged: boolean;
 }
 
 async function ensureCustomer(ctx: Ctx, args: any): Promise<{ id?: string; error?: string }> {
@@ -406,6 +416,10 @@ async function toolHuman(ctx: Ctx, args: any) {
 async function runTool(ctx: Ctx, name: string, rawArgs: string) {
   let args: any = {};
   try { args = JSON.parse(rawArgs || '{}'); } catch { args = {}; }
+  if ((name === 'create_pix_payment' || name === 'create_card_payment')) {
+    if (ctx.charged) return { ok: false, error: 'Já foi gerada uma cobrança nesta resposta. Gere só uma por vez.' };
+    ctx.charged = true;
+  }
   switch (name) {
     case 'create_pix_payment': return toolPix(ctx, args);
     case 'create_card_payment': return toolCard(ctx, args);
@@ -512,7 +526,7 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
     else messages.push({ role: 'assistant', content: m.author === 'OPERATOR' || m.author === 'PHONE' ? `(equipe) ${m.body}` : m.body });
   }
 
-  const ctx: Ctx = { pool, conv: { ...conv, id: conv.id }, number: { label: conv.n_label, instance_name: conv.instance_name }, catalog, queue: [] };
+  const ctx: Ctx = { pool, conv: { ...conv, id: conv.id }, number: { label: conv.n_label, instance_name: conv.instance_name }, catalog, queue: [], charged: false };
   let finalText: string | null = null;
   try {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -524,9 +538,9 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
       messages.push({
         role: 'assistant',
         content: reply.content,
-        tool_calls: reply.tool_calls.map(t => ({ id: t.id, type: 'function', function: { name: t.name, arguments: t.arguments } }))
+        tool_calls: reply.tool_calls.slice(0, 4).map(t => ({ id: t.id, type: 'function', function: { name: t.name, arguments: t.arguments } }))
       });
-      for (const t of reply.tool_calls) {
+      for (const t of reply.tool_calls.slice(0, 4)) {
         const result = await runTool(ctx, t.name, t.arguments);
         messages.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(result) });
       }

@@ -265,7 +265,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
               Cadastrar
             </button>
           </div>
-          <p className="text-[11px] text-slate-500">Cada número fica ligado a uma marca e só oferece os produtos dela. O atendente automático nasce desligado.</p>
+          <p className="text-[11px] text-slate-500">Cada número fica ligado a uma marca e só oferece os produtos dela (sem marca, oferece todos os produtos à venda). O atendente automático nasce desligado.</p>
         </div>
       )}
 
