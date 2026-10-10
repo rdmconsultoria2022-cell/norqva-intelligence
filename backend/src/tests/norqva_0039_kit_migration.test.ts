@@ -39,7 +39,7 @@ describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 â
     await c.query(`INSERT INTO offers (id, human_id, name, product_id, price, status, description, is_demo) VALUES ($1, $2, $3, $4, 14.90, 'ATIVA', 'x', false)`, [dol, `OFF-D${tag}`, doName, prod]);
     const assets = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
     for (const a of assets) {
-      await c.query(`INSERT INTO digital_assets (id, name, storage_provider, storage_bucket, storage_path, is_demo) VALUES ($1, $1, 'SUPABASE', 'digital-products', $1, false)`, [a]);
+      await c.query(`INSERT INTO digital_assets (id, name, storage_provider, storage_bucket, storage_path, is_demo) VALUES ($1, $2, 'SUPABASE', 'digital-products', $3, false)`, [a, `kit-${a}`, `books/${a}.pdf`]);
     }
     await c.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [tr, assets[0]]);
     await c.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [dol, assets[1]]);
