@@ -252,6 +252,8 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                       {isUsable ? (
                         <a
                           href={`${API_BASE}/delivery/${item.rawToken}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                           aria-label="Baixar Arquivo"
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white flex items-center gap-1.5 transition no-underline shrink-0"
                         >
@@ -302,7 +304,9 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
           <div className="space-y-6">
             
             <div className="text-sm text-stone-700 leading-relaxed">
-              O seu guia prático com as <strong>28 preparações tradicionais</strong> foi gerado e já está disponível para leitura no seu celular, tablet ou computador.
+              {tokens.length > 1
+                ? <>Seus <strong>{tokens.length} livros</strong> já estão disponíveis para leitura no celular, tablet ou computador. Cada livro tem o seu botão: o livro abre em uma nova aba e esta página continua aberta para você baixar o próximo.</>
+                : <>O seu livro já está disponível para leitura no seu celular, tablet ou computador. Ele abre em uma nova aba.</>}
             </div>
 
             {/* Book Download Cards */}
@@ -311,6 +315,12 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                 const isExhausted = item.status === 'EXHAUSTED' || (item.downloadCount !== undefined && item.maxDownloads !== undefined && item.downloadCount >= item.maxDownloads);
                 const isInactive = item.status === 'INACTIVE' || item.status === 'EXPIRED';
                 const isUsable = (!item.status || item.status === 'ACTIVE') && Boolean(item.rawToken) && !isExhausted && !isInactive;
+                // Capa e descrição de cada livro (o kit entrega mais de um)
+                const isDolciBook = /dolci/i.test(item.assetTitle || '');
+                const bookCover = isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
+                const isTrattBook = /trattoria/i.test(item.assetTitle || '');
+                const bookTitle = isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
+                const bookInfo = isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
 
                 return (
                   <div
@@ -318,24 +328,24 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                     className="p-5 rounded-2xl bg-white border border-stone-200/90 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4"
                   >
                     <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
-                      <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-900 shrink-0 border border-stone-300 shadow-sm">
-                        <img 
-                          src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
-                          alt="Capa do Livro"
+                      <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-200 shrink-0 border border-stone-300 shadow-sm">
+                        <img
+                          src={bookCover}
+                          alt={`Capa do livro ${bookTitle}`}
                           className="w-full h-full object-cover"
                           onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                         />
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-serif font-bold text-stone-900 truncate">
-                          {item.assetTitle || 'Trattoria em Casa — Edição Digital (PDF)'}
+                          {bookTitle}
                         </div>
                         <div className="text-xs text-stone-500 mt-0.5">
                           {isExhausted
                             ? 'Limite de downloads atingido.'
                             : isInactive
                             ? 'Este arquivo não está mais disponível.'
-                            : '28 preparações • Massas, molhos e técnicas italianas (PDF • 39 páginas)'}
+                            : bookInfo}
                         </div>
                       </div>
                     </div>
@@ -343,6 +353,8 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                     {isUsable ? (
                       <a
                         href={`${API_BASE}/delivery/${item.rawToken}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         aria-label="Baixar Arquivo"
                         className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shrink-0 transition active:scale-95 shadow-md bg-[#B83B1E] text-white hover:bg-[#8F2810] shadow-[#B83B1E]/20 text-center no-underline cursor-pointer"
                       >
