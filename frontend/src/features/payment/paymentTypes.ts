@@ -20,7 +20,8 @@ export interface PaymentInfo {
   payment_method?: 'PIX' | 'CREDIT_CARD';
   invoice_url?: string | null;
   installments?: number;
-  installment_value?: number;
+  /** null quando as parcelas não são iguais (o Asaas ajusta a última). */
+  installment_value?: number | null;
 }
 
 export interface PaymentStatusProps {

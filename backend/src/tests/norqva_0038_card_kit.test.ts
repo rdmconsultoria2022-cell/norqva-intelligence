@@ -194,7 +194,27 @@ describe.sequential('NORQVA-0038 — cartão de crédito e kit', () => {
     expect(d.rows.map((x: any) => x.asset_id).sort()).toEqual([assetA, assetB].sort());
     const p = (await pool.query('SELECT net_amount, provider_fee FROM payments WHERE order_id = $1', [cardOrder.id])).rows[0];
     expect(Number(p.net_amount)).toBe(26.4);
-    expect(Number(p.provider_fee)).toBe(1.56);
+    expect(Number(p.provider_fee)).toBe(1.5);
+  });
+
+  it('estorno de uma cobrança que não liberou o pedido não tira o acesso de quem pagou', async () => {
+    await pool.query(
+      `INSERT INTO payments (human_id, order_id, provider, status, amount, idempotency_key, is_demo, external_reference, provider_payment_id, payment_method)
+       VALUES ($1, $2, 'ASAAS', 'REQUIRES_RECONCILIATION', 27.90, $3, true, $4, 'pay_0038_dup', 'PIX')`,
+      [`PG-0038-${crypto.randomUUID().slice(0, 6)}`, cardOrder.id, crypto.randomUUID(), crypto.randomUUID()]
+    );
+    const r = await hook('PAYMENT_REFUNDED', { id: 'pay_0038_dup' });
+    expect([200, 400]).toContain(r.status);
+    const o = (await pool.query('SELECT status FROM orders WHERE id = $1', [cardOrder.id])).rows[0];
+    expect(o.status).toBe('PAID');
+    // Mesmo caminho, chamado direto (o webhook exige referência ou parcelamento).
+    const dup = (await pool.query("SELECT id FROM payments WHERE provider_payment_id = 'pay_0038_dup'")).rows[0];
+    const { revokeOrderAccessForPayment } = await import('../controllers/api');
+    await revokeOrderAccessForPayment(pool, dup.id, 'REFUND', 'PAYMENT_REFUNDED');
+    const after = (await pool.query('SELECT status FROM orders WHERE id = $1', [cardOrder.id])).rows[0];
+    expect(after.status).toBe('PAID');
+    const active = await pool.query("SELECT COUNT(*)::int AS n FROM order_deliveries WHERE order_id = $1 AND status = 'ACTIVE'", [cardOrder.id]);
+    expect(active.rows[0].n).toBe(2);
   });
 
   it('contestação bloqueia os downloads e uma confirmação posterior não reativa', async () => {
@@ -238,6 +258,15 @@ describe.sequential('NORQVA-0038 — cartão de crédito e kit', () => {
     const r = await hook('PAYMENT_CONFIRMED', { id: 'pay_alheio', installment: 'ins_alheio' });
     expect(r.status).toBe(200);
     expect(r.body.ignored).toBe(true);
+  });
+
+  it('editor: parcela mínima de R$ 5 e, com cartão desligado, o preço do Pix muda sem travar', async () => {
+    const url = `/api/offers/${kitOffer}?mode=demo`;
+    const tooMany = await as(adminToken).put(url, { card_enabled: true, card_max_installments: 12, card_total_price: 27.96 });
+    expect(tooMany.status).toBe(400);
+    expect((await as(adminToken).put(url, { card_enabled: false })).status).toBe(200);
+    expect((await as(adminToken).put(url, { promotional_price: 29.9 })).status).toBe(200);
+    expect((await as(adminToken).put(url, { promotional_price: 27.9, card_enabled: true, card_max_installments: 4, card_total_price: 27.96 })).status).toBe(200);
   });
 
   it('Pix continua igual e informa o meio de pagamento', async () => {

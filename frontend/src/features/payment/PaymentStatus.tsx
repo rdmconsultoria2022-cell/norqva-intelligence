@@ -379,7 +379,9 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
               <div className="text-[10px] font-mono text-slate-500 uppercase">No cartão de crédito</div>
               <div className="text-2xl font-black font-mono text-emerald-400 mt-0.5">
-                {(payment?.installments || 1) > 1 ? `${payment?.installments}x de ${brl(payment?.installment_value)}` : brl(shownAmount)}
+                {(payment?.installments || 1) > 1
+                  ? (payment?.installment_value ? `${payment?.installments}x de ${brl(payment?.installment_value)}` : `em ${payment?.installments}x`)
+                  : brl(shownAmount)}
               </div>
               <div className="text-[11px] text-slate-400 mt-1">
                 {(payment?.installments || 1) > 1 ? `sem juros · total ${brl(shownAmount)}` : 'à vista no cartão'}

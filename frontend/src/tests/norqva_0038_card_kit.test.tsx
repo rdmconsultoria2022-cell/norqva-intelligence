@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { KitLandingPage } from '../features/public/KitLandingPage';
 import { CheckoutView } from '../features/checkout/CheckoutView';
 
-vi.mock('../../lib/api', () => ({
+vi.mock('../lib/api', () => ({
   API_BASE: 'https://norqva-staging-api.onrender.com/api',
   apiFetch: vi.fn()
 }));

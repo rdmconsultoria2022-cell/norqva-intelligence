@@ -294,11 +294,11 @@ export class AsaasPaymentProvider {
     if (rows.length === 0) return null;
     // Parcelado: todas as parcelas podem ter a mesma referência. A primeira parcela representa a compra.
     const first = [...rows].sort((a, b) => (a.installmentNumber || 1) - (b.installmentNumber || 1))[0];
-    if (!first.invoiceUrl) return null;
+    // Achou a cobrança: nunca cria outra, mesmo sem o link (a tela pede para aguardar).
     return {
       providerPaymentId: first.id,
       installmentId: first.installment || null,
-      invoiceUrl: first.invoiceUrl,
+      invoiceUrl: first.invoiceUrl || '',
       dueDate: first.dueDate || '',
       status: first.status
     };

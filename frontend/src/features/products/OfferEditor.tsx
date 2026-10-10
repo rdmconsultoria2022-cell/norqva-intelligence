@@ -51,6 +51,7 @@ export const OfferEditor: React.FC<{
     : cardTotal !== null && !(cardTotal > 0) ? 'Total no cartão inválido (ou deixe em branco para usar o preço do Pix).'
     : effectiveCard < pixPrice ? 'O total no cartão não pode ser menor que o preço no Pix.'
     : effectiveCard > pixPrice * 1.3 ? 'O total no cartão está mais de 30% acima do Pix.'
+    : installments > 1 && effectiveCard / installments < 5 ? 'Cada parcela precisa ser de pelo menos R$ 5,00 (regra do Asaas). Use menos parcelas.'
     : installments > 1 && Math.round(effectiveCard * 100) % installments !== 0
       ? `O total precisa dividir em parcelas iguais. Sugestão: ${brl((Math.ceil(Math.round(effectiveCard * 100) / installments) * installments) / 100)}.`
     : null;
@@ -79,7 +80,7 @@ export const OfferEditor: React.FC<{
           bonus: form.bonus.trim() || null,
           card_enabled: form.card_enabled,
           card_max_installments: installments,
-          card_total_price: cardTotal
+          card_total_price: form.card_enabled ? cardTotal : (off.card_total_price ?? null)
         })
       });
       showSuccess('Oferta atualizada.');

@@ -85,3 +85,5 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Como:** o comprador digita o cartão na página segura do Asaas (invoiceUrl); o NORQVA nunca vê dados de cartão.
 - **Estorno e contestação:** bloqueiam os downloads do pedido (pedido REFUNDED, entregas REVOKED), para Pix e cartão.
 - **Anúncio de parcelas:** o total no cartão precisa dividir em parcelas iguais, para "Nx de R$ Y" bater exatamente com o total (Decreto 5.903/2006). O cartão pode custar um pouco mais que o Pix.
+- **Kit:** a oferta do kit liga os mesmos PDFs do Trattoria e do Dolci (mesmo arquivo cadastrado). Trocar o arquivo em uma oferta muda nas outras; a tela avisa.
+- **Estorno de cobrança duplicada:** se o pedido tem outro pagamento confirmado, ou a cobrança estornada nunca liberou o pedido, o acesso é mantido; só aquele pagamento vira REFUNDED.

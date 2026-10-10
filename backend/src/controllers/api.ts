@@ -895,16 +895,20 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
       const finalPromo = promotional_price !== undefined ? (promoGiven ? Number(promotional_price) : null)
         : (existingOffer.promotional_price === null ? null : Number(existingOffer.promotional_price));
       const pixPrice = finalPromo !== null ? finalPromo : finalPrice;
-      if (updatedCardTotal !== null && updatedCardTotal < pixPrice) {
+      if (updatedCardEnabled && updatedCardTotal !== null && updatedCardTotal < pixPrice) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'O total no cartão não pode ser menor que o preço no Pix.' });
       }
-      if (updatedCardTotal !== null && updatedCardTotal > pixPrice * 1.3) {
+      if (updatedCardEnabled && updatedCardTotal !== null && updatedCardTotal > pixPrice * 1.3) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'O total no cartão está mais de 30% acima do Pix. Confira o valor.' });
       }
       // Parcelas iguais: "4x de R$ 6,99" precisa somar exatamente o total anunciado.
       const effectiveCardCents = Math.round((updatedCardTotal !== null ? updatedCardTotal : pixPrice) * 100);
+      if (updatedCardEnabled && updatedCardInstallments > 1 && effectiveCardCents / updatedCardInstallments < 500) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Cada parcela no cartão precisa ser de pelo menos R$ 5,00. Use menos parcelas.' });
+      }
       if (updatedCardEnabled && updatedCardInstallments > 1 && effectiveCardCents % updatedCardInstallments !== 0) {
         const up = Math.ceil(effectiveCardCents / updatedCardInstallments);
         const sugg = ((up * updatedCardInstallments) / 100).toFixed(2).replace('.', ',');
@@ -2857,11 +2861,13 @@ function chargeResponseBody(p: any, extra?: { status?: string }) {
   const base: any = { human_id: p.human_id, status: extra?.status || p.status, amount, payment_method: method };
   if (method === 'CREDIT_CARD') {
     const n = Number(p.installment_count) || 1;
+    const cents = Math.round(amount * 100);
     return {
       ...base,
       invoice_url: p.invoice_url || null,
       installments: n,
-      installment_value: Math.floor((amount * 100) / n) / 100,
+      // Parcelas desiguais (ex.: com adicional): o Asaas ajusta a última; a tela mostra só o total.
+      installment_value: cents % n === 0 ? cents / n / 100 : null,
       expires_at: p.expires_at
     };
   }
@@ -3039,10 +3045,6 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
   }
 
   // If we fetched an already existing PENDING/CONFIRMED payment, return it immediately
-  if (!isNew && (payment.status === 'PENDING' || payment.status === 'CONFIRMED')) {
-    return res.status(200).json(chargeResponseBody(payment));
-  }
-
   // NORQVA-0038: a chave de idempotência já foi usada por outro meio de pagamento.
   if (!isNew && (payment.payment_method || 'PIX') !== method) {
     return res.status(409).json({
@@ -3050,6 +3052,10 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
       code: 'PAYMENT_METHOD_LOCKED',
       payment_method: payment.payment_method || 'PIX'
     });
+  }
+
+  if (!isNew && (payment.status === 'PENDING' || payment.status === 'CONFIRMED')) {
+    return res.status(200).json(chargeResponseBody(payment));
   }
 
   // If the payment is already in FAILED or EXPIRED, checkout should probably not proceed
@@ -3348,6 +3354,13 @@ export async function finalizePaidOrder(
   await writeAuditLog(client, null, 'ORDER_PAID', `Order ${order.id} marked as PAID.`, null, null, order.is_demo);
 }
 
+const PROVIDER_REVOKE_STATUSES: Record<string, 'REFUND' | 'CHARGEBACK'> = {
+  REFUNDED: 'REFUND',
+  REFUND_IN_PROGRESS: 'REFUND',
+  CHARGEBACK_REQUESTED: 'CHARGEBACK',
+  CHARGEBACK_DISPUTE: 'CHARGEBACK'
+};
+
 export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool): Promise<any> {
   const result = await pool.query('SELECT * FROM payments WHERE id = $1', [paymentId]);
   if (result.rows.length === 0) {
@@ -3432,14 +3445,20 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   // Validate status is confirmed or received
   const provStatus = providerPayment.status.toUpperCase();
   if (provStatus !== 'CONFIRMED' && provStatus !== 'RECEIVED' && provStatus !== 'RECEIVED_IN_CASH') {
+    // NORQVA-0038: estorno/contestação percebido na consulta (webhook perdido) tira o acesso, com a mesma regra do webhook.
+    const revokeKind = PROVIDER_REVOKE_STATUSES[provStatus];
+    if (revokeKind && payment.status === 'CONFIRMED') {
+      await revokeOrderAccessForPayment(pool, paymentId, revokeKind, `status ${provStatus} no Asaas`);
+      return { status: 'REFUNDED', reconciled: false };
+    }
     // If not confirmed, we do NOT throw error or confirm, but we update status to what Asaas has (e.g. OVERDUE -> EXPIRED)
     let localStatus = payment.status;
     if (provStatus === 'PENDING') {
       localStatus = 'PENDING';
     } else if (provStatus === 'OVERDUE') {
       localStatus = 'EXPIRED';
-      // Funnel Telemetry: PIX_EXPIRED
-      try {
+      // Funnel Telemetry: PIX_EXPIRED (NORQVA-0038: só no Pix)
+      if (!isCard) try {
         let visitorId = 'unknown_visitor';
         let sessionId: string | null = null;
         let fbclid: string | null = null;
@@ -3527,9 +3546,14 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   // NORQVA-0038: taxa e valor líquido informados pelo Asaas (o cartão custa mais que o Pix). Não é crítico.
   if (providerNet !== null && providerNet >= 0 && providerNet <= expectedValue) {
     try {
+      // A receita nos painéis é o valor do pedido (preço do Pix); a taxa é medida contra ele, para o
+      // acréscimo do cartão não aparecer como custo.
+      const ordTotal = await pool.query('SELECT total_amount FROM orders WHERE id = $1', [payment.order_id]);
+      const base = ordTotal.rows[0] ? parseFloat(ordTotal.rows[0].total_amount) : expectedValue;
+      const fee = Math.max(0, Math.round((base - providerNet) * 100) / 100);
       await pool.query(
         'UPDATE payments SET net_amount = $1, provider_fee = $2 WHERE id = $3',
-        [providerNet, Math.round((expectedValue - providerNet) * 100) / 100, paymentId]
+        [providerNet, fee, paymentId]
       );
     } catch (feeErr: any) {
       console.warn('[Payment fee] non-fatal:', feeErr.message);
@@ -3782,10 +3806,29 @@ export async function revokeOrderAccessForPayment(
       await client.query('ROLLBACK');
       return false;
     }
+    const wasPaying = payment.status === 'CONFIRMED' || payment.status === 'REFUNDED';
+    const otherPaid = await client.query(
+      "SELECT 1 FROM payments WHERE order_id = $1 AND id <> $2 AND status = 'CONFIRMED' LIMIT 1",
+      [order.id, paymentId]
+    );
     await client.query(
       "UPDATE payments SET status = 'REFUNDED', refunded_at = COALESCE(refunded_at, NOW()), updated_at = NOW() WHERE id = $1",
       [paymentId]
     );
+    // Estorno de uma cobrança duplicada ou que não liberou o pedido: o comprador que pagou continua com acesso.
+    if (!wasPaying || otherPaid.rows.length > 0) {
+      await writeAuditLog(
+        client,
+        null,
+        'PAYMENT_REFUNDED_ONLY',
+        `Pagamento ${paymentId}: ${providerEvent} recebido do Asaas; o pedido ${order.id} tem outro pagamento válido ou esta cobrança não o liberou. Acesso mantido.`,
+        payment.status,
+        'REFUNDED',
+        order.is_demo
+      );
+      await client.query('COMMIT');
+      return true;
+    }
     await client.query("UPDATE orders SET status = 'REFUNDED', updated_at = NOW() WHERE id = $1", [order.id]);
     await client.query("UPDATE order_deliveries SET status = 'REVOKED' WHERE order_id = $1 AND status = 'ACTIVE'", [order.id]);
     await client.query("UPDATE order_recovery_tokens SET status = 'REVOKED' WHERE order_id = $1 AND status = 'ACTIVE'", [order.id]);

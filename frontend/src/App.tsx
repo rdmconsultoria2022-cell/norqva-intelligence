@@ -148,9 +148,10 @@ export default function App() {
     const isPublicOffer = location.pathname.startsWith('/p/');
     const isOrderDelivery = location.pathname.startsWith('/pedido/');
     const isAccessRecovery = location.pathname.startsWith('/acesso/');
+    const isKitPage = location.pathname.startsWith('/kit/'); // NORQVA-0038: página pública do kit
 
     if (!currentUser) {
-      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery) {
+      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery && !isKitPage) {
         navigate('/login', { replace: true });
       }
     } else {
