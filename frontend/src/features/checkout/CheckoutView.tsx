@@ -287,29 +287,41 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             offer.human_id?.toUpperCase().includes('BOLSO') ||
             offer.name?.toLowerCase().includes('bolso')
           );
+          // Capa e descrição de acordo com o livro comprado
+          const lname = String(offer.name || '').toLowerCase();
+          const isKit = lname.includes('kit');
+          const isDolci = !isKit && lname.includes('dolci');
+          const covers = isKit ? ['/images/kit/capa_trat.jpg', '/images/kit/capa_dolci.jpg'] : [isDolci ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg'];
+          const subtitle = isKit ? 'Trattoria em Casa + Dolci della Nonna • 2 livros em PDF'
+            : isDolci ? 'Doces italianos da nonna • Livro em PDF'
+            : '28 receitas italianas • Livro em PDF';
           return (
             <div className="p-4 rounded-xl bg-white border border-stone-200/90 mb-6 shadow-sm space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3.5">
                   {!isBolso && (
-                    <div className="h-14 w-11 rounded-md overflow-hidden bg-stone-900 shrink-0 border border-stone-300 shadow-sm">
-                      <img 
-                        src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
-                        alt="Capa do Livro"
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                      />
+                    <div className="flex shrink-0" data-testid="checkout-covers">
+                      {covers.map((src, i) => (
+                        <div key={src} className={`h-14 w-10 rounded-sm overflow-hidden bg-stone-200 border border-stone-300 shadow-sm ${i > 0 ? '-ml-3' : ''}`}>
+                          <img
+                            src={src}
+                            alt="Capa do livro"
+                            className="w-full h-full object-cover"
+                            onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                          />
+                        </div>
+                      ))}
                     </div>
                   )}
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#B83B1E] block">
-                      {isBolso ? 'Método & Aplicativo Web' : 'Livro Digital Oficial'}
+                      {isBolso ? 'Método & Aplicativo Web' : isKit ? 'Kit de livros digitais' : 'Livro digital'}
                     </span>
                     <h4 className="text-sm font-serif font-bold text-stone-900 leading-tight">
                       {offer.name}
                     </h4>
                     <p className="text-xs text-stone-500 mt-0.5">
-                      {isBolso ? 'Acesso ao Web App + Planilha + Guia Prático' : '28 Preparações • PDF de Alta Resolução'}
+                      {isBolso ? 'Acesso ao Web App + Planilha + Guia Prático' : subtitle}
                     </p>
                   </div>
                 </div>
