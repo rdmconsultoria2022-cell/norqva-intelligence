@@ -9,7 +9,7 @@ import path from 'path';
 import { initializeDB, isDbInMemory } from '../db/db';
 import { runMigrations } from '../db/migrations';
 
-const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/050_create_kit_cozinha_italiana.sql'), 'utf8');
+const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/051_create_kit_by_product.sql'), 'utf8');
 
 describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 — migration do kit', () => {
   let pool: Pool;
@@ -23,8 +23,8 @@ describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 �
   const doName = `Dolci della Nonna ${tag}`;
   const kitName = `Kit Cozinha Italiana ${tag}`;
   // Mesmo bloco, com nomes únicos para não depender do que já existe no banco de teste
-  const sql = SQL.split("'OFF-000001'").join(`'${trHuman}'`)
-    .split("'Dolci della Nonna%'").join(`'${doName}%'`)
+  const sql = SQL.split("'PRD-000003'").join(`'PRD-T${tag}'`)
+    .split("'PRD-000006'").join(`'PRD-D${tag}'`)
     .split("'Kit Cozinha Italiana'").join(`'${kitName}'`);
 
   async function fixtures(c: any, opts: { secondTrAsset?: boolean } = {}) {
@@ -36,7 +36,12 @@ describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 �
     const tr = crypto.randomUUID();
     const dol = crypto.randomUUID();
     await c.query(`INSERT INTO offers (id, human_id, name, product_id, price, status, description, is_demo) VALUES ($1, $2, 'Trattoria em Casa', $3, 19.90, 'ATIVA', 'x', false)`, [tr, trHuman, prod]);
-    await c.query(`INSERT INTO offers (id, human_id, name, product_id, price, status, description, is_demo) VALUES ($1, $2, $3, $4, 14.90, 'ATIVA', 'x', false)`, [dol, `OFF-D${tag}`, doName, prod]);
+    const prodD = crypto.randomUUID();
+    await c.query(
+      `INSERT INTO products (id, human_id, name, category, description, status, is_demo, data_provenance) VALUES ($1, $2, 'Dolci', 'Receitas', 'x', 'PLANEJADO', false, 'COMMERCIAL_PRODUCTION')`,
+      [prodD, `PRD-D${tag}`]
+    );
+    await c.query(`INSERT INTO offers (id, human_id, name, product_id, price, status, description, is_demo) VALUES ($1, $2, $3, $4, 14.90, 'ATIVA', 'x', false)`, [dol, `OFF-D${tag}`, doName, prodD]);
     const assets = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
     for (const a of assets) {
       await c.query(`INSERT INTO digital_assets (id, name, storage_provider, storage_bucket, storage_path, is_demo) VALUES ($1, $2, 'SUPABASE', 'digital-products', $3, false)`, [a, `kit-${a}`, `books/${a}.pdf`]);
