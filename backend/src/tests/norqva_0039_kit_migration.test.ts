@@ -9,7 +9,7 @@ import path from 'path';
 import { initializeDB, isDbInMemory } from '../db/db';
 import { runMigrations } from '../db/migrations';
 
-const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/051_create_kit_by_product.sql'), 'utf8');
+const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/053_create_kit_off1_prd6.sql'), 'utf8');
 
 describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 — migration do kit', () => {
   let pool: Pool;
@@ -23,7 +23,7 @@ describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0039 �
   const doName = `Dolci della Nonna ${tag}`;
   const kitName = `Kit Cozinha Italiana ${tag}`;
   // Mesmo bloco, com nomes únicos para não depender do que já existe no banco de teste
-  const sql = SQL.split("'PRD-000003'").join(`'PRD-T${tag}'`)
+  const sql = SQL.split("'OFF-000001'").join(`'${trHuman}'`)
     .split("'PRD-000006'").join(`'PRD-D${tag}'`)
     .split("'Kit Cozinha Italiana'").join(`'${kitName}'`);
 
