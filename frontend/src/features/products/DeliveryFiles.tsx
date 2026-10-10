@@ -74,6 +74,10 @@ export const DeliveryFiles: React.FC<{
   const [restoring, setRestoring] = useState<string | null>(null); // id da versão a voltar
   const [busy, setBusy] = useState(false);
   const [checkLink, setCheckLink] = useState<Record<string, string>>({});
+  // NORQVA-0038: ligar um PDF que já existe (ex.: o kit entrega os PDFs do Trattoria e do Dolci)
+  const [library, setLibrary] = useState<any[] | null>(null);
+  const [chosen, setChosen] = useState('');
+  const [linking, setLinking] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -125,6 +129,15 @@ export const DeliveryFiles: React.FC<{
   if (!state) return <p className="text-[11px] text-slate-500">Carregando arquivo de entrega…</p>;
 
   const assets: any[] = state.assets || [];
+  const linkedIds = new Set(assets.map(a => a.id));
+  const openLibrary = async () => {
+    try {
+      const rows = await apiFetch('/digital-assets?mode=real');
+      setLibrary(Array.isArray(rows) ? rows : []);
+    } catch (e: any) {
+      showError(friendlyError(e, 'Não foi possível listar os PDFs.'));
+    }
+  };
   const busyNote = busy ? <p className="text-[11px] text-slate-400">Enviando… arquivos grandes podem levar 1 a 2 minutos. Não feche a página.</p> : null;
   const currentLabel = (a: any) => a.file_original_name || a.name;
 
@@ -270,6 +283,66 @@ export const DeliveryFiles: React.FC<{
           </div>
         );
       })}
+
+      <div className="space-y-1 border-t border-slate-800 pt-2" data-testid="delivery-link-existing">
+        {library === null ? (
+          <button onClick={openLibrary} className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-300" data-testid="delivery-link-open">
+            Usar um PDF que já existe
+          </button>
+        ) : (
+          (() => {
+            const options = library.filter(x => !linkedIds.has(x.id));
+            const picked = options.find(x => x.id === chosen);
+            return (
+              <div className="space-y-1">
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-slate-400">PDF já enviado em outra oferta (para kits)</span>
+                  <select
+                    aria-label="PDF já enviado em outra oferta"
+                    value={chosen}
+                    onChange={e => { setChosen(e.target.value); setLinking(false); }}
+                    className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-200"
+                  >
+                    <option value="">Escolha o PDF…</option>
+                    {options.map(x => (
+                      <option key={x.id} value={x.id}>{x.name}</option>
+                    ))}
+                  </select>
+                </label>
+                {options.length === 0 && <p className="text-[11px] text-slate-500">Não há outro PDF para ligar.</p>}
+                {picked && !linking && (
+                  <button onClick={() => setLinking(true)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200" data-testid="delivery-link-ask">
+                    Ligar a esta oferta
+                  </button>
+                )}
+                {picked && linking && (
+                  <div className="space-y-1 rounded border border-amber-500/30 bg-amber-950/20 p-2" data-testid="delivery-link-confirm">
+                    <p className="text-[11px] text-slate-200">Quem comprar esta oferta passa a receber também: {picked.name}. O arquivo é o mesmo; trocar em um lugar muda nos dois.</p>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          run(
+                            () => apiFetch(`/offers/${off.id}/digital-assets`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: picked.id }) }),
+                            'PDF ligado à oferta.'
+                          ).then(() => { setChosen(''); setLinking(false); setLibrary(null); })
+                        }
+                        className="flex-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] font-mono text-emerald-300"
+                        data-testid="delivery-link-do"
+                      >
+                        Confirmar
+                      </button>
+                      <button disabled={busy} onClick={() => setLinking(false)} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()
+        )}
+      </div>
     </div>
   );
 };

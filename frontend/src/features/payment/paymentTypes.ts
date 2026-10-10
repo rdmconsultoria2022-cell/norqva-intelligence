@@ -16,6 +16,11 @@ export interface PaymentInfo {
   /** NORQVA-0023: QR Code do Pix (PNG em base64) devolvido pelo Asaas. */
   pix_qr_image?: string | null;
   expires_at?: string;
+  /** NORQVA-0038: meio de pagamento e, no cartão, a página segura do Asaas e as parcelas. */
+  payment_method?: 'PIX' | 'CREDIT_CARD';
+  invoice_url?: string | null;
+  installments?: number;
+  installment_value?: number;
 }
 
 export interface PaymentStatusProps {
@@ -24,6 +29,8 @@ export interface PaymentStatusProps {
   amount: number | string;
   isDemo: boolean;
   initialPayment?: PaymentInfo | null;
+  /** NORQVA-0038: meio escolhido no checkout (padrão Pix). */
+  paymentMethod?: 'PIX' | 'CREDIT_CARD';
   onPaymentConfirmed?: () => void;
   onClose?: () => void;
   onBackToCheckout?: () => void;

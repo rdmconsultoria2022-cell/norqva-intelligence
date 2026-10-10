@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { ShieldCheck, User, Mail, Phone, FileText, Loader2, X, Lock, AlertCircle } from 'lucide-react';
+import { ShieldCheck, User, Mail, Phone, FileText, Loader2, X, Lock, AlertCircle, CreditCard, QrCode } from 'lucide-react';
 import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
 import { apiFetch } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
@@ -25,6 +25,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [quantity, setQuantity] = useState(1);
   // NORQVA-0032: adicional nasce desmarcado; só entra se a pessoa marcar
   const [withBump, setWithBump] = useState(false);
+  // NORQVA-0038: Pix ou cartão (cartão só aparece se a oferta aceitar)
+  const card = offer.card && Number(offer.card.total) > 0 ? offer.card : null;
+  const [payMethod, setPayMethod] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  const method = card ? payMethod : 'PIX';
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Field touch state for inline error display
@@ -44,6 +48,13 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const bumpPrice = bump ? Number(bump.price) : 0;
   // Total mostrado ao comprador (o servidor recalcula e é o valor dele que vai para o Pix)
   const displayPrice = Math.round((basePrice + (bump && withBump ? bumpPrice : 0)) * 100) / 100;
+  const cardTotalCents = card ? Math.round(Number(card.total) * 100) + (bump && withBump ? Math.round(bumpPrice * 100) : 0) : 0;
+  const cardN = card ? Math.max(1, Number(card.max_installments) || 1) : 1;
+  const fmt = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
+  const cardLabel = !card ? ''
+    : cardN === 1 ? `R$ ${fmt(cardTotalCents)} no cartão`
+    : cardTotalCents % cardN === 0 ? `${cardN}x de R$ ${fmt(cardTotalCents / cardN)} sem juros`
+    : `em até ${cardN}x sem juros (total R$ ${fmt(cardTotalCents)})`;
 
   // Compute field validation errors
   const nameValid = validateFullName(customerName);
@@ -216,7 +227,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         });
       }
 
-      onOrderCreated(orderResult);
+      onOrderCreated({ ...orderResult, payment_method: method });
     } catch (err: any) {
       console.error('Checkout error:', err);
       showError(err.message || 'Erro ao processar checkout.');
@@ -241,7 +252,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 Checkout Seguro
               </h3>
               <p className="text-xs text-stone-500 font-medium">
-                Liberação Imediata via Pix • Pagamento Único
+                {card ? 'Pix ou cartão • Liberação após a confirmação' : 'Liberação Imediata via Pix • Pagamento Único'}
               </p>
             </div>
           </div>
@@ -401,7 +412,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               </p>
             ) : (
               <span className="text-[11px] text-stone-500 mt-1 block">
-                Necessário para emissão do Pix pelo Banco Central.
+                {card ? 'Necessário para emitir a cobrança.' : 'Necessário para emissão do Pix pelo Banco Central.'}
               </span>
             )}
           </div>
@@ -458,10 +469,33 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                   Sim, quero levar também: {bump.name}
                 </span>
                 {bump.headline && <span className="block text-sm text-stone-700">{bump.headline}</span>}
-                <span className="block text-base font-bold text-[#B83B1E]">+ R$ {bumpPrice.toFixed(2).replace('.', ',')} no mesmo Pix</span>
+                <span className="block text-base font-bold text-[#B83B1E]">+ R$ {bumpPrice.toFixed(2).replace('.', ',')} {card ? 'no mesmo pagamento' : 'no mesmo Pix'}</span>
                 <span className="block text-xs text-stone-500">Opcional. Os dois arquivos chegam juntos depois do pagamento.</span>
               </span>
             </label>
+          )}
+
+          {card && (
+            <fieldset className="space-y-2" data-testid="checkout-method">
+              <legend className="block text-xs font-semibold text-stone-700 mb-1">Forma de pagamento</legend>
+              <label className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer ${method === 'PIX' ? 'border-[#B83B1E] bg-white' : 'border-stone-300 bg-white/60'}`}>
+                <input type="radio" name="pay-method" value="PIX" checked={method === 'PIX'} onChange={() => setPayMethod('PIX')} disabled={isSubmitting} className="h-4 w-4 accent-[#B83B1E]" />
+                <QrCode className="h-4 w-4 text-stone-500" />
+                <span className="flex-1 text-sm text-stone-800">Pix</span>
+                <span className="text-sm font-bold text-stone-900">R$ {displayPrice.toFixed(2).replace('.', ',')}</span>
+              </label>
+              <label className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer ${method === 'CREDIT_CARD' ? 'border-[#B83B1E] bg-white' : 'border-stone-300 bg-white/60'}`}>
+                <input type="radio" name="pay-method" value="CREDIT_CARD" checked={method === 'CREDIT_CARD'} onChange={() => setPayMethod('CREDIT_CARD')} disabled={isSubmitting} className="h-4 w-4 accent-[#B83B1E]" />
+                <CreditCard className="h-4 w-4 text-stone-500" />
+                <span className="flex-1 text-sm text-stone-800">Cartão de crédito</span>
+                <span className="text-sm font-bold text-stone-900" data-testid="checkout-card-label">{cardLabel}</span>
+              </label>
+              {method === 'CREDIT_CARD' && (
+                <span className="text-[11px] text-stone-500 block">
+                  Você digita o cartão na página segura do Asaas, nosso processador de pagamentos. Total no cartão: R$ {fmt(cardTotalCents)}.
+                </span>
+              )}
+            </fieldset>
           )}
 
           <div className="pt-3 flex items-center justify-between border-t border-stone-200 text-xs text-stone-500">
@@ -469,7 +503,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               <ShieldCheck className="h-4 w-4 text-[#2B3D2B]" />
               Pagamento seguro
             </span>
-            <span data-testid="checkout-total">Total: R$ {displayPrice.toFixed(2).replace('.', ',')}</span>
+            <span data-testid="checkout-total">Total: R$ {method === 'CREDIT_CARD' ? fmt(cardTotalCents) : displayPrice.toFixed(2).replace('.', ',')}</span>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-3">
@@ -484,7 +518,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)}
-              aria-label={`Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix — Gerar Pedido & Pagamento`}
+              aria-label={method === 'CREDIT_CARD' ? `Continuar para o cartão: ${cardLabel}` : `Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix — Gerar Pedido & Pagamento`}
               className={`px-6 py-3 rounded-xl text-white text-sm font-bold flex items-center gap-2 transition active:scale-95 ${
                 isSubmitting || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)
                   ? 'bg-stone-400 cursor-not-allowed shadow-none'
@@ -497,7 +531,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                   <span>Processando...</span>
                 </>
               ) : (
-                <span>Pagar R$ {displayPrice.toFixed(2).replace('.', ',')} com Pix</span>
+                <span>{method === 'CREDIT_CARD' ? 'Continuar para o cartão' : `Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix`}</span>
               )}
             </button>
           </div>

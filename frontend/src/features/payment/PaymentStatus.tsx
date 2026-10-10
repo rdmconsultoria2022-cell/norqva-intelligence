@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Copy, Check, Clock, AlertCircle, CheckCircle2, Loader2, X, RefreshCw } from 'lucide-react';
+import { QrCode, Copy, Check, Clock, AlertCircle, CheckCircle2, Loader2, X, RefreshCw, CreditCard, ExternalLink } from 'lucide-react';
 import { PaymentStatusProps, PaymentInfo, PaymentStatusEnum } from './paymentTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
 import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 
-function sanitizeErrorMessage(msg: string): string {
-  if (!msg) return 'Não foi possível gerar a cobrança Pix. Tente novamente em instantes.';
+const brl = (v: any) => `R$ ${(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function sanitizeErrorMessage(msg: string, method: 'PIX' | 'CREDIT_CARD' = 'PIX'): string {
+  if (!msg) return method === 'CREDIT_CARD' ? 'Não foi possível abrir o pagamento com cartão. Tente novamente em instantes.' : 'Não foi possível gerar a cobrança Pix. Tente novamente em instantes.';
+  if (method === 'CREDIT_CARD' && /cart[aã]o/i.test(msg)) return msg;
   const lower = msg.toLowerCase();
   if (lower.includes('cpf') || lower.includes('cnpj')) {
     return 'Informe um CPF válido para continuar.';
@@ -21,7 +24,7 @@ function sanitizeErrorMessage(msg: string): string {
     return 'Pagamentos temporariamente indisponíveis no momento. Tente novamente mais tarde.';
   }
   if (lower.includes('provider') || lower.includes('asaas') || lower.includes('timeout') || lower.includes('status 4') || lower.includes('status 5') || lower.includes('exception')) {
-    return 'Não foi possível gerar o Pix agora. Tente novamente em instantes.';
+    return method === 'CREDIT_CARD' ? 'Não foi possível abrir o pagamento com cartão agora. Tente novamente em instantes.' : 'Não foi possível gerar o Pix agora. Tente novamente em instantes.';
   }
   return msg;
 }
@@ -32,6 +35,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   amount,
   isDemo,
   initialPayment = null,
+  paymentMethod = 'PIX',
   onPaymentConfirmed,
   onClose,
   onBackToCheckout,
@@ -47,6 +51,8 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   const [rateLimitNotice, setRateLimitNotice] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const paymentRef = useRef<PaymentInfo | null>(payment);
+  paymentRef.current = payment;
   const timerRef = useRef<any>(null);
   const pollingStartTimeRef = useRef<number>(Date.now());
 
@@ -73,23 +79,33 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           ? crypto.randomUUID()
           : `pix-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-        const res = await fetch(`${API_BASE}/checkout/orders/${orderId}/pix`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-checkout-token': checkoutToken
-          },
-          body: JSON.stringify({ idempotency_key: idempotencyKey }),
-          signal: controller.signal
-        });
+        const call = (method: 'PIX' | 'CREDIT_CARD') =>
+          fetch(`${API_BASE}/checkout/orders/${orderId}/${method === 'CREDIT_CARD' ? 'card' : 'pix'}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-checkout-token': checkoutToken
+            },
+            body: JSON.stringify({ idempotency_key: idempotencyKey }),
+            signal: controller.signal
+          });
 
-        const data = await res.json();
+        let usedMethod: 'PIX' | 'CREDIT_CARD' = paymentMethod;
+        let res = await call(usedMethod);
+        let data = await res.json();
+
+        // NORQVA-0038: o pedido já tem cobrança pelo outro meio (ex.: reabriu o link do pedido) -> mostra essa.
+        if (res.status === 409 && data?.code === 'PAYMENT_METHOD_LOCKED' && (data.payment_method === 'PIX' || data.payment_method === 'CREDIT_CARD') && data.payment_method !== usedMethod) {
+          usedMethod = data.payment_method;
+          res = await call(usedMethod);
+          data = await res.json();
+        }
 
         if (!res.ok) {
           const rawMsg = data.error && typeof data.error === 'string'
             ? data.error
-            : 'Não foi possível gerar a cobrança Pix.';
-          throw new Error(sanitizeErrorMessage(rawMsg));
+            : 'Não foi possível gerar a cobrança.';
+          throw new Error(sanitizeErrorMessage(rawMsg, usedMethod));
         }
 
         if (isMountedRef.current) {
@@ -108,7 +124,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         if (isMountedRef.current) {
           setStatus('FAILED');
           setPollingActive(false);
-          const safeErr = sanitizeErrorMessage(err.message || '');
+          const safeErr = sanitizeErrorMessage(err.message || '', paymentMethod);
           setErrorMessage(safeErr);
           if (showError) {
             showError(safeErr);
@@ -200,7 +216,10 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
 
                   trackPurchase({
                     orderId: orderData.id || orderId,
-                    value: Number(parseFloat(String(orderData.total_amount || amount)) || Number(amount) || 0),
+                    // NORQVA-0038: no cartão o valor pago é o da cobrança (o servidor envia o mesmo no Purchase)
+                    value: paymentRef.current?.payment_method === 'CREDIT_CARD' && Number(paymentRef.current?.amount) > 0
+                      ? Number(paymentRef.current?.amount)
+                      : Number(parseFloat(String(orderData.total_amount || amount)) || Number(amount) || 0),
                     currency: 'BRL',
                     // NORQVA-0032: com adicional, as duas ofertas (principal primeiro)
                     contentIds: Array.isArray(orderData.offer_human_ids) && orderData.offer_human_ids.length ? orderData.offer_human_ids : [canonicalContentId],
@@ -256,6 +275,8 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
 
   const isConfirmed = status === 'CONFIRMED' || status === 'PAID';
   const isFailed = status === 'FAILED' || status === 'EXPIRED';
+  const isCard = (payment?.payment_method || paymentMethod) === 'CREDIT_CARD';
+  const shownAmount = payment?.amount !== undefined && payment?.amount !== null ? payment.amount : amount;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -280,7 +301,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold font-mono text-slate-100 uppercase tracking-wider">
-                {isConfirmed ? 'Pagamento Aprovado' : isFailed ? 'Falha no Pagamento' : 'Aguardando Pagamento Pix'}
+                {isConfirmed ? 'Pagamento Aprovado' : isFailed ? 'Falha no Pagamento' : isCard ? 'Aguardando Pagamento com Cartão' : 'Aguardando Pagamento Pix'}
               </h3>
               <p className="text-[11px] text-slate-400 font-mono">
                 Pedido #{orderId.substring(0, 8)}
@@ -301,7 +322,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400 font-mono text-xs">
             <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
-            Gerando cobrança Pix autorizada...
+            {isCard ? 'Preparando o pagamento seguro com cartão...' : 'Gerando cobrança Pix autorizada...'}
           </div>
         ) : isConfirmed ? (
           /* Confirmed State */
@@ -316,7 +337,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               </p>
             </div>
             <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 font-mono text-xs text-slate-300">
-              Valor: <span className="font-bold text-emerald-400">R${parseFloat(String(amount)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              Valor: <span className="font-bold text-emerald-400">R${parseFloat(String(shownAmount)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         ) : isFailed ? (
@@ -326,7 +347,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
               <AlertCircle className="h-8 w-8 text-red-400" />
             </div>
             <div>
-              <h4 className="text-base font-bold text-slate-100">Não foi possível gerar o pagamento Pix</h4>
+              <h4 className="text-base font-bold text-slate-100">{isCard ? 'Não foi possível concluir o pagamento com cartão' : 'Não foi possível gerar o pagamento Pix'}</h4>
               <p className="text-xs text-slate-400 mt-1">
                 {errorMessage || 'O tempo limite para pagamento expirou ou a transação falhou pelo gateway financeiro.'}
               </p>
@@ -351,6 +372,52 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                 </button>
               )}
             </div>
+          </div>
+        ) : isCard ? (
+          /* NORQVA-0038: Pending / Card (página segura do Asaas) */
+          <div className="space-y-4" data-testid="card-payment">
+            <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 text-center">
+              <div className="text-[10px] font-mono text-slate-500 uppercase">No cartão de crédito</div>
+              <div className="text-2xl font-black font-mono text-emerald-400 mt-0.5">
+                {(payment?.installments || 1) > 1 ? `${payment?.installments}x de ${brl(payment?.installment_value)}` : brl(shownAmount)}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                {(payment?.installments || 1) > 1 ? `sem juros · total ${brl(shownAmount)}` : 'à vista no cartão'}
+              </div>
+            </div>
+            {payment?.invoice_url ? (
+              <a
+                href={payment.invoice_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="card-invoice-link"
+                className="w-full py-3 px-3 rounded-md bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-mono text-sm font-bold flex items-center justify-center gap-2 transition"
+              >
+                <CreditCard className="h-4 w-4" />
+                Pagar com cartão em ambiente seguro
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            ) : (
+              <p className="text-[11px] text-amber-300 text-center">O link de pagamento ainda não chegou. Aguarde alguns segundos.</p>
+            )}
+            <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+              <span className="flex items-center gap-1.5 text-amber-400">
+                <Clock className="h-3.5 w-3.5" />
+                Status: PENDENTE
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                <RefreshCw className="h-3 w-3 animate-spin text-emerald-500" />
+                Verificando em tempo real...
+              </span>
+            </div>
+            {rateLimitNotice && (
+              <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-300">
+                {rateLimitNotice}
+              </div>
+            )}
+            <p className="text-[11px] text-slate-500 font-mono text-center">
+              Os dados do cartão são digitados na página do Asaas, nosso processador de pagamentos. Depois de pagar, volte a esta tela: a liberação é automática assim que o pagamento for confirmado.
+            </p>
           </div>
         ) : (
           /* Pending / Pix Presentation State */

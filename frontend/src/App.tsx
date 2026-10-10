@@ -58,6 +58,7 @@ import { CreativeFactoryView } from './features/creative-factory/CreativeFactory
 // Screens whose numbers are filtered by the global period
 const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'results', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
+import { KitLandingPage } from './features/public/KitLandingPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
 
@@ -551,6 +552,16 @@ export default function App() {
   if (isOrderDelivery) {
     return (
       <OrderDeliveryView
+        showError={showError}
+        showSuccess={showSuccess}
+      />
+    );
+  }
+
+  // NORQVA-0038: página de vendas do kit (preços e parcelas vêm da oferta)
+  if (location.pathname.startsWith('/kit/')) {
+    return (
+      <KitLandingPage
         showError={showError}
         showSuccess={showSuccess}
       />
@@ -1453,6 +1464,7 @@ export default function App() {
           orderId={activePaymentOrder.id}
           checkoutToken={activePaymentOrder.checkout_token || ''}
           amount={activePaymentOrder.total_amount}
+          paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
           isDemo={isDemoView}
           onPaymentConfirmed={() => {
             const current = activePaymentOrder;

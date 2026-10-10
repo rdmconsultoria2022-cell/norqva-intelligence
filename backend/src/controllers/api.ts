@@ -868,7 +868,55 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'A descrição da oferta não pode ficar vazia.' });
     }
-    const editsContent = [name, price, promotional_price, bonus, description].some(v => v !== undefined);
+    // NORQVA-0038: cartão de crédito por oferta (desligado por padrão)
+    const { card_enabled, card_max_installments, card_total_price } = req.body;
+    if (card_enabled !== undefined && typeof card_enabled !== 'boolean') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'card_enabled deve ser verdadeiro ou falso.' });
+    }
+    if (card_max_installments !== undefined) {
+      const n = Number(card_max_installments);
+      if (!Number.isInteger(n) || n < 1 || n > 12) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Parcelas no cartão: use um número inteiro de 1 a 12.' });
+      }
+    }
+    const cardTotalGiven = card_total_price !== undefined && card_total_price !== null && card_total_price !== '';
+    if (cardTotalGiven && !validMoney(card_total_price)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Total no cartão inválido: deixe em branco ou use um valor maior que zero, com até 2 casas decimais.' });
+    }
+    const updatedCardEnabled = card_enabled !== undefined ? card_enabled : !!existingOffer.card_enabled;
+    const updatedCardInstallments = card_max_installments !== undefined ? Number(card_max_installments) : (Number(existingOffer.card_max_installments) || 1);
+    const updatedCardTotal = card_total_price !== undefined ? (cardTotalGiven ? Number(card_total_price) : null)
+      : (existingOffer.card_total_price === null || existingOffer.card_total_price === undefined ? null : Number(existingOffer.card_total_price));
+    {
+      const finalPrice = price !== undefined ? Number(price) : Number(existingOffer.price);
+      const finalPromo = promotional_price !== undefined ? (promoGiven ? Number(promotional_price) : null)
+        : (existingOffer.promotional_price === null ? null : Number(existingOffer.promotional_price));
+      const pixPrice = finalPromo !== null ? finalPromo : finalPrice;
+      if (updatedCardTotal !== null && updatedCardTotal < pixPrice) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'O total no cartão não pode ser menor que o preço no Pix.' });
+      }
+      if (updatedCardTotal !== null && updatedCardTotal > pixPrice * 1.3) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'O total no cartão está mais de 30% acima do Pix. Confira o valor.' });
+      }
+      // Parcelas iguais: "4x de R$ 6,99" precisa somar exatamente o total anunciado.
+      const effectiveCardCents = Math.round((updatedCardTotal !== null ? updatedCardTotal : pixPrice) * 100);
+      if (updatedCardEnabled && updatedCardInstallments > 1 && effectiveCardCents % updatedCardInstallments !== 0) {
+        const up = Math.ceil(effectiveCardCents / updatedCardInstallments);
+        const sugg = ((up * updatedCardInstallments) / 100).toFixed(2).replace('.', ',');
+        const parcel = (up / 100).toFixed(2).replace('.', ',');
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `O total no cartão precisa dividir em parcelas iguais. Sugestão: R$ ${sugg} (${updatedCardInstallments}x de R$ ${parcel}).`
+        });
+      }
+    }
+
+    const editsContent = [name, price, promotional_price, bonus, description, card_enabled, card_max_installments, card_total_price].some(v => v !== undefined);
     if (existingOffer.status === 'ARQUIVADA' && editsContent) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Oferta arquivada não pode ser editada.' });
@@ -895,10 +943,12 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
 
     const updateRes = await client.query(
       `UPDATE offers
-       SET name = $1, price = $2, promotional_price = $3, bonus = $4, description = $5, upsell = $6, cross_sell = $7, status = $8, product_id = $9, data_provenance = $10
+       SET name = $1, price = $2, promotional_price = $3, bonus = $4, description = $5, upsell = $6, cross_sell = $7, status = $8, product_id = $9, data_provenance = $10,
+           card_enabled = $12, card_max_installments = $13, card_total_price = $14
        WHERE id = $11
        RETURNING *`,
-      [updatedName, updatedPrice, updatedPromo, updatedBonus, updatedDesc, updatedUpsell, updatedCross, updatedStatus, updatedProductId, updatedDataProvenance, id]
+      [updatedName, updatedPrice, updatedPromo, updatedBonus, updatedDesc, updatedUpsell, updatedCross, updatedStatus, updatedProductId, updatedDataProvenance, id,
+       updatedCardEnabled, updatedCardInstallments, updatedCardTotal]
     );
 
     const offer = updateRes.rows[0];
@@ -926,6 +976,15 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+/** NORQVA-0038: condições públicas do cartão de uma oferta (só a oferta principal, sem adicional). */
+export function publicCardTerms(offer: any): { max_installments: number; total: number; installment_value: number } | null {
+  if (!offer.card_enabled) return null;
+  const pix = offer.promotional_price !== null && offer.promotional_price !== undefined ? parseFloat(offer.promotional_price) : parseFloat(offer.price);
+  const total = offer.card_total_price !== null && offer.card_total_price !== undefined ? Math.max(parseFloat(offer.card_total_price), pix) : pix;
+  const n = Math.min(12, Math.max(1, Number(offer.card_max_installments) || 1));
+  return { max_installments: n, total, installment_value: Math.floor((total * 100) / n) / 100 };
+}
+
 export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const { humanId } = req.params;
@@ -936,7 +995,8 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
 
   try {
     const query = `
-      SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo
+      SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo,
+             card_enabled, card_max_installments, card_total_price
       FROM offers 
       WHERE (human_id = $1 OR id::text = $1) 
         AND is_deleted = FALSE 
@@ -964,7 +1024,9 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       // D-0009 (fase B): pixel da marca (null = a landing usa o pixel padrão)
       meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer.id }),
       // NORQVA-0032: adicional na hora do Pix (null = não há)
-      bump: await offerBumpService.publicView(pool, offer)
+      bump: await offerBumpService.publicView(pool, offer),
+      // NORQVA-0038: cartão (null = só Pix). Total e parcelas exatos, para a página mostrar o parcelamento certo.
+      card: publicCardTerms(offer)
     });
   } catch (err) {
     console.error('Get public offer error:', err);
@@ -2759,7 +2821,63 @@ function checkRateLimit(key: string): boolean {
   return true;
 }
 
+/**
+ * NORQVA-0038: condições do cartão para um pedido. Total no cartão = total no cartão da oferta principal
+ * (ou o preço do Pix, se a oferta não definir) × quantidade + adicionais pelo mesmo preço do Pix.
+ * Devolve null quando a oferta principal não aceita cartão.
+ */
+export async function resolveCardTerms(db: Pool | PoolClient, order: any): Promise<{ total: number; installments: number } | null> {
+  const items = await db.query(
+    `SELECT oi.is_bump, oi.quantity, oi.total_price, o.card_enabled, o.card_max_installments, o.card_total_price
+     FROM order_items oi JOIN offers o ON o.id = oi.offer_id
+     WHERE oi.order_id = $1`,
+    [order.id]
+  );
+  const main = items.rows.find((r: any) => !r.is_bump);
+  if (!main || !main.card_enabled) return null;
+  const qty = Number(main.quantity) || 1;
+  const mainCents = main.card_total_price !== null && main.card_total_price !== undefined
+    ? Math.round(parseFloat(main.card_total_price) * 100) * qty
+    : Math.round(parseFloat(main.total_price) * 100);
+  const bumpCents = items.rows
+    .filter((r: any) => r.is_bump)
+    .reduce((acc: number, r: any) => acc + Math.round(parseFloat(r.total_price) * 100), 0);
+  const totalCents = mainCents + bumpCents;
+  const orderCents = Math.round(parseFloat(order.total_amount) * 100);
+  // O cartão nunca sai mais barato que o Pix; se a configuração estiver errada, vale o valor do pedido.
+  const total = Math.max(totalCents, orderCents) / 100;
+  const installments = Math.min(12, Math.max(1, Number(main.card_max_installments) || 1));
+  return { total, installments };
+}
+
+/** NORQVA-0038: resposta do checkout, no formato do meio de pagamento (Pix continua igual). */
+function chargeResponseBody(p: any, extra?: { status?: string }) {
+  const method = p.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX';
+  const amount = parseFloat(p.amount);
+  const base: any = { human_id: p.human_id, status: extra?.status || p.status, amount, payment_method: method };
+  if (method === 'CREDIT_CARD') {
+    const n = Number(p.installment_count) || 1;
+    return {
+      ...base,
+      invoice_url: p.invoice_url || null,
+      installments: n,
+      installment_value: Math.floor((amount * 100) / n) / 100,
+      expires_at: p.expires_at
+    };
+  }
+  return { ...base, pix_copy_paste: p.pix_copy_paste, pix_qr_image: p.pix_qr_image || null, expires_at: p.expires_at };
+}
+
 export async function checkoutPix(req: any, res: Response) {
+  return runCheckoutCharge(req, res, 'PIX');
+}
+
+/** NORQVA-0038: cobrança de cartão (página segura do Asaas). Entrega só quando o Asaas confirmar. */
+export async function checkoutCard(req: any, res: Response) {
+  return runCheckoutCharge(req, res, 'CREDIT_CARD');
+}
+
+async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDIT_CARD') {
   const pool: Pool = req.app.get('db');
   const { orderId } = req.params;
   const { idempotency_key, cpf_cnpj } = req.body;
@@ -2802,6 +2920,18 @@ export async function checkoutPix(req: any, res: Response) {
 
   if (order.status !== 'PENDING') {
     return res.status(400).json({ error: 'Order is not in PENDING state.' });
+  }
+
+  // NORQVA-0038: valor e parcelas calculados no servidor, nunca vindos do navegador.
+  let chargeAmount = parseFloat(order.total_amount);
+  let installmentCount: number | null = null;
+  if (method === 'CREDIT_CARD') {
+    const terms = await resolveCardTerms(pool, order);
+    if (!terms) {
+      return res.status(400).json({ error: 'Esta oferta não aceita cartão de crédito.', code: 'CARD_NOT_ENABLED' });
+    }
+    chargeAmount = terms.total;
+    installmentCount = terms.installments;
   }
 
   // Load environment variables
@@ -2859,6 +2989,14 @@ export async function checkoutPix(req: any, res: Response) {
       if (dupOrderRes.rows.length > 0) {
         await client.query('COMMIT');
         payment = dupOrderRes.rows[0];
+        // NORQVA-0038: o pedido já tem cobrança por outro meio. Trocar exige um pedido novo.
+        if ((payment.payment_method || 'PIX') !== method) {
+          return res.status(409).json({
+            error: 'Este pedido já tem um pagamento em andamento por outra forma de pagamento.',
+            code: 'PAYMENT_METHOD_LOCKED',
+            payment_method: payment.payment_method || 'PIX'
+          });
+        }
       } else {
         // Create new payment record
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -2867,10 +3005,10 @@ export async function checkoutPix(req: any, res: Response) {
         
         const derivedPaymentProvenance = order.data_provenance || (order.is_demo ? 'DEMO_SEED' : 'STAGING_SANDBOX_QA');
         const insertRes = await client.query(
-          `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference, data_provenance)
-           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8, $9)
+          `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference, data_provenance, payment_method, installment_count)
+           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8, $9, $10, $11)
            RETURNING *`,
-          [paymentId, humanId, orderId, order.total_amount, idempotency_key, order.is_demo, providerEnv, paymentId, derivedPaymentProvenance]
+          [paymentId, humanId, orderId, chargeAmount, idempotency_key, order.is_demo, providerEnv, paymentId, derivedPaymentProvenance, method, installmentCount]
         );
         isNew = true;
         payment = insertRes.rows[0];
@@ -2889,14 +3027,7 @@ export async function checkoutPix(req: any, res: Response) {
           [idempotency_key, order.is_demo]
         );
         if (dupRes.rows.length > 0) {
-          return res.status(200).json({
-            human_id: dupRes.rows[0].human_id,
-            status: dupRes.rows[0].status,
-            amount: parseFloat(dupRes.rows[0].amount),
-            pix_copy_paste: dupRes.rows[0].pix_copy_paste,
-            pix_qr_image: dupRes.rows[0].pix_qr_image || null,
-            expires_at: dupRes.rows[0].expires_at
-          });
+          return res.status(200).json(chargeResponseBody(dupRes.rows[0]));
         }
       } catch (retryErr) {
         console.error('Failed to retrieve duplicate payment on concurrency fallback:', retryErr);
@@ -2909,13 +3040,15 @@ export async function checkoutPix(req: any, res: Response) {
 
   // If we fetched an already existing PENDING/CONFIRMED payment, return it immediately
   if (!isNew && (payment.status === 'PENDING' || payment.status === 'CONFIRMED')) {
-    return res.status(200).json({
-      human_id: payment.human_id,
-      status: payment.status,
-      amount: parseFloat(payment.amount),
-      pix_copy_paste: payment.pix_copy_paste,
-      pix_qr_image: payment.pix_qr_image || null,
-      expires_at: payment.expires_at
+    return res.status(200).json(chargeResponseBody(payment));
+  }
+
+  // NORQVA-0038: a chave de idempotência já foi usada por outro meio de pagamento.
+  if (!isNew && (payment.payment_method || 'PIX') !== method) {
+    return res.status(409).json({
+      error: 'Este pedido já tem um pagamento em andamento por outra forma de pagamento.',
+      code: 'PAYMENT_METHOD_LOCKED',
+      payment_method: payment.payment_method || 'PIX'
     });
   }
 
@@ -2998,24 +3131,57 @@ export async function checkoutPix(req: any, res: Response) {
     }
 
     // 3. Search payment on Asaas by externalReference to check if it was already created (Timeout Recovery)
-    let paymentResponse = await provider.searchPaymentByExternalReference(paymentId);
-    if (!paymentResponse) {
-      // Create Pix payment on Asaas
-      paymentResponse = await provider.createPixPayment({
-        amount: parseFloat(payment.amount),
-        description: `NORQVA checkout ${payment.human_id}`,
-        idempotencyKey: paymentId,
-        providerCustomerId
-      });
-    }
+    let responseBody: any;
+    if (method === 'CREDIT_CARD') {
+      // NORQVA-0038: cobrança de cartão sem dados do cartão; o comprador paga na página do Asaas.
+      let cardResponse = await provider.searchCardPaymentByExternalReference(paymentId);
+      if (!cardResponse) {
+        cardResponse = await provider.createCardPayment({
+          totalAmount: parseFloat(payment.amount),
+          installments: Number(payment.installment_count) || 1,
+          description: `NORQVA checkout ${payment.human_id}`,
+          idempotencyKey: paymentId,
+          providerCustomerId
+        });
+      }
+      const updated = await pool.query(
+        `UPDATE payments
+         SET status = 'PENDING', provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3,
+             expires_at = $4, updated_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [cardResponse.providerPaymentId, cardResponse.installmentId, cardResponse.invoiceUrl, cardResponse.dueDate || null, paymentId]
+      );
+      responseBody = chargeResponseBody(updated.rows[0], { status: 'PENDING' });
+    } else {
+      let paymentResponse = await provider.searchPaymentByExternalReference(paymentId);
+      if (!paymentResponse) {
+        // Create Pix payment on Asaas
+        paymentResponse = await provider.createPixPayment({
+          amount: parseFloat(payment.amount),
+          description: `NORQVA checkout ${payment.human_id}`,
+          idempotencyKey: paymentId,
+          providerCustomerId
+        });
+      }
 
-    // TRANSACTION B (SUCCESS): Update local Payment to PENDING and save codes
-    await pool.query(
-      `UPDATE payments 
-       SET status = 'PENDING', provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, pix_qr_image = $5, updated_at = NOW()
-       WHERE id = $4`,
-      [paymentResponse.providerPaymentId, paymentResponse.pixCopyPaste, paymentResponse.expiresAt, paymentId, paymentResponse.qrCodeImage || null]
-    );
+      // TRANSACTION B (SUCCESS): Update local Payment to PENDING and save codes
+      await pool.query(
+        `UPDATE payments 
+         SET status = 'PENDING', provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, pix_qr_image = $5, updated_at = NOW()
+         WHERE id = $4`,
+        [paymentResponse.providerPaymentId, paymentResponse.pixCopyPaste, paymentResponse.expiresAt, paymentId, paymentResponse.qrCodeImage || null]
+      );
+      responseBody = {
+        human_id: payment.human_id,
+        status: 'PENDING',
+        amount: parseFloat(payment.amount),
+        payment_method: 'PIX',
+        pix_copy_paste: paymentResponse.pixCopyPaste,
+        pix_qr_image: paymentResponse.qrCodeImage || null,
+        expires_at: paymentResponse.expiresAt
+      };
+    }
 
     // Minimização PII: Clear local CPF/CNPJ if we successfully created the mapping
     if (decryptedCpf) {
@@ -3032,10 +3198,10 @@ export async function checkoutPix(req: any, res: Response) {
            event_id, event_type, visitor_id, session_id, offer_id,
            path, fbclid, utm_source, utm_medium, utm_campaign, utm_content, is_demo
          )
-         VALUES ($1, 'PIX_GENERATED', $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 ORDER BY is_bump ASC, created_at ASC LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, $12, $2, $3, (SELECT offer_id FROM order_items WHERE order_id = $4 ORDER BY is_bump ASC, created_at ASC LIMIT 1), $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (event_id, is_demo) DO NOTHING`,
         [
-          `pix_gen_${payment.id}`,
+          method === 'CREDIT_CARD' ? `card_gen_${payment.id}` : `pix_gen_${payment.id}`,
           order.visitor_id || 'unknown_visitor',
           order.session_id || null,
           order.id,
@@ -3045,7 +3211,8 @@ export async function checkoutPix(req: any, res: Response) {
           order.utm_medium || null,
           order.utm_campaign || null,
           order.utm_content || null,
-          order.is_demo
+          order.is_demo,
+          method === 'CREDIT_CARD' ? 'CARD_CHARGE_CREATED' : 'PIX_GENERATED'
         ]
       );
     } catch (fErr: any) {
@@ -3073,17 +3240,11 @@ export async function checkoutPix(req: any, res: Response) {
       console.warn('[CAPI InitiateCheckout Non-fatal]:', capiErr.message);
     }
 
-    return res.status(201).json({
-      human_id: payment.human_id,
-      status: 'PENDING',
-      amount: parseFloat(payment.amount),
-      pix_copy_paste: paymentResponse.pixCopyPaste,
-      pix_qr_image: paymentResponse.qrCodeImage || null,
-      expires_at: paymentResponse.expiresAt
-    });
+    return res.status(201).json(responseBody);
 
   } catch (err: any) {
-    console.error('Payment provider integration failed:', err);
+    // NORQVA-0038: nunca imprime o corpo da resposta do Asaas (pode conter dados do comprador).
+    console.error('Payment provider integration failed:', err?.statusCode || '', String(err?.message || '').slice(0, 160));
 
     if (err.isValidationError) {
       await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
@@ -3099,7 +3260,9 @@ export async function checkoutPix(req: any, res: Response) {
     // 5xx / Network Timeout / Uncertain State -> REQUIRES_RECONCILIATION
     await pool.query("UPDATE payments SET status = 'REQUIRES_RECONCILIATION', updated_at = NOW() WHERE id = $1", [paymentId]);
     return res.status(502).json({
-      error: 'Não foi possível gerar o Pix no momento. Tente novamente em instantes.',
+      error: method === 'CREDIT_CARD'
+        ? 'Não foi possível abrir o pagamento com cartão no momento. Tente novamente em instantes.'
+        : 'Não foi possível gerar o Pix no momento. Tente novamente em instantes.',
       status: 'REQUIRES_RECONCILIATION'
     });
   }
@@ -3143,6 +3306,10 @@ export async function finalizePaidOrder(
   // 3. State Gate: If already CONFIRMED, return early (idempotent success)
   if (payment.status === 'CONFIRMED') {
     return;
+  }
+  // NORQVA-0038: pedido estornado ou contestado nunca volta a ser pago por uma parcela confirmada depois.
+  if (payment.status === 'REFUNDED' || order.status === 'REFUNDED') {
+    throw new Error('PAYMENT_ALREADY_REFUNDED');
   }
 
   // 4. Update states
@@ -3188,6 +3355,11 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   }
   const payment = result.rows[0];
 
+  // NORQVA-0038: estornado/contestado é estado final aqui; nada reativa a entrega.
+  if (payment.status === 'REFUNDED') {
+    return { status: 'REFUNDED', reconciled: false };
+  }
+
   // Initialize payment provider
   const apiKey = process.env.ASAAS_API_KEY || 'MOCK';
   const baseUrl = process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3';
@@ -3196,6 +3368,23 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
 
   // Search/resolve provider payment ID if missing
   let providerPaymentId = payment.provider_payment_id;
+  const isCard = payment.payment_method === 'CREDIT_CARD';
+  let installmentId: string | null = payment.provider_installment_id || null;
+  if (!providerPaymentId && isCard) {
+    // NORQVA-0038: cartão não tem QR Code; recupera a cobrança e o parcelamento.
+    const recoveredCard = await provider.searchCardPaymentByExternalReference(paymentId);
+    if (recoveredCard) {
+      providerPaymentId = recoveredCard.providerPaymentId;
+      installmentId = recoveredCard.installmentId;
+      await pool.query(
+        'UPDATE payments SET provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3 WHERE id = $4',
+        [recoveredCard.providerPaymentId, recoveredCard.installmentId, recoveredCard.invoiceUrl, paymentId]
+      );
+    } else {
+      await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
+      throw new Error('RECONCILIATION_FAILED: Payment was not initialized at the provider.');
+    }
+  }
   if (!providerPaymentId) {
     const recovered = await provider.searchPaymentByExternalReference(paymentId);
     if (recovered) {
@@ -3215,9 +3404,20 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   const providerPayment = await provider.getPayment(providerPaymentId);
 
   // Validate API invariants
-  const providerValue = parseFloat(providerPayment.amount.toString());
+  // NORQVA-0038: no cartão parcelado cada parcela é uma cobrança; confere o total do parcelamento.
+  installmentId = installmentId || providerPayment.installmentId || null;
+  let providerValue = parseFloat(providerPayment.amount.toString());
+  let providerNet: number | null = typeof providerPayment.netAmount === 'number' ? providerPayment.netAmount : null;
+  if (isCard && installmentId) {
+    const totals = await provider.getInstallmentTotals(installmentId);
+    providerValue = totals.total;
+    providerNet = totals.netTotal;
+    if (!payment.provider_installment_id) {
+      await pool.query('UPDATE payments SET provider_installment_id = $1 WHERE id = $2', [installmentId, paymentId]);
+    }
+  }
   const expectedValue = parseFloat(payment.amount.toString());
-  if (providerValue !== expectedValue) {
+  if (Math.round(providerValue * 100) !== Math.round(expectedValue * 100)) {
     await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
     throw new Error('RECONCILIATION_FAILED: Amount mismatch.');
   }
@@ -3322,6 +3522,18 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
     throw err;
   } finally {
     client.release();
+  }
+
+  // NORQVA-0038: taxa e valor líquido informados pelo Asaas (o cartão custa mais que o Pix). Não é crítico.
+  if (providerNet !== null && providerNet >= 0 && providerNet <= expectedValue) {
+    try {
+      await pool.query(
+        'UPDATE payments SET net_amount = $1, provider_fee = $2 WHERE id = $3',
+        [providerNet, Math.round((expectedValue - providerNet) * 100) / 100, paymentId]
+      );
+    } catch (feeErr: any) {
+      console.warn('[Payment fee] non-fatal:', feeErr.message);
+    }
   }
 
   // POST-COMMIT: Additive Entitlement Provisioning & Telemetry Hooks
@@ -3500,7 +3712,8 @@ export async function retryFailedWebhookEvent(
   eventType: string,
   paymentId: string
 ): Promise<boolean | null> {
-  if (!WEBHOOK_CONFIRMED_EVENTS.includes(eventType)) return null;
+  const revokeKind = WEBHOOK_REVOKE_EVENTS[eventType];
+  if (!WEBHOOK_CONFIRMED_EVENTS.includes(eventType) && !revokeKind) return null;
   const claim = await pool.query(
     `UPDATE payment_webhook_events
      SET processing_status = 'PROCESSING', retry_count = retry_count + 1
@@ -3510,10 +3723,15 @@ export async function retryFailedWebhookEvent(
   );
   if (claim.rows.length === 0) return null;
   try {
-    // Já confirmado por outro caminho: só fecha o evento, sem repetir efeitos (Purchase, e-mail).
-    const cur = await pool.query('SELECT status FROM payments WHERE id = $1', [paymentId]);
-    if (cur.rows[0]?.status !== 'CONFIRMED') {
-      await reconcileAndFinalizePayment(paymentId, pool);
+    if (revokeKind) {
+      // NORQVA-0038: estorno/contestação que falhou da primeira vez.
+      await revokeOrderAccessForPayment(pool, paymentId, revokeKind, eventType);
+    } else {
+      // Já confirmado por outro caminho: só fecha o evento, sem repetir efeitos (Purchase, e-mail).
+      const cur = await pool.query('SELECT status FROM payments WHERE id = $1', [paymentId]);
+      if (cur.rows[0]?.status !== 'CONFIRMED') {
+        await reconcileAndFinalizePayment(paymentId, pool);
+      }
     }
     await pool.query(
       "UPDATE payment_webhook_events SET processing_status = 'PROCESSED', processed_at = NOW() WHERE provider = 'ASAAS' AND external_event_id = $1",
@@ -3528,6 +3746,87 @@ export async function retryFailedWebhookEvent(
     );
     return false;
   }
+}
+
+/** NORQVA-0038: eventos do Asaas que tiram o acesso do comprador. */
+export const WEBHOOK_REVOKE_EVENTS: Record<string, 'REFUND' | 'CHARGEBACK'> = {
+  PAYMENT_REFUNDED: 'REFUND',
+  PAYMENT_REFUND_IN_PROGRESS: 'REFUND',
+  PAYMENT_CHARGEBACK_REQUESTED: 'CHARGEBACK',
+  PAYMENT_CHARGEBACK_DISPUTE: 'CHARGEBACK'
+};
+
+/**
+ * NORQVA-0038: estorno ou contestação. O pedido vira REFUNDED e as entregas viram REVOKED; como o
+ * download, os tokens e o link do e-mail exigem pedido PAID, o acesso para na hora. Nada é apagado.
+ * Idempotente: repetir o evento não muda nada.
+ */
+export async function revokeOrderAccessForPayment(
+  pool: Pool,
+  paymentId: string,
+  kind: 'REFUND' | 'CHARGEBACK',
+  providerEvent: string
+): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const payRes = await client.query('SELECT * FROM payments WHERE id = $1 FOR UPDATE', [paymentId]);
+    const payment = payRes.rows[0];
+    if (!payment || !payment.order_id) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    const ordRes = await client.query('SELECT id, status, is_demo FROM orders WHERE id = $1 FOR UPDATE', [payment.order_id]);
+    const order = ordRes.rows[0];
+    if (!order || (order.status === 'REFUNDED' && payment.status === 'REFUNDED')) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    await client.query(
+      "UPDATE payments SET status = 'REFUNDED', refunded_at = COALESCE(refunded_at, NOW()), updated_at = NOW() WHERE id = $1",
+      [paymentId]
+    );
+    await client.query("UPDATE orders SET status = 'REFUNDED', updated_at = NOW() WHERE id = $1", [order.id]);
+    await client.query("UPDATE order_deliveries SET status = 'REVOKED' WHERE order_id = $1 AND status = 'ACTIVE'", [order.id]);
+    await client.query("UPDATE order_recovery_tokens SET status = 'REVOKED' WHERE order_id = $1 AND status = 'ACTIVE'", [order.id]);
+    await writeAuditLog(
+      client,
+      null,
+      kind === 'CHARGEBACK' ? 'ORDER_CHARGEBACK' : 'ORDER_REFUNDED',
+      `Pedido ${order.id}: ${providerEvent} recebido do Asaas, acesso aos downloads bloqueado.`,
+      order.status,
+      'REFUNDED',
+      order.is_demo
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * NORQVA-0038: acha o pagamento local de um evento. Parcelas de cartão podem chegar sem a nossa
+ * referência; nesse caso usa o id da cobrança ou do parcelamento no Asaas.
+ */
+async function findWebhookPayment(pool: Pool, providerPayment: any): Promise<{ id: string; is_demo: boolean } | null> {
+  if (providerPayment.externalReference) {
+    const byRef = await pool.query('SELECT is_demo, id FROM payments WHERE id::text = $1', [String(providerPayment.externalReference)]);
+    if (byRef.rows.length > 0) return byRef.rows[0];
+  }
+  const byProvider = await pool.query('SELECT is_demo, id FROM payments WHERE provider_payment_id = $1 LIMIT 1', [String(providerPayment.id)]);
+  if (byProvider.rows.length > 0) return byProvider.rows[0];
+  if (providerPayment.installment) {
+    const byInst = await pool.query(
+      'SELECT is_demo, id FROM payments WHERE provider_installment_id = $1 ORDER BY created_at ASC LIMIT 1',
+      [String(providerPayment.installment)]
+    );
+    if (byInst.rows.length > 0) return byInst.rows[0];
+  }
+  return null;
 }
 
 export async function webhookAsaas(req: any, res: Response) {
@@ -3553,7 +3852,7 @@ export async function webhookAsaas(req: any, res: Response) {
   }
 
   const { event, payment } = req.body || {};
-  if (!event || !payment || !payment.id || !payment.externalReference) {
+  if (!event || !payment || !payment.id || (!payment.externalReference && !payment.installment)) {
     return res.status(400).json({ error: 'Invalid webhook payload structure.' });
   }
 
@@ -3562,13 +3861,19 @@ export async function webhookAsaas(req: any, res: Response) {
 
   // Insert webhook event log to enforce idempotency
   let isDemo = false;
+  let localPaymentId: string = String(payment.externalReference || '');
   try {
     // Find mapped payment in DB to determine is_demo and ensure references
-    const payRes = await pool.query('SELECT is_demo, id FROM payments WHERE id = $1', [payment.externalReference]);
-    if (payRes.rows.length === 0) {
+    const found = await findWebhookPayment(pool, payment);
+    if (!found) {
+      // NORQVA-0038: parcela de um parcelamento que não é nosso: responde 200 para não travar a fila do Asaas.
+      if (payment.installment && !payment.externalReference) {
+        return res.status(200).json({ received: true, processed: false, ignored: true });
+      }
       return res.status(404).json({ error: 'Payment record reference not found.' });
     }
-    isDemo = payRes.rows[0].is_demo;
+    localPaymentId = found.id;
+    isDemo = found.is_demo;
 
     await pool.query(
       `INSERT INTO payment_webhook_events (provider, provider_environment, external_event_id, event_type, provider_payment_id, payment_id, payload_hash, is_demo)
@@ -3578,7 +3883,7 @@ export async function webhookAsaas(req: any, res: Response) {
         payment.id + '_' + event, // Combine payment ID and event to prevent multiple types replay
         event,
         payment.id,
-        payment.externalReference,
+        localPaymentId,
         payloadHash,
         isDemo
       ]
@@ -3588,7 +3893,7 @@ export async function webhookAsaas(req: any, res: Response) {
     if (err.code === '23505') {
       // NORQVA-0023: o mesmo evento chegou de novo e da primeira vez falhou -> processa de novo.
       try {
-        const retried = await retryFailedWebhookEvent(pool, payment.id + '_' + event, event, payment.externalReference);
+        const retried = await retryFailedWebhookEvent(pool, payment.id + '_' + event, event, localPaymentId);
         return res.status(200).json({ received: true, processed: retried !== false, duplicate: true });
       } catch (retryErr: any) {
         console.error('[Webhook Retry Error]:', retryErr.message);
@@ -3605,7 +3910,7 @@ export async function webhookAsaas(req: any, res: Response) {
   if (isConfirmedEvent || isOverdueEvent) {
     try {
       // Reconcile and Finalize Payment
-      await reconcileAndFinalizePayment(payment.externalReference, pool);
+      await reconcileAndFinalizePayment(localPaymentId, pool);
 
       // Update event status to PROCESSED
       await pool.query(
@@ -3620,6 +3925,22 @@ export async function webhookAsaas(req: any, res: Response) {
       );
       // We return 202 Accepted for failures to prevent Asaas from blocking on internal errors, or 200 depending on acknowledgment
       return res.status(200).json({ received: true, processed: false, error: 'Reconciliation process deferred.' });
+    }
+  } else if (WEBHOOK_REVOKE_EVENTS[event]) {
+    // NORQVA-0038: estorno/contestação tira o acesso aos downloads daquele pedido.
+    try {
+      await revokeOrderAccessForPayment(pool, localPaymentId, WEBHOOK_REVOKE_EVENTS[event], event);
+      await pool.query(
+        "UPDATE payment_webhook_events SET processing_status = 'PROCESSED', processed_at = NOW() WHERE provider = 'ASAAS' AND external_event_id = $1",
+        [payment.id + '_' + event]
+      );
+    } catch (err: any) {
+      console.error('[Webhook Revoke Exception]:', err.message);
+      await pool.query(
+        "UPDATE payment_webhook_events SET processing_status = 'FAILED' WHERE provider = 'ASAAS' AND external_event_id = $1",
+        [payment.id + '_' + event]
+      );
+      return res.status(200).json({ received: true, processed: false });
     }
   } else {
     // Other webhook event type: mark as processed since we don't handle them

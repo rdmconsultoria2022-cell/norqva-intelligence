@@ -23,7 +23,19 @@ const SENSITIVE_KEYS = new Set([
   'signed_url',
   'signedurl',
   'checkout_token',
-  'raw_token'
+  'raw_token',
+  // NORQVA-0038: dados de cartão nunca deveriam chegar aqui; se chegarem, não vão para o log.
+  'creditcard',
+  'credit_card',
+  'cardnumber',
+  'card_number',
+  'ccv',
+  'cvv',
+  'holdername',
+  'creditcardholderinfo',
+  'creditcardtoken',
+  'invoice_url',
+  'invoiceurl'
 ]);
 
 export function sanitizePayload(data: any): any {

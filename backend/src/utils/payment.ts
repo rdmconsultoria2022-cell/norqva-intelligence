@@ -12,6 +12,25 @@ export interface PixPaymentResponse {
 export interface PaymentDetailsResponse {
   status: string;
   amount: number;
+  /** NORQVA-0038: valor líquido informado pelo Asaas (depois da taxa), quando vier. */
+  netAmount?: number | null;
+  /** NORQVA-0038: id do parcelamento quando a cobrança é uma parcela de cartão. */
+  installmentId?: string | null;
+}
+
+/** NORQVA-0038: cobrança de cartão. O comprador paga na página segura do Asaas (invoiceUrl). */
+export interface CardPaymentResponse {
+  providerPaymentId: string;
+  installmentId: string | null;
+  invoiceUrl: string;
+  dueDate: string;
+  status: string;
+}
+
+export interface InstallmentTotals {
+  total: number;
+  netTotal: number | null;
+  count: number;
 }
 
 export class AsaasPaymentProvider {
@@ -211,11 +230,91 @@ export class AsaasPaymentProvider {
   }
 
   async getPayment(providerPaymentId: string): Promise<PaymentDetailsResponse> {
-    const res = await this.request<{ status: string; value: number }>(`/payments/${providerPaymentId}`, 'GET');
+    const res = await this.request<{ status: string; value: number; netValue?: number; installment?: string | null }>(`/payments/${providerPaymentId}`, 'GET');
     return {
       status: res.status,
-      amount: res.value
+      amount: res.value,
+      netAmount: typeof res.netValue === 'number' ? res.netValue : null,
+      installmentId: res.installment || null
     };
+  }
+
+  /**
+   * NORQVA-0038: cobrança de cartão SEM dados do cartão. O Asaas devolve a invoiceUrl, onde o comprador
+   * digita o cartão. Parcelado: installmentCount + totalValue (o Asaas acerta o arredondamento na última
+   * parcela e devolve a primeira parcela, com o id do parcelamento em `installment`).
+   */
+  async createCardPayment(params: {
+    totalAmount: number;
+    installments: number;
+    description: string;
+    idempotencyKey: string;
+    providerCustomerId: string;
+  }): Promise<CardPaymentResponse> {
+    this.ensureMutationsAllowed();
+    const due = new Date();
+    due.setDate(due.getDate() + 1);
+    const dueDateStr = due.toISOString().split('T')[0];
+    const n = Math.max(1, Math.floor(params.installments || 1));
+    const payload: any = {
+      customer: params.providerCustomerId,
+      billingType: 'CREDIT_CARD',
+      dueDate: dueDateStr,
+      description: params.description,
+      externalReference: params.idempotencyKey
+    };
+    if (n > 1) {
+      payload.installmentCount = n;
+      payload.totalValue = params.totalAmount;
+    } else {
+      payload.value = params.totalAmount;
+    }
+    const res = await this.request<{ id: string; status: string; invoiceUrl?: string; installment?: string | null }>('/payments', 'POST', payload);
+    if (!res.invoiceUrl) {
+      const err: any = new Error('ASAAS_CARD_WITHOUT_INVOICE_URL');
+      err.statusCode = 502;
+      throw err;
+    }
+    return {
+      providerPaymentId: res.id,
+      installmentId: res.installment || null,
+      invoiceUrl: res.invoiceUrl,
+      dueDate: dueDateStr,
+      status: res.status
+    };
+  }
+
+  /** NORQVA-0038: recupera uma cobrança de cartão já criada (queda de conexão), sem consultar QR Code de Pix. */
+  async searchCardPaymentByExternalReference(externalReference: string): Promise<CardPaymentResponse | null> {
+    const res = await this.request<{ data: { id: string; status: string; invoiceUrl?: string; installment?: string | null; installmentNumber?: number; dueDate?: string }[] }>(
+      `/payments?externalReference=${encodeURIComponent(externalReference)}`,
+      'GET'
+    );
+    const rows = res.data || [];
+    if (rows.length === 0) return null;
+    // Parcelado: todas as parcelas podem ter a mesma referência. A primeira parcela representa a compra.
+    const first = [...rows].sort((a, b) => (a.installmentNumber || 1) - (b.installmentNumber || 1))[0];
+    if (!first.invoiceUrl) return null;
+    return {
+      providerPaymentId: first.id,
+      installmentId: first.installment || null,
+      invoiceUrl: first.invoiceUrl,
+      dueDate: first.dueDate || '',
+      status: first.status
+    };
+  }
+
+  /** NORQVA-0038: soma das parcelas de um parcelamento (valor da compra inteira, não de uma parcela). */
+  async getInstallmentTotals(installmentId: string): Promise<InstallmentTotals> {
+    const res = await this.request<{ data: { value: number; netValue?: number }[] }>(
+      `/installments/${encodeURIComponent(installmentId)}/payments?limit=100`,
+      'GET'
+    );
+    const rows = res.data || [];
+    const cents = rows.reduce((acc, r) => acc + Math.round(Number(r.value) * 100), 0);
+    const allNet = rows.length > 0 && rows.every(r => typeof r.netValue === 'number');
+    const netCents = allNet ? rows.reduce((acc, r) => acc + Math.round(Number(r.netValue) * 100), 0) : null;
+    return { total: cents / 100, netTotal: netCents === null ? null : netCents / 100, count: rows.length };
   }
 
   async validateAuth(): Promise<{ authenticated: boolean; environment: string; error?: string }> {

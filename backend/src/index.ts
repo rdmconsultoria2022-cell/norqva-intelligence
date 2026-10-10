@@ -45,6 +45,7 @@ import {
   getOrders,
   getOrderById,
   checkoutPix,
+  checkoutCard,
   reconcilePayment,
   getPaymentById,
   webhookAsaas,
@@ -351,6 +352,7 @@ app.get('/api/orders/:id', orderStatusRateLimiter, requireRoleOrCheckoutToken(['
 
 // Sprint 2.5C Payment & Pix endpoints
 app.post('/api/checkout/orders/:orderId/pix', checkoutRateLimiter, checkoutPix);
+app.post('/api/checkout/orders/:orderId/card', checkoutRateLimiter, checkoutCard);
 app.post('/api/payments/:id/reconcile', requireRole(['ADMIN', 'OPERATIONS']), reconcilePayment);
 app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentById);
 

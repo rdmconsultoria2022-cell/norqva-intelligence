@@ -32,12 +32,28 @@ export const OfferEditor: React.FC<{
     price: toForm(off.price),
     promotional_price: toForm(off.promotional_price),
     description: off.description || '',
-    bonus: off.bonus || ''
+    bonus: off.bonus || '',
+    // NORQVA-0038: cartão de crédito
+    card_enabled: !!off.card_enabled,
+    card_max_installments: String(off.card_max_installments || 1),
+    card_total_price: toForm(off.card_total_price)
   });
   const [busy, setBusy] = useState(false);
 
   const price = toNum(form.price);
   const promo = form.promotional_price.trim() === '' ? null : toNum(form.promotional_price);
+  const pixPrice = promo ?? price;
+  const installments = Number(form.card_max_installments);
+  const cardTotal = form.card_total_price.trim() === '' ? null : toNum(form.card_total_price);
+  const effectiveCard = cardTotal ?? pixPrice;
+  const cardProblem = !form.card_enabled ? null
+    : !Number.isInteger(installments) || installments < 1 || installments > 12 ? 'Parcelas no cartão: de 1 a 12.'
+    : cardTotal !== null && !(cardTotal > 0) ? 'Total no cartão inválido (ou deixe em branco para usar o preço do Pix).'
+    : effectiveCard < pixPrice ? 'O total no cartão não pode ser menor que o preço no Pix.'
+    : effectiveCard > pixPrice * 1.3 ? 'O total no cartão está mais de 30% acima do Pix.'
+    : installments > 1 && Math.round(effectiveCard * 100) % installments !== 0
+      ? `O total precisa dividir em parcelas iguais. Sugestão: ${brl((Math.ceil(Math.round(effectiveCard * 100) / installments) * installments) / 100)}.`
+    : null;
   const problem =
     form.name.trim() === '' ? 'Dê um nome à oferta.'
     : !(price > 0) ? 'Preço inválido. Use, por exemplo, 14,90.'
@@ -45,7 +61,7 @@ export const OfferEditor: React.FC<{
     : promo !== null && !(promo > 0) ? 'Preço promocional inválido (ou deixe em branco).'
     : promo !== null && promo >= price ? 'O preço promocional precisa ser menor que o preço.'
     : form.description.trim() === '' ? 'A descrição não pode ficar vazia.'
-    : null;
+    : cardProblem;
   const priceChanged = Math.abs(price - Number(off.price)) > 0.001 || (promo ?? 0) !== Number(off.promotional_price || 0);
   const live = off.status === 'ATIVA' || off.status === 'TESTE';
 
@@ -60,7 +76,10 @@ export const OfferEditor: React.FC<{
           price,
           promotional_price: promo,
           description: form.description.trim(),
-          bonus: form.bonus.trim() || null
+          bonus: form.bonus.trim() || null,
+          card_enabled: form.card_enabled,
+          card_max_installments: installments,
+          card_total_price: cardTotal
         })
       });
       showSuccess('Oferta atualizada.');
@@ -100,6 +119,31 @@ export const OfferEditor: React.FC<{
         <span className="text-[10px] text-slate-400">Bônus (opcional)</span>
         <input aria-label="Bônus da oferta" value={form.bonus} onChange={e => setForm({ ...form, bonus: e.target.value })} className={input} />
       </label>
+      <div className="space-y-1 rounded border border-slate-800 p-2" data-testid="offer-card">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" aria-label="Aceita cartão de crédito" checked={form.card_enabled} onChange={e => setForm({ ...form, card_enabled: e.target.checked })} />
+          <span className="text-slate-200">Aceita cartão de crédito (pagamento na página segura do Asaas)</span>
+        </label>
+        {form.card_enabled && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Parcelas sem juros (1 a 12)</span>
+                <input aria-label="Parcelas no cartão" inputMode="numeric" value={form.card_max_installments} onChange={e => setForm({ ...form, card_max_installments: e.target.value })} className={`${input} font-mono`} />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Total no cartão (R$, vazio = preço do Pix)</span>
+                <input aria-label="Total no cartão" inputMode="decimal" value={form.card_total_price} onChange={e => setForm({ ...form, card_total_price: e.target.value })} className={`${input} font-mono`} />
+              </label>
+            </div>
+            {!cardProblem && pixPrice > 0 && (
+              <p className="text-[11px] text-slate-400" data-testid="offer-card-read">
+                O comprador vê: {installments}x de {brl(effectiveCard / installments)} sem juros (total {brl(effectiveCard)}) ou {brl(pixPrice)} no Pix. A taxa do cartão no Asaas é maior que a do Pix.
+              </p>
+            )}
+          </>
+        )}
+      </div>
       {priceChanged && live && !problem && (
         <p className="text-[11px] text-amber-300" data-testid="offer-price-warning">
           A oferta está {off.status}: o preço novo ({brl(promo ?? price)} cobrado) vale para os próximos pedidos. Pedidos já feitos não mudam. O preço do adicional no Pix continua o configurado em "Adicional no Pix".
