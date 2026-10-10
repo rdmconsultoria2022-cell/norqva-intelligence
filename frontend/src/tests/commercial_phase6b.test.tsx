@@ -58,7 +58,7 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
 
     expect(screen.getByText('Plano Escala Pro')).toBeInTheDocument();
     expect(screen.getByText('R$197,00')).toBeInTheDocument();
-    expect(screen.getByText('Livro Digital Oficial')).toBeInTheDocument();
+    expect(screen.getByText('Livro digital')).toBeInTheDocument();
   });
 
   // B02: checkout submit sends expected request exactly once
