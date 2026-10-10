@@ -17,8 +17,12 @@ import {
   getConversationMessages,
   sendOperatorMessage,
   setConversationMode,
+  getConditions,
+  saveConditions,
+  conditionHistory,
   InboundMessage
 } from '../services/whatsapp/whatsappService';
+import { aiConfigured } from '../services/whatsapp/attendant';
 
 function handle(res: Response, err: any, fallback: string) {
   if (err instanceof WhatsAppError) return res.status(err.status).json({ error: err.message });
@@ -46,7 +50,7 @@ const uid = (req: AuthenticatedRequest) => req.user?.id || null;
 export async function getWhatsAppNumbers(req: AuthenticatedRequest, res: Response) {
   try {
     const r = await listNumbers(db(req));
-    return res.status(200).json({ ...r, server_configured: !!getWhatsAppProvider() });
+    return res.status(200).json({ ...r, server_configured: !!getWhatsAppProvider(), ai_configured: aiConfigured() });
   } catch (err) {
     return handle(res, err, 'Falha ao carregar os números.');
   }
@@ -129,6 +133,30 @@ export async function postWhatsAppConversationMode(req: AuthenticatedRequest, re
     return res.status(200).json(await setConversationMode(db(req), String(req.params.id), req.body?.mode, uid(req)));
   } catch (err) {
     return handle(res, err, 'Falha ao mudar o modo da conversa.');
+  }
+}
+
+export async function getWhatsAppConditions(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await getConditions(db(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao carregar as condições de atendimento.');
+  }
+}
+
+export async function putWhatsAppConditions(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await saveConditions(db(req), req.body, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao salvar as condições de atendimento.');
+  }
+}
+
+export async function getWhatsAppConditionHistory(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await conditionHistory(db(req), req.query.number_id));
+  } catch (err) {
+    return handle(res, err, 'Falha ao carregar o histórico.');
   }
 }
 

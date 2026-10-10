@@ -3,11 +3,32 @@ import { Pool } from 'pg';
 import crypto from 'crypto';
 import { writeAuditLog } from '../../db/audit';
 import { WhatsAppProvider, ProviderError, phoneFromJid } from './provider';
+import { validateCpf } from '../../utils/validation';
 
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OPT_OUT_RE = /^\s*(parar|pare|sair|stop|cancelar|não quero mais|nao quero mais)\s*[.!]*\s*$/i;
+
+const CPF_CANDIDATE_RE = /(?<!\d)(\d{3}\.?\d{3}\.?\d{3}-?\d{2})(?!\d)/g;
+
+/** CPFs válidos encontrados no texto (só dígitos). */
+export function findCpfs(text: string): string[] {
+  const out: string[] = [];
+  for (const m of String(text || '').matchAll(CPF_CANDIDATE_RE)) {
+    const digits = m[1].replace(/\D/g, '');
+    if (validateCpf(digits)) out.push(digits);
+  }
+  return out;
+}
+
+/** Troca CPF válido por "[CPF final 12]" (telefones e outros números ficam como estão). */
+export function maskCpfInText(text: string): string {
+  return String(text || '').replace(CPF_CANDIDATE_RE, (all, cpf: string) => {
+    const digits = cpf.replace(/\D/g, '');
+    return validateCpf(digits) ? `[CPF final ${digits.slice(-2)}]` : all;
+  });
+}
 
 export class WhatsAppError extends Error {
   constructor(public status: number, message: string) {
@@ -343,7 +364,9 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
     const phone = phoneFromJid(jid) || phoneFromJid(m?.key?.remoteJidAlt || m?.key?.senderPn || null);
     const name = !fromMe && m?.pushName ? String(m.pushName).slice(0, 120) : null;
     const body = content.body.slice(0, 4000);
-    const preview = body.slice(0, 160);
+    // CPF nunca fica guardado em texto aberto (regra de segurança): no banco vai mascarado
+    const stored = maskCpfInText(body);
+    const preview = stored.slice(0, 160);
     const ts = Number(m?.messageTimestamp);
     const at = Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date();
 
@@ -366,7 +389,7 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (conversation_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING
        RETURNING id`,
-      [convId, fromMe ? 'OUT' : 'IN', fromMe ? 'PHONE' : 'CUSTOMER', body, content.kind, providerId, at]
+      [convId, fromMe ? 'OUT' : 'IN', fromMe ? 'PHONE' : 'CUSTOMER', stored, content.kind, providerId, at]
     );
     if (!ins.rows.length) {
       // mensagem repetida pelo servidor: não conta como nova
@@ -514,4 +537,44 @@ export async function purgeOldWhatsAppMessages(pool: Pool, days = MESSAGE_RETENT
     [d]
   );
   return r.rowCount || 0;
+}
+
+// ---------- Condições de atendimento (memória do atendente) ----------
+
+export const MAX_CONDITIONS_LENGTH = 8000;
+
+export async function getConditions(pool: Pool) {
+  const s = await pool.query('SELECT global_conditions, updated_at FROM whatsapp_settings WHERE id = 1');
+  const n = await pool.query(`SELECT id, label, conditions FROM whatsapp_numbers WHERE is_deleted = FALSE ORDER BY created_at ASC`);
+  return { global: s.rows[0]?.global_conditions || '', global_updated_at: s.rows[0]?.updated_at || null, numbers: n.rows };
+}
+
+export async function saveConditions(pool: Pool, body: any, userId: string | null) {
+  const text = String(body?.conditions ?? '');
+  if (text.length > MAX_CONDITIONS_LENGTH) throw new WhatsAppError(400, `Texto muito longo (até ${MAX_CONDITIONS_LENGTH} letras).`);
+  const numberId = body?.number_id ? String(body.number_id) : null;
+  if (numberId) {
+    const n = await loadNumber(pool, numberId);
+    await pool.query('UPDATE whatsapp_numbers SET conditions = $1, updated_at = NOW() WHERE id = $2', [text, numberId]);
+    await pool.query('INSERT INTO whatsapp_condition_versions (number_id, conditions, changed_by) VALUES ($1, $2, $3)', [numberId, text, userId]);
+    await writeAuditLog(pool, userId, 'WHATSAPP_CONDITIONS_SAVED', `Condições de atendimento do número "${n.label}" alteradas.`);
+  } else {
+    await pool.query('UPDATE whatsapp_settings SET global_conditions = $1, updated_at = NOW() WHERE id = 1', [text]);
+    await pool.query('INSERT INTO whatsapp_condition_versions (number_id, conditions, changed_by) VALUES (NULL, $1, $2)', [text, userId]);
+    await writeAuditLog(pool, userId, 'WHATSAPP_CONDITIONS_SAVED', 'Condições gerais de atendimento do WhatsApp alteradas.');
+  }
+  return { ok: true };
+}
+
+export async function conditionHistory(pool: Pool, numberId: any) {
+  const id = numberId ? String(numberId) : null;
+  if (id) checkId(id);
+  const r = await pool.query(
+    `SELECT v.id, v.conditions, v.created_at, u.name AS changed_by_name
+     FROM whatsapp_condition_versions v LEFT JOIN users u ON u.id = v.changed_by
+     WHERE ($1::uuid IS NULL AND v.number_id IS NULL) OR v.number_id = $1::uuid
+     ORDER BY v.created_at DESC LIMIT 20`,
+    [id]
+  );
+  return { versions: r.rows };
 }

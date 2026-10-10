@@ -30,6 +30,10 @@ function makeApi(overrides: Record<string, any> = {}) {
     }
     if (url === '/whatsapp/conversations/c1/messages' && method === 'POST') return { ok: true };
     if (url.endsWith('/mode')) return { ok: true };
+    if (url === '/whatsapp/conditions' && method === 'GET') return { global: 'Atenda com simpatia.', numbers: [{ id: 'n1', label: 'Trattoria 1', conditions: '' }] };
+    if (url === '/whatsapp/conditions' && method === 'PUT') return { ok: true };
+    if (url.startsWith('/whatsapp/conditions/history')) return { versions: [{ id: 'v1', conditions: 'Versão antiga', created_at: new Date().toISOString(), changed_by_name: 'Ricardo' }] };
+    if (url === '/whatsapp/numbers/n1' && method === 'PATCH') return { ok: true };
     return {};
   });
 }
@@ -82,5 +86,29 @@ describe('NORQVA-0046 — tela WhatsApp', () => {
     render(<WhatsAppView currentUser={admin} apiFetch={api} showError={vi.fn()} showSuccess={vi.fn()} />);
     fireEvent.click(screen.getByText('Números'));
     expect(await screen.findByTestId('wa-not-configured')).toBeInTheDocument();
+  });
+
+  it('liga e pausa o atendente do número', async () => {
+    const api = makeApi();
+    render(<WhatsAppView currentUser={admin} apiFetch={api} showError={vi.fn()} showSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByText('Números'));
+    expect(await screen.findByTestId('wa-bot-state')).toHaveTextContent('pausado');
+    fireEvent.click(screen.getByText('Ligar'));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/whatsapp/numbers/n1', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ bot_enabled: true }) })));
+  });
+
+  it('condições de atendimento: edita, salva e volta versão', async () => {
+    const api = makeApi();
+    render(<WhatsAppView currentUser={admin} apiFetch={api} showError={vi.fn()} showSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByText('Condições de atendimento'));
+    const box = await screen.findByLabelText('Texto das condições');
+    await waitFor(() => expect(box).toHaveValue('Atenda com simpatia.'));
+    fireEvent.click(screen.getByText('Usar modelo sugerido'));
+    expect((box as HTMLTextAreaElement).value).toContain('Dolci della Nonna');
+    fireEvent.click(screen.getByText('Salvar'));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/whatsapp/conditions', expect.objectContaining({ method: 'PUT' })));
+    fireEvent.click(screen.getByText('Versões anteriores'));
+    fireEvent.click(await screen.findByText('Voltar para esta versão'));
+    expect(box).toHaveValue('Versão antiga');
   });
 });
