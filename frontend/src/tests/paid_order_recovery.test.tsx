@@ -232,7 +232,7 @@ describe('NORQVA — Paid Order Recovery & Refresh Persistence (Scenarios A - J)
       const link = screen.getByRole('link', { name: /Baixar/i });
       expect(link).toBeInTheDocument();
       expect(link.getAttribute('href')).toContain('/delivery/token_direct_nav');
-      expect(link.getAttribute('target')).toBeNull(); // Direct navigation, not blank popup
+      expect(link.getAttribute('target')).toBe('_blank'); // NORQVA-0044: nova aba, a página de entrega continua aberta
     });
   });
 
