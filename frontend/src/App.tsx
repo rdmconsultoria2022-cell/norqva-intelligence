@@ -60,7 +60,7 @@ const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'results', 'cre
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 import { KitLandingPage } from './features/public/KitLandingPage';
 
-import { apiFetch as apiFetchLib } from './lib/api';
+import { apiFetch as apiFetchLib, API_BASE as API_BASE_LIB } from './lib/api';
 
 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
@@ -769,7 +769,20 @@ export default function App() {
                 setOfferFormState(f => ({ ...f, product_id: productId }));
                 setShowAddOffer(true);
               }}
-              onCheckout={(off: any) => setCheckoutOffer(off)}
+              onCheckout={async (off: any) => {
+                // O checkout da tela usa as mesmas condições que o comprador vê (cartão e adicional vêm da página pública)
+                let merged = off;
+                try {
+                  if (off?.human_id && !off.is_demo) {
+                    const r = await fetch(`${API_BASE_LIB}/public/offers/${encodeURIComponent(off.human_id)}`);
+                    if (r.ok) {
+                      const pub = await r.json();
+                      merged = { ...off, card: pub?.card ?? null, bump: pub?.bump ?? off.bump ?? null };
+                    }
+                  }
+                } catch (_) { /* sem a página pública, segue só com Pix */ }
+                setCheckoutOffer(merged);
+              }}
               onUpdateOfferStatus={handleUpdateOfferStatus}
               onProductsChanged={() => { refreshProducts(); refreshOffers(); }}
             />
