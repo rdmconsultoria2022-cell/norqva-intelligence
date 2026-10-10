@@ -45,8 +45,17 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
     if (!o) return { status: 'SKIPPED', reason: 'ORDER_NOT_FOUND' };
     if (!o.conv_id || !o.contact_jid) return { status: 'SKIPPED', reason: 'NOT_WHATSAPP_ORDER' };
     if (o.status !== 'PAID' || !o.confirmed) return { status: 'SKIPPED', reason: 'NOT_PAID' };
-    if (!o.has_active_delivery) return { status: 'SKIPPED', reason: 'NO_ACTIVE_DELIVERY' };
-    if (o.conv_mode === 'OPTED_OUT') return { status: 'SKIPPED', reason: 'OPTED_OUT' };
+    // motivos permanentes ficam registrados para a varredura não insistir
+    const skipForGood = async (reason: string) => {
+      await pool.query(
+        `INSERT INTO whatsapp_order_deliveries (order_id, conversation_id, status, error_code) VALUES ($1, $2, 'SKIPPED', $3)
+         ON CONFLICT (order_id) DO NOTHING`,
+        [orderId, o.conv_id, reason]
+      );
+      return { status: 'SKIPPED' as const, reason };
+    };
+    if (!o.has_active_delivery) return await skipForGood('NO_ACTIVE_DELIVERY');
+    if (o.conv_mode === 'OPTED_OUT') return await skipForGood('OPTED_OUT');
     if (!provider) return { status: 'SKIPPED', reason: 'SERVER_NOT_CONFIGURED' };
     if (o.number_deleted || o.number_status !== 'CONNECTED') return { status: 'SKIPPED', reason: 'NUMBER_NOT_CONNECTED' };
 
@@ -115,6 +124,7 @@ export async function sweepWhatsAppDeliveries(pool: Pool): Promise<number> {
             OR (w.status = 'FAILED' AND w.attempts < $1)
             OR (w.status = 'SENDING' AND w.updated_at < NOW() - INTERVAL '15 minutes' AND w.attempts < $1))
      GROUP BY o.id
+     ORDER BY MAX(p.confirmed_at) DESC
      LIMIT 25`,
     [WHATSAPP_DELIVERY_MAX_ATTEMPTS]
   );

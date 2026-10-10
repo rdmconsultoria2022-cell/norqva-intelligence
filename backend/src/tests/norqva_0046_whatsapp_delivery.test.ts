@@ -149,6 +149,7 @@ describe.sequential('NORQVA-0046 — entrega pelo WhatsApp', () => {
     const d = await pool.query('SELECT status, attempts FROM whatsapp_order_deliveries WHERE order_id = $1', [orderId]);
     expect(d.rows[0]).toMatchObject({ status: 'FAILED', attempts: 1 });
     const t = await pool.query(`SELECT status FROM order_recovery_tokens WHERE order_id = $1 AND purpose = 'WHATSAPP'`, [orderId]);
+    expect(t.rows.length).toBeGreaterThan(0);
     expect(t.rows.every((r: any) => r.status === 'REVOKED')).toBe(true);
     const retry = await sendPaidOrderWhatsApp(pool, orderId);
     expect(retry).toEqual({ status: 'SENT' });
