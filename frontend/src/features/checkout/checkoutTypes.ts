@@ -13,6 +13,8 @@ export interface CheckoutOffer {
   is_demo?: boolean;
   /** NORQVA-0032: adicional na hora do Pix (o preço cobrado é sempre o do servidor) */
   bump?: { offer_human_id: string; name: string; headline: string | null; price: number } | null;
+  /** NORQVA-0038: cartão de crédito (null = só Pix). Valores exatos vêm do servidor. */
+  card?: { max_installments: number; total: number; installment_value: number } | null;
 }
 
 export interface CheckoutCustomer {
@@ -38,6 +40,8 @@ export interface CheckoutOrderResult {
   status: string;
   checkout_token?: string;
   is_demo: boolean;
+  /** NORQVA-0038: meio escolhido no checkout (só no navegador; o servidor decide valor e parcelas). */
+  payment_method?: 'PIX' | 'CREDIT_CARD';
   created_at: string;
   items?: Array<{
     id: string;

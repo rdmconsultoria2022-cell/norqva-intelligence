@@ -58,6 +58,7 @@ import { CreativeFactoryView } from './features/creative-factory/CreativeFactory
 // Screens whose numbers are filtered by the global period
 const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'results', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
+import { KitLandingPage } from './features/public/KitLandingPage';
 
 import { apiFetch as apiFetchLib } from './lib/api';
 
@@ -147,9 +148,10 @@ export default function App() {
     const isPublicOffer = location.pathname.startsWith('/p/');
     const isOrderDelivery = location.pathname.startsWith('/pedido/');
     const isAccessRecovery = location.pathname.startsWith('/acesso/');
+    const isKitPage = location.pathname.startsWith('/kit/'); // NORQVA-0038: página pública do kit
 
     if (!currentUser) {
-      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery) {
+      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery && !isKitPage) {
         navigate('/login', { replace: true });
       }
     } else {
@@ -551,6 +553,16 @@ export default function App() {
   if (isOrderDelivery) {
     return (
       <OrderDeliveryView
+        showError={showError}
+        showSuccess={showSuccess}
+      />
+    );
+  }
+
+  // NORQVA-0038: página de vendas do kit (preços e parcelas vêm da oferta)
+  if (location.pathname.startsWith('/kit/')) {
+    return (
+      <KitLandingPage
         showError={showError}
         showSuccess={showSuccess}
       />
@@ -1453,6 +1465,7 @@ export default function App() {
           orderId={activePaymentOrder.id}
           checkoutToken={activePaymentOrder.checkout_token || ''}
           amount={activePaymentOrder.total_amount}
+          paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
           isDemo={isDemoView}
           onPaymentConfirmed={() => {
             const current = activePaymentOrder;

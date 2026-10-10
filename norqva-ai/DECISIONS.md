@@ -78,3 +78,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão:** o Claude faz sem pedir aprovação as mudanças de tela, texto e conteúdo (inclusive PDFs dos produtos) e as correções de erro. O "Aprovado" do operador continua obrigatório antes de qualquer mudança que mexa em pagamento, entrega ao comprador, gasto na Meta, dados de clientes ou que não possa ser desfeita. Na dúvida, vale a aprovação. **Aprovado pelo operador** em 10/10/2026 13h47 ("Pode seguir com essa regra").
 - **Continua igual:** branch, arquivo de tarefa, revisão independente, CI verde e merge pelo Claude; todas as regras de segurança (PAID do Asaas, migrations aditivas, tudo nasce pausado na Meta).
 - **Passagem entre tarefas:** `CLAUDE.md` na raiz do repositório resume regras, fluxo, estado e pendências; fontes dos livros em `norqva-ai/produtos/`.
+
+## D-0038 — Cartão de crédito com entrega na confirmação (2026-10-10)
+
+- **Decisão:** ofertas podem aceitar cartão de crédito parcelado sem juros pelo Asaas. O PDF é liberado quando o Asaas confirma a compra (CONFIRMED), sem esperar o dinheiro cair (32 dias por parcela). **Decidido pelo operador** em 10/10/2026 15h24: "a entrega do produto deve ser feita assim que houver a confirmação de pagamento, eu assumo o risco de ter contestação e ficar com o prejuízo".
+- **Como:** o comprador digita o cartão na página segura do Asaas (invoiceUrl); o NORQVA nunca vê dados de cartão.
+- **Estorno e contestação:** bloqueiam os downloads do pedido (pedido REFUNDED, entregas REVOKED), para Pix e cartão.
+- **Anúncio de parcelas:** o total no cartão precisa dividir em parcelas iguais, para "Nx de R$ Y" bater exatamente com o total (Decreto 5.903/2006). O cartão pode custar um pouco mais que o Pix.
+- **Kit:** a oferta do kit liga os mesmos PDFs do Trattoria e do Dolci (mesmo arquivo cadastrado). Trocar o arquivo em uma oferta muda nas outras; a tela avisa.
+- **Estorno de cobrança duplicada:** se o pedido tem outro pagamento confirmado, ou a cobrança estornada nunca liberou o pedido, o acesso é mantido; só aquele pagamento vira REFUNDED.

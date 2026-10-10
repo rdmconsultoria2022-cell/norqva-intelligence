@@ -50,6 +50,7 @@ Decisões duradouras vão para `norqva-ai/DECISIONS.md`.
 - Conta real: tudo é `data_provenance = COMMERCIAL_PRODUCTION`; não existe mais modo demo nas telas (D-0034).
 - Arquivo entregue ao comprador: troca por ponteiro (`digital_assets.storage_path`), com versões e "Restaurar" (NORQVA-0033). Tela: Produtos → "PDF entregue ao comprador" → "Trocar arquivo".
 - Prévia oficial de anúncio da Meta: `GET /api/meta/ads/:adId/preview` (NORQVA-0036).
+- Cartão (NORQVA-0038): `POST /api/checkout/orders/:id/card` gera cobrança na página segura do Asaas; entrega na confirmação; estorno/contestação bloqueia downloads.
 - GitHub via `gh api` (PR, merge com `merge_method=merge`, reexecutar CI que falhar por infraestrutura).
 
 ## Produtos digitais (livros em PDF)
@@ -64,7 +65,8 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 ## Estado em 10/10/2026
 
 - Mesclados: NORQVA-0033 (troca do PDF entregue), 0034 (sem modo demo, produtos ocultos), 0035 (editar oferta e produto), 0036 (tela Criativos com prévia da Meta; migration 048 tira do faturamento a compra de teste das 08h18).
-- Trattoria nova entregue ao Ricardo para trocar na oferta (confirmar com ele se já trocou).
+- Trattoria nova já trocada na oferta pelo Ricardo (10/10/2026).
+- NORQVA-0038: cartão de crédito parcelado (D-0038), kit Cozinha Italiana e página `/kit/<oferta>`.
 
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
 
