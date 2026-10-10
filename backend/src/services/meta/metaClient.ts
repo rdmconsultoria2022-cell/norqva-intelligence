@@ -561,8 +561,9 @@ export class MetaClient {
       title: clip(c.title ?? vd.title ?? ld.name, 500),
       body: clip(c.body ?? vd.message ?? ld.message, 4000),
       cta: clip(c.call_to_action_type ?? vd.call_to_action?.type ?? ld.call_to_action?.type, 60),
-      thumbnail_url: clip(c.thumbnail_url ?? vd.image_url, 2000),
-      image_url: clip(c.image_url ?? ld.picture, 2000),
+      // NORQVA-0036: mais fontes de imagem — carrossel (1º cartão), criativo dinâmico (asset_feed_spec)
+      thumbnail_url: clip(c.thumbnail_url ?? vd.image_url ?? c.asset_feed_spec?.videos?.[0]?.thumbnail_url, 2000),
+      image_url: clip(c.image_url ?? ld.picture ?? ld.child_attachments?.[0]?.picture ?? c.asset_feed_spec?.images?.[0]?.url, 2000),
       video_id: clip(c.video_id ?? vd.video_id, 64),
       url_tags: clip(c.url_tags, 2000)
     };
@@ -583,9 +584,18 @@ export class MetaClient {
     }
 
     const formatted = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
-    const data = await this.paginateGraphApi(`/${formatted}/ads`, {
-      fields: 'id,name,adset_id,status,effective_status,created_time,creative{id,title,body,call_to_action_type,thumbnail_url,image_url,video_id,url_tags,object_story_spec}'
-    });
+    const BASE = 'id,title,body,call_to_action_type,thumbnail_url,image_url,video_id,url_tags,object_story_spec';
+    const fieldsFor = (creative: string) => `id,name,adset_id,status,effective_status,created_time,creative{${creative}}`;
+    let data: any[];
+    try {
+      // NORQVA-0036: pede também o criativo dinâmico (imagens/vídeos do asset_feed_spec)
+      data = await this.paginateGraphApi(`/${formatted}/ads`, { fields: fieldsFor(`${BASE},asset_feed_spec{images,videos}`) });
+    } catch (err: any) {
+      // Se a Meta recusar o campo novo, a sincronização segue com o pedido de antes (nunca quebra por causa disso)
+      if (!/\b100\b|field|nonexisting/i.test(String(err?.message || ''))) throw err;
+      console.warn('[META] asset_feed_spec recusado; sincronizando anúncios sem ele:', err?.message);
+      data = await this.paginateGraphApi(`/${formatted}/ads`, { fields: fieldsFor(BASE) });
+    }
 
     return data.map(a => ({
       id: a.id,
@@ -597,6 +607,25 @@ export class MetaClient {
       creative_content: a.creative ? MetaClient.creativeContent(a.creative) : undefined,
       created_time: a.created_time || null
     }));
+  }
+
+  /**
+   * NORQVA-0036: prévia oficial do anúncio (como aparece no Instagram/Facebook), só leitura.
+   * Devolve o endereço do iframe da Meta, ou null se ela não gerar a prévia.
+   */
+  public async getAdPreview(adId: string, format: string): Promise<string | null> {
+    const res = await this.fetchGraphApi(`/${adId}/previews`, { ad_format: format });
+    const body = String(res?.data?.[0]?.body || '');
+    const m = body.match(/src=["']([^"']+)["']/i);
+    if (!m) return null;
+    const src = m[1].replace(/&amp;/g, '&');
+    try {
+      const u = new URL(src);
+      if (u.protocol !== 'https:' || !/(^|\.)facebook\.com$/i.test(u.hostname)) return null;
+      return u.toString();
+    } catch {
+      return null;
+    }
   }
 
   public async getInsights(

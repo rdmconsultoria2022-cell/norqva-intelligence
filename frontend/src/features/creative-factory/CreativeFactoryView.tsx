@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2, Plus } from 'lucide-react';
 import { UserObj } from '../../types';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
-import { CreativePreview, isHttpUrl } from '../../components/CreativePreview';
+import { CreativePreview } from '../../components/CreativePreview';
 import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile, groupByCampaign } from '../../components/ViewModes';
 import { NewCreativeForm, NewCreativeInput, CLAIM_TYPE_LABEL } from './NewCreativeForm';
+import { adDelivery, DeliveryBadge, MetaImage, AdPreviewButton } from '../../components/AdLivePreview';
 
 // NORQVA-0005 / G1: Creative Factory — batch matrix, claims gate, human approval and
 // a deterministic scorecard per creative (Meta ad name == creative key).
@@ -99,6 +100,8 @@ export function CreativeFactoryView({
   // Organização por campanha: todas / ativas / pausadas, e mostrar ou não os criativos não publicados
   const [campaignFilter, setCampaignFilter] = useState<'ALL' | 'ACTIVE' | 'PAUSED'>('ALL');
   const [showUnpublished, setShowUnpublished] = useState(true);
+  // NORQVA-0036: só anúncios que estão de fato entregando (anúncio, conjunto e campanha ativos)
+  const [onlyRunning, setOnlyRunning] = useState(false);
   const [rejecting, setRejecting] = useState<{ id: string; decision: 'REJECTED' | 'REVISION_REQUESTED' } | null>(null);
   const [reason, setReason] = useState('WEAK_HOOK');
   const [notes, setNotes] = useState('');
@@ -280,6 +283,20 @@ export function CreativeFactoryView({
   // Todas as campanhas da conta (quando o backend envia `campaigns`); senão, o agrupamento antigo.
   const allCampaigns: any[] | null = Array.isArray(data?.campaigns) ? data.campaigns : null;
   const noCreativeFilter = statusFilter === 'ALL' && hookFilter === 'ALL';
+  // NORQVA-0036: anúncios da Meta por id, para dar imagem, situação real e prévia aos criativos ligados
+  const adsByMetaId = new Map<string, any>();
+  for (const cp of allCampaigns || []) for (const a of cp.ads || []) adsByMetaId.set(String(a.meta_ad_id), a);
+  const linkedAdsOf = (c: any): any[] => {
+    const ids = new Set<string>([...(c.linked_meta_ads || []).map(String), ...(c.campaigns || []).flatMap((cp: any) => (cp.meta_ad_ids || []).map(String))]);
+    return [...ids].map(id => adsByMetaId.get(id)).filter(Boolean);
+  };
+  const isRunning = (a: any) => adDelivery(a).key === 'RUNNING';
+  const metaImageOf = (c: any): string | null => {
+    const ads = linkedAdsOf(c);
+    const best = ads.find(a => isRunning(a) && (a.image_url || a.thumbnail_url)) || ads.find(a => a.image_url || a.thumbnail_url);
+    return best ? best.image_url || best.thumbnail_url : null;
+  };
+  const creativeRunning = (c: any) => linkedAdsOf(c).some(isRunning);
   const campaignStatusOf = (cp: { status?: string | null }) => (cp.status === 'ACTIVE' ? 'ACTIVE' : cp.status === 'PAUSED' ? 'PAUSED' : 'OTHER');
   const campaignCounts = (allCampaigns || []).reduce(
     (acc: Record<string, number>, cp: any) => {
@@ -299,16 +316,16 @@ export function CreativeFactoryView({
             name: cp.name,
             status: cp.status,
             effective: cp.effective_status,
-            items: visible.filter(c => (c.campaigns || []).some((x: any) => x.meta_campaign_id === cp.meta_campaign_id)),
+            items: visible.filter(c => (c.campaigns || []).some((x: any) => x.meta_campaign_id === cp.meta_campaign_id) && (!onlyRunning || creativeRunning(c))),
             // anúncios da campanha que não vieram da Fábrica (sem status de aprovação: só aparecem sem filtro de criativo)
-            externalAds: noCreativeFilter ? (cp.ads || []).filter((a: any) => !a.factory_creative_id) : []
+            externalAds: noCreativeFilter ? (cp.ads || []).filter((a: any) => !a.factory_creative_id && (!onlyRunning || isRunning(a))) : []
           }))
-          .filter(g => noCreativeFilter || g.items.length > 0)
+          .filter(g => (noCreativeFilter && !onlyRunning) || g.items.length > 0 || g.externalAds.length > 0)
           .sort((a, b) => {
             const rank = (g: Group) => (g.status === 'ACTIVE' ? 0 : g.status === 'PAUSED' ? 1 : 2);
             return rank(a) - rank(b) || a.name.localeCompare(b.name);
           }),
-        ...(showUnpublished && unpublished.length > 0
+        ...(showUnpublished && !onlyRunning && unpublished.length > 0
           ? [{ key: '__none__', name: 'Criativos não publicados', status: null, items: unpublished, externalAds: [] }]
           : [])
       ]
@@ -342,10 +359,6 @@ export function CreativeFactoryView({
     }, 50);
   };
 
-  const AD_STATUS: Record<string, { label: string; cls: string }> = {
-    ACTIVE: { label: 'ativo', cls: 'bg-emerald-950 text-emerald-300' },
-    PAUSED: { label: 'pausado', cls: 'bg-slate-800 text-slate-400' }
-  };
   const openAdInList = (adId: string) => {
     setViewMode('list');
     setFocusId(`ad-${adId}`);
@@ -359,7 +372,7 @@ export function CreativeFactoryView({
   };
   // Anúncio da campanha que não é criativo da Fábrica (ex.: criado no Gerenciador ou por plano de lançamento)
   const renderMetaAd = (a: any) => {
-    const st = AD_STATUS[a.status] || { label: a.status ? String(a.status).toLowerCase() : 'sem status', cls: 'bg-slate-800 text-slate-400' };
+    const d = adDelivery(a);
     const thumb = a.image_url || a.thumbnail_url;
     return (
       <article
@@ -368,15 +381,11 @@ export function CreativeFactoryView({
         data-testid="meta-ad-card"
         className={`rounded-xl border border-slate-800 bg-slate-900/40 p-4 flex gap-4 ${focusId === `ad-${a.meta_ad_id}` ? 'ring-2 ring-emerald-500' : ''}`}
       >
-        {isHttpUrl(thumb) ? (
-          <img src={thumb} alt={a.name} loading="lazy" className="w-20 h-20 object-cover rounded border border-slate-800 shrink-0" />
-        ) : (
-          <div className="w-20 h-20 rounded border border-slate-800 bg-black shrink-0 flex items-center justify-center text-[10px] text-slate-600">sem prévia</div>
-        )}
+        <MetaImage url={thumb} alt={a.name} className="w-24 h-24 rounded border border-slate-800 shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5 text-xs">
           <header className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-emerald-300">{a.name}</span>
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${st.cls}`} data-testid="meta-ad-status">{st.label}</span>
+            <span data-testid="meta-ad-status"><DeliveryBadge d={d} /></span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-700 text-slate-400" title="Anúncio da campanha que não tem criativo cadastrado no NORQVA">
               sem criativo no NORQVA
             </span>
@@ -391,6 +400,7 @@ export function CreativeFactoryView({
             <span>Cliques no link: {a.metrics ? a.metrics.link_clicks.toLocaleString('pt-BR') : '—'}</span>
             <span>Vendas: {a.metrics ? a.metrics.paid_orders : '—'}</span>
           </div>
+          {!isDemoView && <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />}
         </div>
       </article>
     );
@@ -416,6 +426,9 @@ export function CreativeFactoryView({
               className={`rounded-xl border border-slate-800 bg-slate-900/60 p-4 ${viewMode === 'list' ? 'flex flex-col-reverse md:flex-row gap-4' : 'space-y-3'} ${focusId === c.id ? 'ring-2 ring-emerald-500' : ''}`}
             >
               {viewMode === 'grid' && hasFile(c) && <CreativePreview url={c.file_url} format={c.format} title={c.human_id} />}
+              {viewMode === 'grid' && !hasFile(c) && metaImageOf(c) && (
+                <MetaImage url={metaImageOf(c)} alt={c.human_id} className="w-full aspect-[4/5] max-h-72 rounded border border-slate-800" />
+              )}
               <div className={viewMode === 'list' ? 'flex-1 min-w-0 space-y-3' : 'space-y-3'}>
               <header className="flex items-start justify-between gap-2">
                 <div>
@@ -433,6 +446,20 @@ export function CreativeFactoryView({
                 </div>
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold ${st.cls}`}>{st.label}</span>
               </header>
+
+              {linkedAdsOf(c).length > 0 && (
+                <div className="space-y-1.5 text-xs" data-testid="creative-meta-ads">
+                  {linkedAdsOf(c).map((a: any) => (
+                    <div key={a.meta_ad_id} className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono text-[11px] text-slate-400">Anúncio {a.name}</span>
+                        <DeliveryBadge d={adDelivery(a)} />
+                      </div>
+                      {!isDemoView && <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="text-xs space-y-1" data-testid="creative-campaign">
                 <div>
@@ -757,6 +784,11 @@ export function CreativeFactoryView({
                 <div className="md:w-[38%] lg:w-[34%] shrink-0 md:self-stretch flex flex-col">
                   {hasFile(c) ? (
                     <CreativePreview url={c.file_url} format={c.format} title={c.human_id} fill className="flex-1" />
+                  ) : metaImageOf(c) ? (
+                    <div className="flex-1 flex flex-col gap-1">
+                      <MetaImage url={metaImageOf(c)} alt={c.human_id} className="flex-1 min-h-[16rem] w-full rounded border border-slate-800" />
+                      <span className="text-[10px] text-slate-500">Imagem do anúncio na Meta</span>
+                    </div>
                   ) : (
                     <div className="flex-1 min-h-[16rem] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
                       sem arquivo
@@ -984,6 +1016,10 @@ export function CreativeFactoryView({
             </button>
           ))}
           <label className="flex items-center gap-1.5 ml-2 text-slate-300 cursor-pointer">
+            <input type="checkbox" checked={onlyRunning} onChange={e => setOnlyRunning(e.target.checked)} aria-label="Só o que está rodando" data-testid="only-running" />
+            Só o que está rodando
+          </label>
+          <label className="flex items-center gap-1.5 ml-2 text-slate-300 cursor-pointer">
             <input
               type="checkbox"
               checked={showUnpublished}
@@ -1056,7 +1092,7 @@ export function CreativeFactoryView({
                   mode={viewMode}
                   title={c.human_id}
                   subtitle={(APPROVAL_LABEL[c.approval_status] || APPROVAL_LABEL.DRAFT).label}
-                  url={hasFile(c) ? c.file_url : null}
+                  url={hasFile(c) ? c.file_url : metaImageOf(c)}
                   format={c.format}
                   onOpen={() => openInList(c.id)}
                 />
@@ -1070,7 +1106,7 @@ export function CreativeFactoryView({
                   key={`ad-${a.meta_ad_id}`}
                   mode={viewMode}
                   title={a.name}
-                  subtitle={`${(AD_STATUS[a.status] || { label: a.status || '' }).label} · sem criativo no NORQVA`}
+                  subtitle={`${adDelivery(a).label} · sem criativo no NORQVA`}
                   url={a.image_url || a.thumbnail_url}
                   format="IMAGE"
                   onOpen={() => openAdInList(a.meta_ad_id)}

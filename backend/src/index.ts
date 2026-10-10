@@ -161,6 +161,7 @@ import { startPaymentSweepScheduler } from './services/paymentSweepService';
 import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPayment } from './controllers/salesController';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
+import { getAdPreview } from './controllers/adPreviewController';
 import { getHiddenProducts, promoteHiddenProduct } from './controllers/catalogVisibilityController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
@@ -487,6 +488,8 @@ app.post('/api/ai-team/opportunities/:id/validation-override', requireRole(['ADM
 
 // Creative Factory (NORQVA-0005 / G1) — matrix, claims, human approval, scorecard
 app.get('/api/creative-factory/creatives', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryCreatives);
+// NORQVA-0036: prévia oficial do anúncio (Instagram feed/Stories, Facebook feed), só leitura
+app.get('/api/meta/ads/:adId/preview', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getAdPreview);
 app.post('/api/creative-factory/batches/:code/import', requireRole(['ADMIN']), importFactoryBatch);
 app.patch('/api/creative-factory/claims/:id', requireRole(['ADMIN']), updateFactoryClaim);
 app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), reviewFactoryCreative);
