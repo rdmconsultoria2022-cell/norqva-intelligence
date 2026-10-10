@@ -418,7 +418,7 @@ export class CreativeFactoryService {
     const campRows = await pool.query(
       `SELECT mc.meta_campaign_id, mc.name, mc.status, mc.effective_status,
               ma.meta_ad_id, ma.name AS ad_name, ma.status AS ad_status, ma.effective_status AS ad_effective_status,
-              mas.name AS adset_name, ma.creative_title, ma.creative_body, ma.creative_cta,
+              mas.name AS adset_name, mas.effective_status AS adset_effective_status, ma.creative_title, ma.creative_body, ma.creative_cta,
               ma.thumbnail_url, ma.image_url, ma.video_id
        FROM meta_campaigns mc
        LEFT JOIN meta_ad_sets mas ON mas.campaign_id = mc.id
@@ -448,6 +448,8 @@ export class CreativeFactoryService {
         status: r.ad_status || null,
         effective_status: r.ad_effective_status || null,
         adset_name: r.adset_name || null,
+        adset_effective_status: r.adset_effective_status || null,
+        campaign_effective_status: r.effective_status || null,
         creative_title: r.creative_title || null,
         creative_body: r.creative_body || null,
         creative_cta: r.creative_cta || null,

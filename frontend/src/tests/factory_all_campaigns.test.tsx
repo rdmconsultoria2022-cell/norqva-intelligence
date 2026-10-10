@@ -61,7 +61,7 @@ describe('Fábrica — todas as campanhas', () => {
     expect(ad).toHaveTextContent('TRATTORIA_V1_AD_C_HOOK_MASSA_CASEIRA');
     expect(ad).toHaveTextContent('sem criativo no NORQVA');
     expect(ad).toHaveTextContent('Conjunto: TRATTORIA_ABO_BROAD_BR_V1');
-    expect(within(ad).getByTestId('meta-ad-status')).toHaveTextContent('ativo');
+    expect(within(ad).getByTestId('meta-ad-status')).toHaveTextContent('rodando');
     expect(ad).toHaveTextContent('Vendas: 5');
     // anúncio que já é criativo da Fábrica não é duplicado como externo
     expect(screen.getAllByTestId('meta-ad-card')).toHaveLength(1);
