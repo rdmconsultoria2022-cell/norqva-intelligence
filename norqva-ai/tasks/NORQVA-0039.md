@@ -15,3 +15,4 @@ Ativar a oferta (Ricardo, pela tela). Compra de teste (Ricardo).
 
 - 050 rodou em 10/10/2026 16h18 e não criou nada: a oferta OFF-000001 não tem PDF (a oferta que vende o Trattoria é outra).
 - 051 acha as ofertas pelos produtos PRD-000003 (Trattoria) e PRD-000006 (Dolci, oferta OFF-000005), com as mesmas travas.
+- 051 rodou às 16h31 (antes do PDF do Trattoria ser enviado pela tela às 16h33). 052 repete a 051.
