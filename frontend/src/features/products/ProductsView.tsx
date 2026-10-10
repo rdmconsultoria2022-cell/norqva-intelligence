@@ -192,7 +192,7 @@ export const OfferCard: React.FC<{
         </div>
       </div>
 
-      {canEdit && editor && !editing && (
+      {canEdit && editor && !editing && off.status !== 'ARQUIVADA' && (
         <button
           onClick={() => setEditing(true)}
           data-testid="edit-offer"

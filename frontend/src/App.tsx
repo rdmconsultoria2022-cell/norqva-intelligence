@@ -939,7 +939,6 @@ export default function App() {
                 <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Categoria</label>
                 <input
                   aria-label="Categoria do produto"
-                  required
                   value={editProductForm.category}
                   onChange={e => setEditProductForm({ ...editProductForm, category: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"

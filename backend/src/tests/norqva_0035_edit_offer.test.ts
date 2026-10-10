@@ -61,6 +61,10 @@ describe.sequential('NORQVA-0035 — editar oferta e produto', () => {
     expect((await put(`/api/offers/${offerId}?mode=real`, { price: 0 })).status).toBe(400);
     expect((await put(`/api/offers/${offerId}?mode=real`, { price: 'abc' })).status).toBe(400);
     expect((await put(`/api/offers/${offerId}?mode=real`, { promotional_price: -1 })).status).toBe(400);
+    expect((await put(`/api/offers/${offerId}?mode=real`, { price: 14.999 })).status).toBe(400);
+    expect((await put(`/api/offers/${offerId}?mode=real`, { price: 1e12 })).status).toBe(400);
+    expect((await put(`/api/offers/${offerId}?mode=real`, { promotional_price: 20 })).status).toBe(400);
+    expect((await put(`/api/offers/${offerId}?mode=real`, { description: '  ' })).status).toBe(400);
     const o = (await pool.query('SELECT name, price FROM offers WHERE id = $1', [offerId])).rows[0];
     expect(o.name).toBe('Dolci della Nonna');
     expect(Number(o.price)).toBe(14.9);

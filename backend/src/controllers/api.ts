@@ -842,14 +842,36 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'O nome da oferta não pode ficar vazio.' });
     }
-    if (price !== undefined && !(Number.isFinite(Number(price)) && Number(price) > 0)) {
+    const validMoney = (v: any) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 && n <= 1000000 && Math.abs(Math.round(n * 100) - n * 100) < 1e-6;
+    };
+    if (price !== undefined && !validMoney(price)) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Preço inválido: use um valor maior que zero.' });
+      return res.status(400).json({ error: 'Preço inválido: use um valor maior que zero, com até 2 casas decimais.' });
     }
-    if (promotional_price !== undefined && promotional_price !== null && promotional_price !== '' &&
-        !(Number.isFinite(Number(promotional_price)) && Number(promotional_price) > 0)) {
+    const promoGiven = promotional_price !== undefined && promotional_price !== null && promotional_price !== '';
+    if (promoGiven && !validMoney(promotional_price)) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Preço promocional inválido: deixe em branco ou use um valor maior que zero.' });
+      return res.status(400).json({ error: 'Preço promocional inválido: deixe em branco ou use um valor maior que zero, com até 2 casas decimais.' });
+    }
+    {
+      const finalPrice = price !== undefined ? Number(price) : Number(existingOffer.price);
+      const finalPromo = promotional_price !== undefined ? (promoGiven ? Number(promotional_price) : null)
+        : (existingOffer.promotional_price === null ? null : Number(existingOffer.promotional_price));
+      if (finalPromo !== null && finalPromo >= finalPrice) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'O preço promocional precisa ser menor que o preço.' });
+      }
+    }
+    if (description !== undefined && (typeof description !== 'string' || description.trim() === '')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A descrição da oferta não pode ficar vazia.' });
+    }
+    const editsContent = [name, price, promotional_price, bonus, description].some(v => v !== undefined);
+    if (existingOffer.status === 'ARQUIVADA' && editsContent) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Oferta arquivada não pode ser editada.' });
     }
 
     if (status && status !== existingOffer.status) {
@@ -863,8 +885,8 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     const updatedName = name !== undefined ? String(name).trim() : existingOffer.name;
     const updatedPrice = price !== undefined ? Number(price) : existingOffer.price;
     const updatedPromo = promotional_price !== undefined ? (promotional_price === '' || promotional_price === null ? null : Number(promotional_price)) : existingOffer.promotional_price;
-    const updatedBonus = bonus !== undefined ? bonus : existingOffer.bonus;
-    const updatedDesc = description !== undefined ? description : existingOffer.description;
+    const updatedBonus = bonus !== undefined ? (bonus === null || String(bonus).trim() === '' ? null : String(bonus).trim()) : existingOffer.bonus;
+    const updatedDesc = description !== undefined ? String(description).trim() : existingOffer.description;
     const updatedUpsell = upsell !== undefined ? upsell : existingOffer.upsell;
     const updatedCross = cross_sell !== undefined ? cross_sell : existingOffer.cross_sell;
     const updatedStatus = status !== undefined ? status : existingOffer.status;

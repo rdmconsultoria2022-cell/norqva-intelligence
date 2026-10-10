@@ -5,7 +5,19 @@ import React, { useState } from 'react';
 
 type ApiFetch = (url: string, options?: RequestInit) => Promise<any>;
 const toForm = (v: any) => (v === null || v === undefined || v === '' ? '' : String(v).replace('.', ','));
-const toNum = (v: string) => Number(String(v).trim().replace(/\./g, '').replace(',', '.'));
+/**
+ * Lê o preço como o operador digita. Aceita "14,90", "14.90", "14,9", "1.234,56", "1234".
+ * Recusa o ambíguo ("1.234", sem vírgula) e mais de 2 casas: devolve NaN.
+ */
+export function parsePrice(v: string): number {
+  const s = String(v ?? '').trim();
+  if (/^\d+(,\d{1,2})?$/.test(s)) return Number(s.replace(',', '.'));
+  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(s)) return Number(s.replace(/\./g, '').replace(',', '.'));
+  if (/^\d+\.\d{1,2}$/.test(s)) return Number(s);
+  return NaN;
+}
+const toNum = parsePrice;
+const brl = (n: number) => `R$ ${n.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
 
 export const OfferEditor: React.FC<{
   off: any;
@@ -28,8 +40,10 @@ export const OfferEditor: React.FC<{
   const promo = form.promotional_price.trim() === '' ? null : toNum(form.promotional_price);
   const problem =
     form.name.trim() === '' ? 'Dê um nome à oferta.'
-    : !(price > 0) ? 'Preço inválido.'
+    : !(price > 0) ? 'Preço inválido. Use, por exemplo, 14,90.'
+    : price > 1000000 ? 'Preço alto demais.'
     : promo !== null && !(promo > 0) ? 'Preço promocional inválido (ou deixe em branco).'
+    : promo !== null && promo >= price ? 'O preço promocional precisa ser menor que o preço.'
     : form.description.trim() === '' ? 'A descrição não pode ficar vazia.'
     : null;
   const priceChanged = Math.abs(price - Number(off.price)) > 0.001 || (promo ?? 0) !== Number(off.promotional_price || 0);
@@ -71,6 +85,7 @@ export const OfferEditor: React.FC<{
         <label className="flex flex-col gap-0.5">
           <span className="text-[10px] text-slate-400">Preço (R$)</span>
           <input aria-label="Preço da oferta" inputMode="decimal" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className={`${input} font-mono`} />
+          <span className="text-[10px] text-slate-400" data-testid="offer-price-read">{price > 0 ? `= ${brl(price)}` : ''}</span>
         </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-[10px] text-slate-400">Promocional (R$, opcional)</span>
@@ -87,7 +102,7 @@ export const OfferEditor: React.FC<{
       </label>
       {priceChanged && live && !problem && (
         <p className="text-[11px] text-amber-300" data-testid="offer-price-warning">
-          A oferta está {off.status}: o preço novo vale para os próximos pedidos. Pedidos já feitos não mudam. O preço do adicional no Pix continua o configurado em "Adicional no Pix".
+          A oferta está {off.status}: o preço novo ({brl(promo ?? price)} cobrado) vale para os próximos pedidos. Pedidos já feitos não mudam. O preço do adicional no Pix continua o configurado em "Adicional no Pix".
         </p>
       )}
       {problem && <p className="text-[11px] text-red-300">{problem}</p>}
