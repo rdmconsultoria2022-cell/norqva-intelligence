@@ -144,7 +144,7 @@ describe.sequential('NORQVA-0038 — cartão de crédito e kit', () => {
   it('a oferta pública mostra o parcelamento exato; sem cartão, null', async () => {
     const r = await request(app).get(`/api/public/offers/OFF-K${tag}`);
     expect(r.status).toBe(200);
-    expect(r.body.card).toEqual({ max_installments: 4, total: 27.96, installment_value: 6.99 });
+    expect(r.body.card).toMatchObject({ max_installments: 4, total: 27.96, installment_value: 6.99 });
     const p = await request(app).get(`/api/public/offers/OFF-P${tag}`);
     expect(p.body.card).toBeNull();
   });

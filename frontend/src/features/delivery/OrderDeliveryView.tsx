@@ -248,6 +248,7 @@ export const OrderDeliveryView: React.FC<OrderDeliveryViewProps> = ({
         checkoutToken={checkoutToken}
         amount={order.total_amount || 29.90}
         isDemo={order.is_demo}
+        look={isBolsoBlindado ? 'dark' : 'light'}
         onPaymentConfirmed={() => {
           updatePurchaseSessionStatus(orderId, 'PAID');
           setOrder((prev: any) => ({ ...prev, status: 'PAID' }));

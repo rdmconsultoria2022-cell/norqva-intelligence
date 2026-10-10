@@ -6,6 +6,7 @@ import { trackInitiateCheckout } from '../../services/metaPixel';
 import { getAttributionContext, sendFunnelEvent } from '../../services/attribution';
 import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from './checkoutValidation';
 import { savePurchaseSession } from '../../services/purchaseSession';
+import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallments';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
@@ -48,13 +49,28 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const bumpPrice = bump ? Number(bump.price) : 0;
   // Total mostrado ao comprador (o servidor recalcula e é o valor dele que vai para o Pix)
   const displayPrice = Math.round((basePrice + (bump && withBump ? bumpPrice : 0)) * 100) / 100;
-  const cardTotalCents = card ? Math.round(Number(card.total) * 100) + (bump && withBump ? Math.round(bumpPrice * 100) : 0) : 0;
-  const cardN = card ? Math.max(1, Number(card.max_installments) || 1) : 1;
+  // NORQVA-0041: o comprador escolhe as parcelas (sem juros até o limite da oferta; acima, com juros)
   const fmt = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
-  const cardLabel = !card ? ''
-    : cardN === 1 ? `R$ ${fmt(cardTotalCents)} no cartão`
-    : cardTotalCents % cardN === 0 ? `${cardN}x de R$ ${fmt(cardTotalCents / cardN)} sem juros`
-    : `em até ${cardN}x sem juros (total R$ ${fmt(cardTotalCents)})`;
+  const cardBaseCents = card ? Math.round(Number(card.total) * 100) + (bump && withBump ? Math.round(bumpPrice * 100) : 0) : 0;
+  const cardPlan = card ? (card.plan || { max: Math.max(1, Number(card.max_installments) || 1), free: Math.max(1, Number(card.max_installments) || 1), rate: 0 }) : null;
+  const cardOpts = card && cardPlan ? installmentOptions(cardBaseCents, cardPlan) : [];
+  const freeOpts = cardOpts.filter(o => !o.interest);
+  const [chosenN, setChosenN] = useState<number | null>(null);
+  const selectedOpt = cardOpts.find(o => o.n === chosenN) || freeOpts[freeOpts.length - 1] || cardOpts[0] || null;
+  const cardTotalCents = selectedOpt ? selectedOpt.totalCents : cardBaseCents;
+  const bestFree = freeOpts[freeOpts.length - 1];
+  const cardLabel = !card || !bestFree ? ''
+    : bestFree.n === 1 ? `R$ ${fmt(bestFree.totalCents)} no cartão`
+    : bestFree.valueCents !== null ? `${bestFree.n}x de R$ ${fmt(bestFree.valueCents)} sem juros`
+    : `em até ${bestFree.n}x sem juros (total R$ ${fmt(bestFree.totalCents)})`;
+  const optLabel = (o: { n: number; valueCents: number | null; totalCents: number; interest: boolean }) =>
+    o.interest
+      ? `${o.n}x de ${brlCents(o.valueCents || 0)} com juros (total ${brlCents(o.totalCents)})`
+      : o.n === 1
+        ? `1x de ${brlCents(o.totalCents)} sem juros`
+        : o.valueCents !== null
+          ? `${o.n}x de ${brlCents(o.valueCents)} sem juros`
+          : `${o.n}x sem juros (total ${brlCents(o.totalCents)})`;
 
   // Compute field validation errors
   const nameValid = validateFullName(customerName);
@@ -227,7 +243,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         });
       }
 
-      onOrderCreated({ ...orderResult, payment_method: method });
+      onOrderCreated({ ...orderResult, payment_method: method, ...(method === 'CREDIT_CARD' && selectedOpt ? { installments: selectedOpt.n } : {}) });
     } catch (err: any) {
       console.error('Checkout error:', err);
       showError(err.message || 'Erro ao processar checkout.');
@@ -490,10 +506,30 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                 <span className="flex-1 text-sm text-stone-800">Cartão de crédito</span>
                 <span className="text-sm font-bold text-stone-900" data-testid="checkout-card-label">{cardLabel}</span>
               </label>
-              {method === 'CREDIT_CARD' && (
-                <span className="text-[11px] text-stone-500 block">
-                  Você digita o cartão na página segura do Asaas, nosso processador de pagamentos. Total no cartão: R$ {fmt(cardTotalCents)}.
-                </span>
+              {method === 'CREDIT_CARD' && cardOpts.length > 0 && (
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-stone-700" htmlFor="checkout-installments">Parcelas</label>
+                  <select
+                    id="checkout-installments"
+                    data-testid="checkout-installments"
+                    value={selectedOpt ? selectedOpt.n : ''}
+                    onChange={e => setChosenN(Number(e.target.value))}
+                    disabled={isSubmitting}
+                    className="w-full px-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E]"
+                  >
+                    {cardOpts.map(o => (
+                      <option key={o.n} value={o.n}>{optLabel(o)}</option>
+                    ))}
+                  </select>
+                  {selectedOpt?.interest && cardPlan && (
+                    <span className="text-[11px] text-stone-600 block" data-testid="checkout-interest">
+                      Juros de {rateLabel(cardPlan.rate)} (Tabela Price). À vista no cartão: {brlCents(cardBaseCents)}.
+                    </span>
+                  )}
+                  <span className="text-[11px] text-stone-500 block">
+                    Você digita o cartão na página segura do Asaas, nosso processador de pagamentos. Total no cartão: R$ {fmt(cardTotalCents)}.
+                  </span>
+                </div>
               )}
             </fieldset>
           )}

@@ -1,3 +1,4 @@
+import { planFromOffer, installmentOption, installmentOptions } from '../services/commerce/cardInstallments';
 import { Response } from 'express';
 import { anonymizeIp } from '../utils/ipPrivacy';
 import { Pool, PoolClient } from 'pg';
@@ -869,7 +870,22 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'A descrição da oferta não pode ficar vazia.' });
     }
     // NORQVA-0038: cartão de crédito por oferta (desligado por padrão)
-    const { card_enabled, card_max_installments, card_total_price } = req.body;
+    const { card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly } = req.body;
+    // NORQVA-0041: parcelas sem juros (vendedor paga) e juros ao mês acima delas (comprador paga)
+    if (card_free_installments !== undefined && card_free_installments !== null && card_free_installments !== '') {
+      const f = Number(card_free_installments);
+      if (!Number.isInteger(f) || f < 1 || f > 12) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Parcelas sem juros: use um número inteiro de 1 a 12.' });
+      }
+    }
+    if (card_interest_monthly !== undefined && card_interest_monthly !== null && card_interest_monthly !== '') {
+      const r = Number(card_interest_monthly);
+      if (!Number.isFinite(r) || r < 0 || r > 10 || Math.abs(Math.round(r * 100) - r * 100) > 1e-6) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Juros ao mês: use um valor de 0 a 10%, com até 2 casas decimais.' });
+      }
+    }
     if (card_enabled !== undefined && typeof card_enabled !== 'boolean') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'card_enabled deve ser verdadeiro ou falso.' });
@@ -890,6 +906,22 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     const updatedCardInstallments = card_max_installments !== undefined ? Number(card_max_installments) : (Number(existingOffer.card_max_installments) || 1);
     const updatedCardTotal = card_total_price !== undefined ? (cardTotalGiven ? Number(card_total_price) : null)
       : (existingOffer.card_total_price === null || existingOffer.card_total_price === undefined ? null : Number(existingOffer.card_total_price));
+    const freeGiven = card_free_installments !== undefined && card_free_installments !== null && card_free_installments !== '';
+    const updatedCardFree: number | null = card_free_installments !== undefined ? (freeGiven ? Number(card_free_installments) : null)
+      : (existingOffer.card_free_installments === null || existingOffer.card_free_installments === undefined ? null : Number(existingOffer.card_free_installments));
+    const updatedCardRate = card_interest_monthly !== undefined && card_interest_monthly !== null && card_interest_monthly !== ''
+      ? Number(card_interest_monthly)
+      : (card_interest_monthly === undefined ? (Number(existingOffer.card_interest_monthly) || 0) : 0);
+    // sem juros nunca passa do máximo; sem taxa, todas as parcelas são sem juros
+    const effectiveFree = Math.min(updatedCardInstallments, updatedCardFree === null ? updatedCardInstallments : updatedCardFree);
+    if (updatedCardEnabled && updatedCardFree !== null && updatedCardFree > updatedCardInstallments) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'As parcelas sem juros não podem passar do máximo de parcelas.' });
+    }
+    if (updatedCardEnabled && effectiveFree < updatedCardInstallments && !(updatedCardRate > 0)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Informe os juros ao mês para as parcelas acima das sem juros (ou deixe todas sem juros).' });
+    }
     {
       const finalPrice = price !== undefined ? Number(price) : Number(existingOffer.price);
       const finalPromo = promotional_price !== undefined ? (promoGiven ? Number(promotional_price) : null)
@@ -903,24 +935,24 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'O total no cartão está mais de 30% acima do Pix. Confira o valor.' });
       }
-      // Parcelas iguais: "4x de R$ 6,99" precisa somar exatamente o total anunciado.
+      // Parcelas iguais no "Nx sem juros": precisa somar exatamente o total anunciado.
       const effectiveCardCents = Math.round((updatedCardTotal !== null ? updatedCardTotal : pixPrice) * 100);
-      if (updatedCardEnabled && updatedCardInstallments > 1 && effectiveCardCents / updatedCardInstallments < 500) {
+      if (updatedCardEnabled && effectiveFree > 1 && effectiveCardCents / effectiveFree < 500) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Cada parcela no cartão precisa ser de pelo menos R$ 5,00. Use menos parcelas.' });
       }
-      if (updatedCardEnabled && updatedCardInstallments > 1 && effectiveCardCents % updatedCardInstallments !== 0) {
-        const up = Math.ceil(effectiveCardCents / updatedCardInstallments);
-        const sugg = ((up * updatedCardInstallments) / 100).toFixed(2).replace('.', ',');
+      if (updatedCardEnabled && effectiveFree > 1 && effectiveCardCents % effectiveFree !== 0) {
+        const up = Math.ceil(effectiveCardCents / effectiveFree);
+        const sugg = ((up * effectiveFree) / 100).toFixed(2).replace('.', ',');
         const parcel = (up / 100).toFixed(2).replace('.', ',');
         await client.query('ROLLBACK');
         return res.status(400).json({
-          error: `O total no cartão precisa dividir em parcelas iguais. Sugestão: R$ ${sugg} (${updatedCardInstallments}x de R$ ${parcel}).`
+          error: `O total no cartão precisa dividir em parcelas iguais. Sugestão: R$ ${sugg} (${effectiveFree}x de R$ ${parcel}).`
         });
       }
     }
 
-    const editsContent = [name, price, promotional_price, bonus, description, card_enabled, card_max_installments, card_total_price].some(v => v !== undefined);
+    const editsContent = [name, price, promotional_price, bonus, description, card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly].some(v => v !== undefined);
     if (existingOffer.status === 'ARQUIVADA' && editsContent) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Oferta arquivada não pode ser editada.' });
@@ -948,11 +980,12 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     const updateRes = await client.query(
       `UPDATE offers
        SET name = $1, price = $2, promotional_price = $3, bonus = $4, description = $5, upsell = $6, cross_sell = $7, status = $8, product_id = $9, data_provenance = $10,
-           card_enabled = $12, card_max_installments = $13, card_total_price = $14
+           card_enabled = $12, card_max_installments = $13, card_total_price = $14,
+           card_free_installments = $15, card_interest_monthly = $16
        WHERE id = $11
        RETURNING *`,
       [updatedName, updatedPrice, updatedPromo, updatedBonus, updatedDesc, updatedUpsell, updatedCross, updatedStatus, updatedProductId, updatedDataProvenance, id,
-       updatedCardEnabled, updatedCardInstallments, updatedCardTotal]
+       updatedCardEnabled, updatedCardInstallments, updatedCardTotal, updatedCardFree, updatedCardRate]
     );
 
     const offer = updateRes.rows[0];
@@ -980,13 +1013,40 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
   }
 }
 
-/** NORQVA-0038: condições públicas do cartão de uma oferta (só a oferta principal, sem adicional). */
-export function publicCardTerms(offer: any): { max_installments: number; total: number; installment_value: number } | null {
+/**
+ * NORQVA-0038/0041: condições públicas do cartão de uma oferta (só a oferta principal, sem adicional).
+ * `max_installments`/`installment_value` = o parcelamento SEM JUROS (o que a página anuncia);
+ * `options` = todas as escolhas do comprador, com juros acima das sem juros.
+ */
+export function publicCardTerms(offer: any): {
+  max_installments: number;
+  total: number;
+  installment_value: number;
+  interest_monthly: number;
+  plan: { max: number; free: number; rate: number };
+  options: { n: number; installment_value: number | null; total: number; interest: boolean }[];
+} | null {
   if (!offer.card_enabled) return null;
   const pix = offer.promotional_price !== null && offer.promotional_price !== undefined ? parseFloat(offer.promotional_price) : parseFloat(offer.price);
   const total = offer.card_total_price !== null && offer.card_total_price !== undefined ? Math.max(parseFloat(offer.card_total_price), pix) : pix;
-  const n = Math.min(12, Math.max(1, Number(offer.card_max_installments) || 1));
-  return { max_installments: n, total, installment_value: Math.floor((total * 100) / n) / 100 };
+  const baseCents = Math.round(total * 100);
+  const plan = planFromOffer(offer);
+  const options = installmentOptions(baseCents, plan).map(o => ({
+    n: o.n,
+    installment_value: o.valueCents === null ? null : o.valueCents / 100,
+    total: o.totalCents / 100,
+    interest: o.interest
+  }));
+  const freeOpts = options.filter(o => !o.interest);
+  const n = freeOpts.length ? freeOpts[freeOpts.length - 1].n : 1;
+  return {
+    max_installments: n,
+    total,
+    installment_value: Math.floor(baseCents / n) / 100,
+    interest_monthly: plan.rate,
+    plan,
+    options
+  };
 }
 
 export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
@@ -1000,7 +1060,7 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
   try {
     const query = `
       SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo,
-             card_enabled, card_max_installments, card_total_price
+             card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly
       FROM offers 
       WHERE (human_id = $1 OR id::text = $1) 
         AND is_deleted = FALSE 
@@ -2826,13 +2886,19 @@ function checkRateLimit(key: string): boolean {
 }
 
 /**
- * NORQVA-0038: condições do cartão para um pedido. Total no cartão = total no cartão da oferta principal
- * (ou o preço do Pix, se a oferta não definir) × quantidade + adicionais pelo mesmo preço do Pix.
- * Devolve null quando a oferta principal não aceita cartão.
+ * NORQVA-0038/0041: condições do cartão para um pedido e o parcelamento escolhido pelo comprador.
+ * Base = total no cartão da oferta principal (ou o preço do Pix) × quantidade + adicionais pelo preço do Pix.
+ * Até as parcelas sem juros o total é a base; acima, juros da oferta (Tabela Price). Valores sempre do servidor.
+ * Devolve null quando a oferta não aceita cartão e { error } quando a escolha não é válida.
  */
-export async function resolveCardTerms(db: Pool | PoolClient, order: any): Promise<{ total: number; installments: number } | null> {
+export async function resolveCardTerms(
+  db: Pool | PoolClient,
+  order: any,
+  requested?: any
+): Promise<{ total: number; installments: number; interest: boolean } | { error: string } | null> {
   const items = await db.query(
-    `SELECT oi.is_bump, oi.quantity, oi.total_price, o.card_enabled, o.card_max_installments, o.card_total_price
+    `SELECT oi.is_bump, oi.quantity, oi.total_price, o.card_enabled, o.card_max_installments, o.card_total_price,
+            o.card_free_installments, o.card_interest_monthly
      FROM order_items oi JOIN offers o ON o.id = oi.offer_id
      WHERE oi.order_id = $1`,
     [order.id]
@@ -2846,12 +2912,21 @@ export async function resolveCardTerms(db: Pool | PoolClient, order: any): Promi
   const bumpCents = items.rows
     .filter((r: any) => r.is_bump)
     .reduce((acc: number, r: any) => acc + Math.round(parseFloat(r.total_price) * 100), 0);
-  const totalCents = mainCents + bumpCents;
   const orderCents = Math.round(parseFloat(order.total_amount) * 100);
   // O cartão nunca sai mais barato que o Pix; se a configuração estiver errada, vale o valor do pedido.
-  const total = Math.max(totalCents, orderCents) / 100;
-  const installments = Math.min(12, Math.max(1, Number(main.card_max_installments) || 1));
-  return { total, installments };
+  const baseCents = Math.max(mainCents + bumpCents, orderCents);
+  const plan = planFromOffer(main);
+  // Sem escolha (telas antigas): o maior parcelamento sem juros que for válido.
+  let n: number;
+  if (requested === undefined || requested === null || requested === '') {
+    const free = installmentOptions(baseCents, plan).filter(o => !o.interest);
+    n = free.length ? free[free.length - 1].n : 1;
+  } else {
+    n = Number(requested);
+  }
+  const opt = installmentOption(baseCents, n, plan);
+  if (!opt) return { error: 'Número de parcelas indisponível para esta compra.' };
+  return { total: opt.totalCents / 100, installments: opt.n, interest: opt.interest };
 }
 
 /** NORQVA-0038: resposta do checkout, no formato do meio de pagamento (Pix continua igual). */
@@ -2868,6 +2943,8 @@ function chargeResponseBody(p: any, extra?: { status?: string }) {
       installments: n,
       // Parcelas desiguais (ex.: com adicional): o Asaas ajusta a última; a tela mostra só o total.
       installment_value: cents % n === 0 ? cents / n / 100 : null,
+      // NORQVA-0041: parcelamento com juros repassados ao comprador
+      interest: !!p.card_interest_applied,
       expires_at: p.expires_at
     };
   }
@@ -2931,13 +3008,18 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
   // NORQVA-0038: valor e parcelas calculados no servidor, nunca vindos do navegador.
   let chargeAmount = parseFloat(order.total_amount);
   let installmentCount: number | null = null;
+  let cardInterest = false;
   if (method === 'CREDIT_CARD') {
-    const terms = await resolveCardTerms(pool, order);
+    const terms = await resolveCardTerms(pool, order, req.body?.installments);
     if (!terms) {
       return res.status(400).json({ error: 'Esta oferta não aceita cartão de crédito.', code: 'CARD_NOT_ENABLED' });
     }
+    if ('error' in terms) {
+      return res.status(400).json({ error: terms.error, code: 'INVALID_INSTALLMENTS' });
+    }
     chargeAmount = terms.total;
     installmentCount = terms.installments;
+    cardInterest = terms.interest;
   }
 
   // Load environment variables
@@ -3011,10 +3093,10 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
         
         const derivedPaymentProvenance = order.data_provenance || (order.is_demo ? 'DEMO_SEED' : 'STAGING_SANDBOX_QA');
         const insertRes = await client.query(
-          `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference, data_provenance, payment_method, installment_count)
-           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8, $9, $10, $11)
+          `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, provider_environment, external_reference, data_provenance, payment_method, installment_count, card_interest_applied)
+           VALUES ($1, $2, $3, 'ASAAS', 'CREATED', $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING *`,
-          [paymentId, humanId, orderId, chargeAmount, idempotency_key, order.is_demo, providerEnv, paymentId, derivedPaymentProvenance, method, installmentCount]
+          [paymentId, humanId, orderId, chargeAmount, idempotency_key, order.is_demo, providerEnv, paymentId, derivedPaymentProvenance, method, installmentCount, cardInterest]
         );
         isNew = true;
         payment = insertRes.rows[0];

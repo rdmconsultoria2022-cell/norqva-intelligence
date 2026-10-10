@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallments';
 
 // NORQVA-0035: editar nome, preço, preço promocional, descrição e bônus da oferta (ADMIN e PRODUCT).
 // O preço vale só para os próximos pedidos; o preço do adicional no Pix é o configurado em "Adicional no Pix".
@@ -36,7 +37,10 @@ export const OfferEditor: React.FC<{
     // NORQVA-0038: cartão de crédito
     card_enabled: !!off.card_enabled,
     card_max_installments: String(off.card_max_installments || 1),
-    card_total_price: toForm(off.card_total_price)
+    card_total_price: toForm(off.card_total_price),
+    // NORQVA-0041: parcelas sem juros (vendedor paga) e juros ao mês acima delas (comprador paga)
+    card_free_installments: off.card_free_installments === null || off.card_free_installments === undefined ? String(off.card_max_installments || 1) : String(off.card_free_installments),
+    card_interest_monthly: toForm(off.card_interest_monthly && Number(off.card_interest_monthly) > 0 ? off.card_interest_monthly : '')
   });
   const [busy, setBusy] = useState(false);
 
@@ -46,15 +50,23 @@ export const OfferEditor: React.FC<{
   const installments = Number(form.card_max_installments);
   const cardTotal = form.card_total_price.trim() === '' ? null : toNum(form.card_total_price);
   const effectiveCard = cardTotal ?? pixPrice;
+  const freeN = Number(form.card_free_installments);
+  const rate = form.card_interest_monthly.trim() === '' ? 0 : toNum(form.card_interest_monthly);
   const cardProblem = !form.card_enabled ? null
-    : !Number.isInteger(installments) || installments < 1 || installments > 12 ? 'Parcelas no cartão: de 1 a 12.'
+    : !Number.isInteger(installments) || installments < 1 || installments > 12 ? 'Máximo de parcelas: de 1 a 12.'
+    : !Number.isInteger(freeN) || freeN < 1 || freeN > installments ? 'Parcelas sem juros: de 1 até o máximo de parcelas.'
+    : !(rate >= 0) || rate > 10 ? 'Juros ao mês: de 0 a 10 (ex.: 2,99).'
+    : freeN < installments && !(rate > 0) ? 'Informe os juros ao mês para as parcelas acima das sem juros (ou deixe todas sem juros).'
     : cardTotal !== null && !(cardTotal > 0) ? 'Total no cartão inválido (ou deixe em branco para usar o preço do Pix).'
     : effectiveCard < pixPrice ? 'O total no cartão não pode ser menor que o preço no Pix.'
     : effectiveCard > pixPrice * 1.3 ? 'O total no cartão está mais de 30% acima do Pix.'
-    : installments > 1 && effectiveCard / installments < 5 ? 'Cada parcela precisa ser de pelo menos R$ 5,00 (regra do Asaas). Use menos parcelas.'
-    : installments > 1 && Math.round(effectiveCard * 100) % installments !== 0
-      ? `O total precisa dividir em parcelas iguais. Sugestão: ${brl((Math.ceil(Math.round(effectiveCard * 100) / installments) * installments) / 100)}.`
+    : freeN > 1 && effectiveCard / freeN < 5 ? 'Cada parcela precisa ser de pelo menos R$ 5,00 (regra do Asaas). Use menos parcelas sem juros.'
+    : freeN > 1 && Math.round(effectiveCard * 100) % freeN !== 0
+      ? `O total precisa dividir em parcelas iguais sem juros. Sugestão: ${brl((Math.ceil(Math.round(effectiveCard * 100) / freeN) * freeN) / 100)}.`
     : null;
+  const cardOpts = form.card_enabled && !cardProblem && pixPrice > 0
+    ? installmentOptions(Math.round(effectiveCard * 100), { max: installments, free: freeN, rate })
+    : [];
   const problem =
     form.name.trim() === '' ? 'Dê um nome à oferta.'
     : !(price > 0) ? 'Preço inválido. Use, por exemplo, 14,90.'
@@ -80,7 +92,12 @@ export const OfferEditor: React.FC<{
           bonus: form.bonus.trim() || null,
           // NORQVA-0038: campos do cartão só quando o cartão está ou estava ligado
           ...(form.card_enabled || off.card_enabled
-            ? { card_enabled: form.card_enabled, card_max_installments: installments, card_total_price: form.card_enabled ? cardTotal : (off.card_total_price ?? null) }
+            ? {
+                card_enabled: form.card_enabled,
+                card_max_installments: installments,
+                card_total_price: form.card_enabled ? cardTotal : (off.card_total_price ?? null),
+                ...(form.card_enabled ? { card_free_installments: freeN, card_interest_monthly: freeN < installments ? rate : 0 } : {})
+              }
             : {})
         })
       });
@@ -128,20 +145,39 @@ export const OfferEditor: React.FC<{
         </label>
         {form.card_enabled && (
           <>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400">Parcelas sem juros (1 a 12)</span>
+                <span className="text-[10px] text-slate-400">Máximo de parcelas (1 a 12)</span>
                 <input aria-label="Parcelas no cartão" inputMode="numeric" value={form.card_max_installments} onChange={e => setForm({ ...form, card_max_installments: e.target.value })} className={`${input} font-mono`} />
               </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Sem juros até (você paga)</span>
+                <input aria-label="Parcelas sem juros" inputMode="numeric" value={form.card_free_installments} onChange={e => setForm({ ...form, card_free_installments: e.target.value })} className={`${input} font-mono`} />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-slate-400">Juros ao mês acima disso (%)</span>
+                <input aria-label="Juros ao mês" inputMode="decimal" placeholder="2,99" value={form.card_interest_monthly} onChange={e => setForm({ ...form, card_interest_monthly: e.target.value })} className={`${input} font-mono`} />
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
               <label className="flex flex-col gap-0.5">
                 <span className="text-[10px] text-slate-400">Total no cartão (R$, vazio = preço do Pix)</span>
                 <input aria-label="Total no cartão" inputMode="decimal" value={form.card_total_price} onChange={e => setForm({ ...form, card_total_price: e.target.value })} className={`${input} font-mono`} />
               </label>
             </div>
             {!cardProblem && pixPrice > 0 && (
-              <p className="text-[11px] text-slate-400" data-testid="offer-card-read">
-                O comprador vê: {installments}x de {brl(effectiveCard / installments)} sem juros (total {brl(effectiveCard)}) ou {brl(pixPrice)} no Pix. A taxa do cartão no Asaas é maior que a do Pix.
-              </p>
+              <div className="text-[11px] text-slate-400" data-testid="offer-card-read">
+                <p>O comprador escolhe ({brl(pixPrice)} no Pix):</p>
+                <ul className="font-mono">
+                  {cardOpts.map(o => (
+                    <li key={o.n}>
+                      {o.n}x {o.valueCents !== null ? `de ${brlCents(o.valueCents)}` : ''} {o.interest ? `com juros (${rateLabel(rate)}), total ${brlCents(o.totalCents)}` : `sem juros, total ${brlCents(o.totalCents)}`}
+                    </li>
+                  ))}
+                </ul>
+                {cardOpts.length < installments && <p className="text-amber-300">Opções com parcela abaixo de R$ 5,00 não aparecem para o comprador.</p>}
+                <p>A taxa do cartão no Asaas é maior que a do Pix.</p>
+              </div>
             )}
           </>
         )}

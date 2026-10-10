@@ -21,7 +21,7 @@ type PublicKitOffer = {
   is_demo: boolean;
   meta_pixel_id?: string | null;
   bump?: any;
-  card?: { max_installments: number; total: number; installment_value: number } | null;
+  card?: { max_installments: number; total: number; installment_value: number; options?: { n: number; installment_value: number | null; total: number; interest: boolean }[] } | null;
 };
 
 /** Depoimentos reais (nome, cidade, texto), só com autorização do cliente. Vazio = a seção não aparece. */
@@ -158,6 +158,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   const from = offer.promotional_price !== null && offer.promotional_price !== undefined ? Number(offer.price) : null;
   const card = offer.card && offer.card.max_installments > 1 ? offer.card : null;
   const savings = from !== null ? from - pix : 0;
+  // NORQVA-0041: maior número de parcelas com juros (repassados ao comprador), se houver
+  const maxWithInterest = card?.options?.filter(o => o.interest).reduce((m, o) => Math.max(m, o.n), 0) || 0;
   const ctaLabel = card ? `Quero o kit · ${card.max_installments}x ${brl(card.installment_value)}` : `Quero o kit por ${brl(pix)}`;
 
   return (
@@ -252,7 +254,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           <span>Celular, tablet e computador</span>
           <span>Medidas em gramas e xícaras</span>
           <span>Tempo e nível em cada receita</span>
-          <span>{card ? `Pix ou cartão em até ${card.max_installments}x` : 'Pagamento seguro via Pix'}</span>
+          <span>{card ? `Pix ou cartão em até ${Math.max(card.max_installments, maxWithInterest)}x` : 'Pagamento seguro via Pix'}</span>
         </div>
       </div>
 
@@ -371,7 +373,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                     <span style={{ fontSize: 26, fontWeight: 600, color: '#8a3a26' }}>{card.max_installments}x</span>
                     <span className="serif price" style={{ fontSize: 80, fontWeight: 600, lineHeight: 0.9, color: '#8a3a26' }} data-testid="kit-installment">{brl(card.installment_value)}</span>
                   </div>
-                  <div style={{ fontSize: 14, color: '#5a5249' }}>sem juros no cartão de crédito · total {brl(card.total)}</div>
+                  <div style={{ fontSize: 14, color: '#5a5249' }}>sem juros no cartão de crédito · total {brl(card.total)}{maxWithInterest > card.max_installments ? ` · ou em até ${maxWithInterest}x com juros` : ''}</div>
                   <div style={{ padding: '14px 18px', background: '#f4eee4', borderRadius: 4, fontSize: 16 }} data-testid="kit-pix">
                     ou <strong>{brl(pix)}</strong> à vista no Pix{savings > 0 ? ` · economia de ${brl(savings)}` : ''}
                   </div>
@@ -480,6 +482,9 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           checkoutToken={activeOrder.checkout_token}
           amount={activeOrder.total_amount || pix}
           paymentMethod={activeOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
+          installments={activeOrder.installments}
+          look="light"
+          accent="#8a3a26"
           isDemo={offer.is_demo}
           onPaymentConfirmed={() => {
             updatePurchaseSessionStatus(activeOrder.id, 'PAID');

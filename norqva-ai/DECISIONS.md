@@ -87,3 +87,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Anúncio de parcelas:** o total no cartão precisa dividir em parcelas iguais, para "Nx de R$ Y" bater exatamente com o total (Decreto 5.903/2006). O cartão pode custar um pouco mais que o Pix.
 - **Kit:** a oferta do kit liga os mesmos PDFs do Trattoria e do Dolci (mesmo arquivo cadastrado). Trocar o arquivo em uma oferta muda nas outras; a tela avisa.
 - **Estorno de cobrança duplicada:** se o pedido tem outro pagamento confirmado, ou a cobrança estornada nunca liberou o pedido, o acesso é mantido; só aquele pagamento vira REFUNDED.
+
+## D-0041 — Parcelas escolhidas pelo comprador (2026-10-10)
+
+- **Decisão:** no cartão, o comprador escolhe o número de parcelas. Até o limite "sem juros" da oferta o vendedor paga a taxa; acima, juros mensais (Tabela Price) repassados ao comprador. Kit: até 4x sem juros, 5x e 6x com 2,99% ao mês (7x daria parcela abaixo de R$ 5,00). **Aprovado pelo operador** em 10/10/2026 18h10.
+- **Como:** o servidor recalcula parcela e total a partir da oferta; o navegador só manda o número de parcelas. A tela mostra preço à vista, parcelas, total e juros (Decreto 5.903/2006).
+- **Visual:** a tela de pagamento segue a paleta do produto (creme e terracota nos livros de cozinha).
