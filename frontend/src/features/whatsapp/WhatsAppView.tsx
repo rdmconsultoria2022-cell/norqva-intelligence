@@ -125,6 +125,12 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
   const [qr, setQr] = useState<{ id: string; label: string; base64: string | null } | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; kind: 'swap' | 'delete' } | null>(null);
   const [editing, setEditing] = useState<{ id: string; label: string; brand_id: string } | null>(null);
+  const [check, setCheck] = useState<{ ok: boolean; problem: string | null; version: string | null; host: string | null } | null>(null);
+
+  const testServer = () => run('check', async () => {
+    const r = await api.current('/whatsapp/server-check');
+    setCheck(r);
+  });
 
   const load = useCallback(async () => {
     try {
@@ -236,6 +242,19 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
       {!aiReady && (
         <div className="rounded border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="wa-ai-missing">
           A inteligência do atendente ainda não está configurada (falta a chave OPENAI_API_KEY no servidor). Sem ela, as mensagens chegam aqui e uma pessoa responde.
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="flex flex-wrap items-start gap-2">
+          <button onClick={testServer} disabled={busy === 'check'} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+            <RefreshCw className={`h-3.5 w-3.5 ${busy === 'check' ? 'animate-spin' : ''}`} /> Testar servidor
+          </button>
+          {check && (
+            <div className={`flex-1 rounded border p-2 text-[11px] ${check.ok ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-200' : 'border-red-500/30 bg-red-950/20 text-red-200'}`} data-testid="wa-server-check">
+              {check.ok ? `Servidor do WhatsApp funcionando${check.version ? ` (versão ${check.version})` : ''}. Pode conectar os números.` : check.problem}
+            </div>
+          )}
         </div>
       )}
 

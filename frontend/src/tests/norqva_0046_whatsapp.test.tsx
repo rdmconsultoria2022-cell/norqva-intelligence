@@ -34,6 +34,7 @@ function makeApi(overrides: Record<string, any> = {}) {
     if (url === '/whatsapp/conditions' && method === 'PUT') return { ok: true };
     if (url.startsWith('/whatsapp/conditions/history')) return { versions: [{ id: 'v1', conditions: 'Versão antiga', created_at: new Date().toISOString(), changed_by_name: 'Ricardo' }] };
     if (url === '/whatsapp/numbers/n1' && method === 'PATCH') return { ok: true };
+    if (url === '/whatsapp/server-check') return { ok: false, step: 'ADDRESS', problem: 'O endereço x respondeu, mas não é o servidor do WhatsApp', version: null, host: 'x' };
     if (url.startsWith('/whatsapp/results')) return { days: 30, total: { new_conversations: 10, orders_created: 4, orders_paid: 2, revenue: 55.8, needs_human_now: 1 }, numbers: [{ ...number, new_conversations: 10, messages_in: 40, bot_messages: 35, orders_created: 4, orders_paid: 2, revenue: 55.8, conversion: 20 }] };
     return {};
   });
@@ -122,5 +123,13 @@ describe('NORQVA-0046 — tela WhatsApp', () => {
     expect(screen.getByTestId('wa-total-Vendas pagas')).toHaveTextContent('2');
     fireEvent.click(screen.getByText('7 dias'));
     await waitFor(() => expect(api).toHaveBeenCalledWith('/whatsapp/results?days=7'));
+  });
+
+  it('testar servidor mostra o problema em português', async () => {
+    const api = makeApi();
+    render(<WhatsAppView currentUser={admin} apiFetch={api} showError={vi.fn()} showSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByText('Números'));
+    fireEvent.click(await screen.findByText('Testar servidor'));
+    expect(await screen.findByTestId('wa-server-check')).toHaveTextContent('não é o servidor do WhatsApp');
   });
 });

@@ -2,7 +2,7 @@
 import { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { getWhatsAppProvider } from '../services/whatsapp/provider';
+import { getWhatsAppProvider, checkEvolutionServer } from '../services/whatsapp/provider';
 import {
   WhatsAppError,
   listNumbers,
@@ -166,6 +166,19 @@ export async function getWhatsAppResults(req: AuthenticatedRequest, res: Respons
     return res.status(200).json(await numberResults(db(req), req.query.days));
   } catch (err) {
     return handle(res, err, 'Falha ao carregar os resultados.');
+  }
+}
+
+/** NORQVA-0047: botão "Testar servidor". Em testes, nunca sai para a internet. */
+export async function getWhatsAppServerCheck(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (process.env.NODE_ENV === 'test' && !(req.app as any).get('waServerCheck')) {
+      return res.status(200).json({ ok: false, step: 'CONFIG', problem: 'Teste', version: null, host: null });
+    }
+    const fn = (req.app as any).get('waServerCheck') || checkEvolutionServer;
+    return res.status(200).json(await fn());
+  } catch (err) {
+    return handle(res, err, 'Falha ao testar o servidor do WhatsApp.');
   }
 }
 
