@@ -230,6 +230,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     if (!creating?.offer) {
       setNewOptions([]);
       setNewDestination(null);
+      setNewWhy({ products: [], notReady: [] });
       return;
     }
     // NORQVA-0048: o servidor diz quais criativos aprovados servem para a oferta (no kit, também os dos livros) e o destino
@@ -243,6 +244,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       .catch(() => {
         setNewOptions([]);
         setNewDestination(null);
+        setNewWhy({ products: [], notReady: [] });
       });
   }, [creating?.offer, offers]);
 
