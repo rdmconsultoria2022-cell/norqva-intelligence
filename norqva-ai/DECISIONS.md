@@ -93,3 +93,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão:** no cartão, o comprador escolhe o número de parcelas. Até o limite "sem juros" da oferta o vendedor paga a taxa; acima, juros mensais (Tabela Price) repassados ao comprador. Kit: até 4x sem juros, 5x e 6x com 2,99% ao mês (7x daria parcela abaixo de R$ 5,00). **Aprovado pelo operador** em 10/10/2026 18h10.
 - **Como:** o servidor recalcula parcela e total a partir da oferta; o navegador só manda o número de parcelas. A tela mostra preço à vista, parcelas, total e juros (Decreto 5.903/2006).
 - **Visual:** a tela de pagamento segue a paleta do produto (creme e terracota nos livros de cozinha).
+
+## D-0046 — Atendente de vendas no WhatsApp com API não oficial (2026-10-10)
+
+- **Decisão:** o NORQVA atende, vende e entrega pelo WhatsApp com a Evolution API (não oficial), em servidor próprio no Render. **Risco de banimento assumido pelo operador** às 19h31 ("Eu vou assumir o risco em usar a API não oficial"); contrato NORQVA-0046 aprovado às 19h38.
+- **Escala:** até 100 números, cada um ligado a uma marca (sem marca = todos os produtos à venda). Atendente nasce pausado.
+- **Regras fixas:** preço e parcelas do servidor; cobrança pelos mesmos controladores do checkout; entrega só com PAID do Asaas; CPF mascarado no banco, só na memória por 1 h e nunca enviado à IA; só responde quem chamou; "parar" respeitado; limites por conversa e por número; uma cobrança por resposta.
+- **Troca para a API oficial:** nova classe em `services/whatsapp/provider.ts`, sem refazer o atendente.
+- **Retenção:** mensagens apagadas após 180 dias.
