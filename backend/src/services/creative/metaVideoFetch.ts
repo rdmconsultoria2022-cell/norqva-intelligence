@@ -30,8 +30,10 @@ export async function fetchCreativeVideoFromMeta(
     let ad: any;
     try {
       ad = await graph.readGraph(`/${adId}`, { fields: 'creative{video_id,object_story_spec,asset_feed_spec}' });
-    } catch {
-      lastProblem = 'Não foi possível ler o anúncio na Meta agora. Tente de novo em instantes.';
+    } catch (e: any) {
+      lastProblem = /META CONFIG|ACCESS_TOKEN|permission|OAuth/i.test(String(e?.message || ''))
+        ? 'O NORQVA está sem acesso de leitura à conta da Meta (token). Confira a conexão com a Meta em Configurações.'
+        : 'Não foi possível ler o anúncio na Meta agora. Tente de novo em instantes.';
       continue;
     }
     const cre = ad?.creative || {};
