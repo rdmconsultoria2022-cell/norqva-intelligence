@@ -29,6 +29,76 @@ export interface WhatsAppProvider {
   sendImage(instanceName: string, to: string, base64Png: string, caption: string): Promise<{ id: string | null }>;
 }
 
+export interface ServerCheck {
+  ok: boolean;
+  step: 'CONFIG' | 'REACH' | 'ADDRESS' | 'KEY' | 'OK';
+  problem: string | null;
+  version: string | null;
+  host: string | null;
+}
+
+/** NORQVA-0047: diagnóstico do servidor do WhatsApp em linguagem simples (endereço, senha, versão). */
+export async function checkEvolutionServer(urlArg?: string, keyArg?: string, timeoutMs = 30000): Promise<ServerCheck> {
+  const url = (urlArg ?? process.env.EVOLUTION_API_URL ?? '').trim().replace(/\/+$/, '');
+  const key = (keyArg ?? process.env.EVOLUTION_API_KEY ?? '').trim();
+  let host: string | null = null;
+  try { host = url ? new URL(url).host : null; } catch { host = null; }
+  if (!url || !key) {
+    return { ok: false, step: 'CONFIG', host, version: null, problem: 'Falta configurar no norqva-staging-api: ' + [!url && 'EVOLUTION_API_URL', !key && 'EVOLUTION_API_KEY'].filter(Boolean).join(' e ') + '.' };
+  }
+  if (!host || !/^https?:\/\//i.test(url)) {
+    return { ok: false, step: 'CONFIG', host, version: null, problem: 'EVOLUTION_API_URL precisa ser um endereço completo, começando com https:// (ex.: https://norqva-whatsapp.onrender.com).' };
+  }
+  const get = async (path: string, withKey: boolean) => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${url}${path}`, { headers: withKey ? { apikey: key } : {}, signal: controller.signal });
+      const text = await res.text();
+      let data: any = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+      return { status: res.status, data };
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  let root: { status: number; data: any };
+  try {
+    root = await get('/', false);
+  } catch (err: any) {
+    return {
+      ok: false, step: 'REACH', host, version: null,
+      problem: err?.name === 'AbortError'
+        ? `O servidor ${host} não respondeu a tempo. Se acabou de ser criado ou reiniciado, espere 2 minutos e teste de novo; se continuar, veja a aba Logs do serviço no Render.`
+        : `Não foi possível falar com ${host}. Confira se o endereço está certo e se o serviço está no ar (status "Live" no Render).`
+    };
+  }
+  if (root.status >= 500) {
+    return { ok: false, step: 'REACH', host, version: null, problem: `O servidor ${host} está fora do ar ou ainda iniciando (erro ${root.status}). Espere 2 minutos e teste de novo; se continuar, veja a aba Logs do serviço no Render.` };
+  }
+  const looksEvolution = root.data && (String(root.data.message || '').toLowerCase().includes('evolution') || root.data.version || root.data.clientName);
+  if (root.status === 404 || !looksEvolution) {
+    return {
+      ok: false, step: 'ADDRESS', host, version: null,
+      problem: `O endereço ${host} respondeu, mas não é o servidor do WhatsApp (resposta ${root.status}). Copie o endereço do serviço da imagem Evolution no Render e coloque em EVOLUTION_API_URL, sem barra no final.`
+    };
+  }
+  const version = root.data?.version ? String(root.data.version) : null;
+  let auth: { status: number; data: any };
+  try {
+    auth = await get('/instance/fetchInstances', true);
+  } catch {
+    return { ok: false, step: 'REACH', host, version, problem: 'O servidor respondeu, mas caiu ao conferir a senha. Teste de novo em instantes.' };
+  }
+  if (auth.status === 401 || auth.status === 403) {
+    return { ok: false, step: 'KEY', host, version, problem: 'A senha não confere: EVOLUTION_API_KEY (no norqva-staging-api) precisa ser igual a AUTHENTICATION_API_KEY (no serviço do WhatsApp).' };
+  }
+  if (auth.status >= 400) {
+    return { ok: false, step: 'KEY', host, version, problem: `O servidor do WhatsApp respondeu com erro ${auth.status} ao listar os números. Veja a aba Logs do serviço no Render.` };
+  }
+  return { ok: true, step: 'OK', host, version, problem: null };
+}
+
 export class ProviderError extends Error {
   constructor(message: string, public status: number = 502) {
     super(message);
@@ -76,6 +146,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text.slice(0, 300) }; }
       if (!res.ok) {
         const msg = data?.response?.message || data?.message || data?.error || `status ${res.status}`;
+        if (res.status === 401 || res.status === 403) throw new ProviderError('O servidor do WhatsApp recusou a senha: EVOLUTION_API_KEY precisa ser igual a AUTHENTICATION_API_KEY. Use "Testar servidor".', 502);
         throw new ProviderError(`Servidor do WhatsApp respondeu com erro: ${Array.isArray(msg) ? msg.join('; ') : String(msg).slice(0, 300)}`, res.status === 404 ? 404 : 502);
       }
       return data;

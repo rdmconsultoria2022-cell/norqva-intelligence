@@ -195,7 +195,15 @@ export async function connectNumber(pool: Pool, provider: WhatsAppProvider | nul
       else throw err;
     }
     if (!exists) {
-      qr = await p.createInstance(n.instance_name, url);
+      try {
+        qr = await p.createInstance(n.instance_name, url);
+      } catch (e: any) {
+        // 404 ao criar = o endereço não é o servidor do WhatsApp (não é "número inexistente")
+        if (e instanceof ProviderError && e.status === 404) {
+          throw new ProviderError('O endereço configurado não é o servidor do WhatsApp (erro 404). Clique em "Testar servidor" para ver o que corrigir.', 502);
+        }
+        throw e;
+      }
     } else {
       await p.setWebhook(n.instance_name, url);
       qr = await p.connect(n.instance_name);
