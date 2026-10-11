@@ -578,3 +578,49 @@ export async function conditionHistory(pool: Pool, numberId: any) {
   );
   return { versions: r.rows };
 }
+
+// ---------- Resultados por número ----------
+
+export async function numberResults(pool: Pool, daysArg: any) {
+  const days = Math.min(Math.max(Math.floor(Number(daysArg)) || 30, 1), 365);
+  const r = await pool.query(
+    `SELECT n.id, n.label, n.phone, n.status, n.bot_enabled, b.name AS brand_name,
+       (SELECT COUNT(*)::int FROM whatsapp_conversations c
+          WHERE c.number_id = n.id AND c.created_at > NOW() - make_interval(days => $1)) AS new_conversations,
+       (SELECT COUNT(*)::int FROM whatsapp_messages m JOIN whatsapp_conversations c ON c.id = m.conversation_id
+          WHERE c.number_id = n.id AND m.direction = 'IN' AND m.created_at > NOW() - make_interval(days => $1)) AS messages_in,
+       (SELECT COUNT(*)::int FROM whatsapp_messages m JOIN whatsapp_conversations c ON c.id = m.conversation_id
+          WHERE c.number_id = n.id AND m.author = 'BOT' AND m.created_at > NOW() - make_interval(days => $1)) AS bot_messages,
+       (SELECT COUNT(*)::int FROM whatsapp_conversations c WHERE c.number_id = n.id AND c.needs_human = TRUE) AS needs_human_now,
+       (SELECT COUNT(*)::int FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id
+          WHERE c.number_id = n.id AND o.created_at > NOW() - make_interval(days => $1)) AS orders_created,
+       (SELECT COUNT(*)::int FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id
+          WHERE c.number_id = n.id AND o.status = 'PAID' AND o.is_demo = FALSE AND o.data_provenance = 'COMMERCIAL_PRODUCTION' AND o.created_at > NOW() - make_interval(days => $1)) AS orders_paid,
+       (SELECT COALESCE(SUM(o.total_amount), 0)::numeric FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id
+          WHERE c.number_id = n.id AND o.status = 'PAID' AND o.is_demo = FALSE AND o.data_provenance = 'COMMERCIAL_PRODUCTION' AND o.created_at > NOW() - make_interval(days => $1)) AS revenue
+     FROM whatsapp_numbers n
+     LEFT JOIN brands b ON b.id = n.brand_id
+     WHERE n.is_deleted = FALSE
+     ORDER BY n.created_at ASC`,
+    [days]
+  );
+  const rows = r.rows.map((x: any) => {
+    const revenue = Math.round(Number(x.revenue) * 100) / 100;
+    return {
+      ...x,
+      revenue,
+      conversion: x.new_conversations > 0 ? Math.round((x.orders_paid / x.new_conversations) * 1000) / 10 : null
+    };
+  });
+  const total = rows.reduce(
+    (a: any, x: any) => ({
+      new_conversations: a.new_conversations + x.new_conversations,
+      orders_created: a.orders_created + x.orders_created,
+      orders_paid: a.orders_paid + x.orders_paid,
+      revenue: Math.round((a.revenue + x.revenue) * 100) / 100,
+      needs_human_now: a.needs_human_now + x.needs_human_now
+    }),
+    { new_conversations: 0, orders_created: 0, orders_paid: 0, revenue: 0, needs_human_now: 0 }
+  );
+  return { days, numbers: rows, total };
+}

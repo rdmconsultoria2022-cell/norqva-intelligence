@@ -78,7 +78,7 @@ const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString('pt-BR', {
 
 export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: WhatsAppViewProps) {
   const isAdmin = currentUser?.role === 'ADMIN';
-  const [tab, setTab] = useState<'numbers' | 'conversations' | 'conditions'>('conversations');
+  const [tab, setTab] = useState<'numbers' | 'conversations' | 'conditions' | 'results'>('conversations');
   const api = useRef(apiFetch);
   api.current = apiFetch;
 
@@ -89,15 +89,15 @@ export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: 
           <MessageCircle className="h-5 w-5 text-emerald-400" />
           <h2 className="text-lg font-bold text-slate-100">WhatsApp</h2>
         </div>
-        <div className="flex gap-1 rounded border border-slate-800 p-0.5 text-xs">
-          {(['conversations', 'numbers', 'conditions'] as const).map(t => (
+        <div className="flex flex-wrap gap-1 rounded border border-slate-800 p-0.5 text-xs">
+          {(['conversations', 'numbers', 'conditions', 'results'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               aria-pressed={tab === t}
               className={`rounded px-3 py-1 ${tab === t ? 'bg-emerald-950/50 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              {t === 'conversations' ? 'Conversas' : t === 'numbers' ? 'Números' : 'Condições de atendimento'}
+              {t === 'conversations' ? 'Conversas' : t === 'numbers' ? 'Números' : t === 'conditions' ? 'Condições de atendimento' : 'Resultados'}
             </button>
           ))}
         </div>
@@ -106,7 +106,9 @@ export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: 
         ? <NumbersPanel isAdmin={isAdmin} api={api} showError={showError} showSuccess={showSuccess} />
         : tab === 'conditions'
           ? <ConditionsPanel isAdmin={isAdmin} api={api} showError={showError} showSuccess={showSuccess} />
-          : <ConversationsPanel api={api} showError={showError} />}
+          : tab === 'results'
+            ? <ResultsPanel api={api} showError={showError} />
+            : <ConversationsPanel api={api} showError={showError} />}
     </div>
   );
 }
@@ -691,6 +693,88 @@ function ConditionsPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: bo
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+const brlNum = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+function ResultsPanel({ api, showError }: { api: React.MutableRefObject<ApiFetch>; showError: (m: string) => void }) {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState<any | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.current(`/whatsapp/results?days=${days}`)
+      .then(r => { if (alive) setData(r); })
+      .catch((e: any) => showError(e?.message || 'Falha ao carregar os resultados.'));
+    return () => { alive = false; };
+  }, [api, days, showError]);
+
+  const t = data?.total;
+  return (
+    <div className="space-y-3" data-testid="wa-results">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-slate-400">Período:</span>
+        {[7, 30, 90].map(d => (
+          <button key={d} onClick={() => setDays(d)} aria-pressed={days === d} className={`rounded border px-2 py-0.5 ${days === d ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300' : 'border-slate-800 text-slate-400'}`}>
+            {d} dias
+          </button>
+        ))}
+      </div>
+      {t && (
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          {[
+            ['Conversas novas', String(t.new_conversations)],
+            ['Pedidos gerados', String(t.orders_created)],
+            ['Vendas pagas', String(t.orders_paid)],
+            ['Valor vendido', brlNum(t.revenue)],
+            ['Precisam de pessoa', String(t.needs_human_now)]
+          ].map(([label, value]) => (
+            <div key={label} className="rounded border border-slate-800 bg-slate-900/60 p-3">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+              <div className="text-lg font-bold text-slate-100" data-testid={`wa-total-${label}`}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="overflow-x-auto rounded border border-slate-800">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-900 text-[10px] uppercase text-slate-400">
+            <tr>
+              <th className="p-2">Número</th>
+              <th className="p-2">Conversas</th>
+              <th className="p-2">Mensagens recebidas</th>
+              <th className="p-2">Respostas do atendente</th>
+              <th className="p-2">Pedidos</th>
+              <th className="p-2">Pagos</th>
+              <th className="p-2">Conversão</th>
+              <th className="p-2">Valor</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800">
+            {(data?.numbers || []).length === 0 && (
+              <tr><td colSpan={8} className="p-4 text-center text-slate-500">Nenhum número cadastrado.</td></tr>
+            )}
+            {(data?.numbers || []).map((n: any) => (
+              <tr key={n.id} className="text-slate-200">
+                <td className="p-2">
+                  <div>{n.label}</div>
+                  <div className="text-[10px] text-slate-500">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
+                </td>
+                <td className="p-2">{n.new_conversations}</td>
+                <td className="p-2">{n.messages_in}</td>
+                <td className="p-2">{n.bot_messages}</td>
+                <td className="p-2">{n.orders_created}</td>
+                <td className="p-2">{n.orders_paid}</td>
+                <td className="p-2">{n.conversion === null ? '—' : `${String(n.conversion).replace('.', ',')}%`}</td>
+                <td className="p-2">{brlNum(Number(n.revenue) || 0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-slate-500">Conversão = vendas pagas ÷ conversas novas no período. Só conta como venda o pedido com pagamento confirmado pelo Asaas.</p>
     </div>
   );
 }
