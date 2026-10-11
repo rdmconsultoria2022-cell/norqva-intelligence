@@ -66,6 +66,10 @@ describe.sequential('NORQVA-0048 — campanha para a página do kit', () => {
     if (!pool) return;
     await pool.query('DELETE FROM offer_digital_assets WHERE asset_id = $1', [asset]).catch(() => {});
     await pool.query('DELETE FROM digital_assets WHERE id = $1', [asset]).catch(() => {});
+    await pool.query('DELETE FROM launch_plans WHERE offer_human_id = ANY($1::text[])', [[kitHid, trHid]]).catch(() => {});
+    await pool.query('DELETE FROM creatives WHERE id = ANY($1::uuid[])', [Object.values(creatives)]).catch(() => {});
+    await pool.query('DELETE FROM offers WHERE id = ANY($1::uuid[])', [[trOffer, kitOffer, otherOffer]]).catch(() => {});
+    await pool.query('DELETE FROM products WHERE id = ANY($1::uuid[])', [[trProduct, kitProduct, otherProduct]]).catch(() => {});
   });
 
   it('a trava aceita a página do kit só nos domínios do NORQVA e da marca', () => {
