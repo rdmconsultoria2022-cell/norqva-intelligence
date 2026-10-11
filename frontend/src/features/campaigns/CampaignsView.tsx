@@ -224,6 +224,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   };
 
   const [newDestination, setNewDestination] = useState<string | null>(null);
+  const [newWhy, setNewWhy] = useState<{ products: string[]; notReady: { human_id: string; product_name: string; reason: string }[] }>({ products: [], notReady: [] });
   const openNew = () => setCreating({ offer: '', creative_ids: [], daily: '20', max: '140' });
   useEffect(() => {
     if (!creating?.offer) {
@@ -237,6 +238,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       .then((r: any) => {
         setNewOptions(r?.creatives || []);
         setNewDestination(r?.destination || null);
+        setNewWhy({ products: r?.products || [], notReady: r?.not_ready || [] });
       })
       .catch(() => {
         setNewOptions([]);
@@ -361,7 +363,21 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
           {creating.offer && (
             <div>
               <div className="text-slate-400 mb-1">Criativos aprovados (vídeo)</div>
-              {newOptions.length === 0 && <p className="text-slate-500">Nenhum criativo de vídeo aprovado para esta oferta.</p>}
+              {newOptions.length === 0 && (
+                <div className="space-y-1 text-slate-500" data-testid="new-campaign-why">
+                  <p>Nenhum criativo de vídeo aprovado para esta oferta.</p>
+                  {newWhy.products.length > 0 && <p>Produtos considerados: {newWhy.products.join('; ')}.</p>}
+                  {newWhy.notReady.length > 0 ? (
+                    <ul className="list-disc pl-4">
+                      {newWhy.notReady.map(c => (
+                        <li key={c.human_id}>{c.human_id} ({c.product_name}): {c.reason}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>Nenhum criativo cadastrado para esses produtos na tela Criativos.</p>
+                  )}
+                </div>
+              )}
               {newOptions.map(c => (
                 <label key={c.id} className="flex items-center gap-2 text-slate-300">
                   <input

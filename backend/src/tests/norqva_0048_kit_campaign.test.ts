@@ -95,6 +95,9 @@ describe.sequential('NORQVA-0048 — campanha para a página do kit', () => {
     const keys = r.body.creatives.map((c: any) => c.human_id);
     expect(keys).toContain(`T48${tag}-TR`);
     expect(keys).not.toContain(`T48${tag}-OUT`);
+    // NORQVA-0049: produtos considerados (kit + Trattoria), para a tela explicar quando não há criativo
+    expect(r.body.products).toHaveLength(2);
+    expect(Array.isArray(r.body.not_ready)).toBe(true);
     const tr = await request(app).get('/api/campaigns/offer-creatives').query({ offer: trHid }).set('Authorization', `Bearer ${admin}`);
     expect(tr.body.destination).toBe(`${DEFAULT_OFFER_BASE_URL}/p/${trHid}`);
   });
