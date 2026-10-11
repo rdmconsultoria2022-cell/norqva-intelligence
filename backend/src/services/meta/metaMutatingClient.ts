@@ -10,7 +10,8 @@ export function getMetaBusinessId(): string {
   const v = String(process.env.META_BUSINESS_ID || '').trim();
   return /^[0-9]{5,30}$/.test(v) ? v : NORQVA_BUSINESS_ID;
 }
-export const PUBLIC_COMMERCE_URL_REGEX = /^https:\/\/norqva-intelligence-frontend\.vercel\.app\/p\/[A-Za-z0-9_-]+(\?.*)?$/;
+// NORQVA-0048: também a página do kit (/kit/:humanId), aprovado pelo Ricardo em 11/10/2026 19h48
+export const PUBLIC_COMMERCE_URL_REGEX = /^https:\/\/norqva-intelligence-frontend\.vercel\.app\/(?:p|kit)\/[A-Za-z0-9_-]+(\?.*)?$/;
 
 // NORQVA-0019: domínios de marca verificados que também servem a página pública da oferta
 // (https://<host>/p/:humanId). Lista configurável; só hosts exatos, sem curingas.
@@ -24,7 +25,7 @@ export function getBrandDestinationHosts(): string[] {
 }
 export function isBrandDestinationUrl(url: string): boolean {
   return getBrandDestinationHosts().some((host) =>
-    new RegExp(`^https:\\/\\/${host.replace(/[.-]/g, (c) => `\\${c}`)}\\/p\\/[A-Za-z0-9_-]+(\\?.*)?$`).test(url)
+    new RegExp(`^https:\\/\\/${host.replace(/[.-]/g, (c) => `\\${c}`)}\\/(?:p|kit)\\/[A-Za-z0-9_-]+(\\?.*)?$`).test(url)
   );
 }
 
@@ -379,7 +380,7 @@ export class MetaMutatingClient {
 
     if (!PUBLIC_COMMERCE_URL_REGEX.test(url) && !isBrandDestinationUrl(url)) {
       throw new Error(
-        `[SECURITY EXCEPTION]: Blocked non-whitelisted destination URL: "${url}". Destination URLs must strictly match public offer entry pattern "https://norqva-intelligence-frontend.vercel.app/p/:humanId" or "https://<verified brand domain>/p/:humanId" (META_BRAND_DESTINATION_HOSTS).`
+        `[SECURITY EXCEPTION]: Blocked non-whitelisted destination URL: "${url}". Destination URLs must strictly match public offer entry pattern "https://norqva-intelligence-frontend.vercel.app/p/:humanId" (or /kit/:humanId) or "https://<verified brand domain>/p/:humanId" (or /kit/:humanId) (META_BRAND_DESTINATION_HOSTS).`
       );
     }
   }

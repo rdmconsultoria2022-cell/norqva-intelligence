@@ -171,7 +171,7 @@ import { attendantInboundHandler } from './services/whatsapp/attendant';
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
-import { listCampaigns, getCampaign, getCampaignCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
+import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
 import { getHiddenProducts, promoteHiddenProduct } from './controllers/catalogVisibilityController';
@@ -458,6 +458,7 @@ app.post('/api/launch-plans/:id/spend-cap', requireRole(['ADMIN']), setPlanSpend
 const CAMPAIGNS_READ = ['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS'];
 app.get('/api/campaigns', requireRole(CAMPAIGNS_READ), listCampaigns);
 app.post('/api/campaigns', requireRole(['ADMIN']), createCampaignFromOffer);
+app.get('/api/campaigns/offer-creatives', requireRole(['ADMIN']), getOfferCreativeOptions);
 app.get('/api/campaigns/:id', requireRole(CAMPAIGNS_READ), getCampaign);
 app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampaignCreativeOptions);
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
