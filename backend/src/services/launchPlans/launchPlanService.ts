@@ -209,7 +209,7 @@ export function toMetaTargeting(t: LaunchPlanTargeting): Record<string, any> {
 
 const humanIdFromUrl = (url: string): string | null => {
   try {
-    const m = new URL(url).pathname.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+    const m = new URL(url).pathname.match(/^\/(?:p|kit)\/([A-Za-z0-9_-]+)$/);
     return m ? m[1] : null;
   } catch {
     return null;
@@ -307,7 +307,7 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
     try {
       urlGuard.assertUrlWhitelisted(destination);
     } catch {
-      throw new LaunchPlanError(400, `Anúncio "${name}": destino não permitido (${destination}). Use a página pública da oferta (/p/:humanId) no domínio do NORQVA ou de uma marca verificada.`);
+      throw new LaunchPlanError(400, `Anúncio "${name}": destino não permitido (${destination}). Use a página pública da oferta (/p/:humanId) ou do kit (/kit/:humanId) no domínio do NORQVA ou de uma marca verificada.`);
     }
     const urlTags = String(a.url_tags || '').trim();
     try {

@@ -223,24 +223,25 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     return r;
   };
 
+  const [newDestination, setNewDestination] = useState<string | null>(null);
   const openNew = () => setCreating({ offer: '', creative_ids: [], daily: '20', max: '140' });
   useEffect(() => {
     if (!creating?.offer) {
       setNewOptions([]);
+      setNewDestination(null);
       return;
     }
-    // Reaproveita a lista de criativos aprovados da tela Criativos, filtrada pela oferta escolhida
+    // NORQVA-0048: o servidor diz quais criativos aprovados servem para a oferta (no kit, também os dos livros) e o destino
     apiRef
-      .current('/creative-factory/creatives?mode=real&period=all')
+      .current(`/campaigns/offer-creatives?mode=real&offer=${encodeURIComponent(creating.offer)}`)
       .then((r: any) => {
-        const offer = offers.find(o => o.human_id === creating.offer);
-        setNewOptions(
-          (r?.creatives || []).filter(
-            (c: any) => c.approval_status === 'APPROVED' && c.format === 'VIDEO' && offer && String(c.product_id) === String(offer.product_id)
-          )
-        );
+        setNewOptions(r?.creatives || []);
+        setNewDestination(r?.destination || null);
       })
-      .catch(() => setNewOptions([]));
+      .catch(() => {
+        setNewOptions([]);
+        setNewDestination(null);
+      });
   }, [creating?.offer, offers]);
 
   if (isDemoView) {
@@ -373,7 +374,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                       })
                     }
                   />
-                  {c.human_id} · {c.hook}
+                  {c.human_id}{c.hook ? ` · ${c.hook}` : ''}{c.same_product === false && c.product_name ? ` (criativo do ${c.product_name})` : ''}
                 </label>
               ))}
             </div>
@@ -388,7 +389,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               <input aria-label="Teto de gasto da nova campanha" value={creating.max} onChange={e => setCreating({ ...creating, max: e.target.value })} className={input} />
             </label>
           </div>
-          <p className="text-[11px] text-slate-500">Padrões: Brasil, 25–65 anos, público Advantage, pixel oficial e destino na página da oferta. Fica em rascunho.</p>
+          {newDestination && (
+            <p className="text-[11px] text-slate-300" data-testid="new-campaign-destination">Destino dos anúncios: <span className="font-mono">{newDestination}</span></p>
+          )}
+          <p className="text-[11px] text-slate-500">Padrões: Brasil, 25–65 anos, público Advantage, pixel oficial e destino na página da oferta (no kit, a página do kit). Fica em rascunho.</p>
           <div className="flex gap-2">
             <button onClick={submitNew} disabled={!creating.offer || creating.creative_ids.length === 0 || busy === 'new'} className="px-3 py-1.5 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-50">
               Criar rascunho

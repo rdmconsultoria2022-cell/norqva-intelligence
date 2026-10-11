@@ -44,6 +44,15 @@ export async function getCampaign(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+export async function getOfferCreativeOptions(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(200).json(await service.offerCreativeOptions(db(req), String(req.query.offer || '').trim()));
+  } catch (err) {
+    return fail(res, err, 'Falha ao listar os criativos da oferta.');
+  }
+}
+
 export async function getCampaignCreativeOptions(req: AuthenticatedRequest, res: Response) {
   if (demoBlocked(req, res)) return;
   try {

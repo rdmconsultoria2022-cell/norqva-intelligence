@@ -73,7 +73,28 @@ async function offerOf(pool: Pool, offerHumanId: string) {
      WHERE o.human_id = $1 AND o.is_demo = FALSE AND COALESCE(o.is_deleted, FALSE) = FALSE`,
     [offerHumanId]
   );
-  return r.rows[0] || null;
+  const offer = r.rows[0] || null;
+  if (!offer) return null;
+  // NORQVA-0048: o kit pode usar os criativos aprovados dos livros que ele contém
+  // (produtos das ofertas que entregam os mesmos PDFs do kit)
+  const allowed = new Set<string>([String(offer.product_id)]);
+  if (isKitOffer(offer)) {
+    const comp = await pool.query(
+      `SELECT DISTINCT o2.product_id
+       FROM offer_digital_assets a1
+       JOIN offer_digital_assets a2 ON a2.asset_id = a1.asset_id
+       JOIN offers o2 ON o2.id = a2.offer_id
+       WHERE a1.offer_id = $1 AND o2.is_demo = FALSE AND COALESCE(o2.is_deleted, FALSE) = FALSE`,
+      [offer.id]
+    );
+    for (const row of comp.rows) allowed.add(String(row.product_id));
+  }
+  return { ...offer, allowed_product_ids: Array.from(allowed) };
+}
+
+/** NORQVA-0048: oferta de kit (nome começa com "Kit") leva para a página /kit/. */
+export function isKitOffer(offer: { name?: string | null }): boolean {
+  return /^kit\b/i.test(String(offer?.name || '').trim());
 }
 
 /** Versão aprovada mais nova da linhagem do criativo (revisões criam KEY-V2, KEY-V3...). */
@@ -94,9 +115,10 @@ async function latestApprovedInLineage(pool: Pool, creativeId: string) {
  * Criativo pode entrar no anúncio? Aprovado, vídeo, link https e com o MESMO conteúdo que foi aprovado
  * (trocar o arquivo depois da aprovação mantém o status, mas não deixa o arquivo ir para a Meta).
  */
-export async function checkCreativeForAd(pool: Pool, creative: any, productId: string): Promise<CreativeCheck> {
+export async function checkCreativeForAd(pool: Pool, creative: any, productId: string | string[] | null | undefined): Promise<CreativeCheck> {
   if (!creative) return { ok: false, reason: 'Nenhum criativo aprovado encontrado para este anúncio.' };
-  if (String(creative.product_id) !== String(productId)) return { ok: false, reason: 'O criativo é de outro produto.' };
+  const allowed = (Array.isArray(productId) ? productId : [productId]).filter(Boolean).map(String);
+  if (!allowed.includes(String(creative.product_id))) return { ok: false, reason: 'O criativo é de outro produto.' };
   if (creative.approval_status !== 'APPROVED') return { ok: false, reason: 'O criativo ainda não foi aprovado.' };
   if (creative.format !== 'VIDEO') return { ok: false, reason: 'Só vídeo pode ir para o anúncio por enquanto.' };
   if (!httpsUrl(creative.file_url)) return { ok: false, reason: 'O criativo não tem link https do vídeo.' };
@@ -193,16 +215,33 @@ export class CampaignEditorService {
     if (!offer) return { options: [] };
     const r = await pool.query(
       `SELECT * FROM creatives
-       WHERE product_id = $1 AND is_deleted = FALSE AND is_demo = FALSE AND approval_status = 'APPROVED'
+       WHERE product_id = ANY($1::uuid[]) AND is_deleted = FALSE AND is_demo = FALSE AND approval_status = 'APPROVED'
        ORDER BY human_id`,
-      [offer.product_id]
+      [offer.allowed_product_ids]
     );
     const options: any[] = [];
     for (const c of r.rows) {
-      const check = await checkCreativeForAd(pool, c, offer.product_id);
+      const check = await checkCreativeForAd(pool, c, offer.allowed_product_ids);
       options.push({ id: c.id, human_id: c.human_id, key: c.utm_content_key || c.human_id, format: c.format, file_url: c.file_url, ok: check.ok, reason: check.reason || null });
     }
     return { options };
+  }
+
+  /** NORQVA-0048: criativos aprovados que podem ir numa campanha nova desta oferta (no kit, também os dos livros). */
+  async offerCreativeOptions(pool: Pool, offerHumanId: string) {
+    const offer = offerHumanId ? await offerOf(pool, offerHumanId) : null;
+    if (!offer) throw new LaunchPlanError(404, 'Oferta não encontrada.');
+    const r = await pool.query(
+      `SELECT c.*, p.name AS product_name FROM creatives c JOIN products p ON p.id = c.product_id
+       WHERE c.product_id = ANY($1::uuid[]) AND c.is_deleted = FALSE AND c.is_demo = FALSE AND c.approval_status = 'APPROVED' AND c.format = 'VIDEO'
+       ORDER BY c.human_id`,
+      [offer.allowed_product_ids]
+    );
+    return {
+      offer_human_id: offer.human_id,
+      destination: `${DEFAULT_OFFER_BASE_URL}/${isKitOffer(offer) ? 'kit' : 'p'}/${offer.human_id}`,
+      creatives: r.rows.map((c: any) => ({ id: c.id, human_id: c.human_id, hook: c.hook || null, product_name: c.product_name, same_product: String(c.product_id) === String(offer.product_id) }))
+    };
   }
 
   /**
@@ -223,7 +262,7 @@ export class CampaignEditorService {
     for (let i = 0; i < ads.length; i++) {
       const ad = ads[i];
       const creative = await findCreativeForAd(pool, ad.name, chosen[String(i)] || null);
-      const check = await checkCreativeForAd(pool, creative, offer.product_id);
+      const check = await checkCreativeForAd(pool, creative, offer.allowed_product_ids);
       if (!check.ok) {
         // Sem criativo aprovado e igual ao aprovado, o anúncio volta a "a preencher" (não pode ir para a Meta)
         ad.video_url = VIDEO_URL_PLACEHOLDER;
@@ -311,7 +350,7 @@ export class CampaignEditorService {
       if (!UUID_RE.test(creativeId)) throw new LaunchPlanError(400, 'Criativo inválido.');
       const offer = await offerOf(pool, row.offer_human_id);
       const c = await latestApprovedInLineage(pool, creativeId);
-      const check = await checkCreativeForAd(pool, c, offer?.product_id);
+      const check = await checkCreativeForAd(pool, c, offer?.allowed_product_ids);
       if (!check.ok) throw new LaunchPlanError(409, check.reason || 'Criativo não pode ir para o anúncio.');
       chosen[String(adIndex)] = creativeId;
       // guarda o anúncio automático (nome, vídeo, tags) para "Voltar ao automático"
@@ -385,7 +424,7 @@ export class CampaignEditorService {
     const creatives: any[] = [];
     for (const cid of ids) {
       const c = await latestApprovedInLineage(pool, cid);
-      const check = await checkCreativeForAd(pool, c, offer.product_id);
+      const check = await checkCreativeForAd(pool, c, offer.allowed_product_ids);
       if (!check.ok) throw new LaunchPlanError(409, `${c?.human_id || 'Criativo'}: ${check.reason}`);
       if (creatives.some(x => x.id === c.id)) continue;
       creatives.push(c);
@@ -397,7 +436,8 @@ export class CampaignEditorService {
     const daily = Number(body?.daily_budget_brl ?? 20);
     const maxSpend = Number(body?.max_spend_brl ?? daily * 7);
     const adsetName = `${code}_AS01`;
-    const destination = `${DEFAULT_OFFER_BASE_URL}/p/${offer.human_id}`;
+    // NORQVA-0048: oferta de kit leva para a página do kit
+    const destination = `${DEFAULT_OFFER_BASE_URL}/${isKitOffer(offer) ? 'kit' : 'p'}/${offer.human_id}`;
     const spec = {
       campaign: { name: campaignName, objective: 'OUTCOME_SALES' },
       pixel_id: OFFICIAL_NORQVA_PIXEL_ID,
@@ -455,7 +495,7 @@ export async function assertAdsReadyForMeta(pool: Pool, planId: string): Promise
   const ads: any[] = Array.isArray(spec.ads) ? spec.ads : [];
   for (let i = 0; i < ads.length; i++) {
     const creative = await findCreativeForAd(pool, ads[i].name, chosen[String(i)] || null);
-    const check = await checkCreativeForAd(pool, creative, offer.product_id);
+    const check = await checkCreativeForAd(pool, creative, offer.allowed_product_ids);
     if (!check.ok) throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): ${check.reason}`);
     if (String(ads[i].video_url) !== String(check.creative.file_url)) {
       throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): o vídeo não é o arquivo aprovado do criativo. Use "Preencher com os criativos aprovados".`);
