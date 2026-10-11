@@ -237,10 +237,26 @@ export class CampaignEditorService {
        ORDER BY c.human_id`,
       [offer.allowed_product_ids]
     );
+    // NORQVA-0049: quando não há criativo pronto, a tela mostra o porquê (produtos considerados e criativos que ainda não servem)
+    const prods = await pool.query(`SELECT id, human_id, name FROM products WHERE id = ANY($1::uuid[]) ORDER BY human_id`, [offer.allowed_product_ids]);
+    const pending = await pool.query(
+      `SELECT c.human_id, c.format, c.approval_status, c.file_url, p.name AS product_name
+       FROM creatives c JOIN products p ON p.id = c.product_id
+       WHERE c.product_id = ANY($1::uuid[]) AND c.is_deleted = FALSE AND c.is_demo = FALSE
+         AND NOT (c.approval_status = 'APPROVED' AND c.format = 'VIDEO')
+       ORDER BY c.human_id LIMIT 30`,
+      [offer.allowed_product_ids]
+    );
     return {
       offer_human_id: offer.human_id,
       destination: `${DEFAULT_OFFER_BASE_URL}/${isKitOffer(offer) ? 'kit' : 'p'}/${offer.human_id}`,
-      creatives: r.rows.map((c: any) => ({ id: c.id, human_id: c.human_id, hook: c.hook || null, product_name: c.product_name, same_product: String(c.product_id) === String(offer.product_id) }))
+      creatives: r.rows.map((c: any) => ({ id: c.id, human_id: c.human_id, hook: c.hook || null, product_name: c.product_name, same_product: String(c.product_id) === String(offer.product_id) })),
+      products: prods.rows.map((p: any) => `${p.human_id} · ${p.name}`),
+      not_ready: pending.rows.map((c: any) => ({
+        human_id: c.human_id,
+        product_name: c.product_name,
+        reason: c.approval_status !== 'APPROVED' ? 'ainda não aprovado na tela Criativos' : 'não é vídeo'
+      }))
     };
   }
 
