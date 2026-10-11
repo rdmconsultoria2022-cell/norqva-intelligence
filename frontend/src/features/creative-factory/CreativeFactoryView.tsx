@@ -636,6 +636,16 @@ export function CreativeFactoryView({
                       </button>
                     </>
                   )}
+                  {isAdmin && !isDemoView && !hasFile(c) && c.format === 'VIDEO' && (c.linked_meta_ads || []).length > 0 && (
+                    <button
+                      onClick={() => run(`metavideo-${c.id}`, () => post(`/creative-factory/creatives/${c.id}/meta-video?mode=real`), 'Vídeo trazido da Meta. Confira e aprove o criativo.')}
+                      disabled={busy === `metavideo-${c.id}`}
+                      data-testid="fetch-meta-video"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-emerald-600/50 text-emerald-300 text-xs disabled:opacity-50"
+                    >
+                      <Download className="h-3.5 w-3.5" /> {busy === `metavideo-${c.id}` ? 'Trazendo…' : 'Trazer vídeo da Meta'}
+                    </button>
+                  )}
                   {canRevise && (
                     <button
                       onClick={() => setAttaching({ id: c.id, file_url: hasFile(c) ? c.file_url : '' })}
