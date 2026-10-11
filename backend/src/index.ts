@@ -113,7 +113,7 @@ import {
   reviewFactoryCreative,
   reviseFactoryCreative,
   linkFactoryCreativeAd,
-  attachFactoryCreativeFile,
+  attachFactoryCreativeFile, fetchFactoryCreativeMetaVideo,
   addFactoryCreativeClaim,
   listProductClaims,
   createProductClaim,
@@ -529,6 +529,7 @@ app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), r
 app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CREATIVE']), reviseFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
 app.post('/api/creative-factory/creatives/:id/file', requireRole(['ADMIN', 'CREATIVE']), attachFactoryCreativeFile);
+app.post('/api/creative-factory/creatives/:id/meta-video', requireRole(['ADMIN']), fetchFactoryCreativeMetaVideo);
 app.post('/api/creative-factory/creatives/:id/claims', requireRole(['ADMIN', 'CREATIVE']), addFactoryCreativeClaim);
 // NORQVA-0032: promessas por produto (verificar segue no PATCH /api/creative-factory/claims/:id, só ADMIN)
 app.get('/api/products/:id/claims', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listProductClaims);

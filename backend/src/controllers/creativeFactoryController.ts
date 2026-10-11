@@ -4,6 +4,8 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { CreativeFactoryService, CreativeFactoryError } from '../services/creative/creativeFactoryService';
 import { resolvePeriodFilter } from '../utils/commercialTimezone';
 import { AdjustmentService, automationTokenValid } from '../services/creative/adjustmentService';
+import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
+import { fetchCreativeVideoFromMeta, GraphReader } from '../services/creative/metaVideoFetch';
 
 // NORQVA-0005 / G1: Creative Factory endpoints. Mode isolation follows the rest of the API
 // (?mode=demo). Writes are ADMIN-only except creating a new version (ADMIN, CREATIVE).
@@ -287,5 +289,22 @@ export async function createProductClaim(req: AuthenticatedRequest, res: Respons
     return res.status(201).json(out);
   } catch (err) {
     return handle(res, err, 'Falha ao cadastrar a promessa.');
+  }
+}
+
+// NORQVA-0050: trazer o vídeo de um criativo importado da Meta (só leitura na Meta)
+let graphFactory: () => GraphReader = () => new MetaMutatingClient();
+export function setCreativeGraphReaderForTests(f: (() => GraphReader) | null) {
+  graphFactory = f || (() => new MetaMutatingClient());
+}
+
+export async function fetchFactoryCreativeMetaVideo(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    if (req.query.mode === 'demo') return res.status(400).json({ error: 'Só na conta real.' });
+    const result = await fetchCreativeVideoFromMeta(pool, service, String(req.params.id), req.user?.id || null, graphFactory());
+    return res.status(200).json(result);
+  } catch (err) {
+    return handle(res, err, 'Falha ao trazer o vídeo da Meta.');
   }
 }
