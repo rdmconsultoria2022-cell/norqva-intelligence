@@ -69,4 +69,27 @@ describe.sequential('NORQVA-0050 — vídeo do criativo importado da Meta', () =
     expect(r.status).toBe(409);
     expect(r.body.error).toMatch(/Ligar anúncio/);
   });
+
+  it('NORQVA-0051: prefere o arquivo original do plano que criou o anúncio (sem chamar a Meta)', async () => {
+    const c3 = (await pool.query(
+      `INSERT INTO creatives (human_id, product_id, hook, concept, copy, primary_text, headline, cta, format, status, is_demo, utm_content_key, approval_status)
+       VALUES ($1, $2, 'g', 'Importado da Meta', 't', 't', 'h', 'SEE_DETAILS', 'VIDEO', 'IDEIA', FALSE, $1, 'DRAFT') RETURNING id`,
+      [`EXT-V51${tag}`, productId]
+    )).rows[0].id;
+    const ad2 = `1203${Date.now().toString().slice(-9)}`;
+    await pool.query(`INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method) VALUES ($1, $2, 'MANUAL')`, [c3, ad2]);
+    await pool.query(
+      `INSERT INTO launch_plans (id, code, offer_human_id, status, spec, meta_ids, daily_budget_brl, max_spend_brl, question_text)
+       VALUES (gen_random_uuid(), $1, 'OFF-000001', 'CREATED_PAUSED', $2, $3, 20, 140, 'q')`,
+      [`T51-${tag}`, JSON.stringify({ ads: [{ name: 'TR_V9_X', video_url: 'https://cdn.norqva.example/tr_v9.mp4' }] }), JSON.stringify({ ads: { TR_V9_X: ad2 }, videos: { TR_V9_X: '555444333' } })]
+    );
+    calls.length = 0;
+    const r = await request(app).post(`/api/creative-factory/creatives/${c3}/meta-video?mode=real`).set('Authorization', `Bearer ${admin}`);
+    expect(r.status).toBe(200);
+    expect(r.body.source).toBe('LAUNCH_PLAN');
+    expect(calls).toEqual([]);
+    const c = (await pool.query('SELECT file_url FROM creatives WHERE id = $1', [c3])).rows[0];
+    expect(c.file_url).toBe('https://cdn.norqva.example/tr_v9.mp4');
+    await pool.query('DELETE FROM launch_plans WHERE code = $1', [`T51-${tag}`]);
+  });
 });

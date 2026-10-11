@@ -3,6 +3,7 @@
 // Depois o operador aprova normalmente na tela Criativos (a aprovação continua obrigatória).
 import { Pool } from 'pg';
 import { CreativeFactoryError, CreativeFactoryService } from './creativeFactoryService';
+import { normalizeMetaIds } from '../launchPlans/launchPlanService';
 
 export interface GraphReader {
   readGraph(endpoint: string, params?: Record<string, string>): Promise<any>;
@@ -25,6 +26,23 @@ export async function fetchCreativeVideoFromMeta(
   const adIds = ads.rows.map((r: any) => String(r.meta_ad_id)).filter(id => AD_ID_RE.test(id));
   if (!adIds.length) throw new CreativeFactoryError(409, 'Este criativo não está ligado a nenhum anúncio da Meta. Use "Ligar anúncio" primeiro.');
 
+  // NORQVA-0051: 1º o arquivo original que o NORQVA já mandou para a Meta (plano de lançamento que criou o anúncio)
+  for (const adId of adIds) {
+    const plans = await pool.query(`SELECT spec, meta_ids FROM launch_plans WHERE meta_ids::text LIKE $1 ORDER BY updated_at DESC LIMIT 10`, [`%"${adId}"%`]);
+    for (const p of plans.rows) {
+      const ids = normalizeMetaIds(p.meta_ids);
+      const adName = Object.keys(ids.ads).find(k => ids.ads[k] === adId);
+      const spec = typeof p.spec === 'string' ? (() => { try { return JSON.parse(p.spec); } catch { return {}; } })() : p.spec || {};
+      const ad = adName && Array.isArray(spec.ads) ? spec.ads.find((x: any) => x?.name === adName) : null;
+      const url = typeof ad?.video_url === 'string' ? ad.video_url.trim() : '';
+      if (/^https:\/\//i.test(url)) {
+        const updated = await service.attachFile(pool, creativeId, url, userId, false);
+        return { creative: updated, meta_ad_id: adId, video_id: ids.videos[adName!] || null, source: 'LAUNCH_PLAN' };
+      }
+    }
+  }
+
+  // 2º o link do arquivo na Meta
   let lastProblem = 'O anúncio da Meta não tem vídeo.';
   for (const adId of adIds) {
     let ad: any;
@@ -48,11 +66,11 @@ export async function fetchCreativeVideoFromMeta(
     }
     const source = typeof video?.source === 'string' ? video.source : '';
     if (!/^https:\/\//i.test(source)) {
-      lastProblem = 'A Meta não devolveu o link do arquivo do vídeo.';
+      lastProblem = 'A Meta não devolveu o link do arquivo do vídeo, e o NORQVA não tem o arquivo original deste anúncio. Use "Anexar arquivo" com o vídeo, se encontrar.';
       continue;
     }
     const updated = await service.attachFile(pool, creativeId, source, userId, false);
-    return { creative: updated, meta_ad_id: adId, video_id: String(videoId) };
+    return { creative: updated, meta_ad_id: adId, video_id: String(videoId), source: 'META' };
   }
   throw new CreativeFactoryError(409, lastProblem);
 }
