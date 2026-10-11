@@ -38,7 +38,7 @@ export interface ServerCheck {
 }
 
 /** NORQVA-0047: diagnóstico do servidor do WhatsApp em linguagem simples (endereço, senha, versão). */
-export async function checkEvolutionServer(urlArg?: string, keyArg?: string, timeoutMs = 12000): Promise<ServerCheck> {
+export async function checkEvolutionServer(urlArg?: string, keyArg?: string, timeoutMs = 30000): Promise<ServerCheck> {
   const url = (urlArg ?? process.env.EVOLUTION_API_URL ?? '').trim().replace(/\/+$/, '');
   const key = (keyArg ?? process.env.EVOLUTION_API_KEY ?? '').trim();
   let host: string | null = null;
@@ -72,6 +72,9 @@ export async function checkEvolutionServer(urlArg?: string, keyArg?: string, tim
         ? `O servidor ${host} não respondeu a tempo. Se acabou de ser criado ou reiniciado, espere 2 minutos e teste de novo; se continuar, veja a aba Logs do serviço no Render.`
         : `Não foi possível falar com ${host}. Confira se o endereço está certo e se o serviço está no ar (status "Live" no Render).`
     };
+  }
+  if (root.status >= 500) {
+    return { ok: false, step: 'REACH', host, version: null, problem: `O servidor ${host} está fora do ar ou ainda iniciando (erro ${root.status}). Espere 2 minutos e teste de novo; se continuar, veja a aba Logs do serviço no Render.` };
   }
   const looksEvolution = root.data && (String(root.data.message || '').toLowerCase().includes('evolution') || root.data.version || root.data.clientName);
   if (root.status === 404 || !looksEvolution) {
