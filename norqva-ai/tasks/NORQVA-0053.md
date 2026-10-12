@@ -19,3 +19,11 @@ Ricardo (12/10/2026 11h20): "retirar as informações de Preço dos criativos (t
 
 - Item 1 (fábrica de criativos) vai em PR próprio; item 3 (WhatsApp na página) só depois do "Aprovado".
 - `AI_RULES` (texto validado na aba Critérios) não muda aqui: exige revalidação; a trava do plano já barra preço.
+
+## Item 1 (PR próprio): fábrica de criativos versão NORQVA
+
+- `norqva-ai/fabrica-criativos/`: Criativos Infinitos v2.2 adaptado. Regras NORQVA no `SKILL.md` (sem preço, sem pessoa de IA como real, sem depoimento, sem troca de gerador, raspagem sem login).
+- `gen.py`: sem a cadeia de geradores permissivos; recusa `script.json` com preço ou fala gerada por IA; nova fase `music` (Suno via KIE).
+- `norqva_guard.py`: mesmas regras de preço do `priceInCopy.ts`.
+- `build_mudo.py` + `templates/edit-template/src/Mudo.tsx`: anúncios mudos de comida (cena por cena, texto na tela, música, chamada pulsante); `Root.tsx` registra só `AdMudo`.
+- Roda fora do NORQVA (computador do Ricardo ou servidor próprio); o mp4 é anexado na tela Criativos.
