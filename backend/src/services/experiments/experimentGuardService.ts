@@ -77,11 +77,19 @@ export function ceilingOf(plan: any): number {
   return r2(initialCapOf(plan) * DEFAULT_CEILING_MULTIPLIER);
 }
 
-/** Vendas pagas (Asaas confirmou) atribuídas ao plano e receita líquida (valor do pedido menos a taxa do Asaas). */
+// Taxa ainda não informada pelo Asaas: estimativa conservadora (acima da taxa do cartão), para não inflar o lucro.
+export const UNKNOWN_FEE_PCT = 0.06;
+export const UNKNOWN_FEE_FIXED = 1.99;
+
+/**
+ * Vendas pagas (Asaas confirmou) atribuídas ao plano e receita líquida (valor do pedido menos a taxa do Asaas).
+ * Janela recente em meia-noite de São Paulo; a conta de anúncios da Meta usa o mesmo fuso (diferença de horas
+ * só se a conta mudar de fuso).
+ */
 export async function planNetRevenue(pool: Pool, code: string, sinceIso: string | null): Promise<{ sales: number; net: number }> {
   const r = await pool.query(
     `SELECT COUNT(*)::int AS sales,
-            COALESCE(SUM(o.total_amount - COALESCE((SELECT SUM(p.provider_fee) FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED'), 0)), 0)::numeric AS net
+            COALESCE(SUM(o.total_amount - COALESCE((SELECT SUM(p.provider_fee) FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED'), ROUND(o.total_amount * $3::numeric + $4::numeric, 2))), 0)::numeric AS net
      FROM orders o
      WHERE o.is_demo = FALSE AND o.data_provenance = 'COMMERCIAL_PRODUCTION' AND o.status = 'PAID'
        AND UPPER(o.utm_campaign) = UPPER($1)
@@ -89,7 +97,7 @@ export async function planNetRevenue(pool: Pool, code: string, sinceIso: string 
          SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED'
            AND ($2::timestamptz IS NULL OR COALESCE(p.confirmed_at, o.created_at) >= $2::timestamptz)
        )`,
-    [code, sinceIso]
+    [code, sinceIso, UNKNOWN_FEE_PCT, UNKNOWN_FEE_FIXED]
   );
   return { sales: Number(r.rows[0]?.sales) || 0, net: r2(parseFloat(r.rows[0]?.net) || 0) };
 }
@@ -238,7 +246,8 @@ export class ExperimentGuardService {
       );
       if (!upd.rows.length) {
         await handle.finish('REJECTED', { error: 'O teto mudou durante a leitura.' });
-        return { extended: false, profit, note: 'o teto mudou durante a leitura' };
+        // outra leitura ou o operador mudou o teto agora: não pausa; o próximo ciclo reavalia com o teto novo
+        return { extended: false, skipped: true, profit, note: 'o teto mudou durante a leitura' };
       }
       if (plan.experiment_id) {
         await pool.query(`UPDATE experiments SET capital_approved = GREATEST($2::numeric, capital_used) WHERE id = $1`, [plan.experiment_id, newCap]);
@@ -265,7 +274,7 @@ export class ExperimentGuardService {
   }
 
   /** One guard cycle over every running plan (or one plan). */
-  async run(pool: Pool, opts: { planId?: string; intervalMin?: number } = {}) {
+  async run(pool: Pool, opts: { planId?: string; intervalMin?: number; noProfitExtend?: boolean } = {}) {
     const intervalMin = opts.intervalMin ?? GUARD_INTERVAL_MIN();
     const protectedIds = protectedMetaIds();
     const plans = (
@@ -329,9 +338,14 @@ export class ExperimentGuardService {
           out.capped = 'campanha já não está ativa na Meta';
         } else if (autopauseEnabled()) {
           // NORQVA-0052: campanha lucrativa não é pausada; o teto cresce 50% até o teto máximo.
-          const ext: any = await this.tryProfitExtension(pool, plan, campaignId, { spent: reading.spend, cap, daily, projection: ev.projection });
+          // Logo depois de o operador BAIXAR o teto, não estende: a decisão dele vale (pausa se já passou).
+          const ext: any = opts.noProfitExtend
+            ? { extended: false, note: 'o operador acabou de baixar o teto' }
+            : await this.tryProfitExtension(pool, plan, campaignId, { spent: reading.spend, cap, daily, projection: ev.projection });
           if (ext.extended) {
             out.extended = ext;
+          } else if (ext.skipped) {
+            out.profit = ext;
           } else {
             out.profit = ext;
             out.pause = await this.pause(pool, plan, campaignId, `Gasto ${brl(reading.spend)} + projeção ${brl(ev.projection)} ≥ teto ${brl(cap)}. Não estendido: ${ext.note}.`, { spent: reading.spend, projection: ev.projection, cap });

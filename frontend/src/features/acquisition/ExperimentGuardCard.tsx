@@ -66,6 +66,7 @@ export const ExperimentGuardCard: React.FC<{
   const [editing, setEditing] = useState<string | null>(null);
   const [value, setValue] = useState('');
   const [ceiling, setCeiling] = useState('');
+  const [ceilingTouched, setCeilingTouched] = useState(false);
   const [profitOn, setProfitOn] = useState(true);
   const [confirmCode, setConfirmCode] = useState('');
   const [justification, setJustification] = useState('');
@@ -112,6 +113,7 @@ export const ExperimentGuardCard: React.FC<{
     setEditing(p.id);
     setValue(String(num(p.max_spend_brl) ?? ''));
     setCeiling(String(ceilingOfPlan(p)));
+    setCeilingTouched(false);
     setProfitOn(p.profit_extend_enabled !== false);
     setConfirmCode('');
     setJustification('');
@@ -121,7 +123,7 @@ export const ExperimentGuardCard: React.FC<{
     const cap = num(p.max_spend_brl) ?? 0;
     const v = parse(value);
     const c = parse(ceiling);
-    return (Number.isFinite(v) && v > cap + 0.001) || (Number.isFinite(c) && c > ceilingOfPlan(p) + 0.001) || (profitOn && p.profit_extend_enabled === false);
+    return (Number.isFinite(v) && v > cap + 0.001) || (ceilingTouched && Number.isFinite(c) && c > ceilingOfPlan(p) + 0.001) || (profitOn && p.profit_extend_enabled === false);
   };
 
   const saveCap = async (plan: GuardPlan) => {
@@ -129,7 +131,7 @@ export const ExperimentGuardCard: React.FC<{
     if (!Number.isFinite(v) || v <= 0) return showError('Informe o novo teto em reais.');
     const c = parse(ceiling);
     const body: Record<string, any> = { max_spend_brl: v };
-    if (Number.isFinite(c) && c > 0 && Math.abs(c - ceilingOfPlan(plan)) > 0.001) {
+    if (ceilingTouched && Number.isFinite(c) && c > 0 && Math.abs(c - ceilingOfPlan(plan)) > 0.001) {
       if (c + 0.001 < v) return showError('O teto máximo não pode ser menor que o teto.');
       body.max_spend_ceiling_brl = c;
     }
@@ -228,11 +230,15 @@ export const ExperimentGuardCard: React.FC<{
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="flex flex-col gap-1">
                     <span className="text-slate-400">Teto de gasto (R$)</span>
-                    <input aria-label={`Novo teto de ${p.code}`} value={value} onChange={e => setValue(e.target.value)} className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
+                    <input aria-label={`Novo teto de ${p.code}`} value={value} onChange={e => {
+                        setValue(e.target.value);
+                        // teto máximo padrão (3x) acompanha o teto digitado, como o servidor calcula
+                        if (!ceilingTouched) setCeiling(String(ceilingOfPlan({ ...p, max_spend_brl: parse(e.target.value) || p.max_spend_brl })));
+                      }} className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-slate-400">Teto máximo com lucro (R$)</span>
-                    <input aria-label={`Teto máximo de ${p.code}`} value={ceiling} onChange={e => setCeiling(e.target.value)} className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
+                    <input aria-label={`Teto máximo de ${p.code}`} value={ceiling} onChange={e => { setCeiling(e.target.value); setCeilingTouched(true); }} className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
                   </label>
                   <label className="flex items-center gap-1.5 pb-1 text-slate-300">
                     <input type="checkbox" aria-label="Não pausar se estiver dando lucro" checked={profitOn} onChange={e => setProfitOn(e.target.checked)} />

@@ -64,7 +64,8 @@ export async function getPlanGuard(req: AuthenticatedRequest, res: Response) {
  * - Subir o teto ou o teto máximo, ou religar a extensão por lucro, depois do Sim do operador, exige o código
  *   do plano e um motivo curto (substitui a antiga trava H3 do capital aprovado na ativação).
  * - Rascunho: grava como edição manual do rascunho (nada gasta antes do Sim).
- * - A pergunta de ativação passa a mostrar o teto novo.
+ * - A pergunta de ativação (antes do Sim) passa a mostrar o teto novo.
+ * - Baixar o teto não dispara a extensão por lucro na leitura imediata.
  * - Plano parado no teto (CAPPED) com teto novo acima do gasto volta a ser vigiado; reativar continua com o operador.
  * Aplica o spend_cap na campanha (H8), roda o vigia (H6/H7) e registra em decision_events (fail-closed) e na auditoria.
  */
@@ -153,7 +154,7 @@ export async function setPlanSpendCap(req: AuthenticatedRequest, res: Response) 
         newCap,
         nextCeilingStored,
         newProfit,
-        capChanged && !draft ? refreshQuestionText(plan.question_text, newCap) : draft ? (await plans.get(pool, plan.id) as any).question_text : plan.question_text,
+        capChanged && !draft && ['DRAFT', 'FAILED', 'CREATED_PAUSED', 'AWAITING_OPERATOR'].includes(plan.status) ? refreshQuestionText(plan.question_text, newCap) : draft ? (await plans.get(pool, plan.id) as any).question_text : plan.question_text,
         capChanged,
         uncap,
         `Teto aumentado para R$ ${newCap.toFixed(2)}: o vigia voltou a acompanhar. A campanha continua pausada até você reativar.`
@@ -166,7 +167,7 @@ export async function setPlanSpendCap(req: AuthenticatedRequest, res: Response) 
     const updated: any = await plans.get(pool, id);
     const ctx: MetaMutatingSecurityContext = { userId: req.user?.id || '', userRole: 'ADMIN', isDemo: false };
     const spendCap = ExperimentGuardService.campaignOf(updated) ? await guard.applySpendCap(pool, updated, ctx) : { status: 'SKIPPED', error: 'Plano ainda sem campanha na Meta.' };
-    const guardRun = ['ACTIVE', 'APPROVED'].includes(updated.status) ? await guard.run(pool, { planId: updated.id }) : null;
+    const guardRun = ['ACTIVE', 'APPROVED'].includes(updated.status) ? await guard.run(pool, { planId: updated.id, noProfitExtend: newCap < current - 0.001 }) : null;
     const result = {
       code: updated.code,
       previous_cap_brl: current,

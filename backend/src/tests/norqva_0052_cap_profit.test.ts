@@ -75,7 +75,7 @@ describe('NORQVA-0052 — vigia e tela', () => {
   };
   const row = async (id: string) => (await pool.query('SELECT * FROM launch_plans WHERE id = $1', [id])).rows[0];
   /** Venda paga (pagamento CONFIRMED, como o Asaas confirma) atribuída ao plano. */
-  const sale = async (code: string, opts: { amount?: number; fee?: number; daysAgo?: number; provenance?: string } = {}) => {
+  const sale = async (code: string, opts: { amount?: number; fee?: number | null; daysAgo?: number; provenance?: string } = {}) => {
     const when = new Date(Date.now() - (opts.daysAgo ?? 0) * 86400000);
     const o = await pool.query(
       `INSERT INTO orders (id, customer_id, total_amount, status, is_demo, data_provenance, idempotency_key, utm_source, utm_campaign, created_at, updated_at)
@@ -85,7 +85,7 @@ describe('NORQVA-0052 — vigia e tela', () => {
     await pool.query(
       `INSERT INTO payments (id, human_id, order_id, provider, status, amount, provider_fee, confirmed_at, idempotency_key, external_reference, data_provenance, created_at, updated_at)
        VALUES (gen_random_uuid(), $1, $2, 'ASAAS', 'CONFIRMED', $3, $4, $5, $6, $7, 'COMMERCIAL_PRODUCTION', $5, $5)`,
-      [`PAY-0052-${crypto.randomUUID().slice(0, 8)}`, o.rows[0].id, opts.amount ?? 27.9, opts.fee ?? 1.99, when, `idem-pay-0052-${crypto.randomUUID()}`, `ext-0052-${crypto.randomUUID()}`]
+      [`PAY-0052-${crypto.randomUUID().slice(0, 8)}`, o.rows[0].id, opts.amount ?? 27.9, opts.fee === undefined ? 1.99 : opts.fee, when, `idem-pay-0052-${crypto.randomUUID()}`, `ext-0052-${crypto.randomUUID()}`]
     );
   };
 
@@ -184,6 +184,27 @@ describe('NORQVA-0052 — vigia e tela', () => {
     expect(r.plans[0].pause).toMatchObject({ paused: true });
   });
 
+  it('taxa do Asaas ainda desconhecida entra com estimativa conservadora (não infla o lucro)', async () => {
+    const p = await mkPlan({ cap: 200 });
+    for (let i = 0; i < 3; i++) await sale(p.code, { amount: 100, fee: null });
+    const { planNetRevenue } = await import('../services/experiments/experimentGuardService');
+    const r = await planNetRevenue(pool, p.code, null);
+    expect(r.sales).toBe(3);
+    expect(r.net).toBeCloseTo(3 * (100 - 7.99), 2);
+  });
+
+  it('logo depois de o operador BAIXAR o teto, a campanha lucrativa é pausada (a decisão dele vale)', async () => {
+    const p = await mkPlan({ cap: 300 });
+    for (let i = 0; i < 6; i++) await sale(p.code, { amount: 80 });
+    const client = fakeClient(210, 100);
+    setExperimentGuardForTesting(new ExperimentGuardService(() => client, null));
+    const r = await request(app).post(`/api/launch-plans/${p.id}/spend-cap`).set('Authorization', `Bearer ${adminToken}`).send({ max_spend_brl: 200 });
+    expect(r.status).toBe(200);
+    expect(r.body.guard.pause).toMatchObject({ paused: true });
+    expect(parseFloat((await row(p.id)).max_spend_brl)).toBe(200);
+    expect((await row(p.id)).guard_state).toBe('CAPPED');
+  });
+
   it('tela: subir o teto de campanha parada no teto volta a vigiar, sem reativar; pergunta mostra o teto novo', async () => {
     const p = await mkPlan({ cap: 200, guard_state: 'CAPPED', spent: 205 });
     const client = fakeClient(205, 50, 'PAUSED');
@@ -191,7 +212,8 @@ describe('NORQVA-0052 — vigia e tela', () => {
     const call = (body: any) => request(app).post(`/api/launch-plans/${p.id}/spend-cap`).set('Authorization', `Bearer ${adminToken}`).send(body);
     const r = await call({ max_spend_brl: 400, confirm_code: p.code, justification: 'Quero testar mais uma semana.' });
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ cap_brl: 400, uncapped: true, question_text: 'Ativar com R$ 20.00/dia e teto de R$ 400.00?' });
+    // a pergunta já respondida (Sim) fica como foi aprovada; antes do Sim ela acompanha o teto
+    expect(r.body).toMatchObject({ cap_brl: 400, uncapped: true, question_text: 'Ativar com R$ 20.00/dia e teto de R$ 200.00?' });
     const after = await row(p.id);
     expect(after.guard_state).toBe('WATCHING');
     expect(after.capped_at).toBeNull();
