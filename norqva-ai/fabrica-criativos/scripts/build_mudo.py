@@ -32,6 +32,29 @@ if not ads:
 ids = [a.get("id", "") for a in ads]
 if any(not re.fullmatch(r"[A-Za-z0-9-]+", i) for i in ids) or len(set(ids)) != len(ids):
     sys.exit(f"ids dos anúncios: só letras/números/hífen e sem repetir ({ids}).")
+def check_scene(sc, where):
+    if not isinstance(sc, dict):
+        sys.exit(f"{where}: cena inválida (use {{src, seconds, lines}}).")
+    if not isinstance(sc.get("src"), str) or not sc["src"].strip():
+        sys.exit(f"{where}: falta o \"src\" (takes/<b-roll>.mp4 ou refs/<imagem>.png).")
+    sec = sc.get("seconds")
+    if not isinstance(sec, (int, float)) or sec <= 0:
+        sys.exit(f"{where}: \"seconds\" precisa ser um número maior que zero.")
+    lines = sc.setdefault("lines", [])
+    if not isinstance(lines, list) or not all(isinstance(x, str) for x in lines) or len(lines) > 3:
+        sys.exit(f"{where}: \"lines\" = lista de até 3 frases curtas.")
+
+
+for i, sc in enumerate(M.get("body") or []):
+    check_scene(sc, f"mudo.body[{i}]")
+for a in ads:
+    check_scene(a.get("abertura"), f"anúncio {a.get('id')}: abertura")
+    cta = a.get("cta")
+    if not isinstance(cta, dict) or not str(cta.get("text", "")).strip():
+        sys.exit(f"anúncio {a.get('id')}: falta a chamada final (cta.text).")
+    cs = a.get("ctaSeconds", 2.5)
+    if not isinstance(cs, (int, float)) or cs < 0.5:
+        sys.exit(f"anúncio {a.get('id')}: ctaSeconds precisa ser um número de pelo menos 0,5.")
 ctas = [str(a.get("cta", {}).get("text", "")).strip().lower() for a in ads]
 if len(set(ctas)) != len(ctas):
     sys.exit("Chamada final repetida entre anúncios: cada anúncio tem a sua.")
@@ -54,20 +77,26 @@ def use(src, seconds=None):
     if seconds and src.lower().endswith(".mp4"):
         d = duration_of(full)
         if d and seconds > d + 0.05:
-            sys.exit(f"{src} tem {d:.1f}s, mas a cena pede {seconds}s: diminua a cena ou gere b-roll maior.")
+            sys.exit(f"{src} tem {d:.1f}s, mas a cena pede {seconds:.1f}s (com a chamada final, se for a última): "
+                     "diminua a cena, gere b-roll maior ou use uma imagem.")
     os.makedirs(os.path.dirname(f"{pub}/{src}") or pub, exist_ok=True)
     shutil.copy(full, f"{pub}/{src}")
 
 
-for sc in M.get("body", []):
-    use(sc["src"], sc.get("seconds"))
+body = M.get("body") or []
+max_cta = max(a.get("ctaSeconds", 2.5) for a in ads)
+for i, sc in enumerate(body):
+    # a chamada final fica sobre a última cena do corpo, estendida por ctaSeconds
+    extra = max_cta if i == len(body) - 1 else 0
+    use(sc["src"], sc["seconds"] + extra)
 for a in ads:
-    use(a["abertura"]["src"], a["abertura"].get("seconds"))
+    extra = a.get("ctaSeconds", 2.5) if not body else 0
+    use(a["abertura"]["src"], a["abertura"]["seconds"] + extra)
 for key in ("music", "narration"):
     if M.get(key):
         use(M[key])
 
 json.dump(M, open(f"{pub}/mudo.json", "w"), indent=1, ensure_ascii=False)
-total = sum(s["seconds"] for s in M.get("body", []))
+total = sum(s["seconds"] for s in body)
 print(f"BUILD MUDO OK — {len(ads)} anúncios, corpo de {total:.1f}s + abertura + chamada")
 print("Agora: cd edit && npx remotion render src/index.ts <Id> ../out/<Id>.mp4 --timeout=120000")

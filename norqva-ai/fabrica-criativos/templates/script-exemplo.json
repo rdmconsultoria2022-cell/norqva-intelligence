@@ -16,26 +16,132 @@
   "tiramisu": "TEXT2IMG :: a slice of tiramisu with cocoa dusting on a cream plate with a thin gold rim, pink linen, dark wooden table, warm golden light, appetizing editorial food photography, 9:16, no text, no UI elements, no people, no hands"
  },
  "brolls": [
-  {"id": "br_lasanha", "ref": "mesa_lasanha", "duration": 5, "prompt": "slow push-in on the bubbling lasagna, cheese stretching as steam rises, warm light"},
-  {"id": "br_massa", "ref": "massa_crua", "duration": 5, "prompt": "pasta sheet being slowly rolled thinner, flour dust floating in warm light, camera slowly tilting"},
-  {"id": "br_molho", "ref": "molho", "duration": 5, "prompt": "sauce gently bubbling, a basil leaf sinking, slow orbit of the camera"},
-  {"id": "br_tiramisu", "ref": "tiramisu", "duration": 5, "prompt": "slow dolly around the tiramisu slice, cocoa dust catching the light"}
+  {
+   "id": "br_lasanha",
+   "ref": "mesa_lasanha",
+   "duration": 5,
+   "prompt": "slow push-in on the bubbling lasagna, cheese stretching as steam rises, warm light"
+  },
+  {
+   "id": "br_massa",
+   "ref": "massa_crua",
+   "duration": 5,
+   "prompt": "pasta sheet being slowly rolled thinner, flour dust floating in warm light, camera slowly tilting"
+  },
+  {
+   "id": "br_molho",
+   "ref": "molho",
+   "duration": 5,
+   "prompt": "sauce gently bubbling, a basil leaf sinking, slow orbit of the camera"
+  },
+  {
+   "id": "br_tiramisu",
+   "ref": "tiramisu",
+   "duration": 5,
+   "prompt": "slow dolly around the tiramisu slice, cocoa dust catching the light"
+  }
  ],
  "mudo": {
-  "_nota": "Cada cena: src (takes/<broll>.mp4 ou refs/<imagem>.png; páginas REAIS do livro em refs/pagina_XX.png), seconds (até a duração do b-roll) e 1-2 linhas de texto curtas. A chamada fica sobre a última cena por ctaSeconds.",
+  "_nota": "Cada cena: src (takes/<broll>.mp4 ou refs/<imagem>.png; páginas REAIS do livro em refs/pagina_XX.png), seconds (até a duração do b-roll) e 1-2 linhas de texto curtas. A chamada fica sobre a última cena por ctaSeconds. A última cena do corpo recebe a chamada final: prefira uma imagem (página do livro) ou um b-roll que dure seconds + ctaSeconds.",
   "music_prompt": "warm italian acoustic guitar and mandolin, cozy kitchen, light and cheerful, instrumental",
   "music": "music.mp3",
   "body": [
-   {"src": "takes/br_massa.mp4", "seconds": 3.5, "lines": ["Massa fresca em casa", "sem máquina"]},
-   {"src": "takes/br_molho.mp4", "seconds": 3.5, "lines": ["O molho que vira", "receita de família"]},
-   {"src": "refs/pagina_12.png", "seconds": 3, "lines": ["Passo a passo com foto", "em cada receita"]},
-   {"src": "takes/br_tiramisu.mp4", "seconds": 3.5, "lines": ["E a sobremesa", "da nonna"]}
+   {
+    "src": "takes/br_massa.mp4",
+    "seconds": 3.5,
+    "lines": [
+     "Massa fresca em casa",
+     "sem máquina"
+    ]
+   },
+   {
+    "src": "takes/br_molho.mp4",
+    "seconds": 3.5,
+    "lines": [
+     "O molho que vira",
+     "receita de família"
+    ]
+   },
+   {
+    "src": "takes/br_tiramisu.mp4",
+    "seconds": 3.5,
+    "lines": [
+     "E a sobremesa",
+     "para fechar o almoço"
+    ]
+   },
+   {
+    "src": "refs/pagina_12.png",
+    "seconds": 3,
+    "lines": [
+     "Passo a passo com foto",
+     "em cada receita"
+    ]
+   }
   ],
   "ads": [
-   {"id": "KitMesa", "abertura": {"src": "takes/br_lasanha.mp4", "seconds": 3, "lines": ["A lasanha que parece", "de cantina"]}, "cta": {"text": "VEJA AS RECEITAS", "arrow": "👇"}},
-   {"id": "KitMassa", "abertura": {"src": "takes/br_massa.mp4", "seconds": 3, "lines": ["Você nunca fez", "massa em casa?"]}, "cta": {"text": "TOQUE EM SAIBA MAIS", "color": "#D9A441", "arrow": "▼"}},
-   {"id": "KitDoce", "abertura": {"src": "takes/br_tiramisu.mp4", "seconds": 3, "lines": ["O tiramisù", "mais fácil da sua vida"]}, "cta": {"text": "QUERO O LIVRO", "arrow": "☟"}},
-   {"id": "KitLivro", "abertura": {"src": "refs/pagina_01.png", "seconds": 2.5, "lines": ["Receitas italianas", "com foto de cada prato"]}, "cta": {"text": "VEJA COMO É POR DENTRO", "color": "#2E7D5B", "arrow": "👇"}}
+   {
+    "id": "KitMesa",
+    "abertura": {
+     "src": "takes/br_lasanha.mp4",
+     "seconds": 3,
+     "lines": [
+      "A lasanha que parece",
+      "de cantina"
+     ]
+    },
+    "cta": {
+     "text": "VEJA AS RECEITAS",
+     "arrow": "👇"
+    }
+   },
+   {
+    "id": "KitMassa",
+    "abertura": {
+     "src": "takes/br_massa.mp4",
+     "seconds": 3,
+     "lines": [
+      "Você nunca fez",
+      "massa em casa?"
+     ]
+    },
+    "cta": {
+     "text": "TOQUE EM SAIBA MAIS",
+     "color": "#D9A441",
+     "arrow": "▼"
+    }
+   },
+   {
+    "id": "KitDoce",
+    "abertura": {
+     "src": "takes/br_tiramisu.mp4",
+     "seconds": 3,
+     "lines": [
+      "Tiramisù em casa",
+      "passo a passo com foto"
+     ]
+    },
+    "cta": {
+     "text": "QUERO O LIVRO",
+     "arrow": "☟"
+    }
+   },
+   {
+    "id": "KitLivro",
+    "abertura": {
+     "src": "refs/pagina_01.png",
+     "seconds": 2.5,
+     "lines": [
+      "Receitas italianas",
+      "com foto de cada prato"
+     ]
+    },
+    "cta": {
+     "text": "VEJA COMO É POR DENTRO",
+     "color": "#2E7D5B",
+     "arrow": "👇"
+    }
+   }
   ]
  }
 }

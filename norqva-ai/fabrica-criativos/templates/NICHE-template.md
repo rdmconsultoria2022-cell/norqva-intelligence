@@ -32,15 +32,15 @@ o concorrente dá? Qual promessa/prazo/esforço ("7 min/dia, 28 dias")? Que prov
 ## GATILHO DE ATENÇÃO Nº1 (obrigatório — a REGRA DE OURO DO HOOK depende disto)
 
 <O QUE, visualmente, faz o avatar deste nicho parar o scroll — extraído dos winners, não
-inventado. Ex.: "mulher atraente de decote" (ED), "antes/depois do corpo" (fitness),
-"prato pronto em close" (receitas), "rosto com pele perfeita em macro" (skincare).
-TODA abertura de TODO ad — inclusive b-roll de Split e Visual Hook — mostra isto nos
-primeiros 2 segundos. Cena sem o gatilho = hook reprovado no QC.>
+inventado. Ex. NORQVA: "prato pronto em close, gratinado borbulhando" (receitas),
+"massa sendo aberta" (massas), "corte da sobremesa" (doces). TODA abertura de TODO anúncio
+mostra isto nos primeiros 2 segundos. Cena sem o gatilho = abertura reprovada no QC.
+Pessoa na abertura não serve de modelo (Regras NORQVA).>
 
 ## OS CORPOS EM DETALHE
 
 ### A) <nome do corpo> (#reps)
-- <hook visual, estrutura, casting, end card, por que funciona, replicável como?>
+- <abertura visual, estrutura, uso de pessoa (só análise), texto na tela, por que funciona, como fazer em versão NORQVA (comida, sem pessoa, sem preço)?>
 
 ## MECÂNICAS TRANSFERÍVEIS (princípios, nunca copy literal)
 

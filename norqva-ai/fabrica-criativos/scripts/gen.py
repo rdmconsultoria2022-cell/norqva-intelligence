@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""NORQVA (contrato NORQVA-0053): sem preço, sem pessoa de IA falando, sem troca de gerador para
-passar em filtro. Antes de gerar, o script confere o script.json inteiro e para se achar preço
-ou fala gerada por IA (lines/hooks).
+"""Fábrica de criativos NORQVA (contrato NORQVA-0053): imagens (nano-banana / nano-banana-edit),
+b-roll mudo (kling-3.0, i2v) e música (Suno). Sem preço, sem pessoa de IA falando, sem troca de
+gerador para passar em filtro: antes de gerar, confere o script.json inteiro e para se achar preço
+ou fala (lines/hooks); na primeira recusa de conteúdo, para o pacote inteiro.
 
-Gerador de pacote: imagens (nano-banana / nano-banana-edit) e vídeos (kling-3.0 em inglês;
-Grok Imagine Video 1.5 pra fala em PT/ES/outros).
 Uso: python3 gen.py <pasta-do-pacote> <images|videos|music>
 
-A pasta do pacote precisa conter um script.json (formato: templates/script-exemplo.json).
 Sintaxe dos prompts de imagem:
   "TEXT2IMG :: <prompt>"                        → google/nano-banana
   "EDIT ref1 [ref2] :: <prompt>"                → google/nano-banana-edit com as refs como image_urls
@@ -15,26 +13,22 @@ Ordem de dependência resolvida sozinha (uma imagem EDIT só roda depois que sua
 """
 import json, os, random, sys, threading, time
 
+if len(sys.argv) < 3 or sys.argv[2] not in ("images", "videos", "music"):
+    sys.exit("Uso: python3 gen.py <pasta-do-pacote> <images|videos|music>")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from kie import create_task as _create_task, poll, download
 
 # KIE rate-limita bursts: 3 criações concorrentes com jitter + retry com backoff
 _create_sem = threading.Semaphore(3)
-
-# ── modelo de FALA por idioma ──────────────────────────────────────────────────
-# Kling 3.0 só gera áudio confiável em INGLÊS (puxa pro EN em PT/ES/etc).
-# Pra qualquer idioma != en, use Grok Imagine Video 1.5 (fala nativa multilíngue, i2v,
-# 4,5 cr/s a 720p). meta.idioma manda.
-_LANG_RAW = (json.load(open(f"{sys.argv[1]}/script.json")).get("meta", {}).get("idioma")
-             or json.load(open(f"{sys.argv[1]}/script.json")).get("meta", {}).get("lang") or "en").lower()
-LANG = {"pt-br": "pt", "português": "pt", "portugues": "pt", "en-us": "en", "inglês": "en",
-        "ingles": "en", "espanhol": "es"}.get(_LANG_RAW, _LANG_RAW[:2])
-USE_GROK = LANG != "en"  # fala em idioma != inglês → Grok Imagine Video 1.5
-GROK_MODEL = "grok-imagine-video-1-5-preview"
-GROK_RES = "720p"  # 4,5 cr/s (1080p = 8 cr/s)
+# NORQVA: primeira recusa de conteúdo para o pacote inteiro (nenhuma thread cria tarefa nova)
+REFUSED = threading.Event()
+REFUSAL_MSG = []
 
 
 def create_task(model, inp, tries=5):
+    if REFUSED.is_set():
+        raise RuntimeError("pacote parado por recusa de conteúdo")
     for attempt in range(tries):
         with _create_sem:
             try:
@@ -81,6 +75,12 @@ def parse_spec(spec):
 _SENSITIVE = ("sensitive", "flagged", "prohibited", "policy", "violat")
 
 
+def _mark_refusal(where, e):
+    if any(k in str(e).lower() for k in _SENSITIVE):
+        REFUSAL_MSG.append(f"{where}: {e}")
+        REFUSED.set()
+
+
 def _image_chain(kind, refs, prompt):
     if kind == "TEXT2IMG":
         model, inp = "google/nano-banana", {"prompt": prompt, "output_format": "png", "image_size": "9:16"}
@@ -91,8 +91,7 @@ def _image_chain(kind, refs, prompt):
         tid = create_task(model, inp)
         return poll(tid)["resultUrls"][0]
     except Exception as e:
-        if any(k in str(e).lower() for k in _SENSITIVE):
-            raise RuntimeError(f"RECUSA DE CONTEÚDO em {model}: pare e avise o Ricardo (não troque de gerador). {e}")
+        _mark_refusal(model, e)
         raise
 
 
@@ -110,47 +109,6 @@ def gen_image(name, spec):
         print(f"{name}: ok", flush=True)
     except Exception as e:
         print(f"{name}: ERROR {e}", flush=True)
-
-
-LANG_NAME = {"pt": "Brazilian Portuguese", "es": "Spanish", "en": "English", "fr": "French"}
-
-
-def gen_speech(id, ref_key, scene, mood, voice, text, duration):
-    out = f"{folder}/takes/{id}.mp4"
-    if os.path.exists(out):
-        print(f"{id}: skip", flush=True)
-        return
-    try:
-        if USE_GROK:
-            # Grok Imagine Video 1.5 — fala nativa no idioma-alvo (i2v da cena aprovada).
-            # Prompt em inglês; a FALA vai entre aspas no idioma do ad.
-            lang = LANG_NAME.get(LANG, LANG)
-            prompt = (f"{scene}, {mood}, natural movements, realistic lip sync. She speaks "
-                      f"directly to camera in fluent {lang}. She says, in {lang}: \"{text}\". "
-                      f"Clean audio, no background music, room tone only. No on-screen text, "
-                      f"no subtitles, no captions, no UI elements.")
-            if "male voice" in voice or voice.startswith("a male") or " he " in f" {voice} ":
-                prompt = prompt.replace("She speaks", "He speaks").replace("She says", "He says")
-            tid = create_task(GROK_MODEL, {"prompt": prompt, "image_urls": [urls[ref_key]],
-                              "resolution": GROK_RES, "duration": int(duration), "aspect_ratio": "9:16"})
-            print(f"{id}: grok taskId={tid}", flush=True)
-            r = poll(tid, interval=15, timeout=1800)
-            download(r["resultUrls"][0], out)
-        else:
-            # Kling 3.0 — só confiável em inglês
-            prompt = (f"{scene}, {mood}, natural movements. She speaks in {voice}. "
-                      f'She says: "{text}". No background music, clean room tone only. '
-                      f"No on-screen text, no captions, no UI elements, no recording indicators.")
-            if "male voice" in voice or voice.startswith("a male") or " he " in f" {voice} ":
-                prompt = prompt.replace("She speaks", "He speaks").replace("She says", "He says")
-            tid = create_task("kling-3.0/video", {"prompt": prompt, "image_urls": [urls[ref_key]],
-                              "sound": True, "duration": str(duration), "mode": "std", "multi_shots": False})
-            print(f"{id}: taskId={tid}", flush=True)
-            r = poll(tid, interval=20, timeout=1800)
-            download(r["resultUrls"][0], out)
-        print(f"{id}: saved", flush=True)
-    except Exception as e:
-        print(f"{id}: ERROR {e}", flush=True)
 
 
 def gen_broll(b):
@@ -179,12 +137,16 @@ def gen_broll(b):
         download(r["resultUrls"][0], out)
         print(f"{b['id']}: saved", flush=True)
     except Exception as e:
+        _mark_refusal(b["id"], e)
         print(f"{b['id']}: ERROR {e}", flush=True)
 
 
 def run_threads(ts):
     for t in ts: t.start()
     for t in ts: t.join()
+    if REFUSED.is_set():
+        sys.exit("RECUSA DE CONTEÚDO: pacote parado. Avise o Ricardo; não troque de gerador nem reescreva "
+                 "para passar (Regra NORQVA 3). " + " | ".join(REFUSAL_MSG[:3]))
 
 
 if phase == "images":
@@ -207,15 +169,7 @@ if phase == "images":
         for n in ready:
             pend.pop(n)
 elif phase == "videos":
-    ts = [threading.Thread(target=gen_broll, args=(b,)) for b in S.get("brolls", [])]
-    for l in S.get("lines", []):
-        who = l["who"]
-        ts.append(threading.Thread(target=gen_speech, args=(
-            l["id"], who, S["scenes"][who], l["mood"], S["voices"][who], l["text"], l["duration"])))
-    for h in S.get("hooks", []):
-        ts.append(threading.Thread(target=gen_speech, args=(
-            h["id"], h["who"], h["scene"], h["mood"], h["voice"], h["text"], h.get("duration", 6))))
-    run_threads(ts)
+    run_threads([threading.Thread(target=gen_broll, args=(b,)) for b in S.get("brolls", [])])
 elif phase == "music":
     # NORQVA: trilha instrumental (Suno via KIE) para os anúncios mudos. Endpoint próprio (não é /jobs).
     out = f"{folder}/music.mp3"
@@ -249,8 +203,11 @@ elif phase == "music":
                     download(u, out if i == 0 else f"{folder}/music_alt.mp3")
                 print("music: saved (music.mp3 + music_alt.mp3, ouça e escolha)", flush=True)
                 break
-            if str(d.get("status", "")).upper().endswith("FAILED") or d.get("errorMessage"):
-                sys.exit(f"música falhou: {d.get('errorMessage') or d.get('status')}")
+            st = str(d.get("status", "")).upper()
+            if "SENSITIVE" in st:
+                sys.exit(f"RECUSA DE CONTEÚDO na música ({st}): avise o Ricardo; não reescreva para passar.")
+            if st.endswith("FAILED") or "ERROR" in st or d.get("errorMessage"):
+                sys.exit(f"música falhou: {d.get('errorMessage') or st}")
         else:
             sys.exit("música: tempo esgotado")
 else:

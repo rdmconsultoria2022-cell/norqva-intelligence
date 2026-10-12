@@ -65,10 +65,26 @@ fi
 # ── 3) Copia a skill (antes do venv, que vive dentro dela) ──
 say "3/5 Instalando a skill em ~/.claude/skills/…"
 mkdir -p "$HOME/.claude/skills"
-rm -rf "$SKILL_DST"
-cp -R "$SKILL_SRC" "$SKILL_DST"
+if [ -d "$SKILL_DST" ] && [ "$SKILL_SRC" -ef "$SKILL_DST" ]; then
+  # NORQVA: rodando de dentro da cópia instalada — não apaga a si mesma
+  warn "rodando de dentro de $SKILL_DST: cópia pulada (rode do repositório para atualizar)"
+else
+  # NORQVA: atualiza sem apagar a memória dos nichos, o .venv e o node_modules já instalados
+  mkdir -p "$SKILL_DST"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete --include 'niches/README.md' --exclude 'niches/*.md' --exclude '.venv' --exclude 'node_modules' \
+      --exclude '__pycache__' "$SKILL_SRC/" "$SKILL_DST/"
+  else
+    TMP_NICHES="$(mktemp -d)"
+    [ -d "$SKILL_DST/niches" ] && cp -R "$SKILL_DST/niches/." "$TMP_NICHES/" 2>/dev/null
+    find "$SKILL_DST" -mindepth 1 -maxdepth 1 ! -name '.venv' ! -name 'niches' ! -name 'templates' -exec rm -rf {} +
+    cp -R "$SKILL_SRC/." "$SKILL_DST/"
+    cp -R "$TMP_NICHES/." "$SKILL_DST/niches/" 2>/dev/null
+    rm -rf "$TMP_NICHES"
+  fi
+  pass "skill copiada para $SKILL_DST (nichos e .venv preservados)"
+fi
 mkdir -p "$SKILL_DST/niches"
-pass "skill copiada para $SKILL_DST"
 
 # ── 4) .venv isolado + deps Python (sem sudo, sem --user → sem PEP 668) ──
 say "4/5 Criando .venv e instalando Python deps (playwright, pillow, faster-whisper)…"

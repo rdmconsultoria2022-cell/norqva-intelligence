@@ -37,22 +37,24 @@ Base: Criativos Infinitos v2.2, adaptado pelo contrato NORQVA-0053 (aprovado pel
 
 ## Formatos permitidos (comida em primeiro lugar)
 
-| Formato | O que é | Composição Remotion |
-|---------|---------|---------------------|
-| **Receita relâmpago** | o prato sendo feito em 4-6 cenas curtas, texto grande na tela por cena, música | corpo mudo + `AdSplit`/`AdVisual` com b-roll |
-| **Livro na tela** | páginas REAIS do PDF do produto (capturas) com zoom lento, alternando com o prato pronto | corpo mudo + inserts de página |
-| **Mesa posta** | abertura forte com o prato pronto (gatilho nº1 do nicho = comida), depois o preparo | `AdVisual` (b-roll em tela cheia) |
-| **Narração real** | qualquer um dos acima com a VOZ do Ricardo gravada no celular (pessoa real) | áudio próprio + legenda por transcrição |
+| Formato | O que é | Como monta (`AdMudo`) |
+|---------|---------|------------------------|
+| **Receita relâmpago** | o prato sendo feito em 4-6 cenas curtas, texto grande por cena, música | cenas de b-roll (`takes/*.mp4`) |
+| **Livro na tela** | páginas REAIS do PDF do produto com zoom lento, alternando com o prato pronto | cenas de imagem (`refs/pagina_XX.png`) + b-roll |
+| **Mesa posta** | abertura forte com o prato pronto (gatilho nº1 = comida), depois o preparo | abertura de b-roll + corpo |
+| **Narração real** | qualquer um dos acima com a VOZ do Ricardo gravada no celular (pessoa real) | `mudo.narration` (áudio); o texto na tela continua (não há legenda automática) |
 
-Proibidos nesta versão: `AdReact`, `AdUgc`, `AdSplitUgc` e `AdVisual` com voz de take de
-avatar (todos dependem de pessoa de IA falando). Só voltam com filmagem REAL.
+Detalhes do formato do `mudo` no `script.json`: `references/05-edicao-remotion.md`.
+
+A única composição registrada é `AdMudo`. Os formatos originais com pessoa de IA falando
+(React, UGC, Split-UGC, Visual com voz de avatar) foram tirados. Só voltam com filmagem REAL.
 
 Mãos: evite (a IA erra mãos). Se uma cena precisar, passa pelo QC de mãos (`04-qc.md`) e
 nunca sugere que é "a nonna" ou uma pessoa específica.
 
 ## FASE 0 — CHECKUP (primeiro uso da máquina)
 
-Rode `./install.sh` (ver `INSTALL.md`). Confira e monte a tabela `item · status · como corrigir`:
+Rode o `install.sh` A PARTIR DO REPOSITÓRIO (`norqva-intelligence/norqva-ai/fabrica-criativos/install.sh`, ver `INSTALL.md`), nunca de dentro da cópia em `~/.claude/skills/`. Confira e monte a tabela `item · status · como corrigir`:
 1. `KIE_API_KEY` definida e `python3 scripts/kie.py credit` responde (informe o saldo).
 2. node ≥ 18, python3 ≥ 3.9, ffmpeg/ffprobe (sistema — se faltar, UM comando para o Ricardo colar).
 3. `.venv` com playwright + chromium + faster-whisper (você instala).
@@ -99,7 +101,7 @@ Apresente o roteiro (corpo + 4 aberturas + 4 chamadas) ao Ricardo antes de gerar
 ## FASE 5 — GERAÇÃO (KIE)
 
 `03-geracao-kie.md`. Ordem: imagens → QC → vídeos mudos (b-roll i2v, Kling) → QC → música.
-O `gen.py` para no primeiro aviso de recusa de conteúdo e no primeiro preço encontrado.
+O `gen.py` não começa se houver preço no roteiro e para o pacote inteiro na primeira recusa de conteúdo.
 
 ## FASE 6 — EDIÇÃO (Remotion)
 
