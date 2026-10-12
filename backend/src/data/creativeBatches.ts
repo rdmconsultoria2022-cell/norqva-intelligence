@@ -64,7 +64,7 @@ const HOOKS = [
   { code: 'H02', family: 'DEMONSTRACAO', format: 'VIDEO' as const, duration: 15, text: 'Olha como é registrar um gasto aqui: poucos toques e pronto.' },
   { code: 'H03', family: 'ERRO_COMUM', format: 'CAROUSEL' as const, duration: 18, text: 'O erro de quem tenta se organizar: uma planilha tão complicada que ninguém mantém.' },
   { code: 'H04', family: 'METODO', format: 'VIDEO' as const, duration: 25, text: 'A regra 50/30/20 em 20 segundos.' },
-  { code: 'H05', family: 'PRATICIDADE', format: 'IMAGE' as const, duration: null, text: 'Organizar o dinheiro não precisa ter mensalidade: R$ 29,90, uma vez.' }
+  { code: 'H05', family: 'PRATICIDADE', format: 'IMAGE' as const, duration: null, text: 'Organizar o dinheiro não precisa ter mensalidade: você paga uma vez e usa.' }
 ];
 
 const MECHANISMS = [
@@ -79,19 +79,19 @@ const CTAS = [
 
 const TEXTS: Record<string, { primary: string; headline: string }> = {
   'M1-C1': {
-    primary: 'Organize seu dinheiro de forma simples: registre entradas e saídas em poucos toques e veja na hora quanto ainda está disponível no mês. App + planilha + guia por R$ 29,90, pagamento único. Toque em Saiba mais e comece hoje.',
+    primary: 'Organize seu dinheiro de forma simples: registre entradas e saídas em poucos toques e veja na hora quanto ainda está disponível no mês. App + planilha + guia, sem mensalidade. Toque em Saiba mais e comece hoje.',
     headline: 'Veja quanto ainda está disponível no mês'
   },
   'M1-C2': {
-    primary: 'Registre entradas e saídas em poucos toques e acompanhe o disponível do mês pelo celular. App + Planilha 2026 + Guia PDF, R$ 29,90 sem mensalidade. Veja como funciona na página.',
+    primary: 'Registre entradas e saídas em poucos toques e acompanhe o disponível do mês pelo celular. App + Planilha 2026 + Guia PDF, sem mensalidade. Veja como funciona na página.',
     headline: 'O mês com clareza, pelo celular'
   },
   'M2-C1': {
-    primary: 'Tenha clareza de pra onde o dinheiro está indo: o app separa os gastos por categoria e mostra onde mais se gastou. R$ 29,90, uma vez. Toque em Saiba mais e comece hoje.',
+    primary: 'Tenha clareza de pra onde o dinheiro está indo: o app separa os gastos por categoria e mostra onde mais se gastou. Sem mensalidade. Toque em Saiba mais e comece hoje.',
     headline: 'Veja pra onde o dinheiro vai'
   },
   'M2-C2': {
-    primary: 'Categorias simples e gráficos que mostram os maiores gastos do mês. App + planilha + guia prático por R$ 29,90, sem mensalidade. Veja como funciona na página.',
+    primary: 'Categorias simples e gráficos que mostram os maiores gastos do mês. App + planilha + guia prático, sem mensalidade. Veja como funciona na página.',
     headline: 'Os maiores gastos do mês, num gráfico'
   }
 };
@@ -102,7 +102,8 @@ function buildBbCreatives(): BatchCreative[] {
     for (const m of MECHANISMS) {
       for (const c of CTAS) {
         const texts = TEXTS[`${m.code}-${c.code}`];
-        const claimCodes = ['BB-CL-01', m.claim, 'BB-CL-05', 'BB-CL-06'];
+        // NORQVA-0053 (D-0053): anúncio sem preço, a promessa de preço BB-CL-06 não vai para anúncio
+        const claimCodes = ['BB-CL-01', m.claim, 'BB-CL-05'];
         if (h.code === 'H04') claimCodes.push('BB-CL-04');
         out.push({
           key: `BB-B01-${h.code}-${m.code}-${c.code}`,
@@ -118,7 +119,7 @@ function buildBbCreatives(): BatchCreative[] {
           script: [
             `Abertura: "${h.text}"`,
             `Mecanismo (${m.code}): ${m.scene}`,
-            'Fechamento: "Método Bolso Blindado: app + planilha + guia. R$ 29,90, uma vez."',
+            'Fechamento: "Método Bolso Blindado: app + planilha + guia, sem mensalidade."',
             `CTA (${c.code}): "${c.text}"`,
             'Rodapé: "Valores ilustrativos."'
           ].join('\n'),

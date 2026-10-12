@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { findPriceInFields, priceErrorMessage } from './priceInCopy';
 import { Pool } from 'pg';
 import { CREATIVE_BATCHES, CreativeBatch } from '../../data/creativeBatches';
 import { CreativePerformanceService, CreativeItemPerformance } from '../intelligence/creativePerformanceService';
@@ -572,14 +573,32 @@ export class CreativeFactoryService {
     }
 
     if (decision === 'APPROVED') {
+      // NORQVA-0053 (D-0053): anúncio sem preço (texto do criativo)
+      const priceHits = findPriceInFields({
+        hook: creative.hook,
+        primary_text: creative.primary_text ?? creative.copy,
+        headline: creative.headline,
+        cta: creative.cta,
+        script: creative.script
+      });
+      if (priceHits.length > 0) {
+        throw new CreativeFactoryError(409, priceErrorMessage(priceHits, 'Aprovação bloqueada'));
+      }
       const claims = await pool.query(
-        `SELECT cr.human_id, cr.status, cr.valid_until
+        `SELECT cr.human_id, cr.status, cr.valid_until, cr.claim_type
          FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id
          WHERE cc.creative_id = $1`,
         [creativeId]
       );
       if (claims.rows.length === 0) {
         throw new CreativeFactoryError(409, 'Criativo sem claims registradas: não pode ser aprovado.');
+      }
+      const priceClaims = claims.rows.filter(r => r.claim_type === 'PRICE');
+      if (priceClaims.length > 0) {
+        throw new CreativeFactoryError(
+          409,
+          `Aprovação bloqueada: promessa de preço não vale para anúncio (${priceClaims.map(b => b.human_id).join(', ')}). Tire a promessa do criativo.`
+        );
       }
       const blocked = claims.rows.filter(
         r => r.status !== 'VERIFIED' || (r.valid_until && new Date(r.valid_until) <= new Date())

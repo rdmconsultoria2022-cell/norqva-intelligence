@@ -110,3 +110,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Parado no teto:** subir o teto acima do gasto faz o vigia voltar a acompanhar; a campanha continua pausada até o operador reativar.
 - **Pergunta de ativação:** acompanha sempre o teto atual.
 - **Continua igual:** orçamento diário não muda sozinho; pausar anúncio com 2x o CPA de equilíbrio sem venda; ativar só com o Sim.
+
+## D-0053 — Anúncio sem preço; venda pela página e pelo WhatsApp (2026-10-12)
+
+- **Decisão:** anúncios (título, texto, gancho, chamada, roteiro e vídeo) não mostram preço. O preço aparece só na página, no WhatsApp e no pagamento. **Aprovado pelo operador** em 12/10/2026 11h20 (contrato NORQVA-0053, itens 1 e 2).
+- **Trava:** `services/creative/priceInCopy.ts` barra R$, valores com centavos, parcelas, "reais", "por apenas", "preço" e descontos. Ela atua na aprovação do criativo, na edição manual do anúncio da campanha, no plano do time de IA e na última conferência antes de criar na Meta. Promessa do tipo PRICE não vale para anúncio. Com arquivo anexado, quem aprova confirma na tela que o vídeo/imagem não mostra nem fala preço.
+- **Fábrica de criativos:** a versão NORQVA do Criativos Infinitos mantém a cópia da Biblioteca de Anúncios (risco assumido pelo operador; sempre sem login), sem pessoa de IA apresentada como real, sem depoimento inventado, sem troca para geradores permissivos e sem preço.
+- **Caminho de venda (item 3, aguarda "Aprovado"):** campanha → página → WhatsApp → pagamento → entrega no WhatsApp e por e-mail, só com PAID do Asaas.
+- **Já existente:** os criativos BB-B01 com R$ 29,90 que já rodam continuam; não podem ser reaprovados nem ir para campanha nova.
