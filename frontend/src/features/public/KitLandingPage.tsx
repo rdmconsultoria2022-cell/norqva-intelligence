@@ -141,13 +141,17 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
     setShowCheckout(true);
   };
   // NORQVA-0054: com o WhatsApp da marca disponível, o botão de cima também abre a conversa
+  const [topBusy, setTopBusy] = useState(false);
   const openTop = async () => {
-    if (!offer) return;
+    if (!offer || topBusy) return;
     if (!offer.whatsapp?.available) return openCheckout();
+    setTopBusy(true);
     try {
       goToWhatsApp(await requestWhatsAppLink(offer.human_id));
     } catch {
       openCheckout();
+    } finally {
+      setTopBusy(false);
     }
   };
 

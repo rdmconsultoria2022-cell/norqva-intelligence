@@ -30,6 +30,13 @@ export async function whatsappNumberForOffer(pool: Pool, offerId: string): Promi
      WHERE n.is_deleted = FALSE AND n.status = 'CONNECTED' AND n.bot_enabled = TRUE
        AND n.phone IS NOT NULL AND n.phone <> ''
        AND (n.brand_id IS NULL OR n.brand_id = o.brand_id)
+       -- a oferta precisa estar no catálogo que o atendente desse número enxerga (loadCatalog: 20 mais antigas)
+       AND o.id IN (
+         SELECT o2.id FROM offers o2 JOIN products p2 ON p2.id = o2.product_id
+         WHERE o2.status = 'ATIVA' AND o2.is_demo = FALSE AND o2.is_deleted = FALSE AND p2.is_deleted = FALSE
+           AND (n.brand_id IS NULL OR p2.brand_id = n.brand_id)
+         ORDER BY o2.created_at ASC LIMIT 20
+       )
      ORDER BY (n.brand_id IS NULL) ASC,
               (SELECT COUNT(*) FROM whatsapp_conversations c WHERE c.number_id = n.id AND c.last_message_at > NOW() - INTERVAL '1 day') ASC,
               n.created_at ASC
@@ -61,9 +68,14 @@ export async function createWhatsAppRef(pool: Pool, body: any, meta: { ip: strin
   const number = await whatsappNumberForOffer(pool, offer.id);
   if (!number) throw new WhatsAppRefError(409, 'WhatsApp indisponível agora. Compre direto na página.');
 
-  const attribution = body?.attribution_metadata && typeof body.attribution_metadata === 'object' && !Array.isArray(body.attribution_metadata)
-    ? JSON.stringify(body.attribution_metadata).slice(0, 4000)
-    : null;
+  // só as chaves conhecidas do clique, com tamanho limitado (JSON nunca cortado no meio)
+  const am = body?.attribution_metadata && typeof body.attribution_metadata === 'object' && !Array.isArray(body.attribution_metadata) ? body.attribution_metadata : null;
+  const picked: Record<string, string> = {};
+  for (const k of ['campaign_id', 'adset_id', 'ad_id', 'placement', 'site_source_name']) {
+    const v = am ? str(am[k], 120) : null;
+    if (v) picked[k] = v;
+  }
+  const attribution = Object.keys(picked).length ? JSON.stringify(picked) : null;
   let code = '';
   for (let attempt = 0; attempt < 5; attempt++) {
     code = newRefCode();
@@ -87,10 +99,7 @@ export async function createWhatsAppRef(pool: Pool, body: any, meta: { ip: strin
     code = '';
   }
   if (!code) throw new WhatsAppRefError(503, 'Tente de novo em instantes.');
-  // limpeza: códigos com mais de 90 dias não servem mais para nada (os pedidos guardam a própria origem)
-  if (Math.random() < 0.02) {
-    await pool.query(`DELETE FROM whatsapp_refs WHERE created_at < NOW() - INTERVAL '90 days'`).catch(() => {});
-  }
+  // limpeza: rotina diária do WhatsApp (purgeOldWhatsAppMessages) apaga códigos com mais de 30 dias
   const text = `Olá! Quero o ${offer.name}. (código ${code})`;
   return { code, phone: number.phone, url: `https://wa.me/${number.phone}?text=${encodeURIComponent(text)}`, text };
 }
@@ -102,7 +111,7 @@ export async function linkRefFromText(pool: Pool, conversationId: string, number
   const code = m[1].toUpperCase();
   const r = await pool.query(
     `UPDATE whatsapp_refs SET conversation_id = $1, used_at = COALESCE(used_at, NOW())
-     WHERE code = $2 AND (number_id IS NULL OR number_id = $3)
+     WHERE code = $2 AND number_id = $3
        AND (conversation_id IS NULL OR conversation_id = $1)
        AND created_at > NOW() - ($4::int * INTERVAL '1 day')
      RETURNING id`,

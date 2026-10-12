@@ -75,7 +75,7 @@ export const BuyChoice: React.FC<{
     }
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8, width: '100%' }} data-testid={testId || 'buy-choice'}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8, width: '100%', maxWidth: 420, minWidth: 0 }} data-testid={testId || 'buy-choice'}>
       <button
         type="button"
         onClick={go}

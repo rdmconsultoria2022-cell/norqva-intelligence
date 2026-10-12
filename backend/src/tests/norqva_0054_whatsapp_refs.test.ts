@@ -45,6 +45,7 @@ describe.sequential('NORQVA-0054 — página → WhatsApp → pagamento', () => 
     sendImage: vi.fn(async () => ({ id: `I-${crypto.randomUUID()}` }))
   } as unknown as WhatsAppProvider;
   let script: AiReply[] = [];
+  let usedCode = '';
   const fakeAi = async () => script.shift() || { content: 'Posso ajudar em algo mais?', tool_calls: [] };
 
   beforeAll(async () => {
@@ -137,6 +138,7 @@ describe.sequential('NORQVA-0054 — página → WhatsApp → pagamento', () => 
         event_source_url: `https://norqva-intelligence-frontend.vercel.app/kit/${offerCode}?utm_campaign=CMP-${tag}`
       });
     expect(ref.status).toBe(201);
+    usedCode = ref.body.code;
     expect(ref.body.url).toMatch(/^https:\/\/wa\.me\/\d{12,13}\?text=/);
     expect(decodeURIComponent(ref.body.url)).toContain(`(código ${ref.body.code})`);
     expect(decodeURIComponent(ref.body.url)).not.toMatch(/R\$|27,90/); // a mensagem pronta não fala de preço
@@ -200,16 +202,27 @@ describe.sequential('NORQVA-0054 — página → WhatsApp → pagamento', () => 
     const order = (await pool.query('SELECT utm_source, client_ip_address, client_user_agent FROM orders WHERE whatsapp_conversation_id = $1', [conv.id])).rows[0];
     expect(order.utm_source).toBe('whatsapp');
     expect(order.client_ip_address || null).toBeNull();
-    expect(order.client_user_agent || null).toBeNull();
+    expect(order.client_user_agent).toBe('NORQVA WhatsApp');
   });
 
-  it('código de outro número ou inexistente não liga a conversa', async () => {
-    const jid = '5521988889999@s.whatsapp.net';
-    await request(app).post(new URL(secretUrl).pathname).send({
-      event: 'messages.upsert',
-      data: { key: { remoteJid: jid, fromMe: false, id: `M-${crypto.randomUUID()}` }, pushName: 'Dani', message: { conversation: 'Quero o kit (código ZZZZ22)' } }
-    });
-    const conv = (await pool.query('SELECT ref_id FROM whatsapp_conversations WHERE number_id = $1 AND contact_jid = $2', [numberId, jid])).rows[0];
-    expect(conv.ref_id).toBeNull();
+  it('código inexistente, já usado por outra conversa ou de outro número não liga a conversa', async () => {
+    const say = async (jid: string, text: string) => {
+      await request(app).post(new URL(secretUrl).pathname).send({
+        event: 'messages.upsert',
+        data: { key: { remoteJid: jid, fromMe: false, id: `M-${crypto.randomUUID()}` }, pushName: 'Dani', message: { conversation: text } }
+      });
+      return (await pool.query('SELECT ref_id FROM whatsapp_conversations WHERE number_id = $1 AND contact_jid = $2', [numberId, jid])).rows[0].ref_id;
+    };
+    expect(await say('5521988889999@s.whatsapp.net', 'Quero o kit (código ZZZZ22)')).toBeNull();
+    // o código da Carla já está ligado à conversa dela
+    expect(usedCode).toMatch(/^[A-Z2-9]{6}$/);
+    expect(await say('5521988887777@s.whatsapp.net', `Quero o kit (código ${usedCode})`)).toBeNull();
+    // código emitido para outro número
+    await pool.query(`INSERT INTO whatsapp_numbers (label, instance_name, webhook_secret_hash) VALUES ('Outro 0054', $1, 'x')`, [`other-0054-${tag}`]);
+    const other = (await pool.query('SELECT id FROM whatsapp_numbers WHERE instance_name = $1', [`other-0054-${tag}`])).rows[0].id;
+    await pool.query(`INSERT INTO whatsapp_refs (code, offer_id, number_id) VALUES ($1, $2, $3)`, [`Q${tag.replace(/[^A-HJ-KM-NP-Z2-9]/g, '2').slice(0, 5)}`, offerId, other]);
+    const otherCode = `Q${tag.replace(/[^A-HJ-KM-NP-Z2-9]/g, '2').slice(0, 5)}`;
+    expect(await say('5521988886666@s.whatsapp.net', `Quero o kit (código ${otherCode})`)).toBeNull();
+    await pool.query('DELETE FROM whatsapp_numbers WHERE id = $1', [other]);
   });
 });

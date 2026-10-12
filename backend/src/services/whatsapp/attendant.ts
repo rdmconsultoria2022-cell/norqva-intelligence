@@ -321,16 +321,17 @@ async function newOrder(ctx: Ctx, offer: any, customerId: string): Promise<{ ord
         fbp: ref.fbp || undefined,
         attribution_metadata: { ...(ref.attribution_metadata || {}), whatsapp_ref: ref.code },
         client_ip_address: ref.client_ip_address || '',
-        client_user_agent: ref.client_user_agent || '',
+        client_user_agent: ref.client_user_agent || 'NORQVA WhatsApp',
         event_source_url: ref.event_source_url || 'https://wa.me/'
       }
     : {
         utm_source: 'whatsapp',
         utm_medium: 'chat',
         utm_campaign: String(ctx.number.label || '').slice(0, 200),
-        // sem o endereço do servidor (127.0.0.1) como se fosse o do comprador
+        // sem o endereço do servidor (127.0.0.1) como se fosse o do comprador; o navegador fica
+        // identificado como "NORQVA WhatsApp" (a Meta exige um para eventos de site)
         client_ip_address: '',
-        client_user_agent: '',
+        client_user_agent: 'NORQVA WhatsApp',
         event_source_url: 'https://wa.me/'
       };
   const r = await invoke(ctx.pool, createOrder, {

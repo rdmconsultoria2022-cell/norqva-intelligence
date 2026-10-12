@@ -540,6 +540,8 @@ export async function setConversationMode(pool: Pool, convId: string, mode: any,
 export async function purgeOldWhatsAppMessages(pool: Pool, days = MESSAGE_RETENTION_DAYS): Promise<number> {
   const d = Math.min(Math.max(Math.floor(days) || MESSAGE_RETENTION_DAYS, 1), 3650);
   const r = await pool.query(`DELETE FROM whatsapp_messages WHERE created_at < NOW() - make_interval(days => $1)`, [d]);
+  // NORQVA-0054: códigos de origem só servem por 28 dias; apaga depois de 30 (IP e navegador junto)
+  await pool.query(`DELETE FROM whatsapp_refs WHERE created_at < NOW() - INTERVAL '30 days'`).catch(() => {});
   await pool.query(
     `DELETE FROM whatsapp_conversations c
      WHERE (c.last_message_at IS NULL OR c.last_message_at < NOW() - make_interval(days => $1))
