@@ -164,7 +164,8 @@ import { getSales, postSalesAccessLink, postSalesResendAccess, postSalesCheckPay
 import {
   getWhatsAppNumbers, postWhatsAppNumber, patchWhatsAppNumber, postWhatsAppConnect, getWhatsAppNumberStatus, postWhatsAppSwap,
   deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook,
-  getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler, getWhatsAppResults, getWhatsAppServerCheck
+  getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler, getWhatsAppResults, getWhatsAppServerCheck,
+  postPublicWhatsAppRef
 } from './controllers/whatsappController';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
 
@@ -355,6 +356,8 @@ app.post('/api/config/clear-demo', requireRole(['ADMIN']), clearDemo);
 // Customers and Checkout endpoints (Sprint 2.5B & Public Commerce V1)
 app.get('/api/public/offers/:humanId', orderStatusRateLimiter, getPublicOffer);
 app.post('/api/public/telemetry/events', generalRateLimiter, recordFunnelEvent);
+// NORQVA-0054: página → WhatsApp com código de origem
+app.post('/api/public/whatsapp/ref', checkoutRateLimiter, postPublicWhatsAppRef);
 app.get('/api/admin/telemetry/funnel-summary', requireRole(['ADMIN', 'INTELLIGENCE', 'PERFORMANCE', 'OPERATIONS']), getFunnelEventsSummary);
 app.post('/api/customers', checkoutRateLimiter, createCustomer);
 app.get('/api/customers', requireRole(['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE']), getCustomers);

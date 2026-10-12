@@ -1,4 +1,5 @@
 import { planFromOffer, installmentOption, installmentOptions } from '../services/commerce/cardInstallments';
+import { whatsappNumberForOffer } from '../services/whatsapp/whatsappRefs';
 import { Response } from 'express';
 import { anonymizeIp } from '../utils/ipPrivacy';
 import { Pool, PoolClient } from 'pg';
@@ -1091,7 +1092,9 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       // NORQVA-0032: adicional na hora do Pix (null = não há)
       bump: await offerBumpService.publicView(pool, offer),
       // NORQVA-0038: cartão (null = só Pix). Total e parcelas exatos, para a página mostrar o parcelamento certo.
-      card: publicCardTerms(offer)
+      card: publicCardTerms(offer),
+      // NORQVA-0054: WhatsApp da marca disponível agora (conectado e com o atendente ligado)
+      whatsapp: (await whatsappNumberForOffer(pool, offer.id).catch(() => null)) ? { available: true } : null
     });
   } catch (err) {
     console.error('Get public offer error:', err);

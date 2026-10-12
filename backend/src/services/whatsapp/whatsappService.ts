@@ -1,5 +1,6 @@
 // NORQVA-0046: números, conversas e mensagens do WhatsApp, tudo operado dentro do NORQVA.
 import { Pool } from 'pg';
+import { linkRefFromText } from './whatsappRefs';
 import crypto from 'crypto';
 import { writeAuditLog } from '../../db/audit';
 import { WhatsAppProvider, ProviderError, phoneFromJid } from './provider';
@@ -405,6 +406,8 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
       continue;
     }
     if (fromMe) continue;
+    // NORQVA-0054: código de origem da página (campanha/anúncio/clique) liga a conversa à origem
+    await linkRefFromText(pool, convId, n.id, body).catch(err => console.warn('[WhatsApp] código de origem:', err?.message || err));
     if (OPT_OUT_RE.test(body)) {
       await pool.query(`UPDATE whatsapp_conversations SET mode = 'OPTED_OUT', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [convId]);
       continue;
@@ -537,6 +540,8 @@ export async function setConversationMode(pool: Pool, convId: string, mode: any,
 export async function purgeOldWhatsAppMessages(pool: Pool, days = MESSAGE_RETENTION_DAYS): Promise<number> {
   const d = Math.min(Math.max(Math.floor(days) || MESSAGE_RETENTION_DAYS, 1), 3650);
   const r = await pool.query(`DELETE FROM whatsapp_messages WHERE created_at < NOW() - make_interval(days => $1)`, [d]);
+  // NORQVA-0054: códigos de origem só servem por 28 dias; apaga depois de 30 (IP e navegador junto)
+  await pool.query(`DELETE FROM whatsapp_refs WHERE created_at < NOW() - INTERVAL '30 days'`).catch(() => {});
   await pool.query(
     `DELETE FROM whatsapp_conversations c
      WHERE (c.last_message_at IS NULL OR c.last_message_at < NOW() - make_interval(days => $1))

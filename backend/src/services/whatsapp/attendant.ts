@@ -7,6 +7,7 @@
 // - nada de depoimento inventado, desconto inexistente ou promessa fora da oferta;
 // - "parar" é respeitado; conversa com pessoa, número pausado ou desconectado: o atendente não responde.
 import { Pool } from 'pg';
+import { refForConversation } from './whatsappRefs';
 import crypto from 'crypto';
 import { getWhatsAppProvider, WhatsAppProvider } from './provider';
 import { InboundMessage, recordOutgoing, findCpfs } from './whatsappService';
@@ -304,16 +305,42 @@ async function reusablePayment(ctx: Ctx, offerId: string, method: 'PIX' | 'CREDI
 }
 
 async function newOrder(ctx: Ctx, offer: any, customerId: string): Promise<{ orderId?: string; token?: string; error?: string }> {
+  // NORQVA-0054: com código de origem, o pedido herda a campanha, o anúncio e o clique da página
+  // (a venda conta para a campanha e a Meta liga a compra ao anúncio). Sem código: origem "whatsapp".
+  const ref = await refForConversation(ctx.pool, ctx.conv.id).catch(() => null);
+  const origin = ref
+    ? {
+        utm_source: ref.utm_source || 'whatsapp',
+        utm_medium: ref.utm_medium || 'chat',
+        utm_campaign: ref.utm_campaign || String(ctx.number.label || '').slice(0, 200),
+        utm_content: ref.utm_content || undefined,
+        visitor_id: ref.visitor_id || undefined,
+        session_id: ref.session_id || undefined,
+        fbclid: ref.fbclid || undefined,
+        fbc: ref.fbc || undefined,
+        fbp: ref.fbp || undefined,
+        attribution_metadata: { ...(ref.attribution_metadata || {}), whatsapp_ref: ref.code },
+        client_ip_address: ref.client_ip_address || '',
+        client_user_agent: ref.client_user_agent || 'NORQVA WhatsApp',
+        event_source_url: ref.event_source_url || 'https://wa.me/'
+      }
+    : {
+        utm_source: 'whatsapp',
+        utm_medium: 'chat',
+        utm_campaign: String(ctx.number.label || '').slice(0, 200),
+        // sem o endereço do servidor (127.0.0.1) como se fosse o do comprador; o navegador fica
+        // identificado como "NORQVA WhatsApp" (a Meta exige um para eventos de site)
+        client_ip_address: '',
+        client_user_agent: 'NORQVA WhatsApp',
+        event_source_url: 'https://wa.me/'
+      };
   const r = await invoke(ctx.pool, createOrder, {
     body: {
       offer_id: offer.id,
       customer_id: customerId,
       quantity: 1,
       idempotency_key: crypto.randomUUID(),
-      utm_source: 'whatsapp',
-      utm_medium: 'chat',
-      utm_campaign: String(ctx.number.label || '').slice(0, 200),
-      event_source_url: 'https://wa.me/'
+      ...origin
     }
   });
   if (r.status >= 400 || !r.body?.checkout_token) return { error: String(r.body?.error || 'Não foi possível criar o pedido.') };

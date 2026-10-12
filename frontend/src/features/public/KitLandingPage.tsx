@@ -5,6 +5,7 @@ import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { rateLabel } from '../../lib/cardInstallments';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
+import { BuyChoice, requestWhatsAppLink, goToWhatsApp } from './WhatsAppChoice';
 import { savePurchaseSession, updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 
@@ -22,6 +23,7 @@ type PublicKitOffer = {
   is_demo: boolean;
   meta_pixel_id?: string | null;
   bump?: any;
+  whatsapp?: { available: boolean } | null;
   card?: { max_installments: number; total: number; installment_value: number; interest_monthly?: number; options?: { n: number; installment_value: number | null; total: number; interest: boolean }[] } | null;
 };
 
@@ -138,6 +140,20 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
     sendFunnelEvent('CHECKOUT_MODAL_OPENED', offer.human_id, { offer_name: offer.name }, offer.is_demo);
     setShowCheckout(true);
   };
+  // NORQVA-0054: com o WhatsApp da marca disponível, o botão de cima também abre a conversa
+  const [topBusy, setTopBusy] = useState(false);
+  const openTop = async () => {
+    if (!offer || topBusy) return;
+    if (!offer.whatsapp?.available) return openCheckout();
+    setTopBusy(true);
+    try {
+      goToWhatsApp(await requestWhatsAppLink(offer.human_id));
+    } catch {
+      openCheckout();
+    } finally {
+      setTopBusy(false);
+    }
+  };
 
   if (fail) {
     return (
@@ -245,7 +261,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 28, flexWrap: 'wrap', marginTop: 72 }}>
-          <button className="btn" onClick={openCheckout} data-testid="kit-cta-top">Quero o kit completo</button>
+          <button className="btn" onClick={openTop} data-testid="kit-cta-top">Quero o kit completo</button>
           <a className="link" href="#dentro">Ver por dentro dos livros</a>
         </div>
       </div>
@@ -386,9 +402,11 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               <Tick>38 receitas com foto e passo a passo</Tick>
               <Tick>Guia de harmonização de massas e molhos</Tick>
               <Tick>Download no e-mail assim que o pagamento é confirmado</Tick>
-              <button className="btn" onClick={openCheckout} style={{ width: '100%', minHeight: 60 }} data-testid="kit-cta">
-                Quero o kit
-              </button>
+              <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice">
+                <button className="btn" onClick={openCheckout} style={{ width: '100%', minHeight: 60 }} data-testid="kit-cta">
+                  Quero o kit
+                </button>
+              </BuyChoice>
               <div style={{ textAlign: 'center', fontSize: 13, color: '#6b6358' }}>{card ? 'Pix ou cartão de crédito em ambiente seguro' : 'Pagamento via Pix em ambiente seguro'}</div>
             </div>
           </div>
@@ -445,7 +463,9 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'flex-start' }}>
             <div className="kicker">Comece hoje</div>
             <h2 className="h2">Hoje à noite, o jantar pode ser uma <span style={{ fontStyle: 'italic', color: '#8a3a26' }}>massa feita por você</span>.</h2>
-            <button className="btn" onClick={openCheckout}>{ctaLabel}</button>
+            <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice-bottom">
+              <button className="btn" onClick={openCheckout}>{ctaLabel}</button>
+            </BuyChoice>
           </div>
         </div>
       </div>
