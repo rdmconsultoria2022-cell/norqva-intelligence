@@ -1,5 +1,6 @@
 // NORQVA-0046: números, conversas e mensagens do WhatsApp, tudo operado dentro do NORQVA.
 import { Pool } from 'pg';
+import { linkRefFromText } from './whatsappRefs';
 import crypto from 'crypto';
 import { writeAuditLog } from '../../db/audit';
 import { WhatsAppProvider, ProviderError, phoneFromJid } from './provider';
@@ -405,6 +406,8 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
       continue;
     }
     if (fromMe) continue;
+    // NORQVA-0054: código de origem da página (campanha/anúncio/clique) liga a conversa à origem
+    await linkRefFromText(pool, convId, n.id, body).catch(err => console.warn('[WhatsApp] código de origem:', err?.message || err));
     if (OPT_OUT_RE.test(body)) {
       await pool.query(`UPDATE whatsapp_conversations SET mode = 'OPTED_OUT', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [convId]);
       continue;

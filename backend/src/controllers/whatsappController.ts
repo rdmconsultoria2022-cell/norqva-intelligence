@@ -24,6 +24,7 @@ import {
   InboundMessage
 } from '../services/whatsapp/whatsappService';
 import { aiConfigured } from '../services/whatsapp/attendant';
+import { createWhatsAppRef, WhatsAppRefError } from '../services/whatsapp/whatsappRefs';
 
 function handle(res: Response, err: any, fallback: string) {
   if (err instanceof WhatsAppError) return res.status(err.status).json({ error: err.message });
@@ -199,5 +200,24 @@ export async function postWhatsAppWebhook(req: Request, res: Response) {
     if (err instanceof WhatsAppError && err.status === 404) return res.status(404).json({ error: 'not found' });
     console.error('[WhatsApp] webhook falhou:', (err as any)?.message || err);
     return res.status(500).json({ error: 'webhook error' });
+  }
+}
+
+/**
+ * NORQVA-0054 (contrato NORQVA-0053 item 3): POST /api/public/whatsapp/ref — público.
+ * A página pede o código de origem e recebe o link do WhatsApp com a mensagem pronta.
+ * Guarda a origem (campanha, anúncio, clique) para o pedido feito na conversa.
+ */
+export async function postPublicWhatsAppRef(req: Request, res: Response) {
+  try {
+    const fwd = req.headers['x-forwarded-for'];
+    const ip = fwd ? String(fwd).split(',')[0].trim() : req.socket?.remoteAddress || req.ip || null;
+    const ua = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    const r = await createWhatsAppRef(db(req), req.body || {}, { ip, userAgent: ua });
+    return res.status(201).json(r);
+  } catch (err: any) {
+    if (err instanceof WhatsAppRefError) return res.status(err.status).json({ error: err.message });
+    console.error('[WhatsApp] código de origem falhou:', err?.message || err);
+    return res.status(500).json({ error: 'Falha ao abrir o WhatsApp. Compre direto na página.' });
   }
 }

@@ -28,6 +28,7 @@ import { PaymentStatus } from '../payment/PaymentStatus';
 import { DigitalDelivery } from '../delivery/DigitalDelivery';
 import { RecoveryRequestModal } from '../delivery/RecoveryRequestModal';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
+import { BuyChoice } from './WhatsAppChoice';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 
@@ -41,6 +42,7 @@ export interface PublicOfferData {
   bonus: string | null;
   is_demo: boolean;
   meta_pixel_id?: string | null;
+  whatsapp?: { available: boolean } | null;
 }
 
 interface PublicOfferPageProps {
@@ -318,13 +320,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                       <ArrowRight className="h-4 w-4" />
                     </button>
                   ) : (
-                    <button
-                      onClick={handleOpenCheckout}
-                      className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 group active:scale-98"
-                    >
-                      <span>Quero acessar o Método Bolso Blindado</span>
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                    </button>
+                    <BuyChoice available={!!offer?.whatsapp?.available} offerHumanId={offer?.human_id || humanId} onCheckout={handleOpenCheckout} dark={true}>
+                      <button
+                        onClick={handleOpenCheckout}
+                        className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 group active:scale-98"
+                      >
+                        <span>Quero acessar o Método Bolso Blindado</span>
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                      </button>
+                    </BuyChoice>
                   )}
 
                   {(!existingSession || existingSession.status !== 'PAID') && (
@@ -591,13 +595,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                   <ArrowRight className="h-4 w-4" />
                 </button>
               ) : (
-                <button
-                  onClick={handleOpenCheckout}
-                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/40 flex items-center justify-center gap-2"
-                >
-                  <span>Quero acessar o Método Bolso Blindado (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
+                <BuyChoice available={!!offer?.whatsapp?.available} offerHumanId={offer?.human_id || humanId} onCheckout={handleOpenCheckout} dark={true}>
+                  <button
+                    onClick={handleOpenCheckout}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/40 flex items-center justify-center gap-2"
+                  >
+                    <span>Quero acessar o Método Bolso Blindado (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </BuyChoice>
               )}
             </div>
           </section>
@@ -836,13 +842,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 ) : (
-                  <button
-                    onClick={handleOpenCheckout}
-                    className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-[#B83B1E]/25 hover:shadow-[#B83B1E]/40 flex items-center justify-center gap-2 shrink-0 group active:scale-95"
-                  >
-                    <span>Comprar com Pix</span>
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </button>
+                  <BuyChoice available={!!offer?.whatsapp?.available} offerHumanId={offer?.human_id || humanId} onCheckout={handleOpenCheckout} dark={false}>
+                    <button
+                      onClick={handleOpenCheckout}
+                      className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-[#B83B1E]/25 hover:shadow-[#B83B1E]/40 flex items-center justify-center gap-2 shrink-0 group active:scale-95"
+                    >
+                      <span>Comprar com Pix</span>
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </button>
+                  </BuyChoice>
                 )}
               </div>
 
@@ -1042,13 +1050,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                 <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
-              <button
-                onClick={handleOpenCheckout}
-                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/20 flex items-center justify-center gap-2"
-              >
-                <span>Garantir Livro Digital (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
+              <BuyChoice available={!!offer?.whatsapp?.available} offerHumanId={offer?.human_id || humanId} onCheckout={handleOpenCheckout} dark={false}>
+                <button
+                  onClick={handleOpenCheckout}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition shadow-lg shadow-black/20 flex items-center justify-center gap-2"
+                >
+                  <span>Garantir Livro Digital (R$ {activePrice.toFixed(2).replace('.', ',')})</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </BuyChoice>
             )}
           </div>
         </section>
