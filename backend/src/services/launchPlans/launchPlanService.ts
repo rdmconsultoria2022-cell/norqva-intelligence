@@ -380,6 +380,19 @@ export function normalizeMetaIds(raw: unknown): LaunchPlanMetaIds {
 
 const parseJson = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
 
+/**
+ * NORQVA-0052: a pergunta de ativação mostra sempre o teto atual ("... teto de R$ X?" ou
+ * "... com até R$ X no total?"). Pergunta escrita à mão ganha "Teto atual: R$ X." no fim.
+ */
+export function refreshQuestionText(question: string, cap: number): string {
+  const v = `R$ ${Number(cap).toFixed(2)}`;
+  const q = String(question || '');
+  if (/teto de R\$ ?[\d.,]+/.test(q)) return q.replace(/teto de R\$ ?[\d.,]*\d/g, `teto de ${v}`);
+  if (/com até R\$ ?[\d.,]+ no total/.test(q)) return q.replace(/com até R\$ ?[\d.,]*\d no total/g, `com até ${v} no total`);
+  const base = q.replace(/\s*Teto atual: R\$ ?[\d.,]*\d\.?$/, '');
+  return `${base} Teto atual: ${v}.`.trim().slice(0, 500);
+}
+
 export function serializeLaunchPlan(row: any) {
   if (!row) return row;
   const num = (v: any) => (v === null || v === undefined ? null : parseFloat(v));

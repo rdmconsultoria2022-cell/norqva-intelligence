@@ -16,7 +16,8 @@ import {
   VIDEO_URL_PLACEHOLDER,
   normalizeMetaIds,
   serializeLaunchPlan,
-  validateLaunchPlanInput
+  validateLaunchPlanInput,
+  refreshQuestionText
 } from './launchPlanService';
 import { urlTagsFor, DEFAULT_OFFER_BASE_URL } from '../aiTeam/launchSheet';
 
@@ -153,12 +154,13 @@ async function saveSpec(pool: Pool, row: any, spec: any, maxSpend: number, extra
     code: row.code,
     offer_human_id: row.offer_human_id,
     max_spend_brl: maxSpend,
-    question_text: row.question_text,
+    // NORQVA-0052: a pergunta de ativação acompanha o teto atual
+    question_text: Number(row.max_spend_brl) === Number(maxSpend) ? row.question_text : refreshQuestionText(row.question_text, maxSpend),
     spec
   });
   const upd = await pool.query(
     `UPDATE launch_plans
-     SET spec = $2, daily_budget_brl = $3, max_spend_brl = $4,
+     SET spec = $2, daily_budget_brl = $3, max_spend_brl = $4, question_text = $8,
          manual_fields = COALESCE($5::jsonb, manual_fields),
          auto_values = COALESCE($6::jsonb, auto_values),
          ad_creatives = COALESCE($7::jsonb, ad_creatives),
@@ -173,7 +175,8 @@ async function saveSpec(pool: Pool, row: any, spec: any, maxSpend: number, extra
       input.max_spend_brl,
       extra.manual ? JSON.stringify(extra.manual) : null,
       extra.auto ? JSON.stringify(extra.auto) : null,
-      extra.adCreatives ? JSON.stringify(extra.adCreatives) : null
+      extra.adCreatives ? JSON.stringify(extra.adCreatives) : null,
+      input.question_text
     ]
   );
   if (upd.rows.length === 0) throw new LaunchPlanError(409, 'A campanha mudou de situação; recarregue e tente de novo.');

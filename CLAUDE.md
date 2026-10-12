@@ -68,6 +68,7 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - Trattoria nova já trocada na oferta pelo Ricardo (10/10/2026).
 - NORQVA-0038: cartão de crédito parcelado (D-0038), kit Cozinha Italiana e página `/kit/<oferta>`.
 - NORQVA-0046 (D-0046): WhatsApp no NORQVA (menu Vendas → WhatsApp): números até 100, QR Code, conversas, atendente com IA (`services/whatsapp/attendant.ts`), entrega na conversa após PAID, condições de atendimento com versões, resultados. Motor: Evolution API (`EVOLUTION_API_URL`/`EVOLUTION_API_KEY`); IA: `OPENAI_API_KEY`.
+- NORQVA-0052 (D-0052): teto editável na aba "Teto e vigia" da campanha (qualquer situação); campanha lucrativa não é pausada no teto, o teto sobe 50% até o teto máximo (padrão 3x o inicial).
 - NORQVA-0041: comprador escolhe as parcelas (D-0041): até 4x sem juros, acima com 2,99% a.m.; tela de pagamento com `look="light"` (creme/terracota) nos livros de cozinha.
 
 ## Pendências (tratar quando o Ricardo trouxer o assunto)

@@ -101,3 +101,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Regras fixas:** preço e parcelas do servidor; cobrança pelos mesmos controladores do checkout; entrega só com PAID do Asaas; CPF mascarado no banco, só na memória por 1 h e nunca enviado à IA; só responde quem chamou; "parar" respeitado; limites por conversa e por número; uma cobrança por resposta.
 - **Troca para a API oficial:** nova classe em `services/whatsapp/provider.ts`, sem refazer o atendente.
 - **Retenção:** mensagens apagadas após 180 dias.
+
+## D-0052 — Teto editável e campanha lucrativa não pausada pelo teto (2026-10-11)
+
+- **Decisão:** o teto de gasto é editável na tela Campanhas em qualquer situação. Baixar salva na hora; subir (teto, teto máximo ou religar a regra de lucro) depois do Sim pede o código da campanha e um motivo. Substitui a trava H3 (subir só até o capital aprovado na ativação). **Aprovado pelo operador** em 11/10/2026 21h14 (contrato NORQVA-0052).
+- **Lucro:** vendas pagas confirmadas pelo Asaas, com `utm_campaign` = código do plano, só comerciais, valor do pedido menos a taxa do Asaas, maiores que o gasto na Meta, com pelo menos 3 vendas, na campanha inteira **e** nos últimos 3 dias (fuso de São Paulo).
+- **No teto:** se lucrativa, o vigia não pausa e sobe o teto em 50% (ou o bastante para mais 1 dia), até o teto máximo absoluto (padrão 3x o teto inicial; o operador pode mudar). Acima do teto máximo, ou sem leitura do gasto recente, ou sem registro de decisão: pausa como antes e avisa. Liga/desliga por campanha; desliga tudo com `EXPERIMENT_GUARD_PROFIT_EXTEND=false`.
+- **Parado no teto:** subir o teto acima do gasto faz o vigia voltar a acompanhar; a campanha continua pausada até o operador reativar.
+- **Pergunta de ativação:** acompanha sempre o teto atual.
+- **Continua igual:** orçamento diário não muda sozinho; pausar anúncio com 2x o CPA de equilíbrio sem venda; ativar só com o Sim.

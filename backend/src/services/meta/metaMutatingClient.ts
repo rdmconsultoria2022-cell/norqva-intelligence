@@ -1144,6 +1144,15 @@ export class MetaMutatingClient {
     return { spend: Math.round(spend * 100) / 100, effective_status: obj?.effective_status || null, spend_cap: cap && cap > 0 ? cap : null };
   }
 
+  /** NORQVA-0052: gasto da campanha entre duas datas (AAAA-MM-DD, fuso da conta), só leitura. */
+  public async getCampaignSpendBetween(campaignMetaId: string, since: string, until: string): Promise<number> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error('[VALIDATION EXCEPTION]: Invalid date range.');
+    const ins = await this.callTransportGet(`/${campaignMetaId}/insights`, { fields: 'spend', time_range: JSON.stringify({ since, until }) });
+    const rows: any[] = Array.isArray(ins?.data) ? ins.data : [];
+    return Math.round(rows.reduce((s, r) => s + (parseFloat(r?.spend) || 0), 0) * 100) / 100;
+  }
+
   public async findLaunchObjectsByName(
     context: MetaMutatingSecurityContext,
     parent: 'ACCOUNT' | string,
