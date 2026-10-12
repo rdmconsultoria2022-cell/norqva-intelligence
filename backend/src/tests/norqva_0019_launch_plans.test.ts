@@ -121,7 +121,7 @@ describe('NORQVA-0019 — launch plans', () => {
           adset_name: s,
           video_url: `https://files.example.com/${a}.mp4`,
           primary_text: 'Massa fresca e molho de verdade.',
-          headline: 'Trattoria em Casa · R$ 19,90',
+          headline: 'Trattoria em Casa',
           cta: 'SEE_DETAILS',
           destination_url: `https://trattoria.norqva.com.br/p/${offerHumanId}`,
           url_tags: `utm_source=meta&utm_medium=paid_social&utm_campaign=${campaign}&utm_content=${a}&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}`
@@ -176,7 +176,7 @@ describe('NORQVA-0019 — launch plans', () => {
     );
     // NORQVA-0027: só criativo aprovado (e com o mesmo arquivo da aprovação) vai para a Meta
     for (const key of ['T19_AD_A', 'T19_AD_B', 'T19_AD_C']) {
-      const fields = { hook: 'Gancho', mechanism: null, cta: 'Saiba mais', format: 'VIDEO', script: null, primary_text: 'Massa fresca e molho de verdade.', headline: 'Trattoria em Casa · R$ 19,90', file_url: `https://files.example.com/${key}.mp4` };
+      const fields = { hook: 'Gancho', mechanism: null, cta: 'Saiba mais', format: 'VIDEO', script: null, primary_text: 'Massa fresca e molho de verdade.', headline: 'Trattoria em Casa', file_url: `https://files.example.com/${key}.mp4` };
       const hash = computeContentHash(fields);
       await pool.query('DELETE FROM creatives WHERE human_id = $1 OR utm_content_key = $1', [key]);
       const c = await pool.query(
@@ -304,7 +304,7 @@ describe('NORQVA-0019 — launch plans', () => {
     expect(creative.object_story_spec.video_data).toMatchObject({
       video_id: expect.stringMatching(/^lpvid_/),
       image_url: 'https://scontent.example.com/thumb.jpg',
-      title: 'Trattoria em Casa · R$ 19,90',
+      title: 'Trattoria em Casa',
       call_to_action: { type: 'SEE_DETAILS', value: { link: `https://trattoria.norqva.com.br/p/${offerHumanId}` } }
     });
     expect(creative.object_story_spec.link_data).toBeUndefined();

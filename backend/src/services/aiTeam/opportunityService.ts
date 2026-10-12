@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
 import { RoutineFirer, defaultRoutineFirer, routineConfigured } from '../creative/adjustmentService';
 import { CreativeFactoryService } from '../creative/creativeFactoryService';
 import { CampaignIntelligenceService, IntelLevel, INTEL_LEVELS } from '../intelligence/campaignIntelligenceService';
@@ -291,6 +292,9 @@ export class OpportunityService {
       const format = String(c?.format || 'VIDEO').toUpperCase();
       if (!hook || !primaryText || !headline || !cta) throw new OpportunityError(400, `Criativo ${i + 1}: hook, primary_text, headline e cta são obrigatórios.`);
       if (!(FORMATS as readonly string[]).includes(format)) throw new OpportunityError(400, `Criativo ${i + 1}: format deve ser VIDEO, IMAGE ou CAROUSEL.`);
+      // NORQVA-0053 (D-0053): anúncio sem preço
+      const priceHits = findPriceInFields({ hook, primary_text: primaryText, headline, cta, script: c?.script });
+      if (priceHits.length) throw new OpportunityError(400, priceErrorMessage(priceHits, `Criativo ${i + 1}`));
       const claimCodes = list(c?.claim_codes, 10, 60).map(x => x.replace(/-DEMO$/, ''));
       const bad = claimCodes.filter(x => !verified.has(x));
       if (bad.length) throw new OpportunityError(400, `Criativo ${i + 1}: claims não verificadas para o produto: ${bad.join(', ')}.`);

@@ -186,6 +186,10 @@ export function CreativeFactoryView({
 
   const approve = (id: string) =>
     run(`review-${id}`, () => post(`/creative-factory/creatives/${id}/review?mode=${mode}`, { decision: 'APPROVED' }), 'Criativo aprovado.');
+  // NORQVA-0053 (D-0053): o NORQVA lê o texto, mas não o que está dentro do vídeo ou da imagem.
+  // Com arquivo anexado, quem aprova confirma que ele não mostra nem fala preço.
+  const [confirmNoPrice, setConfirmNoPrice] = useState<string | null>(null);
+  const askApprove = (c: any) => (c.file_url ? setConfirmNoPrice(c.id) : approve(c.id));
 
   const submitReview = () => {
     if (!rejecting) return;
@@ -599,11 +603,28 @@ export function CreativeFactoryView({
                 </div>
               )}
 
+              {confirmNoPrice === c.id && (
+                <div className="rounded border border-amber-600/50 bg-amber-950/30 p-2 text-[11px] text-amber-100 space-y-1.5" data-testid="confirm-no-price">
+                  <div>Anúncio sem preço: o vídeo ou a imagem deste criativo não mostra nem fala preço?</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setConfirmNoPrice(null); approve(c.id); }}
+                      className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold"
+                    >
+                      Confirmo, sem preço
+                    </button>
+                    <button onClick={() => setConfirmNoPrice(null)} className="px-2.5 py-1 rounded border border-slate-600 text-slate-200 text-xs">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {c.approval_status !== 'SUPERSEDED' && (
                 <footer className="flex flex-wrap gap-2 pt-1">
                   {isAdmin && staleApproval(c) && (
                     <button
-                      onClick={() => approve(c.id)}
+                      onClick={() => askApprove(c)}
                       disabled={busy === `review-${c.id}` || !c.claims_all_verified}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
                     >
@@ -612,7 +633,7 @@ export function CreativeFactoryView({
                   )}
                   {isAdmin && c.approval_status !== 'APPROVED' && (
                     <button
-                      onClick={() => approve(c.id)}
+                      onClick={() => askApprove(c)}
                       disabled={busy === `review-${c.id}` || !c.claims_all_verified}
                       title={!c.claims_all_verified ? 'Verifique as claims antes de aprovar' : undefined}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
