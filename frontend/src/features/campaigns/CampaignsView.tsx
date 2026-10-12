@@ -490,9 +490,20 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             {tab === 'cap' && (
               <div className="space-y-2 text-xs" data-testid="cap-tab">
                 <p className="text-slate-400">
-                  Teto da campanha: {brl(campaign.max_spend_brl)}. O vigia pausa a campanha quando o gasto chega ao teto.
+                  Teto da campanha: {brl(campaign.max_spend_brl)}. O vigia pausa a campanha quando o gasto chega ao teto, menos quando ela está dando lucro: aí o teto sobe 50% sozinho, até o teto máximo.
                 </p>
-                <ExperimentGuardCard apiFetch={apiFetch as any} currentUser={currentUser} isDemoView={false} showError={showError} showSuccess={showSuccess} planId={campaign.id} />
+                <ExperimentGuardCard
+                  apiFetch={apiFetch as any}
+                  currentUser={currentUser}
+                  isDemoView={false}
+                  showError={showError}
+                  showSuccess={showSuccess}
+                  planId={campaign.id}
+                  onChanged={() => {
+                    loadCampaign(campaign.id);
+                    loadList();
+                  }}
+                />
                 {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-slate-500">O vigia começa depois do seu Sim.</p>}
               </div>
             )}

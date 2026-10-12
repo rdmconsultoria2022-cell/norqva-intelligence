@@ -37,9 +37,9 @@ describe('Teto dos experimentos', () => {
   it('reduces the cap through the spend-cap endpoint', async () => {
     const { apiFetch, showSuccess } = setup();
     await waitFor(() => expect(screen.getByTestId('guard-plan-TR-EXP02')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Alterar teto' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editar teto' }));
     fireEvent.change(screen.getByLabelText('Novo teto de TR-EXP02'), { target: { value: '200' } });
-    fireEvent.click(screen.getByRole('button', { name: /Salvar e aplicar na Meta/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(showSuccess).toHaveBeenCalled());
     const call = apiFetch.mock.calls.find(c => String(c[0]).endsWith('/spend-cap')) as any;
     expect(call[0]).toBe('/launch-plans/p1/spend-cap');
@@ -47,15 +47,16 @@ describe('Teto dos experimentos', () => {
     expect(String(showSuccess.mock.calls[0][0])).toContain('limite aplicado');
   });
 
-  it('a raise asks for the plan code and a justification', async () => {
+  // NORQVA-0052: subir o teto depois do Sim pede o código da campanha e um motivo
+  it('a raise asks for the plan code and a reason', async () => {
     const { apiFetch } = setup();
     await waitFor(() => expect(screen.getByTestId('guard-plan-TR-EXP02')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Alterar teto' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editar teto' }));
     fireEvent.change(screen.getByLabelText('Novo teto de TR-EXP02'), { target: { value: '450' } });
     expect(screen.getByTestId('guard-raise-confirm')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Código do plano'), { target: { value: 'TR-EXP02' } });
-    fireEvent.change(screen.getByLabelText('Justificativa'), { target: { value: 'Igualar ao limite mínimo aceito pela Meta.' } });
-    fireEvent.click(screen.getByRole('button', { name: /Salvar e aplicar na Meta/ }));
+    fireEvent.change(screen.getByLabelText('Código da campanha'), { target: { value: 'TR-EXP02' } });
+    fireEvent.change(screen.getByLabelText('Motivo'), { target: { value: 'Igualar ao limite mínimo aceito pela Meta.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]).endsWith('/spend-cap'))).toBe(true));
     const call = apiFetch.mock.calls.find(c => String(c[0]).endsWith('/spend-cap')) as any;
     expect(JSON.parse(call[1].body)).toEqual({ max_spend_brl: 450, confirm_code: 'TR-EXP02', justification: 'Igualar ao limite mínimo aceito pela Meta.' });
