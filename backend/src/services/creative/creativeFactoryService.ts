@@ -576,10 +576,11 @@ export class CreativeFactoryService {
       // NORQVA-0053 (D-0053): anúncio sem preço (texto do criativo)
       const priceHits = findPriceInFields({
         hook: creative.hook,
-        primary_text: creative.primary_text ?? creative.copy,
+        primary_text: creative.primary_text || creative.copy,
         headline: creative.headline,
         cta: creative.cta,
-        script: creative.script
+        script: creative.script,
+        mechanism: creative.mechanism
       });
       if (priceHits.length > 0) {
         throw new CreativeFactoryError(409, priceErrorMessage(priceHits, 'Aprovação bloqueada'));
@@ -700,6 +701,11 @@ export class CreativeFactoryService {
          WHERE id = $8 RETURNING id, human_id, version, approval_status`,
         [next.hook, next.primary_text, next.headline, next.cta, next.script, next.file_url, hash, creativeId]
       );
+      // NORQVA-0053: promessa de preço não vale para anúncio; a edição já a desliga do criativo
+      await pool.query(
+        `DELETE FROM creative_claims cc USING claims_registry cr WHERE cc.claim_id = cr.id AND cc.creative_id = $1 AND cr.claim_type = 'PRICE'`,
+        [creativeId]
+      );
       return { mode: 'EDITED_IN_PLACE', creative: upd.rows[0] };
     }
 
@@ -737,7 +743,10 @@ export class CreativeFactoryService {
       );
       const newId = ins.rows[0].id;
       await client.query(
-        'INSERT INTO creative_claims (creative_id, claim_id) SELECT $1::uuid, claim_id FROM creative_claims WHERE creative_id = $2::uuid ON CONFLICT DO NOTHING',
+        // NORQVA-0053: a nova versão não leva promessa de preço (anúncio sem preço)
+        `INSERT INTO creative_claims (creative_id, claim_id)
+         SELECT $1::uuid, cc.claim_id FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id
+         WHERE cc.creative_id = $2::uuid AND cr.claim_type <> 'PRICE' ON CONFLICT DO NOTHING`,
         [newId, cur.id]
       );
       await client.query(`UPDATE creatives SET approval_status = 'SUPERSEDED', updated_at = NOW() WHERE id = $1`, [cur.id]);

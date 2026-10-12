@@ -523,8 +523,23 @@ export async function assertAdsReadyForMeta(pool: Pool, planId: string): Promise
     const check = await checkCreativeForAd(pool, creative, offer.allowed_product_ids);
     if (!check.ok) throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): ${check.reason}`);
     // NORQVA-0053 (D-0053): nenhum anúncio vai para a Meta com preço no texto
-    const priceHits = findPriceInFields({ primary_text: ads[i].primary_text, headline: ads[i].headline, description: ads[i].description });
+    const c = check.creative;
+    const priceHits = findPriceInFields({
+      primary_text: ads[i].primary_text,
+      headline: ads[i].headline,
+      description: ads[i].description,
+      hook: c.hook,
+      script: c.script,
+      cta: c.cta
+    });
     if (priceHits.length) throw new LaunchPlanError(409, priceErrorMessage(priceHits, `Anúncio ${i + 1} (${ads[i].name})`));
+    const priceClaim = await pool.query(
+      `SELECT cr.human_id FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id WHERE cc.creative_id = $1 AND cr.claim_type = 'PRICE' LIMIT 1`,
+      [c.id]
+    );
+    if (priceClaim.rows.length) {
+      throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): o criativo usa promessa de preço (${priceClaim.rows[0].human_id}). Anúncio sem preço: edite o criativo e aprove de novo.`);
+    }
     if (String(ads[i].video_url) !== String(check.creative.file_url)) {
       throw new LaunchPlanError(409, `Anúncio ${i + 1} (${ads[i].name}): o vídeo não é o arquivo aprovado do criativo. Use "Preencher com os criativos aprovados".`);
     }

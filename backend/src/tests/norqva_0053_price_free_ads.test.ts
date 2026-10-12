@@ -27,7 +27,16 @@ describe('NORQVA-0053 — regra pura', () => {
       'Preço especial nesta semana',
       '50% de desconto',
       '30% off no kit',
-      'Cupom de 10 no checkout'
+      'Cupom de 10 no checkout',
+      'por só 27',
+      'em até 12x',
+      '12x sem juros',
+      'parcele em 12 vezes',
+      '1 real por dia',
+      'de 49 por 27',
+      'custa 27',
+      'a partir de 19',
+      'US$ 5'
     ]) {
       expect(findPriceInText(t), t).not.toBeNull();
     }
@@ -43,7 +52,16 @@ describe('NORQVA-0053 — regra pura', () => {
       'Massa fresca às 19:30 com 2x mais sabor',
       'Edição 2026, atualizada em 12.10.2026',
       'Planilha de Gestão 2026 e Guia Prático em PDF',
-      'Sem mensalidade: você paga uma vez e usa.'
+      'Sem mensalidade: você paga uma vez e usa.',
+      'Forma 20x30 cm',
+      'Fatie em 2x3 cm',
+      'Massa para 4x de 200 g',
+      '1,25 kg de farinha',
+      'por apenas 3 ingredientes',
+      'a partir de 2 ovos',
+      '100% natural',
+      'linguiça calabresa',
+      '2 xícaras de farinha'
     ]) {
       expect(findPriceInText(t), t).toBeNull();
     }
@@ -130,6 +148,22 @@ describe.sequential('NORQVA-0053 — travas', () => {
     const r = await review(id);
     expect(r.status).toBe(409);
     expect(r.body.error).toContain('promessa de preço');
+  });
+
+  it('editar o criativo desliga a promessa de preço e libera a aprovação', async () => {
+    const id = await mkCreative(`P53${tag}-CLAIM2`, { headline: 'Trattoria em Casa', primary_text: '28 receitas com foto' }, { claim: price });
+    await pool.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2)', [id, feature]);
+    expect((await review(id)).status).toBe(409);
+    const ed = await request(app).post(`/api/creative-factory/creatives/${id}/revise?mode=real`).set('Authorization', `Bearer ${admin}`).send({ headline: 'A lasanha que parece de cantina' });
+    expect(ed.status).toBe(200);
+    const target = ed.body.creative.id;
+    const left = await pool.query(
+      'SELECT cr.claim_type FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id WHERE cc.creative_id = $1',
+      [target]
+    );
+    expect(left.rows.map(r => r.claim_type)).toEqual(['FEATURE']);
+    if (target !== id) ids.push(target);
+    expect((await review(target)).status).toBe(200);
   });
 
   it('aprovação: criativo sem preço passa', async () => {
