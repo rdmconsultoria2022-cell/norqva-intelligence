@@ -1,0 +1,41 @@
+{
+ "_COMO_USAR": "NORQVA (contrato NORQVA-0053): pacote MUDO de comida, 1 corpo x 4 aberturas. Sem pessoa de IA, sem fala gerada (nada de lines/hooks: o gen.py recusa), sem preço em nenhum texto (o gen.py e o build_mudo.py recusam). Textos abaixo são EXEMPLO de estrutura: escreva a partir da página do produto e das promessas VERIFICADAS no NORQVA.",
+ "meta": {
+  "pacote": "kit-cozinha-italiana-01",
+  "nicho": "culinaria-italiana",
+  "funil": "https://norqva-intelligence-frontend.vercel.app/kit/OFF-000006",
+  "idioma": "pt-br",
+  "formato": "Receita relâmpago, 1 corpo x 4 aberturas (mudo, texto na tela, música)",
+  "regra": "anúncio sem valores (D-0053); sem pessoa; chamada final diferente por anúncio"
+ },
+ "images": {
+  "_nota": "Mesmo cenário do livro: prato creme com borda dourada, linho rosado, mesa escura, luz quente. Toda imagem termina com '9:16, no text, no UI elements, no people, no hands'. Uma única frase de estilo repetida em todas.",
+  "mesa_lasanha": "TEXT2IMG :: overhead close shot of a bubbling homemade lasagna in a cream ceramic dish with a thin gold rim, on pink linen over a dark wooden table, warm golden evening light, steam rising, appetizing editorial food photography, 9:16, no text, no UI elements, no people, no hands",
+  "massa_crua": "TEXT2IMG :: fresh egg pasta dough being rolled into thin sheets on a floured dark wooden table, pink linen cloth in the corner, warm golden light, appetizing editorial food photography, 9:16, no text, no UI elements, no people, no hands",
+  "molho": "TEXT2IMG :: rich tomato and basil sauce simmering in a copper pan on a rustic stove, warm golden light, appetizing editorial food photography, 9:16, no text, no UI elements, no people, no hands",
+  "tiramisu": "TEXT2IMG :: a slice of tiramisu with cocoa dusting on a cream plate with a thin gold rim, pink linen, dark wooden table, warm golden light, appetizing editorial food photography, 9:16, no text, no UI elements, no people, no hands"
+ },
+ "brolls": [
+  {"id": "br_lasanha", "ref": "mesa_lasanha", "duration": 5, "prompt": "slow push-in on the bubbling lasagna, cheese stretching as steam rises, warm light"},
+  {"id": "br_massa", "ref": "massa_crua", "duration": 5, "prompt": "pasta sheet being slowly rolled thinner, flour dust floating in warm light, camera slowly tilting"},
+  {"id": "br_molho", "ref": "molho", "duration": 5, "prompt": "sauce gently bubbling, a basil leaf sinking, slow orbit of the camera"},
+  {"id": "br_tiramisu", "ref": "tiramisu", "duration": 5, "prompt": "slow dolly around the tiramisu slice, cocoa dust catching the light"}
+ ],
+ "mudo": {
+  "_nota": "Cada cena: src (takes/<broll>.mp4 ou refs/<imagem>.png; páginas REAIS do livro em refs/pagina_XX.png), seconds (até a duração do b-roll) e 1-2 linhas de texto curtas. A chamada fica sobre a última cena por ctaSeconds.",
+  "music_prompt": "warm italian acoustic guitar and mandolin, cozy kitchen, light and cheerful, instrumental",
+  "music": "music.mp3",
+  "body": [
+   {"src": "takes/br_massa.mp4", "seconds": 3.5, "lines": ["Massa fresca em casa", "sem máquina"]},
+   {"src": "takes/br_molho.mp4", "seconds": 3.5, "lines": ["O molho que vira", "receita de família"]},
+   {"src": "refs/pagina_12.png", "seconds": 3, "lines": ["Passo a passo com foto", "em cada receita"]},
+   {"src": "takes/br_tiramisu.mp4", "seconds": 3.5, "lines": ["E a sobremesa", "da nonna"]}
+  ],
+  "ads": [
+   {"id": "KitMesa", "abertura": {"src": "takes/br_lasanha.mp4", "seconds": 3, "lines": ["A lasanha que parece", "de cantina"]}, "cta": {"text": "VEJA AS RECEITAS", "arrow": "👇"}},
+   {"id": "KitMassa", "abertura": {"src": "takes/br_massa.mp4", "seconds": 3, "lines": ["Você nunca fez", "massa em casa?"]}, "cta": {"text": "TOQUE EM SAIBA MAIS", "color": "#D9A441", "arrow": "▼"}},
+   {"id": "KitDoce", "abertura": {"src": "takes/br_tiramisu.mp4", "seconds": 3, "lines": ["O tiramisù", "mais fácil da sua vida"]}, "cta": {"text": "QUERO O LIVRO", "arrow": "☟"}},
+   {"id": "KitLivro", "abertura": {"src": "refs/pagina_01.png", "seconds": 2.5, "lines": ["Receitas italianas", "com foto de cada prato"]}, "cta": {"text": "VEJA COMO É POR DENTRO", "color": "#2E7D5B", "arrow": "👇"}}
+  ]
+ }
+}
