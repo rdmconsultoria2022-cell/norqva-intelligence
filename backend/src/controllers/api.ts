@@ -679,10 +679,30 @@ export async function updateProduct(req: AuthenticatedRequest, res: Response) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Nome e categoria do produto não podem ficar vazios.' });
     }
+    // NORQVA-0057: descrição não vazia; custo estimado >= 0 com até 2 casas; observações texto ou vazio
+    if (description !== undefined && (typeof description !== 'string' || description.trim() === '')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A descrição do produto não pode ficar vazia.' });
+    }
+    if (estimated_cost !== undefined) {
+      const c = Number(estimated_cost);
+      if (estimated_cost === null || estimated_cost === '' || !Number.isFinite(c) || c < 0 || c > 1e9 || Math.abs(Math.round(c * 100) - c * 100) > 1e-6) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Custo estimado inválido: use um valor de zero para cima, com até 2 casas decimais.' });
+      }
+    }
+    if ((observations !== undefined && observations !== null && typeof observations !== 'string') || (origin_notes !== undefined && origin_notes !== null && typeof origin_notes !== 'string')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Observações e notas devem ser texto.' });
+    }
+    if (typeof description === 'string' && description.length > 5000) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Descrição longa demais (até 5.000 caracteres).' });
+    }
     const updatedName = name !== undefined ? String(name).trim() : existingProduct.name;
     const updatedCategory = category !== undefined ? String(category).trim() : existingProduct.category;
-    const updatedDesc = description !== undefined ? description : existingProduct.description;
-    const updatedCost = estimated_cost !== undefined ? estimated_cost : existingProduct.estimated_cost;
+    const updatedDesc = description !== undefined ? String(description).trim() : existingProduct.description;
+    const updatedCost = estimated_cost !== undefined ? Number(estimated_cost) : existingProduct.estimated_cost;
     const updatedStatus = status !== undefined ? status : existingProduct.status;
     const updatedObs = observations !== undefined ? observations : existingProduct.observations;
     const updatedProv = origin_provenance !== undefined ? origin_provenance : existingProduct.origin_provenance;

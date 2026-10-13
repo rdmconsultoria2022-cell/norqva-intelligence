@@ -34,6 +34,9 @@ export const OfferEditor: React.FC<{
     promotional_price: toForm(off.promotional_price),
     description: off.description || '',
     bonus: off.bonus || '',
+    // NORQVA-0057: upsell e cross-sell
+    upsell: off.upsell || '',
+    cross_sell: off.cross_sell || '',
     // NORQVA-0038: cartão de crédito
     card_enabled: !!off.card_enabled,
     card_max_installments: String(off.card_max_installments || 1),
@@ -90,6 +93,8 @@ export const OfferEditor: React.FC<{
           promotional_price: promo,
           description: form.description.trim(),
           bonus: form.bonus.trim() || null,
+          upsell: form.upsell.trim() || null,
+          cross_sell: form.cross_sell.trim() || null,
           // NORQVA-0038: campos do cartão só quando o cartão está ou estava ligado
           ...(form.card_enabled || off.card_enabled
             ? {
@@ -138,6 +143,16 @@ export const OfferEditor: React.FC<{
         <span className="text-[10px] text-slate-400">Bônus (opcional)</span>
         <input aria-label="Bônus da oferta" value={form.bonus} onChange={e => setForm({ ...form, bonus: e.target.value })} className={input} />
       </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-slate-400">Upsell (oferta depois da compra)</span>
+          <input aria-label="Upsell da oferta" value={form.upsell} onChange={e => setForm({ ...form, upsell: e.target.value })} className={input} />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-slate-400">Cross-sell (produto relacionado)</span>
+          <input aria-label="Cross-sell da oferta" value={form.cross_sell} onChange={e => setForm({ ...form, cross_sell: e.target.value })} className={input} />
+        </label>
+      </div>
       <div className="space-y-1 rounded border border-slate-800 p-2" data-testid="offer-card">
         <label className="flex items-center gap-2">
           <input type="checkbox" aria-label="Aceita cartão de crédito" checked={form.card_enabled} onChange={e => setForm({ ...form, card_enabled: e.target.checked })} />
