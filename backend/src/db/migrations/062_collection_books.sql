@@ -5,7 +5,11 @@
 -- Marca e categoria vêm do produto do Trattoria (oferta OFF-000001). Cartão: as mesmas condições da OFF-000001
 --   quando ela custa R$ 19,90 sem promoção, senão só Pix (o Ricardo liga o cartão na tela).
 -- Sem a OFF-000001, não cria nada e registra o motivo na auditoria.
+-- products.collection_key (aditiva): chave fixa do livro (paes, antipasti, risotos), para a página de venda e o kit
+--   continuarem certos mesmo se o nome do produto for editado na tela.
 -- Envolvido em DO: o emulador pg-mem dos testes remove blocos DO, o PostgreSQL executa normalmente.
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS collection_key VARCHAR(30);
 
 DO $$
 DECLARE
@@ -51,7 +55,7 @@ BEGIN
        'NORQVA-0060', 'risotos')
     ) AS t(name, prd_desc, off_desc, task, folder)
   LOOP
-    IF EXISTS (SELECT 1 FROM products WHERE name = b.name AND is_demo = FALSE AND is_deleted = FALSE) THEN
+    IF EXISTS (SELECT 1 FROM products WHERE (name = b.name OR collection_key = b.folder) AND is_demo = FALSE AND is_deleted = FALSE) THEN
       CONTINUE;
     END IF;
 
@@ -77,9 +81,9 @@ BEGIN
     prd := gen_random_uuid();
     off := gen_random_uuid();
     INSERT INTO products (id, human_id, name, category, description, status, is_demo, data_provenance, brand_id,
-                          origin_provenance, origin_responsible_id, origin_evidence)
+                          origin_provenance, origin_responsible_id, origin_evidence, collection_key)
     VALUES (prd, prd_human, b.name, tr.category, b.prd_desc, 'PLANEJADO', FALSE, 'COMMERCIAL_PRODUCTION', tr.brand_id,
-            'ORIGINAL', resp, 'Escrito para a NORQVA (' || b.task || '); fontes em norqva-ai/produtos/' || b.folder || '/');
+            'ORIGINAL', resp, 'Escrito para a NORQVA (' || b.task || '); fontes em norqva-ai/produtos/' || b.folder || '/', b.folder);
 
     INSERT INTO offers (id, human_id, product_id, name, price, promotional_price, description, status, is_demo, data_provenance,
                         card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly)

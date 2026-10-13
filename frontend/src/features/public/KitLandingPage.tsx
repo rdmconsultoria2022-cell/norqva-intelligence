@@ -8,7 +8,7 @@ import { captureUrlAttribution, sendFunnelEvent } from '../../services/attributi
 import { BuyChoice, requestWhatsAppLink, goToWhatsApp } from './WhatsAppChoice';
 import { savePurchaseSession, updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
-import { COLLECTION_COVERS } from './bookPages';
+import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
 
 // NORQVA-0038: página de vendas do Kit Cozinha Italiana (Trattoria em Casa + Dolci della Nonna).
 // Preços, parcelas e "de/por" vêm sempre da oferta no servidor; nada de valor fixo aqui.
@@ -145,7 +145,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       .then(data => {
         if (!alive || !data || !Array.isArray(data.books)) return;
         const map: Record<string, { human_id: string; price: number }> = {};
-        for (const b of data.books) if (b && b.book && b.human_id) map[String(b.book)] = { human_id: String(b.human_id), price: Number(b.price) };
+        for (const b of data.books) if (b && b.book && b.human_id && READY_BOOKS.has(String(b.book))) map[String(b.book)] = { human_id: String(b.human_id), price: Number(b.price) };
         setForSale(map);
       })
       .catch(() => {});

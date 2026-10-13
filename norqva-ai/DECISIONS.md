@@ -151,3 +151,5 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, 13/10/2026 19h26, contrato NORQVA-0061):** os três livros novos da coleção são vendidos cada um sozinho, a **R$ 19,90**, com Pix e as condições de cartão do Trattoria. O kit continua com Trattoria + Dolci.
 - **Como entra à venda:** a migration 062 cria produto e oferta em RASCUNHO. O Ricardo envia o PDF final na tela, testa (TESTE) e ativa (ATIVA). Só com a oferta ATIVA o livro aparece como "Disponível separadamente" na página do kit.
 - **Página:** cada livro tem a sua página de venda (`bookPages.ts`), no visual do Trattoria, sem preço nos textos além do botão de compra.
+- **Volumes IV e V:** só são ativados depois das fotos. Antes, é preciso pôr as imagens em `frontend/public/images/livros/<livro>/` e incluir o livro em `READY_BOOKS`; sem isso, a página do kit não o mostra.
+- **Chave do livro:** `products.collection_key` (migration 062). Renomear o produto na tela não muda a página de venda.

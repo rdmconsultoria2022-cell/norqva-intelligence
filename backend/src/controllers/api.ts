@@ -1,5 +1,5 @@
 import { planFromOffer, installmentOption, installmentOptions } from '../services/commerce/cardInstallments';
-import { bookKeyForProductName, activeCollectionBooks } from '../services/catalog/collectionBooks';
+import { bookKeyForProduct, activeCollectionBooks } from '../services/catalog/collectionBooks';
 import { whatsappNumberForOffer } from '../services/whatsapp/whatsappRefs';
 import { Response } from 'express';
 import { anonymizeIp } from '../utils/ipPrivacy';
@@ -1094,7 +1094,8 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
     const query = `
       SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo,
              card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly,
-             (SELECT p.name FROM products p WHERE p.id = offers.product_id) AS product_name
+             (SELECT p.name FROM products p WHERE p.id = offers.product_id) AS product_name,
+             (SELECT p.collection_key FROM products p WHERE p.id = offers.product_id) AS collection_key
       FROM offers 
       WHERE (human_id = $1 OR id::text = $1) 
         AND is_deleted = FALSE 
@@ -1120,7 +1121,7 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       bonus: offer.bonus || null,
       is_demo: offer.is_demo,
       // NORQVA-0061: livro da coleção (página com capa e receitas do livro); null = página do Trattoria
-      book: bookKeyForProductName(offer.product_name),
+      book: bookKeyForProduct({ collection_key: offer.collection_key, name: offer.product_name }),
       // D-0009 (fase B): pixel da marca (null = a landing usa o pixel padrão)
       meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer.id }),
       // NORQVA-0032: adicional na hora do Pix (null = não há)

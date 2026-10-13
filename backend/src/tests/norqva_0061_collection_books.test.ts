@@ -10,7 +10,7 @@ import path from 'path';
 import app from '../index';
 import { initializeDB, isDbInMemory } from '../db/db';
 import { runMigrations } from '../db/migrations';
-import { bookKeyForProductName } from '../services/catalog/collectionBooks';
+import { bookKeyForProductName, bookKeyForProduct } from '../services/catalog/collectionBooks';
 
 const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/062_collection_books.sql'), 'utf8');
 
@@ -21,6 +21,9 @@ describe('NORQVA-0061 â€” chave do livro', () => {
     expect(bookKeyForProductName('Risotos & Polentas')).toBe('risotos');
     expect(bookKeyForProductName('Trattoria em Casa')).toBeNull();
     expect(bookKeyForProductName(null)).toBeNull();
+    // nome editado na tela: vale a chave fixa
+    expect(bookKeyForProduct({ collection_key: 'risotos', name: 'Risotos do Norte' })).toBe('risotos');
+    expect(bookKeyForProduct({ collection_key: null, name: 'Antipasti & Aperitivo' })).toBe('antipasti');
   });
 });
 
@@ -135,6 +138,8 @@ describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0061 â
         expect(r.card_max_installments).toBe(4);
         expect(Number(r.card_total_price)).toBe(19.92);
       }
+      const keys = await c.query(`SELECT collection_key FROM products WHERE name = ANY($1::text[]) ORDER BY collection_key`, [Object.values(names)]);
+      expect(keys.rows.map((r: any) => r.collection_key)).toEqual(['antipasti', 'paes', 'risotos']);
       // nenhum PDF ligado: rascunho sem entrega
       const assets = await c.query(
         `SELECT count(*)::int AS n FROM offer_digital_assets oda JOIN offers o ON o.id = oda.offer_id JOIN products p ON p.id = o.product_id WHERE p.name = ANY($1::text[])`,
@@ -173,7 +178,7 @@ describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0061 â
       await c.query('BEGIN');
       await c.query(sql);
       expect((await created(c)).rows).toHaveLength(0);
-      const a = await c.query(`SELECT 1 FROM audit_logs WHERE event_type = 'COLLECTION_BOOKS_SKIPPED' AND description LIKE '%OFF-000001%' ORDER BY created_at DESC LIMIT 1`);
+      const a = await c.query(`SELECT 1 FROM audit_logs WHERE event_type = 'COLLECTION_BOOKS_SKIPPED' AND description LIKE '%OFF-000001%' AND created_at = now() LIMIT 1`);
       expect(a.rows.length).toBe(1);
     } finally {
       await c.query('ROLLBACK');
