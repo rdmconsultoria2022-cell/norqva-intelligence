@@ -6,6 +6,35 @@ import { DeliveryFiles } from './DeliveryFiles';
 import { HiddenProducts } from './HiddenProducts';
 import { OfferEditor } from './OfferEditor';
 import { CatalogTrash, TrashAction } from './CatalogTrash';
+import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile } from '../../components/ViewModes';
+import { COLLECTION_COVERS, READY_BOOKS } from '../public/bookPages';
+
+// NORQVA-0062: opções de exibição da tela Produtos, como na tela Criativos
+type Situation = 'ALL' | 'SELLING' | 'TESTING' | 'OFF';
+const SITUATION_LABEL: Record<Situation, string> = { ALL: 'Todos', SELLING: 'À venda', TESTING: 'Em teste', OFF: 'Fora do ar' };
+
+/** Situação de venda do produto pelas ofertas dele. */
+export function productSituation(prdOffers: any[]): Exclude<Situation, 'ALL'> {
+  if (prdOffers.some(o => o.status === 'ATIVA')) return 'SELLING';
+  if (prdOffers.some(o => o.status === 'TESTE')) return 'TESTING';
+  return 'OFF';
+}
+
+/** Capa do produto para os modos de ícone (endereço completo: o tile só mostra links http). */
+export function productCover(prd: any): string | null {
+  const name = String(prd?.name || '').toLowerCase();
+  const key = String(prd?.collection_key || '');
+  const path = key && READY_BOOKS.has(key) ? COLLECTION_COVERS[key]
+    : /dolci/.test(name) ? '/images/kit/capa_dolci.jpg'
+    : /trattoria/.test(name) ? '/images/kit/capa_trat.jpg'
+    : null;
+  if (!path) return null;
+  try {
+    return `${window.location.origin}${path}`;
+  } catch {
+    return null;
+  }
+}
 
 // NORQVA-0030 (fase 6): Produtos com as ofertas dentro. Cada produto mostra dados e procedência, as ofertas
 // dele (preço, situação, arquivos de entrega, checkout de teste) e a marca. Botões de alterar só para quem o
@@ -311,6 +340,13 @@ export const ProductsView: React.FC<Props> = ({
   const [assetOffer, setAssetOffer] = useState<any>(null);
   const [brands, setBrands] = useState<any[]>([]);
   const [brandChange, setBrandChange] = useState<{ product: any; brand: any } | null>(null);
+  // NORQVA-0062: filtros e modo de exibição
+  const [situation, setSituation] = useState<Situation>('ALL');
+  const [showArchived, setShowArchived] = useState(false);
+  const [productFilter, setProductFilter] = useState('ALL');
+  const [brandFilter, setBrandFilter] = useState('ALL');
+  const [viewMode, setViewMode] = useViewMode('norqva.products.viewMode');
+  const [focusId, setFocusId] = useState<string | null>(null);
   // NORQVA-0057: recarrega a lixeira depois de excluir/restaurar
   const [trashKey, setTrashKey] = useState(0);
   const afterTrash = () => {
@@ -326,7 +362,10 @@ export const ProductsView: React.FC<Props> = ({
   };
 
   useEffect(() => {
-    if (initialOpen === 'all') setOpen(new Set(products.map(p => String(p.id))));
+    if (initialOpen === 'all') {
+      setOpen(new Set(products.map(p => String(p.id))));
+      setViewMode('list');
+    }
   }, [initialOpen, products.length]);
 
   // Marcas: leitura para os perfis que o servidor aceita; trocar continua só ADMIN
@@ -361,6 +400,37 @@ export const ProductsView: React.FC<Props> = ({
   const brandName = (id: string | null) => (id ? brands.find(b => String(b.id) === String(id))?.name || null : null);
   const orphanOffers = offers.filter(o => !products.some(p => String(p.id) === String(o.product_id)));
 
+  // NORQVA-0062: filtros (situação de venda, arquivados, nome, marca)
+  const offersOf = (prd: any) => offers.filter(o => String(o.product_id) === String(prd.id));
+  // arquivado com oferta vendendo ou em teste continua visível: está no ar
+  const isArchived = (prd: any) => prd.status === 'ARQUIVADO' && productSituation(offersOf(prd)) === 'OFF';
+  // filtro que ficou sem opção (produto excluído, marcas não carregadas) volta para "todos"
+  const effProduct = products.some(p => String(p.id) === productFilter) ? productFilter : 'ALL';
+  const effBrand = brands.length > 0 ? brandFilter : 'ALL';
+  const baseProducts = products.filter(
+    p =>
+      (showArchived || !isArchived(p) || String(p.id) === effProduct) &&
+      (effProduct === 'ALL' || String(p.id) === effProduct) &&
+      (effBrand === 'ALL' || (effBrand === 'NONE' ? !p.brand_id : String(p.brand_id || '') === effBrand))
+  );
+  const situationCounts: Record<Situation, number> = { ALL: baseProducts.length, SELLING: 0, TESTING: 0, OFF: 0 };
+  for (const p of baseProducts) situationCounts[productSituation(offersOf(p))] += 1;
+  const archivedCount = products.filter(isArchived).length;
+  const visibleProducts = baseProducts.filter(p => situation === 'ALL' || productSituation(offersOf(p)) === situation);
+  const openProductInList = (id: string) => {
+    setViewMode('list');
+    setFocusId(id);
+    setTimeout(() => setFocusId(cur => (cur === id ? null : cur)), 4000);
+    setOpen(prev => new Set(prev).add(id));
+    setTimeout(() => {
+      try {
+        document.getElementById(`product-card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {
+        /* ignore */
+      }
+    }, 50);
+  };
+
   return (
     <div className="space-y-6 text-sm" data-testid="products-view">
       <div className="flex items-center justify-between">
@@ -382,13 +452,97 @@ export const ProductsView: React.FC<Props> = ({
         <div className="p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">Nenhum produto cadastrado.</div>
       )}
 
-      <div className="space-y-3">
-        {products.map(prd => {
+      {products.length > 0 && (
+        <div className="space-y-2 text-xs" data-testid="product-filters">
+          <div className="flex flex-wrap items-center gap-2 font-mono">
+            {(['ALL', 'SELLING', 'TESTING', 'OFF'] as Situation[]).map(k => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setSituation(k)}
+                aria-pressed={situation === k}
+                data-testid={`situation-${k}`}
+                className={`px-2.5 py-1 rounded border ${situation === k ? 'bg-sky-500 text-slate-950 border-sky-500' : 'border-slate-700 text-slate-300'}`}
+              >
+                {SITUATION_LABEL[k]} ({situationCounts[k]})
+              </button>
+            ))}
+            <label className="flex items-center gap-1.5 ml-1 text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} aria-label="Exibir arquivados" data-testid="show-archived" />
+              Exibir arquivados ({archivedCount})
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Produto"
+              data-testid="product-name-filter"
+              value={effProduct}
+              onChange={e => setProductFilter(e.target.value)}
+              className="max-w-[18rem] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+            >
+              <option value="ALL">Procurar pelo nome do produto</option>
+              {[...products]
+                .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+                .map(p => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </option>
+                ))}
+            </select>
+            {brands.length > 0 && (
+              <select
+                aria-label="Marca"
+                data-testid="brand-filter"
+                value={effBrand}
+                onChange={e => setBrandFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+              >
+                <option value="ALL">Todas as marcas</option>
+                {brands.map(b => (
+                  <option key={b.id} value={String(b.id)}>
+                    {b.name}
+                  </option>
+                ))}
+                <option value="NONE">Sem marca</option>
+              </select>
+            )}
+            <div className="ml-auto">
+              <ViewModeSelector value={viewMode} onChange={setViewMode} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {products.length > 0 && visibleProducts.length === 0 && (
+        <p className="text-sm text-slate-400" data-testid="products-none">Nenhum produto com esse filtro.</p>
+      )}
+
+      <div className={containerClass(viewMode)} data-testid="products-container">
+        {visibleProducts.map(prd => {
           const prdOffers = offers.filter(o => String(o.product_id) === String(prd.id));
           const isOpen = open.has(String(prd.id));
+          if (isIconMode(viewMode)) {
+            const sit = productSituation(prdOffers);
+            return (
+              <IconTile
+                key={prd.id}
+                mode={viewMode}
+                title={prd.name}
+                subtitle={`${prd.human_id} · ${SITUATION_LABEL[sit]}`}
+                url={productCover(prd)}
+                format="IMAGE"
+                onOpen={() => openProductInList(String(prd.id))}
+              />
+            );
+          }
           return (
-            <section key={prd.id} className="border border-slate-800 bg-slate-900/30 rounded" data-testid="product-card">
-              <div className="p-4 grid gap-4 md:grid-cols-[1fr_18rem]">
+            <section
+              key={prd.id}
+              id={`product-card-${prd.id}`}
+              className={`border border-slate-800 bg-slate-900/30 rounded ${focusId === String(prd.id) ? 'ring-2 ring-emerald-500' : ''}`}
+              data-testid="product-card"
+            >
+              <div className={viewMode === 'list' ? 'p-4 grid gap-4 md:grid-cols-[1fr_18rem]' : 'p-4 grid gap-4'}>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-emerald-400 font-bold text-xs">{prd.human_id}</span>
@@ -494,7 +648,7 @@ export const ProductsView: React.FC<Props> = ({
                   )}
                 </div>
                 {isOpen && (
-                  <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3" data-testid="product-offers">
+                  <div className={viewMode === 'list' ? 'grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3' : 'grid gap-3 px-4 pb-4'} data-testid="product-offers">
                     {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
                       <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} editor={close => <OfferEditor off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onSaved={onProductsChanged} onClose={close} />} trash={offerTrash(off)} />

@@ -77,6 +77,7 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - NORQVA-0056 (D-0056): campanha já na Meta → Configuração → "Editar anúncio na Meta" troca link, texto, título e botão (peça nova com o mesmo vídeo no mesmo anúncio; `services/launchPlans/adCreativeSwap.ts`). Pede o código da campanha; sem preço.
 - NORQVA-0057 (D-0057): Produtos com todos os campos editáveis (descrição, custo, observações, upsell, cross-sell) e Lixeira: "Excluir"/"Restaurar" com o código digitado (`services/catalog/catalogTrashService.ts`); nada é apagado do banco.
 - NORQVA-0058 (D-0058): tela Criativos com Claims recolhíveis, filtro pelo nome da campanha, edição de todo o conteúdo (inclui mecanismo) e lixeira de criativos (`services/creative/creativeTrashService.ts`).
+- NORQVA-0062: tela Produtos com filtros (À venda, Em teste, Fora do ar), "Exibir arquivados", busca por nome e marca e modos de exibição (lista, grade, ícones com capa), como na tela Criativos.
 - NORQVA-0041: comprador escolhe as parcelas (D-0041): até 4x sem juros, acima com 2,99% a.m.; tela de pagamento com `look="light"` (creme/terracota) nos livros de cozinha.
 
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
