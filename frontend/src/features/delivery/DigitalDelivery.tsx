@@ -122,6 +122,14 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
     tokens.some(t => t.assetTitle?.toLowerCase().includes('bolso'))
   );
 
+  // NORQVA-0061: livros da coleção vendidos separadamente têm título próprio no aviso de entrega
+  const orderName = String(orderData?.offer_name_snapshot || '').trim();
+  const readyTitle = !orderName || /trattoria/i.test(orderName)
+    ? 'Seu Trattoria em Casa está pronto!'
+    : /^kit\b/i.test(orderName)
+      ? `Seu ${orderName} está pronto!`
+      : `Seu livro ${orderName} está pronto!`;
+
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 antialiased">
       <div className={`border rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar font-sans ${
@@ -140,7 +148,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
               <h3 className={`text-lg font-bold ${isBolsoBlindado ? 'text-white font-sans' : 'font-serif text-stone-900'}`}>
                 {isBolsoBlindado 
                   ? 'Seu acesso ao Método Bolso Blindado está pronto!' 
-                  : 'Seu Trattoria em Casa está pronto!'}
+                  : readyTitle}
               </h3>
               <p className={`text-xs font-medium ${isBolsoBlindado ? 'text-slate-400' : 'text-stone-500'}`}>
                 Pagamento confirmado • Acesso Digital Liberado
@@ -317,10 +325,15 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                 const isUsable = (!item.status || item.status === 'ACTIVE') && Boolean(item.rawToken) && !isExhausted && !isInactive;
                 // Capa e descrição de cada livro (o kit entrega mais de um)
                 const isDolciBook = /dolci/i.test(item.assetTitle || '');
-                const bookCover = isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
+                // NORQVA-0061: Volumes III, IV e V
+                const collection = /p[ãa]es/i.test(item.assetTitle || '') ? { key: 'paes', title: 'Pães & Fermentação Natural', info: '12 receitas • Pães italianos e fermento natural (PDF)' }
+                  : /antipasti/i.test(item.assetTitle || '') ? { key: 'antipasti', title: 'Antipasti & Aperitivo', info: '12 receitas • Antepastos e aperitivo italiano (PDF)' }
+                  : /risoto|polenta/i.test(item.assetTitle || '') ? { key: 'risotos', title: 'Risotos & Polentas', info: '12 receitas • Risotos e polentas (PDF)' }
+                  : null;
+                const bookCover = collection ? `/images/livros/${collection.key}/capa.jpg` : isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
                 const isTrattBook = /trattoria/i.test(item.assetTitle || '');
-                const bookTitle = isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
-                const bookInfo = isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
+                const bookTitle = collection ? collection.title : isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
+                const bookInfo = collection ? collection.info : isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
 
                 return (
                   <div

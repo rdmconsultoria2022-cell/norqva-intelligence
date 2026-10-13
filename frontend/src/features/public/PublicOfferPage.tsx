@@ -29,6 +29,7 @@ import { DigitalDelivery } from '../delivery/DigitalDelivery';
 import { RecoveryRequestModal } from '../delivery/RecoveryRequestModal';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { BuyChoice } from './WhatsAppChoice';
+import { bookPageFor } from './bookPages';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 
@@ -43,6 +44,8 @@ export interface PublicOfferData {
   is_demo: boolean;
   meta_pixel_id?: string | null;
   whatsapp?: { available: boolean } | null;
+  // NORQVA-0061: livro da coleção (null = página do Trattoria)
+  book?: string | null;
 }
 
 interface PublicOfferPageProps {
@@ -706,7 +709,9 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
   // ==========================================
   // VIEW: TRATTORIA CULINARY OFFER EXPERIENCE (PRESERVED)
+  // NORQVA-0061: o mesmo visual serve aos Volumes III, IV e V, com textos e imagens de cada livro
   // ==========================================
+  const page = bookPageFor(offer?.book);
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-stone-800 flex flex-col justify-between selection:bg-[#B83B1E]/20 selection:text-[#8F2810] font-sans antialiased">
       
@@ -731,7 +736,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
       {/* Top Culinary Announcement Bar */}
       <div className="bg-[#2B3D2B] text-stone-200 text-[11px] sm:text-xs py-1.5 px-4 text-center font-medium tracking-wide flex items-center justify-center gap-2">
         <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-        <span className="truncate">Edição Especial 2026 • 28 Preparações Italianas com Fichas Técnicas</span>
+        <span className="truncate">{page.announce}</span>
       </div>
 
       {/* Elegant Header */}
@@ -743,10 +748,10 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
             </div>
             <div>
               <span className="font-serif font-bold text-sm sm:text-lg tracking-tight text-stone-900 block leading-tight">
-                TRATTORIA EM CASA
+                {page.brand}
               </span>
               <span className="text-[9px] sm:text-[10px] tracking-widest text-stone-500 uppercase font-medium">
-                Cucina Tradizionale Italiana
+                {page.brandSub}
               </span>
             </div>
           </div>
@@ -770,8 +775,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                 <div className="absolute -inset-2 bg-gradient-to-tr from-[#B83B1E]/20 to-amber-500/20 rounded-3xl blur-xl opacity-70 group-hover:opacity-100 transition duration-500"></div>
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-stone-200/80 bg-stone-900 max-w-[300px]">
                   <img 
-                    src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
-                    alt="Trattoria em Casa — Livro Digital Oficial"
+                    src={page.cover}
+                    alt={page.coverAlt}
                     className="w-full h-auto object-cover transform hover:scale-[1.02] transition duration-300"
                     onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                   />
@@ -779,7 +784,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
               </div>
               <div className="mt-3 flex items-center gap-2 text-xs text-stone-600 font-medium">
                 <BookOpen className="h-4 w-4 text-[#B83B1E]" />
-                <span>E-book Digital Completo • 39 Páginas em Alta Resolução</span>
+                <span>{page.pagesNote}</span>
               </div>
             </div>
 
@@ -789,30 +794,30 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
               {/* Badge */}
               <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#B83B1E] bg-[#B83B1E]/10 border border-[#B83B1E]/20 px-2.5 py-0.5 rounded-full">
                 <Utensils className="h-3 w-3" />
-                <span>Guia Prático de Massas & Molhos</span>
+                <span>{page.badge}</span>
               </div>
 
               {/* Title & Core Promise */}
               <div className="space-y-1.5">
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-stone-900 tracking-tight leading-tight">
-                  {offer.name || 'Trattoria em Casa — Massas & Molhos Italianos'}
+                  {offer.name || page.defaultTitle}
                 </h1>
                 <p className="text-xs sm:text-sm lg:text-base text-stone-600 leading-relaxed font-sans">
-                  Aprenda os segredos das massas artesanais frescas e dos molhos clássicos italianos em um guia prático, direto e ricamente ilustrado.
+                  {page.lead}
                 </p>
               </div>
 
               {/* Mobile Compact Cover + Feature Row */}
               <div className="flex lg:hidden items-center gap-3 p-2.5 bg-stone-50 rounded-xl border border-stone-200">
                 <img 
-                  src="/images/trattoria/proto_01_capa_1788381677692.jpg" 
+                  src={page.cover}
                   alt="Capa"
                   className="w-14 h-18 object-cover rounded-lg shadow-sm shrink-0 border border-stone-300"
                   onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                 />
                 <div className="text-xs space-y-0.5">
-                  <span className="font-bold text-stone-900 block font-serif">28 Preparações Selecionadas</span>
-                  <span className="text-stone-600 text-[11px] block">Massas frescas, molhos clássicos e fichas com gramaturas para o Brasil.</span>
+                  <span className="font-bold text-stone-900 block font-serif">{page.mobileTitle}</span>
+                  <span className="text-stone-600 text-[11px] block">{page.mobileText}</span>
                 </div>
               </div>
 
@@ -890,65 +895,32 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
         <section className="space-y-6 pt-4 border-t border-stone-200/80">
           <div className="text-center max-w-2xl mx-auto space-y-1.5">
             <h2 className="text-xl sm:text-2xl lg:text-3xl font-serif font-bold text-stone-900">
-              O Que Você Irá Preparar em Sua Cozinha
+              {page.galleryTitle}
             </h2>
             <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
-              Fotografias reais das preparações ensinadas no livro, com ingredientes acessíveis e métodos testados para garantir o resultado perfeito.
+              {page.galleryText}
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             
-            {/* Card 1: Massa Clássica */}
-            <div className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-md hover:shadow-lg transition">
-              <img 
-                src="/images/trattoria/clean_massa_classica_hero.jpg" 
-                alt="Massa Clássica aos Ovos"
-                className="w-full h-40 object-cover"
-                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-              />
-              <div className="p-4 space-y-1.5">
-                <span className="text-[10px] font-bold text-[#B83B1E] uppercase tracking-wider">Módulo 01 • Fundamentos</span>
-                <h3 className="font-serif font-bold text-sm sm:text-base text-stone-900">Massa Clássica aos Ovos (Tagliolini & Fettuccine)</h3>
-                <p className="text-xs text-stone-600 leading-relaxed">
-                  A proporção de ouro (100g de farinha para 1 ovo), o tempo exato de sova e o descanso do glúten para abrir massas finas e elásticas.
-                </p>
+            {page.gallery.map(g => (
+              <div key={g.img} className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-md hover:shadow-lg transition">
+                <img
+                  src={g.img}
+                  alt={g.alt}
+                  className="w-full h-40 object-cover"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+                <div className="p-4 space-y-1.5">
+                  <span className="text-[10px] font-bold text-[#B83B1E] uppercase tracking-wider">{g.label}</span>
+                  <h3 className="font-serif font-bold text-sm sm:text-base text-stone-900">{g.title}</h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    {g.text}
+                  </p>
+                </div>
               </div>
-            </div>
-
-            {/* Card 2: Pomodoro San Marzano */}
-            <div className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-md hover:shadow-lg transition">
-              <img 
-                src="/images/trattoria/clean_pomodoro_san_marzano.jpg" 
-                alt="Pomodoro & Basilico Autêntico"
-                className="w-full h-40 object-cover"
-                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-              />
-              <div className="p-4 space-y-1.5">
-                <span className="text-[10px] font-bold text-[#B83B1E] uppercase tracking-wider">Módulo 02 • Molhos Clássicos Italianos</span>
-                <h3 className="font-serif font-bold text-sm sm:text-base text-stone-900">Pomodoro San Marzano & Basilico Fresco</h3>
-                <p className="text-xs text-stone-600 leading-relaxed">
-                  O cozimento suave sem queimar o alho, a extração da doçura natural do tomate e a finalização com manjericão na temperatura certa.
-                </p>
-              </div>
-            </div>
-
-            {/* Card 3: Ragu Bolognese */}
-            <div className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-md hover:shadow-lg transition">
-              <img 
-                src="/images/trattoria/clean_bolognese_ragu.jpg" 
-                alt="Ragu alla Bolognese Tradicional"
-                className="w-full h-40 object-cover"
-                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-              />
-              <div className="p-4 space-y-1.5">
-                <span className="text-[10px] font-bold text-[#B83B1E] uppercase tracking-wider">Módulo 02 • Emulsão & Cozimento Lento</span>
-                <h3 className="font-serif font-bold text-sm sm:text-base text-stone-900">Ragu alla Bolognese Tradicional</h3>
-                <p className="text-xs text-stone-600 leading-relaxed">
-                  O soffritto tradicional de aipo, cenoura e cebola, a caramelização das carnes com vinho e a redução aveludada em fogo brando.
-                </p>
-              </div>
-            </div>
+            ))}
 
           </div>
         </section>
@@ -957,74 +929,30 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
         <section className="space-y-6 pt-4 border-t border-stone-200/80">
           <div className="text-center max-w-2xl mx-auto space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-widest text-[#B83B1E]">
-              Estrutura Pedagógica Completa
+              {page.modulesKicker}
             </span>
             <h2 className="text-xl sm:text-2xl lg:text-3xl font-serif font-bold text-stone-900">
-              O Conteúdo Detalhado dos 5 Módulos
+              {page.modulesTitle}
             </h2>
             <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
-              Fichas técnicas ilustradas passo a passo, rendimentos, tabelas de conversão e tempos de cozimento.
+              {page.modulesText}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            
-            <div className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-2.5">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-[#B83B1E] text-white flex items-center justify-center font-bold text-xs">1</div>
-                <h3 className="font-serif font-bold text-stone-900 text-sm sm:text-base">Módulo 01: A Arte da Massa Artesanal Fresca</h3>
+            {page.modules.map(m => (
+              <div key={m.title} className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-full bg-[#B83B1E] text-white flex items-center justify-center font-bold text-xs">{m.n}</div>
+                  <h3 className="font-serif font-bold text-stone-900 text-sm sm:text-base">{m.title}</h3>
+                </div>
+                <ul className="space-y-1 text-xs text-stone-700">
+                  {m.items.map(it => (
+                    <li key={it} className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> {it}</li>
+                  ))}
+                </ul>
               </div>
-              <ul className="space-y-1 text-xs text-stone-700">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 01. A Proporção Clássica de Ovos e Farinha</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 02. Massa de Sêmola & Água sem Ovos (Sul da Itália)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 03. Tagliatelle & Fettuccine Clássicos</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 04. Pappardelle Rústico para Molhos Encorpados</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 05. Nhoque de Batata Aveludado (Sem Ficar Pesado)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 06. O Ponto Exato do "Al Dente" & Água do Cozimento</li>
-              </ul>
-            </div>
-
-            <div className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-2.5">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-[#B83B1E] text-white flex items-center justify-center font-bold text-xs">2</div>
-                <h3 className="font-serif font-bold text-stone-900 text-sm sm:text-base">Módulo 02: Os Molhos Clássicos & Emulsões</h3>
-              </div>
-              <ul className="space-y-1 text-xs text-stone-700">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 07. Pomodoro & Basilico Autêntico (San Marzano)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 08. Ragu alla Bolognese Tradicional (Cozimento Lento)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 09. Cacio e Pepe Perfeito (Cremoso sem Nata)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 10. Carbonara Clássica (Gema, Pecorino & Guanciale)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 11. All'Amatriciana Tradicional</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 12. Pesto alla Genovese Fresco</li>
-              </ul>
-            </div>
-
-            <div className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-2.5">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-[#B83B1E] text-white flex items-center justify-center font-bold text-xs">3</div>
-                <h3 className="font-serif font-bold text-stone-900 text-sm sm:text-base">Módulo 03: Massas Recheadas & Forno</h3>
-              </div>
-              <ul className="space-y-1 text-xs text-stone-700">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 13. Ravioli de Ricota Fresca & Espinafre</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 14. Tortellini Clássico de Queijo & Ervas</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 15. Lasanha Tradicional alla Bolognese</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 16. Nhoque Gratinado aos 4 Queijos Italianos</li>
-              </ul>
-            </div>
-
-            <div className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200 shadow-sm space-y-2.5">
-              <div className="flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-[#B83B1E] text-white flex items-center justify-center font-bold text-xs">4 e 5</div>
-                <h3 className="font-serif font-bold text-stone-900 text-sm sm:text-base">Módulos 04 e 05: Molhos Rápidos, Pizzas & Antepastos</h3>
-              </div>
-              <ul className="space-y-1 text-xs text-stone-700">
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 17. Sugo Rápido com Tomates Cereja Tostados (15 min)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 18. Molho alla Puttanesca Tradicional (15 min)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 19. Massa de Pizza de Fermentação de 24h para Casa</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-[#2B3D2B] shrink-0" /> 20. Focaccia Genovese Crocante com Alecrim</li>
-              </ul>
-            </div>
-
+            ))}
           </div>
         </section>
 
@@ -1032,10 +960,10 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
         <section className="p-6 sm:p-10 rounded-2xl sm:rounded-3xl bg-[#2B3D2B] text-white text-center space-y-4 shadow-xl">
           <div className="max-w-xl mx-auto space-y-2">
             <h2 className="text-xl sm:text-2xl lg:text-3xl font-serif font-bold tracking-tight">
-              Comece Hoje Mesmo Sua Jornada na Culinária Italiana
+              {page.finalTitle}
             </h2>
             <p className="text-xs sm:text-sm text-stone-300 leading-relaxed">
-              Tenha em mãos o guia definitivo com 28 preparações selecionadas, proporções exatas e técnicas que garantem elogios na sua mesa.
+              {page.finalText}
             </p>
           </div>
 
@@ -1069,7 +997,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
       <footer className="border-t border-stone-200 bg-white py-6 sm:py-8 text-stone-500 text-xs mt-8">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <div className="space-y-0.5">
-            <p className="font-serif font-bold text-stone-800 text-sm">TRATTORIA EM CASA</p>
+            <p className="font-serif font-bold text-stone-800 text-sm">{page.footer}</p>
             <p className="text-stone-500 text-[11px]">Unidade de Gastronomia Digital • Documento Certificado</p>
           </div>
           <div className="text-[11px] text-stone-400 space-y-0.5 sm:text-right">
