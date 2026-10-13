@@ -6,6 +6,7 @@ import { resolvePeriodFilter } from '../utils/commercialTimezone';
 import { AdjustmentService, automationTokenValid } from '../services/creative/adjustmentService';
 import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
 import { fetchCreativeVideoFromMeta, GraphReader } from '../services/creative/metaVideoFetch';
+import { CreativeTrashService, CreativeTrashError } from '../services/creative/creativeTrashService';
 
 // NORQVA-0005 / G1: Creative Factory endpoints. Mode isolation follows the rest of the API
 // (?mode=demo). Writes are ADMIN-only except creating a new version (ADMIN, CREATIVE).
@@ -116,7 +117,8 @@ export async function reviseFactoryCreative(req: AuthenticatedRequest, res: Resp
         headline: b.headline,
         cta: b.cta,
         script: b.script,
-        file_url: b.file_url
+        file_url: b.file_url,
+        mechanism: b.mechanism
       },
       req.user?.id || null,
       isDemoReq(req)
@@ -306,5 +308,39 @@ export async function fetchFactoryCreativeMetaVideo(req: AuthenticatedRequest, r
     return res.status(200).json(result);
   } catch (err) {
     return handle(res, err, 'Falha ao trazer o vídeo da Meta.');
+  }
+}
+
+// NORQVA-0058: lixeira de criativos (só ADMIN, com o código digitado; regras da D-0057)
+const trash = (req: AuthenticatedRequest) => new CreativeTrashService(req.app.get('db') as Pool);
+const trashFail = (res: Response, err: any, msg: string) => {
+  if (err instanceof CreativeTrashError) return res.status(err.status).json({ error: err.message });
+  console.error('[CREATIVE TRASH]', msg, err?.message);
+  return res.status(500).json({ error: msg });
+};
+
+export async function listCreativeTrash(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await trash(req).trash());
+  } catch (err) {
+    return trashFail(res, err, 'Não foi possível ler a lixeira de criativos.');
+  }
+}
+
+export async function deleteFactoryCreative(req: AuthenticatedRequest, res: Response) {
+  if (isDemoReq(req)) return res.status(400).json({ error: 'Só na conta real.' });
+  try {
+    return res.status(200).json(await trash(req).deleteCreative(String(req.params.id), req.body?.confirm_code, req.user?.id || null));
+  } catch (err) {
+    return trashFail(res, err, 'Não foi possível excluir o criativo.');
+  }
+}
+
+export async function restoreFactoryCreative(req: AuthenticatedRequest, res: Response) {
+  if (isDemoReq(req)) return res.status(400).json({ error: 'Só na conta real.' });
+  try {
+    return res.status(200).json(await trash(req).restoreCreative(String(req.params.id), req.body?.confirm_code, req.user?.id || null));
+  } catch (err) {
+    return trashFail(res, err, 'Não foi possível restaurar o criativo.');
   }
 }

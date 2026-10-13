@@ -123,7 +123,10 @@ import {
   automationGetAdjustment,
   automationReportAdjustment,
   automationDeliverAdjustment,
-  enqueueFactoryAdjustment
+  enqueueFactoryAdjustment,
+  listCreativeTrash,
+  deleteFactoryCreative,
+  restoreFactoryCreative
 } from './controllers/creativeFactoryController';
 import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
@@ -538,6 +541,10 @@ app.post('/api/creative-factory/batches/:code/import', requireRole(['ADMIN']), i
 app.patch('/api/creative-factory/claims/:id', requireRole(['ADMIN']), updateFactoryClaim);
 app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), reviewFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CREATIVE']), reviseFactoryCreative);
+// NORQVA-0058: lixeira de criativos (só ADMIN, com o código digitado)
+app.get('/api/creative-factory/trash', requireRole(['ADMIN']), listCreativeTrash);
+app.post('/api/creative-factory/creatives/:id/delete', requireRole(['ADMIN']), deleteFactoryCreative);
+app.post('/api/creative-factory/creatives/:id/restore', requireRole(['ADMIN']), restoreFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/link-ad', requireRole(['ADMIN']), linkFactoryCreativeAd);
 app.post('/api/creative-factory/creatives/:id/file', requireRole(['ADMIN', 'CREATIVE']), attachFactoryCreativeFile);
 app.post('/api/creative-factory/creatives/:id/meta-video', requireRole(['ADMIN']), fetchFactoryCreativeMetaVideo);

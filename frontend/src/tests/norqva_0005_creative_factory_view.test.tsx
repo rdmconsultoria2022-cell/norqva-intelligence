@@ -70,6 +70,8 @@ describe('NORQVA-0005 — Fábrica de Criativos (UI)', () => {
     render(<CreativeFactoryView currentUser={admin} isDemoView={false} apiFetch={apiFetch} showError={vi.fn()} showSuccess={vi.fn()} />);
     await screen.findByText('BB-B01-H02-M1-C1');
 
+    // NORQVA-0058: as claims começam ocultas
+    fireEvent.click(screen.getByTestId('toggle-factory-claims'));
     fireEvent.click(screen.getByRole('button', { name: 'Verificar' }));
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith('/creative-factory/claims/cl1?mode=real', expect.objectContaining({ method: 'PATCH' }))
