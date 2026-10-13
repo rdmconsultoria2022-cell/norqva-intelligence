@@ -121,3 +121,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - "Pagar aqui mesmo (Pix ou cartão)" continua na página como opção menor, para as vendas não pararem se o WhatsApp cair (API não oficial, D-0046).
   - O código liga a conversa à origem (utm, fbc/fbp, endereço e navegador da página). O pedido herda a origem por até 28 dias: a venda conta para a campanha (D-0052) e a compra informada à Meta pelo servidor leva os dados do clique. Sem código, a origem é "whatsapp" e o endereço do servidor não é enviado como se fosse do comprador.
 - **Já existente:** os criativos BB-B01 com R$ 29,90 que já rodam continuam; não podem ser reaprovados nem ir para campanha nova.
+
+## D-0055 — Livros novos da coleção: fotos na KIE e um volume por vez (2026-10-12)
+
+- **Decisão (Ricardo, 12/10/2026):** os volumes prometidos na página do kit (III Pães & Fermentação Natural, IV Antipasti & Aperitivo, V Risotos & Polentas) são feitos um por vez, com 12 receitas cada e o mesmo padrão do Trattoria e do Dolci. O Ricardo revisa cada volume antes do próximo.
+- **Fotos:** geradas pelo Claude na KIE (google/nano-banana, cerca de 4 créditos cada), no cenário dos livros (prato creme com borda dourada, linho rosado, mesa escura, luz quente, sem texto, marca ou mãos). Cada foto é conferida contra a receita antes de entrar. O uso comercial das imagens da KIE foi confirmado pelo Ricardo.
+- **Venda:** o livro só entra à venda depois de o Ricardo cadastrar o produto e o PDF no NORQVA (mexe na entrega ao comprador, precisa de aprovação). Até lá, a página do kit mantém "EM BREVE".
