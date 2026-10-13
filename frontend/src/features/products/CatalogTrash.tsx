@@ -52,7 +52,9 @@ export const TrashAction: React.FC<{
       showSuccess(
         action === 'delete'
           ? `${item.human_id} foi para a lixeira. Dá para restaurar quando quiser.`
-          : `${item.human_id} restaurado(a) pausado(a). Reative quando quiser.`
+          : kind === 'creative'
+            ? `${item.human_id} restaurado com todas as versões, no mesmo estado de aprovação.`
+            : `${item.human_id} restaurado(a) pausado(a). Reative quando quiser.`
       );
       setOpen(false);
       setCode('');
@@ -71,7 +73,9 @@ export const TrashAction: React.FC<{
           ? kind === 'creative'
             ? `${item.human_id} e as versões dele vão para a lixeira. Nada muda na Meta.`
             : `${item.human_id} sai da tela e das vendas e vai para a lixeira. Quem já comprou continua baixando.`
-          : `${item.human_id} volta pausado(a), sem vender sozinho.`}{' '}
+          : kind === 'creative'
+            ? `${item.human_id} volta com todas as versões, no mesmo estado de aprovação.`
+            : `${item.human_id} volta pausado(a), sem vender sozinho.`}{' '}
         Digite <strong className="font-mono">{item.human_id}</strong> para confirmar.
       </p>
       <input

@@ -120,7 +120,7 @@ export class AdjustmentService {
        FROM creative_adjustments a
        JOIN creatives c ON c.id = a.creative_id
        LEFT JOIN creatives rc ON rc.id = a.result_creative_id
-       WHERE a.is_demo = $1
+       WHERE a.is_demo = $1 AND c.is_deleted = FALSE
        ORDER BY a.created_at DESC LIMIT 100`,
       [isDemo]
     );

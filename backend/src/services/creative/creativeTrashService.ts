@@ -31,12 +31,22 @@ async function lineageOf(pool: Pool, creativeId: string) {
 /** Por que este criativo não pode ir para a lixeira agora (lista vazia = pode). */
 export async function creativeBlockers(pool: Pool, ids: string[], keys: string[]): Promise<string[]> {
   const out: string[] = [];
+  // anúncio ligado à mão ou pelo nome igual à chave do criativo (como no resto do NORQVA)
+  const upperKeys = Array.from(new Set(keys.map(k => k.toUpperCase())));
   const running = await pool.query(
-    `SELECT DISTINCT ma.name FROM creative_meta_ads cma JOIN meta_ads ma ON ma.meta_ad_id = cma.meta_ad_id AND ma.is_demo = FALSE
-     WHERE cma.creative_id = ANY($1::uuid[]) AND ma.effective_status = 'ACTIVE'`,
-    [ids]
+    `SELECT DISTINCT ma.name FROM meta_ads ma
+     WHERE ma.is_demo = FALSE AND ma.effective_status = 'ACTIVE'
+       AND (UPPER(ma.name) = ANY($2::text[])
+            OR EXISTS (SELECT 1 FROM creative_meta_ads cma WHERE cma.meta_ad_id = ma.meta_ad_id AND cma.creative_id = ANY($1::uuid[])))`,
+    [ids, upperKeys]
   );
   for (const r of running.rows) out.push(`O anúncio ${r.name} está rodando na Meta com este criativo: pause antes.`);
+  const adj = await pool.query(
+    `SELECT count(*)::int AS n FROM creative_adjustments
+     WHERE creative_id = ANY($1::uuid[]) AND status IN ('QUEUED', 'DISPATCHED', 'IN_PROGRESS', 'NEEDS_INPUT')`,
+    [ids]
+  );
+  if (Number(adj.rows[0]?.n || 0) > 0) out.push('Há um ajuste deste criativo em andamento com o Claude: espere terminar.');
   const plans = await pool.query(`SELECT code, spec, ad_creatives FROM launch_plans WHERE status = ANY($1::text[])`, [LIVE_PLAN_STATUSES]);
   const keySet = new Set(keys.map(k => k.toUpperCase()));
   for (const p of plans.rows) {

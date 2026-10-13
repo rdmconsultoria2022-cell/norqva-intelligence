@@ -346,11 +346,17 @@ export function CreativeFactoryView({
     { ACTIVE: 0, PAUSED: 0, OTHER: 0 }
   );
   const unpublished = visible.filter(c => !(c.campaigns || []).length);
+  // NORQVA-0058: campanha escolhida que sumiu depois de recarregar volta para "todas"
+  useEffect(() => {
+    if (campaignName !== 'ALL' && campaignName !== '__none__' && allCampaigns && !allCampaigns.some(cp => String(cp.meta_campaign_id) === campaignName)) {
+      setCampaignName('ALL');
+    }
+  }, [campaignName, allCampaigns]);
   type Group = { key: string; name: string; status: string | null; effective?: string | null; items: any[]; externalAds: any[] };
   const groups: Group[] = allCampaigns
     ? [
         ...allCampaigns
-          .filter(cp => campaignFilter === 'ALL' || campaignStatusOf(cp) === campaignFilter)
+          .filter(cp => campaignName !== 'ALL' || campaignFilter === 'ALL' || campaignStatusOf(cp) === campaignFilter)
           .filter(cp => campaignName === 'ALL' || (campaignName !== '__none__' && String(cp.meta_campaign_id) === campaignName))
           .map(cp => ({
             key: cp.meta_campaign_id,
@@ -366,7 +372,7 @@ export function CreativeFactoryView({
             const rank = (g: Group) => (g.status === 'ACTIVE' ? 0 : g.status === 'PAUSED' ? 1 : 2);
             return rank(a) - rank(b) || a.name.localeCompare(b.name);
           }),
-        ...(showUnpublished && !onlyRunning && unpublished.length > 0 && (campaignName === 'ALL' || campaignName === '__none__')
+        ...(((showUnpublished && campaignName === 'ALL') || campaignName === '__none__') && !onlyRunning && unpublished.length > 0
           ? [{ key: '__none__', name: 'Criativos não publicados', status: null, items: unpublished, externalAds: [] }]
           : [])
       ]

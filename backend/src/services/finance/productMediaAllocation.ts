@@ -57,7 +57,7 @@ export async function resolveCampaignProducts(pool: Pool, isDemo: boolean): Prom
     ),
     pool.query(
       `SELECT id, human_id, utm_content_key, product_id FROM creatives
-       WHERE is_demo = $1 AND is_deleted = FALSE AND product_id IS NOT NULL`,
+       WHERE is_demo = $1 AND (is_deleted = FALSE OR deleted_at IS NOT NULL) AND product_id IS NOT NULL`,
       [isDemo]
     ),
     pool.query(`SELECT creative_id, meta_ad_id FROM creative_meta_ads`),
