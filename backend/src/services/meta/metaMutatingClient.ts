@@ -732,6 +732,7 @@ export class MetaMutatingClient {
         call_to_action: callToAction
       };
       if (params.thumbnailUrl) videoData.image_url = params.thumbnailUrl;
+      else if (params.imageHash) videoData.image_hash = params.imageHash;
       objectStorySpec.video_data = videoData;
     } else {
       objectStorySpec.link_data = {
@@ -1142,6 +1143,27 @@ export class MetaMutatingClient {
     const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'effective_status,spend_cap' });
     const cap = obj?.spend_cap !== undefined && obj?.spend_cap !== null && String(obj.spend_cap) !== '' ? (parseFloat(obj.spend_cap) || 0) / 100 : null;
     return { spend: Math.round(spend * 100) / 100, effective_status: obj?.effective_status || null, spend_cap: cap && cap > 0 ? cap : null };
+  }
+
+  /**
+   * NORQVA-0056: troca a peça (creative) de um anúncio já criado (POST /{adId} {creative: {creative_id}}).
+   * A Meta não deixa editar link/texto de um anúncio existente; a troca manda o anúncio para revisão.
+   * Travas: feature flag + preflight; nunca em ID protegido (CONTROL); não muda status nem orçamento.
+   */
+  public async updateAdCreative(
+    adMetaId: string,
+    creativeMetaId: string,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; adId: string; creativeId: string }> {
+    if (!/^\d{5,25}$/.test(String(adMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid ad id.');
+    if (!/^\d{5,25}$/.test(String(creativeMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid creative id.');
+    if (protectedIds.has(String(adMetaId))) throw new Error('[SECURITY EXCEPTION]: Protected ad (CONTROL) cannot be changed.');
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${adMetaId}`, { creative: { creative_id: creativeMetaId } });
+    }
+    return { success: true, adId: String(adMetaId), creativeId: String(creativeMetaId) };
   }
 
   /** NORQVA-0052: gasto da campanha entre duas datas (AAAA-MM-DD, fuso da conta), só leitura. */

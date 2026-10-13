@@ -172,7 +172,7 @@ import { attendantInboundHandler } from './services/whatsapp/attendant';
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
-import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer } from './controllers/campaignController';
+import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
 import { getHiddenProducts, promoteHiddenProduct } from './controllers/catalogVisibilityController';
@@ -467,6 +467,8 @@ app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampai
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
 app.post('/api/campaigns/:id/fields', requireRole(['ADMIN']), saveCampaignFields);
 app.post('/api/campaigns/:id/ads/:index/creative', requireRole(['ADMIN']), chooseCampaignCreative);
+// NORQVA-0056: anúncio já criado na Meta: peça nova (destino/texto) no mesmo anúncio
+app.post('/api/campaigns/:id/ads/:index/replace-on-meta', requireRole(['ADMIN']), replaceCampaignAdOnMeta);
 app.post('/api/campaigns/:id/reset', requireRole(['ADMIN']), resetCampaign);
 app.post('/api/automation/experiment-guard/run', automationRunGuard);
 // NORQVA-0022: Método NORQVA de Campanhas (leitura + registros internos; nada na Meta)

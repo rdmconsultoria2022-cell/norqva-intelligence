@@ -207,7 +207,7 @@ export function toMetaTargeting(t: LaunchPlanTargeting): Record<string, any> {
   return out;
 }
 
-const humanIdFromUrl = (url: string): string | null => {
+export const humanIdFromUrl = (url: string): string | null => {
   try {
     const m = new URL(url).pathname.match(/^\/(?:p|kit)\/([A-Za-z0-9_-]+)$/);
     return m ? m[1] : null;
