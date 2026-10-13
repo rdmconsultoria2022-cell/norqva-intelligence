@@ -774,7 +774,7 @@ export async function getOffers(req: AuthenticatedRequest, res: Response) {
     const offers = await pool.query(
       `SELECT o.*, p.name as product_name 
        FROM offers o 
-       JOIN products p ON o.product_id = p.id 
+       JOIN products p ON o.product_id = p.id AND p.is_deleted = FALSE
        WHERE ${whereClause} 
        ORDER BY o.created_at DESC`,
       [isDemo]
@@ -6247,7 +6247,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND ${isDemo ? `(o_order.data_provenance != 'COMMERCIAL_PRODUCTION' OR o_order.is_demo = TRUE)` : `(o_order.data_provenance = 'COMMERCIAL_PRODUCTION')`}
          AND ($1::timestamptz IS NULL OR o_order.created_at >= $1)
          AND ($2::timestamptz IS NULL OR o_order.created_at <= $2)
-       WHERE o.is_demo = $3 AND (o.is_deleted IS FALSE OR o.is_deleted IS NULL)
+       WHERE o.is_demo = $3 AND (o.is_deleted IS FALSE OR o.is_deleted IS NULL OR o_order.id IS NOT NULL)
        GROUP BY o.id, o.human_id, o.name, o.price, o.promotional_price, ue.id, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost, ue.target_net_margin
        ORDER BY gross_revenue DESC, units_sold DESC`,
       [startDateParam, endDateParam, isDemo]
