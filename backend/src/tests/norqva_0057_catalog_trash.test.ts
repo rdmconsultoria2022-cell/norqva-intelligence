@@ -58,6 +58,7 @@ describe.sequential('NORQVA-0057 — lixeira de produtos e ofertas', () => {
     if (!pool) return;
     await pool.query('DELETE FROM order_items WHERE order_id = $1', [orderId]).catch(() => {});
     await pool.query('DELETE FROM orders WHERE id = $1', [orderId]).catch(() => {});
+    await pool.query('DELETE FROM customers WHERE email = $1', [`buyer.${tag.toLowerCase()}@example.com`]).catch(() => {});
     await pool.query('DELETE FROM offer_bumps WHERE offer_id = $1', [offerMain]).catch(() => {});
     await pool.query('DELETE FROM launch_plans WHERE code = $1', [`T57-${tag}`]).catch(() => {});
     await pool.query('DELETE FROM offers WHERE id = ANY($1::uuid[])', [[offerA, offerB, offerC, offerMain]]).catch(() => {});

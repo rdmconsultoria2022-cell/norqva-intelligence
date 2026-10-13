@@ -173,7 +173,10 @@ export class CatalogTrashService {
     }
   }
 
-  /** Tira da lixeira ou do arquivo. Produto que vendia (PRONTO/ATIVO) ou arquivado volta PAUSADO; o resto mantém a situação. */
+  /**
+   * Tira da lixeira ou do arquivo. Produto que vendia (PRONTO/ATIVO) volta PAUSADO. Arquivado volta PAUSADO
+   * só com a procedência completa; sem ela volta PLANEJADO, para não pular as etapas até PRONTO.
+   */
   async restoreProduct(id: string, confirm: unknown, userId: string | null) {
     if (!UUID_RE.test(String(id || ''))) throw new CatalogTrashError(404, 'Produto não encontrado.');
     const client = await this.pool.connect();
@@ -183,7 +186,12 @@ export class CatalogTrashService {
       if (!product) throw new CatalogTrashError(404, 'Produto não encontrado.');
       if (!product.is_deleted && product.status !== 'ARQUIVADO') throw new CatalogTrashError(409, 'O produto não está na lixeira nem arquivado.');
       if (!confirmOk(confirm, product.human_id)) throw new CatalogTrashError(400, `Para restaurar, digite o código do produto (${product.human_id}).`);
-      const nextStatus = ['PRONTO', 'ATIVO', 'ARQUIVADO'].includes(product.status) ? 'PAUSADO' : product.status;
+      const provenanceOk = !!(product.origin_provenance && product.origin_responsible_id && product.origin_evidence);
+      const nextStatus = ['PRONTO', 'ATIVO'].includes(product.status)
+        ? 'PAUSADO'
+        : product.status === 'ARQUIVADO'
+          ? (provenanceOk ? 'PAUSADO' : 'PLANEJADO')
+          : product.status;
       const actor = await actorId(client, userId);
       const upd = await client.query(
         `UPDATE products SET is_deleted = FALSE, deleted_at = NULL, deleted_by = NULL, status = $2 WHERE id = $1 RETURNING id, human_id, name, status, is_deleted`,

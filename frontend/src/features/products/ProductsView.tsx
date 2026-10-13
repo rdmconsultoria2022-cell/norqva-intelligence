@@ -317,10 +317,13 @@ export const ProductsView: React.FC<Props> = ({
     setTrashKey(k => k + 1);
     onProductsChanged?.();
   };
-  const offerTrash = (off: any) =>
-    isAdmin && !isDemoView ? (
-      <TrashAction kind="offer" action={off.status === 'ARQUIVADA' ? 'restore' : 'delete'} item={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={afterTrash} />
-    ) : null;
+  const offerTrash = (off: any) => {
+    if (!isAdmin || isDemoView) return null;
+    if (off.status === 'ATIVA' || off.status === 'TESTE') {
+      return <p className="text-[10px] text-slate-500 text-center" data-testid="delete-offer-hint">Para excluir, pause a oferta antes.</p>;
+    }
+    return <TrashAction kind="offer" action={off.status === 'ARQUIVADA' ? 'restore' : 'delete'} item={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={afterTrash} />;
+  };
 
   useEffect(() => {
     if (initialOpen === 'all') setOpen(new Set(products.map(p => String(p.id))));
