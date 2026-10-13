@@ -39,6 +39,7 @@ import {
   decideOpportunity,
   analyzeOpportunity,
   getPublicOffer,
+  getPublicCollection,
   createCustomer,
   getCustomers,
   createOrder,
@@ -364,6 +365,7 @@ app.post('/api/config/clear-demo', requireRole(['ADMIN']), clearDemo);
 
 // Customers and Checkout endpoints (Sprint 2.5B & Public Commerce V1)
 app.get('/api/public/offers/:humanId', orderStatusRateLimiter, getPublicOffer);
+app.get('/api/public/collection', orderStatusRateLimiter, getPublicCollection);
 app.post('/api/public/telemetry/events', generalRateLimiter, recordFunnelEvent);
 // NORQVA-0054: página → WhatsApp com código de origem
 app.post('/api/public/whatsapp/ref', checkoutRateLimiter, postPublicWhatsAppRef);

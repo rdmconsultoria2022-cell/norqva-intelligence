@@ -8,6 +8,7 @@ import { captureUrlAttribution, sendFunnelEvent } from '../../services/attributi
 import { BuyChoice, requestWhatsAppLink, goToWhatsApp } from './WhatsAppChoice';
 import { savePurchaseSession, updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
+import { COLLECTION_COVERS } from './bookPages';
 
 // NORQVA-0038: página de vendas do Kit Cozinha Italiana (Trattoria em Casa + Dolci della Nonna).
 // Preços, parcelas e "de/por" vêm sempre da oferta no servidor; nada de valor fixo aqui.
@@ -134,6 +135,24 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       alive = false;
     };
   }, [humanId]);
+
+  // NORQVA-0061: livros da coleção já à venda separadamente (oferta ATIVA)
+  const [forSale, setForSale] = useState<Record<string, { human_id: string; price: number }>>({});
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE}/public/collection`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!alive || !data || !Array.isArray(data.books)) return;
+        const map: Record<string, { human_id: string; price: number }> = {};
+        for (const b of data.books) if (b && b.book && b.human_id) map[String(b.book)] = { human_id: String(b.human_id), price: Number(b.price) };
+        setForSale(map);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const openCheckout = () => {
     if (!offer) return;
@@ -282,7 +301,11 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             <div className="kicker">01 · A coleção</div>
             <h2 className="h2">Uma biblioteca de cozinha italiana que cresce com você</h2>
           </div>
-          <p className="lead" style={{ maxWidth: 360, fontSize: 15 }}>Dois títulos já disponíveis e novos livros entrando na coleção. Arraste para conhecer.</p>
+          <p className="lead" style={{ maxWidth: 360, fontSize: 15 }}>
+            {Object.keys(forSale).length > 0
+              ? 'Dois títulos no kit e outros livros da coleção à venda separadamente. Arraste para conhecer.'
+              : 'Dois títulos já disponíveis e novos livros entrando na coleção. Arraste para conhecer.'}
+          </p>
         </div>
         <div className="carousel" style={{ maxWidth: 1264, margin: '0 auto', boxSizing: 'border-box' }}>
           {[
@@ -299,21 +322,38 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             </div>
           ))}
           {[
-            ['Volume III', 'Pães & Fermentação Natural', '#efe7da'],
-            ['Volume IV', 'Antipasti & Aperitivo', '#ecdcd2'],
-            ['Volume V', 'Risotos & Polentas', '#e2e5d6']
-          ].map(([vol, name, bg]) => (
-            <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <div className="cov soon" style={{ background: bg }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.3em', textTransform: 'uppercase', color: '#8a6b45' }}>{vol}</div>
-                <div className="serif" style={{ fontSize: 30, color: '#3a322a', marginTop: 14, lineHeight: 1.08 }}>{name}</div>
+            ['Volume III', 'Pães & Fermentação Natural', '#efe7da', 'paes'],
+            ['Volume IV', 'Antipasti & Aperitivo', '#ecdcd2', 'antipasti'],
+            ['Volume V', 'Risotos & Polentas', '#e2e5d6', 'risotos']
+          ].map(([vol, name, bg, key]) => {
+            const sale = forSale[key];
+            if (sale) {
+              return (
+                <a key={name} href={`/p/${encodeURIComponent(sale.human_id)}`} style={{ display: 'flex', flexDirection: 'column', gap: 18, color: 'inherit', textDecoration: 'none' }} data-testid={`collection-${key}`}>
+                  <div className="cov"><img src={COLLECTION_COVERS[key]} alt={`Capa ${name}`} /></div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2f5a3d' }}>
+                      Disponível separadamente · R$ {sale.price.toFixed(2).replace('.', ',')}
+                    </div>
+                    <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{name}</div>
+                    <div style={{ fontSize: 14, color: '#8a4b2a', marginTop: 2, textDecoration: 'underline' }}>Ver o livro</div>
+                  </div>
+                </a>
+              );
+            }
+            return (
+              <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div className="cov soon" style={{ background: bg }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.3em', textTransform: 'uppercase', color: '#8a6b45' }}>{vol}</div>
+                  <div className="serif" style={{ fontSize: 30, color: '#3a322a', marginTop: 14, lineHeight: 1.08 }}>{name}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8d8377' }}>Em breve · não incluído no kit</div>
+                  <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{name}</div>
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8d8377' }}>Em breve · não incluído no kit</div>
-                <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{name}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

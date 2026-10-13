@@ -145,3 +145,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (Ricardo, 13/10/2026 18h02):** todo o conteúdo do criativo é editável pela tela (gancho, mecanismo, título, texto, CTA, roteiro, arquivo) e o criativo pode ser excluído.
 - **Regras:** edição de conteúdo já revisado cria nova versão para aprovar de novo (a aprovação continua ligada ao conteúdo). Excluir segue a lixeira da D-0057: só ADMIN, código digitado, todas as versões juntas, "Restaurar" desfaz; bloqueado com anúncio rodando na Meta ou campanha do NORQVA usando o criativo. Nada muda na Meta.
+
+## D-0061 — Volumes III, IV e V vendidos separadamente (2026-10-13)
+
+- **Decisão (Ricardo, 13/10/2026 19h26, contrato NORQVA-0061):** os três livros novos da coleção são vendidos cada um sozinho, a **R$ 19,90**, com Pix e as condições de cartão do Trattoria. O kit continua com Trattoria + Dolci.
+- **Como entra à venda:** a migration 062 cria produto e oferta em RASCUNHO. O Ricardo envia o PDF final na tela, testa (TESTE) e ativa (ATIVA). Só com a oferta ATIVA o livro aparece como "Disponível separadamente" na página do kit.
+- **Página:** cada livro tem a sua página de venda (`bookPages.ts`), no visual do Trattoria, sem preço nos textos além do botão de compra.
