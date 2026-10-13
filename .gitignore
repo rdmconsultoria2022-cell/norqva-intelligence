@@ -43,3 +43,8 @@ backend/test_run.log
 
 
 __pycache__/
+
+# NORQVA: PDFs e HTML gerados pelos builds dos livros (regerados a partir das fontes)
+norqva-ai/produtos/*/*.pdf
+norqva-ai/produtos/*/*.html
+norqva-ai/produtos/*/__pycache__/

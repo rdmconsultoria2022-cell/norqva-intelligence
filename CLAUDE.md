@@ -59,7 +59,8 @@ Fontes em `norqva-ai/produtos/`:
 
 - `dolci/`: Dolci della Nonna (27 páginas). `python3 build2.py` gera `DOLCI_DELLA_NONNA.pdf`.
 - `trattoria/`: Trattoria em Casa, Edição 2026 (67 páginas, 28 receitas com foto). `python3 build_trattoria.py` gera `TRATTORIA_EM_CASA_EDICAO_2026.pdf`. Textos em `content_trattoria.py`; revisão culinária em `revisao_trattoria.md`.
-- `paes/`: Pães & Fermentação Natural, Volume III da coleção (31 páginas, 12 receitas, NORQVA-0055). `python build_paes.py` gera `PAES_E_FERMENTACAO_NATURAL.pdf` e roda no Linux e no Windows. Fotos feitas na KIE (D-0055); revisão em `revisao_paes.md`. Ainda não está à venda. Próximos volumes: IV Antipasti & Aperitivo, V Risotos & Polentas, um por vez, com revisão do Ricardo entre eles.
+- `paes/`: Pães & Fermentação Natural, Volume III da coleção (31 páginas, 12 receitas, NORQVA-0055). `python build_paes.py` gera `PAES_E_FERMENTACAO_NATURAL.pdf` e roda no Linux e no Windows. Fotos feitas na KIE (D-0055); revisão em `revisao_paes.md`. Ainda não está à venda. Aprovado pelo Ricardo em 13/10/2026.
+- `antipasti/`: Antipasti & Aperitivo, Volume IV (31 páginas, 12 receitas, NORQVA-0059). `python build_antipasti.py` gera `ANTIPASTI_E_APERITIVO.pdf`; `python gerar_fotos.py` gera as fotos na KIE (rodar no computador do Ricardo, onde está a `KIE_API_KEY`). Revisão em `revisao_antipasti.md`. Aguardando fotos e revisão do Ricardo. Depois: V Risotos & Polentas.
 
 Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo gera no GPT; avalie cada uma contra a receita (ingredientes visíveis batem com o texto, mesmo cenário: prato creme com borda dourada, linho rosado, mesa escura, luz quente, sem texto, marca ou mãos). Arquivos `.png` colocados em `trattoria/imagens/` são convertidos para `jpg/` no build.
 
