@@ -362,7 +362,10 @@ export const ProductsView: React.FC<Props> = ({
   };
 
   useEffect(() => {
-    if (initialOpen === 'all') setOpen(new Set(products.map(p => String(p.id))));
+    if (initialOpen === 'all') {
+      setOpen(new Set(products.map(p => String(p.id))));
+      setViewMode('list');
+    }
   }, [initialOpen, products.length]);
 
   // Marcas: leitura para os perfis que o servidor aceita; trocar continua só ADMIN
@@ -399,12 +402,16 @@ export const ProductsView: React.FC<Props> = ({
 
   // NORQVA-0062: filtros (situação de venda, arquivados, nome, marca)
   const offersOf = (prd: any) => offers.filter(o => String(o.product_id) === String(prd.id));
-  const isArchived = (prd: any) => prd.status === 'ARQUIVADO';
+  // arquivado com oferta vendendo ou em teste continua visível: está no ar
+  const isArchived = (prd: any) => prd.status === 'ARQUIVADO' && productSituation(offersOf(prd)) === 'OFF';
+  // filtro que ficou sem opção (produto excluído, marcas não carregadas) volta para "todos"
+  const effProduct = products.some(p => String(p.id) === productFilter) ? productFilter : 'ALL';
+  const effBrand = brands.length > 0 ? brandFilter : 'ALL';
   const baseProducts = products.filter(
     p =>
-      (showArchived || !isArchived(p)) &&
-      (productFilter === 'ALL' || String(p.id) === productFilter) &&
-      (brandFilter === 'ALL' || (brandFilter === 'NONE' ? !p.brand_id : String(p.brand_id || '') === brandFilter))
+      (showArchived || !isArchived(p) || String(p.id) === effProduct) &&
+      (effProduct === 'ALL' || String(p.id) === effProduct) &&
+      (effBrand === 'ALL' || (effBrand === 'NONE' ? !p.brand_id : String(p.brand_id || '') === effBrand))
   );
   const situationCounts: Record<Situation, number> = { ALL: baseProducts.length, SELLING: 0, TESTING: 0, OFF: 0 };
   for (const p of baseProducts) situationCounts[productSituation(offersOf(p))] += 1;
@@ -413,6 +420,7 @@ export const ProductsView: React.FC<Props> = ({
   const openProductInList = (id: string) => {
     setViewMode('list');
     setFocusId(id);
+    setTimeout(() => setFocusId(cur => (cur === id ? null : cur)), 4000);
     setOpen(prev => new Set(prev).add(id));
     setTimeout(() => {
       try {
@@ -468,7 +476,7 @@ export const ProductsView: React.FC<Props> = ({
             <select
               aria-label="Produto"
               data-testid="product-name-filter"
-              value={productFilter}
+              value={effProduct}
               onChange={e => setProductFilter(e.target.value)}
               className="max-w-[18rem] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
             >
@@ -485,7 +493,7 @@ export const ProductsView: React.FC<Props> = ({
               <select
                 aria-label="Marca"
                 data-testid="brand-filter"
-                value={brandFilter}
+                value={effBrand}
                 onChange={e => setBrandFilter(e.target.value)}
                 className="bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
               >
@@ -534,7 +542,7 @@ export const ProductsView: React.FC<Props> = ({
               className={`border border-slate-800 bg-slate-900/30 rounded ${focusId === String(prd.id) ? 'ring-2 ring-emerald-500' : ''}`}
               data-testid="product-card"
             >
-              <div className="p-4 grid gap-4 md:grid-cols-[1fr_18rem]">
+              <div className={viewMode === 'list' ? 'p-4 grid gap-4 md:grid-cols-[1fr_18rem]' : 'p-4 grid gap-4'}>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-emerald-400 font-bold text-xs">{prd.human_id}</span>
@@ -640,7 +648,7 @@ export const ProductsView: React.FC<Props> = ({
                   )}
                 </div>
                 {isOpen && (
-                  <div className="grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3" data-testid="product-offers">
+                  <div className={viewMode === 'list' ? 'grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3' : 'grid gap-3 px-4 pb-4'} data-testid="product-offers">
                     {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
                       <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} editor={close => <OfferEditor off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onSaved={onProductsChanged} onClose={close} />} trash={offerTrash(off)} />

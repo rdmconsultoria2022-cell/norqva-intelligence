@@ -18,7 +18,7 @@ const offers = [
   { id: 'o3', human_id: 'OFF-3', name: 'Bolso', price: '29.90', product_id: 'p3', status: 'PAUSADA', is_demo: false }
 ];
 
-const setup = () => {
+const setup = async () => {
   const apiFetch = vi.fn(async (url: string) => (url === '/brands' ? { brands: [{ id: 'b1', name: 'Cozinha Nonna' }] } : {}));
   render(
     <ProductsView
@@ -35,6 +35,8 @@ const setup = () => {
       onCheckout={vi.fn()}
     />
   );
+  // espera as marcas carregarem
+  await screen.findByTestId('brand-filter');
 };
 
 const names = () => screen.queryAllByTestId('product-card').map(c => within(c).getByRole('heading', { level: 3 }).textContent);
@@ -56,7 +58,7 @@ describe('NORQVA-0062 — opções de exibição em Produtos', () => {
   });
 
   it('filtra por situação e esconde arquivados até marcar a opção', async () => {
-    setup();
+    await setup();
     expect(names()).toEqual(['Trattoria em Casa', 'Pães & Fermentação Natural', 'Bolso Blindado']);
     expect(screen.getByTestId('situation-SELLING')).toHaveTextContent('À venda (1)');
     expect(screen.getByTestId('situation-OFF')).toHaveTextContent('Fora do ar (1)');
@@ -68,18 +70,18 @@ describe('NORQVA-0062 — opções de exibição em Produtos', () => {
   });
 
   it('procura pelo nome e pela marca', async () => {
-    setup();
+    await setup();
     fireEvent.change(screen.getByTestId('product-name-filter'), { target: { value: 'p3' } });
     expect(names()).toEqual(['Bolso Blindado']);
     fireEvent.change(screen.getByTestId('product-name-filter'), { target: { value: 'ALL' } });
-    fireEvent.change(await screen.findByTestId('brand-filter'), { target: { value: 'b1' } });
+    fireEvent.change(screen.getByTestId('brand-filter'), { target: { value: 'b1' } });
     expect(names()).toEqual(['Trattoria em Casa', 'Pães & Fermentação Natural']);
     fireEvent.change(screen.getByTestId('brand-filter'), { target: { value: 'NONE' } });
     expect(names()).toEqual(['Bolso Blindado']);
   });
 
-  it('modo ícones mostra a capa; clicar volta para a lista com o produto aberto', () => {
-    setup();
+  it('modo ícones mostra a capa; clicar volta para a lista com o produto aberto', async () => {
+    await setup();
     fireEvent.click(screen.getByRole('radio', { name: 'Ícones grandes' }));
     const tiles = screen.getAllByTestId('icon-tile');
     expect(tiles).toHaveLength(3);
