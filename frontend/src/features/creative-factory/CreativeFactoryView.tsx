@@ -1,11 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2, Plus } from 'lucide-react';
+import { Factory, ShieldCheck, ShieldAlert, CheckCircle2, XCircle, PencilLine, RefreshCw, Download, Link2, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { UserObj } from '../../types';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { CreativePreview } from '../../components/CreativePreview';
 import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile, groupByCampaign } from '../../components/ViewModes';
 import { NewCreativeForm, NewCreativeInput, CLAIM_TYPE_LABEL } from './NewCreativeForm';
 import { adDelivery, DeliveryBadge, MetaImage, AdPreviewButton } from '../../components/AdLivePreview';
+import { TrashAction } from '../products/CatalogTrash';
+import { CreativeTrash } from './CreativeTrash';
+
+// NORQVA-0058: lembra se as claims ficam abertas (preferência só deste navegador)
+const CLAIMS_KEY = 'norqva.factory.showClaims';
+const readShowClaims = () => {
+  try {
+    return window.localStorage.getItem(CLAIMS_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 // NORQVA-0005 / G1: Creative Factory — batch matrix, claims gate, human approval and
 // a deterministic scorecard per creative (Meta ad name == creative key).
@@ -105,7 +117,22 @@ export function CreativeFactoryView({
   const [rejecting, setRejecting] = useState<{ id: string; decision: 'REJECTED' | 'REVISION_REQUESTED' } | null>(null);
   const [reason, setReason] = useState('WEAK_HOOK');
   const [notes, setNotes] = useState('');
-  const [editing, setEditing] = useState<{ id: string; headline: string; primary_text: string; file_url: string } | null>(null);
+  // NORQVA-0058: todo o conteúdo do criativo é editável
+  const [editing, setEditing] = useState<{
+    id: string; hook: string; mechanism: string; headline: string; primary_text: string; cta: string; script: string; file_url: string;
+  } | null>(null);
+  const [showClaims, setShowClaimsState] = useState<boolean>(readShowClaims);
+  const setShowClaims = (v: boolean) => {
+    setShowClaimsState(v);
+    try {
+      window.localStorage.setItem(CLAIMS_KEY, v ? '1' : '0');
+    } catch {
+      /* sem armazenamento: vale só nesta visita */
+    }
+  };
+  // NORQVA-0058: procurar o criativo pelo nome da campanha
+  const [campaignName, setCampaignName] = useState<string>('ALL');
+  const [trashKey, setTrashKey] = useState(0);
   const [linking, setLinking] = useState<{ id: string; meta_ad_id: string } | null>(null);
   const [attaching, setAttaching] = useState<{ id: string; file_url: string } | null>(null);
   const [creating, setCreating] = useState(false);
@@ -206,10 +233,19 @@ export function CreativeFactoryView({
 
   const submitEdit = () => {
     if (!editing) return;
-    const { id, headline, primary_text, file_url } = editing;
+    const { id, hook, mechanism, headline, primary_text, cta, script, file_url } = editing;
     return run(
       `revise-${id}`,
-      () => post(`/creative-factory/creatives/${id}/revise?mode=${mode}`, { headline, primary_text, file_url: file_url || null }),
+      () =>
+        post(`/creative-factory/creatives/${id}/revise?mode=${mode}`, {
+          hook,
+          mechanism: mechanism.trim() || null,
+          headline,
+          primary_text,
+          cta,
+          script,
+          file_url: file_url || null
+        }),
       'Criativo atualizado.'
     ).then(() => setEditing(null));
   };
@@ -310,11 +346,18 @@ export function CreativeFactoryView({
     { ACTIVE: 0, PAUSED: 0, OTHER: 0 }
   );
   const unpublished = visible.filter(c => !(c.campaigns || []).length);
+  // NORQVA-0058: campanha escolhida que sumiu depois de recarregar volta para "todas"
+  useEffect(() => {
+    if (campaignName !== 'ALL' && campaignName !== '__none__' && allCampaigns && !allCampaigns.some(cp => String(cp.meta_campaign_id) === campaignName)) {
+      setCampaignName('ALL');
+    }
+  }, [campaignName, allCampaigns]);
   type Group = { key: string; name: string; status: string | null; effective?: string | null; items: any[]; externalAds: any[] };
   const groups: Group[] = allCampaigns
     ? [
         ...allCampaigns
-          .filter(cp => campaignFilter === 'ALL' || campaignStatusOf(cp) === campaignFilter)
+          .filter(cp => campaignName !== 'ALL' || campaignFilter === 'ALL' || campaignStatusOf(cp) === campaignFilter)
+          .filter(cp => campaignName === 'ALL' || (campaignName !== '__none__' && String(cp.meta_campaign_id) === campaignName))
           .map(cp => ({
             key: cp.meta_campaign_id,
             name: cp.name,
@@ -329,7 +372,7 @@ export function CreativeFactoryView({
             const rank = (g: Group) => (g.status === 'ACTIVE' ? 0 : g.status === 'PAUSED' ? 1 : 2);
             return rank(a) - rank(b) || a.name.localeCompare(b.name);
           }),
-        ...(showUnpublished && !onlyRunning && unpublished.length > 0
+        ...(((showUnpublished && campaignName === 'ALL') || campaignName === '__none__') && !onlyRunning && unpublished.length > 0
           ? [{ key: '__none__', name: 'Criativos não publicados', status: null, items: unpublished, externalAds: [] }]
           : [])
       ]
@@ -677,7 +720,18 @@ export function CreativeFactoryView({
                   )}
                   {canRevise && (
                     <button
-                      onClick={() => setEditing({ id: c.id, headline: c.headline || '', primary_text: c.primary_text || '', file_url: c.file_url || '' })}
+                      onClick={() =>
+                        setEditing({
+                          id: c.id,
+                          hook: c.hook || '',
+                          mechanism: c.mechanism || '',
+                          headline: c.headline || '',
+                          primary_text: c.primary_text || c.copy || '',
+                          cta: c.cta || '',
+                          script: c.script || '',
+                          file_url: c.file_url || ''
+                        })
+                      }
                       className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs"
                     >
                       Editar
@@ -690,6 +744,22 @@ export function CreativeFactoryView({
                     >
                       <Link2 className="h-3.5 w-3.5" /> Ligar anúncio
                     </button>
+                  )}
+                  {isAdmin && !isDemoView && (
+                    <div className="w-full sm:w-auto sm:min-w-[11rem]">
+                      <TrashAction
+                        kind="creative"
+                        action="delete"
+                        item={c}
+                        apiFetch={apiFetch}
+                        showError={showError}
+                        showSuccess={showSuccess}
+                        onDone={() => {
+                          setTrashKey(k => k + 1);
+                          load();
+                        }}
+                      />
+                    </div>
                   )}
                 </footer>
               )}
@@ -729,20 +799,59 @@ export function CreativeFactoryView({
               {editing?.id === c.id && (
                 <div className="space-y-2 border-t border-slate-800 pt-2 text-xs">
                   <p className="text-[11px] text-slate-500">
-                    Se este criativo já foi revisado, mudar título ou texto cria uma nova versão e a atual vira "Substituído". Para só anexar o arquivo, use "Anexar arquivo".
+                    Se este criativo já foi revisado, mudar o conteúdo cria uma nova versão (para aprovar de novo) e a atual vira "Substituído". Para só anexar o arquivo, use "Anexar arquivo". Sem preço no texto.
                   </p>
+                  <label className="block space-y-0.5">
+                    <span className="text-slate-500">Gancho (primeira frase)</span>
+                    <input
+                      aria-label="Gancho"
+                      value={editing?.hook || ''}
+                      onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, hook: v } : prev)); }}
+                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    />
+                  </label>
+                  <label className="block space-y-0.5">
+                    <span className="text-slate-500">Mecanismo</span>
+                    <input
+                      aria-label="Mecanismo"
+                      value={editing?.mechanism || ''}
+                      onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, mechanism: v } : prev)); }}
+                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    />
+                  </label>
+                  <span className="block text-slate-500">Título</span>
                   <input
                     aria-label="Título"
                     value={editing?.headline || ''}
                     onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, headline: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
                   />
+                  <span className="block text-slate-500">Texto principal</span>
                   <textarea
                     aria-label="Texto principal"
                     value={editing?.primary_text || ''}
                     onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, primary_text: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded h-20"
                   />
+                  <label className="block space-y-0.5">
+                    <span className="text-slate-500">CTA (chamada)</span>
+                    <input
+                      aria-label="CTA"
+                      value={editing?.cta || ''}
+                      onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, cta: v } : prev)); }}
+                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    />
+                  </label>
+                  <label className="block space-y-0.5">
+                    <span className="text-slate-500">Roteiro</span>
+                    <textarea
+                      aria-label="Roteiro"
+                      value={editing?.script || ''}
+                      onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, script: v } : prev)); }}
+                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded h-24"
+                    />
+                  </label>
+                  <span className="block text-slate-500">Link do arquivo</span>
                   <input
                     aria-label="Link do arquivo"
                     placeholder="Link do vídeo/imagem produzido"
@@ -970,18 +1079,26 @@ export function CreativeFactoryView({
       )}
 
       {/* Claims */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+      <section className={`rounded-xl border border-slate-800 bg-slate-900/50 ${showClaims ? 'p-4 space-y-3' : 'px-4 py-2.5'}`} data-testid="claims-section">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setShowClaims(!showClaims)}
+            aria-expanded={showClaims}
+            data-testid="toggle-factory-claims"
+            className="text-sm font-bold text-slate-200 flex items-center gap-2"
+          >
+            {showClaims ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
             <ShieldCheck className="h-4 w-4 text-emerald-400" /> Claims ({claims.length})
-          </h2>
+            <span className="text-[11px] font-normal text-slate-500">{showClaims ? 'ocultar' : 'mostrar'}</span>
+          </button>
           {pendingClaims.length > 0 && (
             <span className="text-[11px] font-mono text-amber-300">
               {pendingClaims.length} aguardando verificação: sem elas nenhum criativo pode ser aprovado
             </span>
           )}
         </div>
-        {claims.length === 0 ? (
+        {!showClaims ? null : claims.length === 0 ? (
           <p className="text-xs text-slate-500">Nenhuma claim registrada.</p>
         ) : (
           <ul className="divide-y divide-slate-800">
@@ -1029,6 +1146,8 @@ export function CreativeFactoryView({
         )}
       </section>
 
+      {isAdmin && !isDemoView && <CreativeTrash apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onChanged={load} reloadKey={trashKey} />}
+
       {/* Organização por campanha */}
       {allCampaigns && (
         <div className="flex flex-wrap items-center gap-2 text-xs font-mono" data-testid="campaign-filters">
@@ -1059,6 +1178,24 @@ export function CreativeFactoryView({
             />
             Exibir criativos não publicados ({creatives.filter(c => c.approval_status !== 'SUPERSEDED' && !(c.campaigns || []).length).length})
           </label>
+          <select
+            aria-label="Campanha"
+            data-testid="campaign-name-filter"
+            value={campaignName}
+            onChange={e => setCampaignName(e.target.value)}
+            className="ml-2 max-w-[18rem] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded font-sans"
+          >
+            <option value="ALL">Procurar pelo nome da campanha</option>
+            {[...allCampaigns]
+              .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+              .map(cp => (
+                <option key={cp.meta_campaign_id} value={String(cp.meta_campaign_id)}>
+                  {cp.name}
+                  {cp.status === 'ACTIVE' ? ' (ativa)' : cp.status === 'PAUSED' ? ' (pausada)' : ''}
+                </option>
+              ))}
+            <option value="__none__">Criativos não publicados</option>
+          </select>
         </div>
       )}
 

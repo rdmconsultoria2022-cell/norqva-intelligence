@@ -140,3 +140,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, 13/10/2026 17h11, contrato NORQVA-0057):** excluir produto ou oferta pela tela leva para uma lixeira, com "Restaurar". Nada é apagado do banco, porque pedidos, pagamentos e downloads dependem do cadastro. O "Arquivar" ganhou volta pelo mesmo "Restaurar".
 - **Travas:** só ADMIN, com o código digitado; oferta ativa ou em teste, usada por campanha na Meta, adicional no Pix ativo ou com pedido aguardando pagamento não é excluída; produto só sem ofertas abertas. Restaurar devolve pausado.
 - **Comprador:** quem já comprou continua baixando normalmente.
+
+## D-0058 — Criativos editáveis por completo e com lixeira (2026-10-13)
+
+- **Decisão (Ricardo, 13/10/2026 18h02):** todo o conteúdo do criativo é editável pela tela (gancho, mecanismo, título, texto, CTA, roteiro, arquivo) e o criativo pode ser excluído.
+- **Regras:** edição de conteúdo já revisado cria nova versão para aprovar de novo (a aprovação continua ligada ao conteúdo). Excluir segue a lixeira da D-0057: só ADMIN, código digitado, todas as versões juntas, "Restaurar" desfaz; bloqueado com anúncio rodando na Meta ou campanha do NORQVA usando o criativo. Nada muda na Meta.

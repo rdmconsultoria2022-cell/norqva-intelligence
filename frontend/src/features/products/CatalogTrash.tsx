@@ -8,7 +8,7 @@ type ApiFetch = (url: string, options?: RequestInit) => Promise<any>;
 
 /** Botão com confirmação pelo código do item (OFF-... ou PRD-...). */
 export const TrashAction: React.FC<{
-  kind: 'offer' | 'product';
+  kind: 'offer' | 'product' | 'creative';
   action: 'delete' | 'restore';
   item: { id: string; human_id: string; name?: string };
   apiFetch: ApiFetch;
@@ -19,7 +19,7 @@ export const TrashAction: React.FC<{
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const label = action === 'delete' ? (kind === 'offer' ? 'Excluir oferta' : 'Excluir produto') : 'Restaurar';
+  const label = action === 'delete' ? (kind === 'offer' ? 'Excluir oferta' : kind === 'creative' ? 'Excluir criativo' : 'Excluir produto') : 'Restaurar';
   const tid = `${action}-${kind}-${item.human_id}`;
 
   if (!open) {
@@ -43,7 +43,8 @@ export const TrashAction: React.FC<{
   const go = async () => {
     setBusy(true);
     try {
-      await apiFetch(`/${kind === 'offer' ? 'offers' : 'products'}/${item.id}/${action}?mode=real`, {
+      const base = kind === 'offer' ? 'offers' : kind === 'creative' ? 'creative-factory/creatives' : 'products';
+      await apiFetch(`/${base}/${item.id}/${action}?mode=real`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirm_code: code.trim() })
@@ -51,7 +52,9 @@ export const TrashAction: React.FC<{
       showSuccess(
         action === 'delete'
           ? `${item.human_id} foi para a lixeira. Dá para restaurar quando quiser.`
-          : `${item.human_id} restaurado(a) pausado(a). Reative quando quiser.`
+          : kind === 'creative'
+            ? `${item.human_id} restaurado com todas as versões, no mesmo estado de aprovação.`
+            : `${item.human_id} restaurado(a) pausado(a). Reative quando quiser.`
       );
       setOpen(false);
       setCode('');
@@ -67,8 +70,12 @@ export const TrashAction: React.FC<{
     <div role="dialog" aria-label={label} className="rounded border border-amber-700/50 bg-amber-950/20 p-2 space-y-2 text-xs text-amber-100" data-testid={`${tid}-confirm`}>
       <p>
         {action === 'delete'
-          ? `${item.human_id} sai da tela e das vendas e vai para a lixeira. Quem já comprou continua baixando.`
-          : `${item.human_id} volta pausado(a), sem vender sozinho.`}{' '}
+          ? kind === 'creative'
+            ? `${item.human_id} e as versões dele vão para a lixeira. Nada muda na Meta.`
+            : `${item.human_id} sai da tela e das vendas e vai para a lixeira. Quem já comprou continua baixando.`
+          : kind === 'creative'
+            ? `${item.human_id} volta com todas as versões, no mesmo estado de aprovação.`
+            : `${item.human_id} volta pausado(a), sem vender sozinho.`}{' '}
         Digite <strong className="font-mono">{item.human_id}</strong> para confirmar.
       </p>
       <input

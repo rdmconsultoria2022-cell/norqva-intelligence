@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { CreativeFactoryView } from '../features/creative-factory/CreativeFactoryView';
@@ -49,6 +49,14 @@ const payload = (over: any = {}) => ({
 });
 
 describe('NORQVA-0005 — Fábrica de Criativos (UI)', () => {
+  beforeEach(() => {
+    try {
+      window.localStorage.clear();
+    } catch {
+      /* ignore */
+    }
+  });
+
   it('loads with the global period and mode, shows cards and blocks approval while claims are pending', async () => {
     const apiFetch = vi.fn().mockResolvedValue(payload());
     render(<CreativeFactoryView currentUser={admin} isDemoView={false} apiFetch={apiFetch} showError={vi.fn()} showSuccess={vi.fn()} />);
@@ -70,6 +78,8 @@ describe('NORQVA-0005 — Fábrica de Criativos (UI)', () => {
     render(<CreativeFactoryView currentUser={admin} isDemoView={false} apiFetch={apiFetch} showError={vi.fn()} showSuccess={vi.fn()} />);
     await screen.findByText('BB-B01-H02-M1-C1');
 
+    // NORQVA-0058: as claims começam ocultas
+    fireEvent.click(screen.getByTestId('toggle-factory-claims'));
     fireEvent.click(screen.getByRole('button', { name: 'Verificar' }));
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith('/creative-factory/claims/cl1?mode=real', expect.objectContaining({ method: 'PATCH' }))
