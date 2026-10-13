@@ -732,6 +732,7 @@ export class MetaMutatingClient {
         call_to_action: callToAction
       };
       if (params.thumbnailUrl) videoData.image_url = params.thumbnailUrl;
+      else if (params.imageHash) videoData.image_hash = params.imageHash;
       objectStorySpec.video_data = videoData;
     } else {
       objectStorySpec.link_data = {

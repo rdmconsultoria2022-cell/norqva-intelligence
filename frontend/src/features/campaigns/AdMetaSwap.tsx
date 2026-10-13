@@ -57,7 +57,11 @@ export function AdMetaSwap({
         method: 'POST',
         body: JSON.stringify(f)
       });
-      showSuccess('Anúncio trocado na Meta. Ele passa pela revisão da Meta antes de voltar a rodar com o texto novo.');
+      showSuccess(
+        'Anúncio trocado na Meta. Ele passa pela revisão da Meta antes de voltar a rodar com o texto novo.' +
+          (r?.mixed_offers ? ' Atenção: os anúncios desta campanha agora levam para páginas diferentes; troque os outros também.' : '') +
+          (r?.plan_sync_failed ? ' A troca foi feita na Meta, mas a tela não foi atualizada: recarregue.' : '')
+      );
       setOpen(false);
       if (r?.campaign) onDone(r.campaign);
     } catch (err: any) {

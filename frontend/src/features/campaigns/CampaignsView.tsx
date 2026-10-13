@@ -635,7 +635,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                     <span className="text-slate-400">Link de destino<ManualTag path={`ads.${i}.destination_url`} /></span>
                     <input aria-label={`Link do anúncio ${i + 1}`} disabled={!editable} value={form[`ads.${i}.destination_url`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.destination_url`]: e.target.value })} className={input} />
                   </label>
-                  {!editable && isAdmin && campaign.meta_ids?.ads?.[a.name] && (
+                  {!editable && isAdmin && campaign.status !== 'CREATING' && campaign.meta_ids?.ads?.[a.name] && (
                     <AdMetaSwap
                       key={`${campaign.id}-${i}-${campaign.updated_at || ''}`}
                       campaignId={campaign.id}

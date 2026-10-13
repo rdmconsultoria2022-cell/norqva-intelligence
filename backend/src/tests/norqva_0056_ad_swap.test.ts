@@ -30,6 +30,9 @@ describe.sequential('NORQVA-0056 — editar anúncio que já está na Meta', () 
   let planId = '';
   let posts: { endpoint: string; payload: any }[] = [];
   let failSwap = false;
+  let swapLandsThenTimeout = false;
+  let dynamicCreative = false;
+  let currentCreative = OLD_CREATIVE;
 
   const newText = 'Aquele jantar italiano de domingo, feito por você. Dois livros digitais no kit Cozinha Italiana.';
 
@@ -39,6 +42,8 @@ describe.sequential('NORQVA-0056 — editar anúncio que já está na Meta', () 
       if (endpoint.endsWith('/adcreatives')) return { id: '888000111333' };
       if (endpoint === `/${AD_ID}`) {
         if (failSwap) throw new Error('[META GRAPH API ERROR]: simulated failure');
+        currentCreative = payload.creative.creative_id;
+        if (swapLandsThenTimeout) throw new Error('[META TIMEOUT EXCEPTION]: simulated lost response');
         return { success: true };
       }
       throw new Error('unexpected POST ' + endpoint);
@@ -48,10 +53,11 @@ describe.sequential('NORQVA-0056 — editar anúncio que já está na Meta', () 
       if (endpoint === '/me/permissions') return { data: [{ permission: 'ads_management', status: 'granted' }, { permission: 'ads_read', status: 'granted' }] };
       if (endpoint.startsWith('/act_')) return { id: endpoint.slice(1), account_status: 1 };
       if (endpoint === `/${OFFICIAL_NORQVA_PIXEL_ID}`) return { id: OFFICIAL_NORQVA_PIXEL_ID };
-      if (endpoint === `/${AD_ID}`) return { id: AD_ID, creative: { id: OLD_CREATIVE } };
-      if (endpoint === `/${OLD_CREATIVE}`) {
+      if (endpoint === `/${AD_ID}`) return { id: AD_ID, creative: { id: currentCreative } };
+      if (endpoint === `/${currentCreative}`) {
+        if (dynamicCreative) return { id: currentCreative, asset_feed_spec: { bodies: [{ text: 'a' }] }, object_story_spec: { page_id: '1287452237795325' } };
         return {
-          id: OLD_CREATIVE,
+          id: currentCreative,
           url_tags: `utm_source=meta&utm_campaign=${code}&utm_content=TR_V1_EMO`,
           object_story_spec: {
             page_id: '1287452237795325',
@@ -109,6 +115,8 @@ describe.sequential('NORQVA-0056 — editar anúncio que já está na Meta', () 
     resetMetaPreflightCacheForTesting();
     posts = [];
     failSwap = false;
+    swapLandsThenTimeout = false;
+    dynamicCreative = false;
     setAdSwapClientFactoryForTesting(() => fakeClient());
   });
 
@@ -186,6 +194,14 @@ describe.sequential('NORQVA-0056 — editar anúncio que já está na Meta', () 
     expect(spec.ads[0].destination_url).toBe(`${DEFAULT_OFFER_BASE_URL}/p/OFF-000001`);
   });
 
+  it('peça dinâmica (vários textos): recusa e manda trocar pelo Gerenciador, sem criar nada', async () => {
+    dynamicCreative = true;
+    const r = await swap(body());
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Gerenciador/);
+    expect(posts).toHaveLength(0);
+  });
+
   it('troca: peça nova com o mesmo vídeo e as mesmas etiquetas, dentro do mesmo anúncio; plano atualizado', async () => {
     const r = await swap(body());
     expect(r.status).toBe(200);
@@ -227,5 +243,12 @@ describe.sequential('NORQVA-0056 — editar anúncio que já está na Meta', () 
     expect(r.status).toBe(200);
     const create = posts.find(p => p.endpoint === `/${ACT}/adcreatives`)!;
     expect(create.payload.name).toBe('TR_V1_EMO_CREATIVE_V3');
+  });
+
+  it('resposta perdida depois da troca: confere na Meta e trata como feita', async () => {
+    swapLandsThenTimeout = true;
+    const r = await swap(body({ headline: 'Trattoria + Dolci no mesmo kit' }));
+    expect(r.status).toBe(200);
+    expect(r.body.campaign.spec.ads[0].headline).toBe('Trattoria + Dolci no mesmo kit');
   });
 });
