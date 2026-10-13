@@ -679,16 +679,37 @@ export async function updateProduct(req: AuthenticatedRequest, res: Response) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Nome e categoria do produto não podem ficar vazios.' });
     }
+    // NORQVA-0057: descrição não vazia; custo estimado >= 0 com até 2 casas; observações texto ou vazio
+    if (description !== undefined && (typeof description !== 'string' || description.trim() === '')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A descrição do produto não pode ficar vazia.' });
+    }
+    if (estimated_cost !== undefined) {
+      const c = Number(estimated_cost);
+      if (estimated_cost === null || estimated_cost === '' || !Number.isFinite(c) || c < 0 || c > 1e9 || Math.abs(Math.round(c * 100) - c * 100) > 1e-6) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Custo estimado inválido: use um valor de zero para cima, com até 2 casas decimais.' });
+      }
+    }
+    if ((observations !== undefined && observations !== null && typeof observations !== 'string') || (origin_notes !== undefined && origin_notes !== null && typeof origin_notes !== 'string')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Observações e notas devem ser texto.' });
+    }
+    if (typeof description === 'string' && description.length > 5000) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Descrição longa demais (até 5.000 caracteres).' });
+    }
     const updatedName = name !== undefined ? String(name).trim() : existingProduct.name;
     const updatedCategory = category !== undefined ? String(category).trim() : existingProduct.category;
-    const updatedDesc = description !== undefined ? description : existingProduct.description;
-    const updatedCost = estimated_cost !== undefined ? estimated_cost : existingProduct.estimated_cost;
+    const updatedDesc = description !== undefined ? String(description).trim() : existingProduct.description;
+    const updatedCost = estimated_cost !== undefined ? Number(estimated_cost) : existingProduct.estimated_cost;
     const updatedStatus = status !== undefined ? status : existingProduct.status;
-    const updatedObs = observations !== undefined ? observations : existingProduct.observations;
+    const cleanText = (v: any) => (v === null || String(v).trim() === '' ? null : String(v).trim().slice(0, 5000));
+    const updatedObs = observations !== undefined ? cleanText(observations) : existingProduct.observations;
     const updatedProv = origin_provenance !== undefined ? origin_provenance : existingProduct.origin_provenance;
     const updatedRespId = origin_responsible_id !== undefined ? origin_responsible_id : existingProduct.origin_responsible_id;
     const updatedEv = origin_evidence !== undefined ? origin_evidence : existingProduct.origin_evidence;
-    const updatedNotes = origin_notes !== undefined ? origin_notes : existingProduct.origin_notes;
+    const updatedNotes = origin_notes !== undefined ? cleanText(origin_notes) : existingProduct.origin_notes;
 
     const updateRes = await client.query(
       `UPDATE products 
@@ -754,7 +775,7 @@ export async function getOffers(req: AuthenticatedRequest, res: Response) {
     const offers = await pool.query(
       `SELECT o.*, p.name as product_name 
        FROM offers o 
-       JOIN products p ON o.product_id = p.id 
+       JOIN products p ON o.product_id = p.id AND p.is_deleted = FALSE
        WHERE ${whereClause} 
        ORDER BY o.created_at DESC`,
       [isDemo]
@@ -973,8 +994,17 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     const updatedPromo = promotional_price !== undefined ? (promotional_price === '' || promotional_price === null ? null : Number(promotional_price)) : existingOffer.promotional_price;
     const updatedBonus = bonus !== undefined ? (bonus === null || String(bonus).trim() === '' ? null : String(bonus).trim()) : existingOffer.bonus;
     const updatedDesc = description !== undefined ? String(description).trim() : existingOffer.description;
-    const updatedUpsell = upsell !== undefined ? upsell : existingOffer.upsell;
-    const updatedCross = cross_sell !== undefined ? cross_sell : existingOffer.cross_sell;
+    // NORQVA-0057: upsell e cross-sell são texto (vazio vira nada)
+    if ((upsell !== undefined && upsell !== null && typeof upsell !== 'string') || (cross_sell !== undefined && cross_sell !== null && typeof cross_sell !== 'string')) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Upsell e cross-sell devem ser texto.' });
+    }
+    if ((typeof upsell === 'string' && upsell.length > 2000) || (typeof cross_sell === 'string' && cross_sell.length > 2000)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Upsell e cross-sell: até 2.000 caracteres.' });
+    }
+    const updatedUpsell = upsell !== undefined ? (upsell === null || upsell.trim() === '' ? null : upsell.trim()) : existingOffer.upsell;
+    const updatedCross = cross_sell !== undefined ? (cross_sell === null || cross_sell.trim() === '' ? null : cross_sell.trim()) : existingOffer.cross_sell;
     const updatedStatus = status !== undefined ? status : existingOffer.status;
     const updatedProductId = req.body.product_id !== undefined ? req.body.product_id : existingOffer.product_id;
     const updatedDataProvenance = req.body.data_provenance !== undefined ? req.body.data_provenance : existingOffer.data_provenance;
@@ -6227,7 +6257,7 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
          AND ${isDemo ? `(o_order.data_provenance != 'COMMERCIAL_PRODUCTION' OR o_order.is_demo = TRUE)` : `(o_order.data_provenance = 'COMMERCIAL_PRODUCTION')`}
          AND ($1::timestamptz IS NULL OR o_order.created_at >= $1)
          AND ($2::timestamptz IS NULL OR o_order.created_at <= $2)
-       WHERE o.is_demo = $3 AND (o.is_deleted IS FALSE OR o.is_deleted IS NULL)
+       WHERE o.is_demo = $3 AND (o.is_deleted IS FALSE OR o.is_deleted IS NULL OR o_order.status = 'PAID')
        GROUP BY o.id, o.human_id, o.name, o.price, o.promotional_price, ue.id, ue.tax_rate, ue.gateway_fixed_fee, ue.gateway_pct_fee, ue.other_variable_cost, ue.target_net_margin
        ORDER BY gross_revenue DESC, units_sold DESC`,
       [startDateParam, endDateParam, isDemo]

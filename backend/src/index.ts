@@ -175,7 +175,7 @@ import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
-import { getHiddenProducts, promoteHiddenProduct } from './controllers/catalogVisibilityController';
+import { getHiddenProducts, promoteHiddenProduct, getCatalogTrash, deleteOfferToTrash, restoreOfferFromTrash, deleteProductToTrash, restoreProductFromTrash } from './controllers/catalogVisibilityController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
@@ -324,6 +324,12 @@ app.post('/api/products', requireRole(['PRODUCT', 'ADMIN']), createProduct);
 // NORQVA-0034: produtos da conta real que ficaram fora da lista (procedência UNKNOWN)
 app.get('/api/products/hidden', requireRole(['ADMIN']), getHiddenProducts);
 app.post('/api/products/:id/bring-to-list', requireRole(['ADMIN']), promoteHiddenProduct);
+// NORQVA-0057: lixeira (excluir e restaurar produto e oferta, com o código digitado)
+app.get('/api/catalog/trash', requireRole(['ADMIN']), getCatalogTrash);
+app.post('/api/products/:id/delete', requireRole(['ADMIN']), deleteProductToTrash);
+app.post('/api/products/:id/restore', requireRole(['ADMIN']), restoreProductFromTrash);
+app.post('/api/offers/:id/delete', requireRole(['ADMIN']), deleteOfferToTrash);
+app.post('/api/offers/:id/restore', requireRole(['ADMIN']), restoreOfferFromTrash);
 app.put('/api/products/:id', requireRole(['PRODUCT', 'ADMIN']), updateProduct);
 
 app.get('/api/offers', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOffers);

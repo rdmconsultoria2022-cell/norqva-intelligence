@@ -48,6 +48,7 @@ import { AiTeamView } from './features/intelligence/AiTeamView';
 import { ResearchView, ResearchTab } from './features/research/ResearchView';
 import { ResultsView, ResultsTab } from './features/results/ResultsView';
 import { ProductsView } from './features/products/ProductsView';
+import { parsePrice } from './features/products/OfferEditor';
 import { CreditSummary } from './features/dashboard/CreditSummary';
 import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
@@ -196,7 +197,7 @@ export default function App() {
 
   const [showEditProduct, setShowEditProduct] = useState<any | null>(null);
   const [editProductForm, setEditProductForm] = useState({
-    name: '', category: '', status: '', origin_provenance: '', origin_responsible_id: '', origin_evidence: '', origin_notes: ''
+    name: '', category: '', description: '', estimated_cost: '', observations: '', status: '', origin_provenance: '', origin_responsible_id: '', origin_evidence: '', origin_notes: ''
   });
 
   const [showAddOffer, setShowAddOffer] = useState(false);
@@ -429,10 +430,24 @@ export default function App() {
       // NORQVA-0035: nome e categoria editáveis
       if (editProductForm.name.trim()) payload.name = editProductForm.name.trim();
       if (editProductForm.category.trim()) payload.category = editProductForm.category.trim();
+      // NORQVA-0057: descrição, custo estimado e observações
+      if (!editProductForm.description.trim()) {
+        showError('A descrição do produto não pode ficar vazia.');
+        return;
+      }
+      payload.description = editProductForm.description.trim();
+      const costText = String(editProductForm.estimated_cost).trim();
+      const cost = costText === '' ? 0 : parsePrice(costText);
+      if (!(cost >= 0)) {
+        showError('Custo estimado inválido. Use, por exemplo, 150,00.');
+        return;
+      }
+      payload.estimated_cost = cost;
+      payload.observations = editProductForm.observations.trim() || null;
+      payload.origin_notes = editProductForm.origin_notes.trim() || null;
       if (editProductForm.origin_provenance) payload.origin_provenance = editProductForm.origin_provenance;
       if (editProductForm.origin_responsible_id) payload.origin_responsible_id = editProductForm.origin_responsible_id;
       if (editProductForm.origin_evidence) payload.origin_evidence = editProductForm.origin_evidence;
-      if (editProductForm.origin_notes) payload.origin_notes = editProductForm.origin_notes;
 
       await apiFetch(`/products/${showEditProduct.id}?mode=${isDemoView ? 'demo' : 'real'}`, {
         method: 'PUT',
@@ -759,6 +774,9 @@ export default function App() {
                 setEditProductForm({
                   name: prd.name || '',
                   category: prd.category || '',
+                  description: prd.description || '',
+                  estimated_cost: prd.estimated_cost === null || prd.estimated_cost === undefined ? '' : String(Number(prd.estimated_cost)).replace('.', ','),
+                  observations: prd.observations || '',
                   status: prd.status,
                   origin_provenance: prd.origin_provenance || '',
                   origin_responsible_id: prd.origin_responsible_id || '',
@@ -971,6 +989,36 @@ export default function App() {
                   aria-label="Categoria do produto"
                   value={editProductForm.category}
                   onChange={e => setEditProductForm({ ...editProductForm, category: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Descrição</label>
+                <textarea
+                  aria-label="Descrição do produto"
+                  rows={3}
+                  value={editProductForm.description}
+                  onChange={e => setEditProductForm({ ...editProductForm, description: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Custo estimado (R$)</label>
+                <input
+                  aria-label="Custo estimado do produto"
+                  inputMode="decimal"
+                  value={editProductForm.estimated_cost}
+                  onChange={e => setEditProductForm({ ...editProductForm, estimated_cost: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Observações</label>
+                <textarea
+                  aria-label="Observações do produto"
+                  rows={2}
+                  value={editProductForm.observations}
+                  onChange={e => setEditProductForm({ ...editProductForm, observations: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
                 />
               </div>

@@ -24,7 +24,7 @@ describe('NORQVA-0035 — editar oferta', () => {
     const [url, opts] = (apiFetch.mock.calls[0] as any[]);
     expect(url).toBe('/offers/off-9?mode=real');
     expect(opts.method).toBe('PUT');
-    expect(JSON.parse(opts.body)).toEqual({ name: 'Dolci della Nonna', price: 14.9, promotional_price: null, description: '10 sobremesas', bonus: null });
+    expect(JSON.parse(opts.body)).toEqual({ name: 'Dolci della Nonna', price: 14.9, promotional_price: null, description: '10 sobremesas', bonus: null, upsell: null, cross_sell: null });
   });
 
   it('avisa ao mudar o preço de oferta em venda e bloqueia valores inválidos', () => {

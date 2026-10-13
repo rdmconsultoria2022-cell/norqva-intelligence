@@ -72,6 +72,7 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - NORQVA-0052 (D-0052): teto editável na aba "Teto e vigia" da campanha (qualquer situação); campanha lucrativa não é pausada no teto, o teto sobe 50% até o teto máximo (padrão 3x o inicial).
 - NORQVA-0053 (D-0053): anúncio sem preço (trava em `services/creative/priceInCopy.ts`); preço só na página, no WhatsApp e no pagamento. Item 3 (NORQVA-0054): botão do WhatsApp nas páginas com código de origem (`services/whatsapp/whatsappRefs.ts`, tabela `whatsapp_refs`); aparece só com número conectado e atendente ligado.
 - NORQVA-0056 (D-0056): campanha já na Meta → Configuração → "Editar anúncio na Meta" troca link, texto, título e botão (peça nova com o mesmo vídeo no mesmo anúncio; `services/launchPlans/adCreativeSwap.ts`). Pede o código da campanha; sem preço.
+- NORQVA-0057 (D-0057): Produtos com todos os campos editáveis (descrição, custo, observações, upsell, cross-sell) e Lixeira: "Excluir"/"Restaurar" com o código digitado (`services/catalog/catalogTrashService.ts`); nada é apagado do banco.
 - NORQVA-0041: comprador escolhe as parcelas (D-0041): até 4x sem juros, acima com 2,99% a.m.; tela de pagamento com `look="light"` (creme/terracota) nos livros de cozinha.
 
 ## Pendências (tratar quando o Ricardo trouxer o assunto)

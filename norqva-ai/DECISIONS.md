@@ -134,3 +134,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Como:** a Meta não deixa editar a peça de um anúncio existente; o NORQVA cria uma peça nova com o mesmo vídeo, página, Instagram e etiquetas de origem e troca dentro do mesmo anúncio. Status, orçamento e público não mudam; o anúncio volta para a revisão da Meta.
 - **Travas:** sem preço (D-0053), destino só em página de oferta/kit do NORQVA ou da marca, campanha/conjunto/anúncio de controle nunca é alterado, campanha em criação não é tocada, registro de decisão e auditoria com antes e depois.
 - **Limite:** só peça de vídeo simples. Peça dinâmica (vários textos), post existente ou imagem: a troca é recusada e deve ser feita no Gerenciador de Anúncios.
+
+## D-0057 — Lixeira de produtos e ofertas (2026-10-13)
+
+- **Decisão (Ricardo, 13/10/2026 17h11, contrato NORQVA-0057):** excluir produto ou oferta pela tela leva para uma lixeira, com "Restaurar". Nada é apagado do banco, porque pedidos, pagamentos e downloads dependem do cadastro. O "Arquivar" ganhou volta pelo mesmo "Restaurar".
+- **Travas:** só ADMIN, com o código digitado; oferta ativa ou em teste, usada por campanha na Meta, adicional no Pix ativo ou com pedido aguardando pagamento não é excluída; produto só sem ofertas abertas. Restaurar devolve pausado.
+- **Comprador:** quem já comprou continua baixando normalmente.
