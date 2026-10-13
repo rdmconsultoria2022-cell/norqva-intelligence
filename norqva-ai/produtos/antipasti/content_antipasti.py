@@ -544,8 +544,10 @@ PHOTOS = {
                       "a halved garlic clove and a rosemary sprig beside it"),
     "02_crostini": ("3:2", "Small round toasts topped with smooth white ricotta cream, chopped toasted walnuts, a drizzle of golden honey and thyme leaves, "
                     "arranged on a cream plate with a thin gold rim, a small jar of honey with a wooden dipper beside it"),
-    "03_caponata": ("3:2", "Sicilian caponata in a cream ceramic bowl with a thin gold rim: glossy cubes of golden fried eggplant in a thick tomato sauce "
-                    "with sliced green olives, capers, celery pieces and fresh basil leaves, a few slices of toasted bread beside it"),
+    "03_caponata": ("3:2", "Sicilian caponata in a cream ceramic bowl with a thin gold rim: cubes of fried eggplant (aubergine) "
+                    "with their dark purple skin clearly visible on many pieces, soft and glossy, in a thick dark red tomato sauce "
+                    "with sliced green olives, capers, small celery pieces and fresh basil leaves, a few slices of toasted bread beside it, "
+                    "no potatoes"),
     "04_peperoni": ("3:2", "Strips of peeled roasted red and yellow bell peppers glistening with olive oil, thin garlic slices and chopped parsley, "
                     "arranged on a cream plate with a thin gold rim, a small ceramic bowl of the same peppers beside it"),
     "05_scapece": ("3:2", "Round slices of fried zucchini with golden brown spots, layered with thin garlic slices and fresh mint leaves, "
