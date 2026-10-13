@@ -1144,6 +1144,27 @@ export class MetaMutatingClient {
     return { spend: Math.round(spend * 100) / 100, effective_status: obj?.effective_status || null, spend_cap: cap && cap > 0 ? cap : null };
   }
 
+  /**
+   * NORQVA-0056: troca a peça (creative) de um anúncio já criado (POST /{adId} {creative: {creative_id}}).
+   * A Meta não deixa editar link/texto de um anúncio existente; a troca manda o anúncio para revisão.
+   * Travas: feature flag + preflight; nunca em ID protegido (CONTROL); não muda status nem orçamento.
+   */
+  public async updateAdCreative(
+    adMetaId: string,
+    creativeMetaId: string,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; adId: string; creativeId: string }> {
+    if (!/^\d{5,25}$/.test(String(adMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid ad id.');
+    if (!/^\d{5,25}$/.test(String(creativeMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid creative id.');
+    if (protectedIds.has(String(adMetaId))) throw new Error('[SECURITY EXCEPTION]: Protected ad (CONTROL) cannot be changed.');
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${adMetaId}`, { creative: { creative_id: creativeMetaId } });
+    }
+    return { success: true, adId: String(adMetaId), creativeId: String(creativeMetaId) };
+  }
+
   /** NORQVA-0052: gasto da campanha entre duas datas (AAAA-MM-DD, fuso da conta), só leitura. */
   public async getCampaignSpendBetween(campaignMetaId: string, since: string, until: string): Promise<number> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');

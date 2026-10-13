@@ -3,6 +3,9 @@ import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { CampaignEditorService } from '../services/launchPlans/campaignEditorService';
 import { LaunchPlanError } from '../services/launchPlans/launchPlanService';
+import { replaceAdCreative } from '../services/launchPlans/adCreativeSwap';
+import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
+import { decisionContextFromRequest } from '../db/decisionEvents';
 
 // NORQVA-0027: tela Campanhas. Rotas ADMIN; só editam o rascunho do plano (nada vai para a Meta aqui).
 // Criar na Meta continua em POST /api/launch-plans/:id/create (tudo pausado) e ativar só com o Sim.
@@ -107,5 +110,29 @@ export async function createCampaignFromOffer(req: AuthenticatedRequest, res: Re
     return res.status(201).json(await service.createFromOffer(db(req), req.body || {}, uid(req)));
   } catch (err) {
     return fail(res, err, 'Falha ao criar a campanha.');
+  }
+}
+
+// NORQVA-0056: trocar destino/texto de um anúncio já criado na Meta (peça nova no mesmo anúncio).
+let swapClientFactory: () => MetaMutatingClient = () => new MetaMutatingClient();
+export function setAdSwapClientFactoryForTesting(factory: (() => MetaMutatingClient) | null) {
+  swapClientFactory = factory || (() => new MetaMutatingClient());
+}
+
+export async function replaceCampaignAdOnMeta(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    const r = await replaceAdCreative(
+      db(req),
+      String(req.params.id),
+      Number(req.params.index),
+      req.body || {},
+      { id: uid(req), email: req.user?.email || null },
+      decisionContextFromRequest(req as any),
+      swapClientFactory()
+    );
+    return res.status(200).json({ ...r, campaign: await service.get(db(req), String(req.params.id)) });
+  } catch (err) {
+    return fail(res, err, 'Falha ao trocar o anúncio na Meta.');
   }
 }

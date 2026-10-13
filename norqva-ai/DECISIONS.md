@@ -127,3 +127,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, 12/10/2026):** os volumes prometidos na página do kit (III Pães & Fermentação Natural, IV Antipasti & Aperitivo, V Risotos & Polentas) são feitos um por vez, com 12 receitas cada e o mesmo padrão do Trattoria e do Dolci. O Ricardo revisa cada volume antes do próximo.
 - **Fotos:** geradas pelo Claude na KIE (google/nano-banana, cerca de 4 créditos cada), no cenário dos livros (prato creme com borda dourada, linho rosado, mesa escura, luz quente, sem texto, marca ou mãos). Cada foto é conferida contra a receita antes de entrar. O uso comercial das imagens da KIE foi confirmado pelo Ricardo.
 - **Venda:** o livro só entra à venda depois de o Ricardo cadastrar o produto e o PDF no NORQVA (mexe na entrega ao comprador, precisa de aprovação). Até lá, a página do kit mantém "EM BREVE".
+## D-0056 — Trocar link e texto de anúncio que já está na Meta (2026-10-13)
+
+- **Decisão (Ricardo, 13/10/2026 16h46, contrato "NORQVA-0055 editar anúncio"):** o NORQVA pode trocar link, texto, título e botão de um anúncio que já está na Meta, pela tela Campanhas, um anúncio por vez, com o código da campanha digitado.
+- **Como:** a Meta não deixa editar a peça de um anúncio existente; o NORQVA cria uma peça nova com o mesmo vídeo, página, Instagram e etiquetas de origem e troca dentro do mesmo anúncio. Status, orçamento e público não mudam; o anúncio volta para a revisão da Meta.
+- **Travas:** sem preço (D-0053), destino só em página de oferta/kit do NORQVA ou da marca, anúncio de controle nunca é alterado, registro de decisão e auditoria com antes e depois.

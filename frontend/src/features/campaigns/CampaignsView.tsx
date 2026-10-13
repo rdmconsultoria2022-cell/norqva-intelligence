@@ -7,6 +7,8 @@ import { MetaAdsView } from '../acquisition/MetaAdsView';
 import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
 import { MethodView } from '../method/MethodView';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
+import { AdMetaSwap } from './AdMetaSwap';
+import { CTA_LABEL } from './ctaLabels';
 
 // NORQVA-0027: tela Campanhas. Cada campanha é um plano de lançamento: completa com o criativo
 // aprovado, modo manual campo a campo (campo editado vira manual e o sistema não sobrescreve),
@@ -32,16 +34,6 @@ export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   FAILED: 'Falhou'
 };
 
-const CTA_LABEL: Record<string, string> = {
-  SEE_DETAILS: 'Ver detalhes',
-  LEARN_MORE: 'Saiba mais',
-  SHOP_NOW: 'Comprar agora',
-  BUY_NOW: 'Comprar',
-  ORDER_NOW: 'Pedir agora',
-  GET_OFFER: 'Ver oferta',
-  SIGN_UP: 'Cadastre-se',
-  DOWNLOAD: 'Baixar'
-};
 
 type Fields = Record<string, string>;
 
@@ -559,7 +551,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             {!editable && (
               <p className="text-slate-400" data-testid="campaign-readonly">
                 {isAdmin
-                  ? 'Esta campanha já existe na Meta. Pausar e orçamento ficam na aba Resultado e controle; o teto em Teto e vigia; ativar é pelo seu Sim no quadro acima.'
+                  ? 'Esta campanha já existe na Meta. Pausar e orçamento ficam na aba Resultado e controle; o teto em Teto e vigia; ativar é pelo seu Sim no quadro acima. Para trocar link, texto, título ou botão de um anúncio, use "Editar anúncio na Meta" no anúncio.'
                   : 'Só leitura: configurar, pausar e responder Sim ficam com o ADMIN.'}
               </p>
             )}
@@ -643,6 +635,22 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                     <span className="text-slate-400">Link de destino<ManualTag path={`ads.${i}.destination_url`} /></span>
                     <input aria-label={`Link do anúncio ${i + 1}`} disabled={!editable} value={form[`ads.${i}.destination_url`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.destination_url`]: e.target.value })} className={input} />
                   </label>
+                  {!editable && isAdmin && campaign.meta_ids?.ads?.[a.name] && (
+                    <AdMetaSwap
+                      key={`${campaign.id}-${i}-${campaign.updated_at || ''}`}
+                      campaignId={campaign.id}
+                      campaignCode={campaign.code}
+                      index={i}
+                      ad={a}
+                      apiFetch={apiFetch}
+                      showError={showError}
+                      showSuccess={showSuccess}
+                      onDone={c => {
+                        applyCampaign(c);
+                        loadList();
+                      }}
+                    />
+                  )}
                 </article>
               ))}
             </div>
