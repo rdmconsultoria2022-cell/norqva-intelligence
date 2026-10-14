@@ -195,13 +195,13 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
               </div>
               <div className="lg:w-56 min-w-0">
                 <div className="text-slate-300 truncate">{o.offer_name || '—'}</div>
-                {/* NORQVA-0032: adicional comprado junto */}
+                {/* NORQVA-0032: adicional comprado junto; NORQVA-0063: ou outros livros avulsos do mesmo pedido */}
                 {Array.isArray(o.items) &&
                   o.items
                     .filter((i: any) => i.is_bump)
                     .map((i: any, idx: number) => (
                       <div key={idx} className="text-[11px] text-emerald-300 truncate" data-testid="sale-bump">
-                        + adicional: {i.name}
+                        + {i.name}
                       </div>
                     ))}
                 <div className="text-slate-500">{brl(o.total_amount)}{o.is_test ? ' · teste' : ''}</div>

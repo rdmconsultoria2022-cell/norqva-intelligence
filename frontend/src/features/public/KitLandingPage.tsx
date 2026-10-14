@@ -6,7 +6,7 @@ import { PaymentStatus } from '../payment/PaymentStatus';
 import { rateLabel } from '../../lib/cardInstallments';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { BuyChoice, requestWhatsAppLink, goToWhatsApp } from './WhatsAppChoice';
-import { savePurchaseSession, updatePurchaseSessionStatus } from '../../services/purchaseSession';
+import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
 import type { CollectionSaleBook } from '../checkout/checkoutTypes';
@@ -582,9 +582,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           onCustomerChange={setCustomerDraft}
           onOrderCreated={order => {
             setShowCheckout(false);
-            if (order?.id && order?.checkout_token) {
-              savePurchaseSession({ orderId: order.id, checkoutToken: order.checkout_token, offerHumanId: offer.human_id, status: 'PENDING', offerName: offer.name });
-            }
+            // NORQVA-0063: a sessão de compra já foi salva pelo checkout (com o livro certo nos avulsos)
             setActiveOrder(order);
           }}
           onCancel={() => setShowCheckout(false)}

@@ -51,7 +51,8 @@ export async function bumpNetPerOrderByOffer(pool: Pool, isDemo = false): Promis
        FROM orders o
        JOIN order_items m ON m.order_id = o.id AND m.is_bump = FALSE
        JOIN offer_bumps ob ON ob.offer_id = m.offer_id AND ob.is_demo = $1
-       LEFT JOIN order_items b ON b.order_id = o.id AND b.is_bump = TRUE
+       -- NORQVA-0063: livros avulsos também entram como is_bump; só conta o adicional configurado
+       LEFT JOIN order_items b ON b.order_id = o.id AND b.is_bump = TRUE AND b.offer_id = ob.bump_offer_id
        WHERE o.status = 'PAID' AND o.is_demo = $1 AND o.created_at >= ob.created_at
          AND (o.is_demo = TRUE OR o.data_provenance = 'COMMERCIAL_PRODUCTION')
        GROUP BY m.offer_id`,

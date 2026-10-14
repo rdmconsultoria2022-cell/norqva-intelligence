@@ -113,7 +113,10 @@ export async function resolveCollectionExtras(
   for (const code of codes) {
     const o = await q.query('SELECT * FROM offers WHERE human_id = $1 AND is_deleted = FALSE', [code]);
     const offer = o.rows[0];
-    if (!offer || offer.status !== 'ATIVA' || Boolean(offer.is_demo) !== Boolean(mainOffer.is_demo)) {
+    if (
+      !offer || offer.status !== 'ATIVA' || Boolean(offer.is_demo) !== Boolean(mainOffer.is_demo) ||
+      String(offer.data_provenance || '') !== String(mainOffer.data_provenance || '')
+    ) {
       throw new CollectionOrderError(409, 'Um dos livros escolhidos não está à venda agora.');
     }
     if (String(offer.id) === String(mainOffer.id)) throw new CollectionOrderError(400, 'O mesmo livro foi escolhido duas vezes.');
@@ -126,7 +129,8 @@ export async function resolveCollectionExtras(
     if (!key) throw new CollectionOrderError(400, 'Só livros da coleção podem ser comprados avulsos.');
     if (keys.has(key)) throw new CollectionOrderError(400, 'O mesmo livro foi escolhido duas vezes.');
     keys.add(key);
-    const price = Math.round((offer.promotional_price !== null && offer.promotional_price !== undefined ? parseFloat(offer.promotional_price) : parseFloat(offer.price)) * 100) / 100;
+    // Mesmo preço que a lista pública mostra (promoção só quando maior que zero)
+    const price = Math.round(activePrice(offer) * 100) / 100;
     if (!(price > 0)) throw new CollectionOrderError(409, 'Um dos livros escolhidos não está à venda agora.');
     extras.push({ key, offer, product, price });
   }

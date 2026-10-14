@@ -242,7 +242,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       }, isDemo ? 'demo' : 'real', currentUser);
 
       // Emit first-party CHECKOUT_STARTED telemetry event
-      sendFunnelEvent('CHECKOUT_STARTED', offer.human_id || offer.id, { quantity, total_amount: orderResult.total_amount }, isDemo);
+      sendFunnelEvent('CHECKOUT_STARTED', (avulso && mainBook ? mainBook.human_id : offer.human_id) || offer.id, { quantity, total_amount: orderResult.total_amount }, isDemo);
 
       if (showSuccess) {
         showSuccess('Pedido gerado com sucesso!');
@@ -273,7 +273,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           checkoutToken: orderResult.checkout_token,
           offerHumanId: (avulso && mainBook ? mainBook.human_id : offer.human_id) || 'OFF-000001',
           status: 'PENDING',
-          offerName: offer.name
+          offerName: avulso && mainBook ? chosen.map(b => SALE_BOOK_INFO[b.book].name).join(' + ') : offer.name
         });
       }
 
@@ -566,7 +566,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               <span className="text-[11px] text-stone-500 mt-1 block">
                 {offer.human_id?.toUpperCase().includes('BOLSO') || offer.name?.toLowerCase().includes('bolso')
                   ? 'Você receberá os links e dados de acesso neste e-mail.'
-                  : 'Os livros em PDF chegam neste e-mail logo após o pagamento.'}
+                  : hasChoice || Number(offer.delivery_files) > 1 || String(offer.name || '').toLowerCase().includes('kit')
+                    ? 'Os livros em PDF chegam neste e-mail logo após o pagamento.'
+                    : 'O livro em PDF chega neste e-mail logo após o pagamento.'}
               </span>
             )}
           </div>
