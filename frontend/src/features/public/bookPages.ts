@@ -200,7 +200,7 @@ const RISOTOS: BookPage = {
   gallery: [
     { img: '/images/livros/risotos/milanese.jpg', alt: 'Risoto alla milanese', label: 'Receita 02', title: 'Risoto alla milanese', text: 'O clássico de Milão, com açafrão, manteiga e parmesão, cremoso só pelo amido do arroz.' },
     { img: '/images/livros/risotos/funghi.jpg', alt: 'Risoto de cogumelos', label: 'Receita 03', title: 'Risoto de cogumelos', text: 'Dois cogumelos dourados em fogo alto e misturados no fim, com tomilho e parmesão.' },
-    { img: '/images/livros/risotos/ragu.jpg', alt: 'Polenta com ragù de cogumelos', label: 'Receita 10', title: 'Polenta com ragù de cogumelos', text: 'Polenta cremosa coberta com um ragù de cogumelos, tomate e vinho, sem carne.' }
+    { img: '/images/livros/risotos/polenta_grelhada.jpg', alt: 'Polenta grelhada com cogumelos', label: 'Receita 11', title: 'Polenta grelhada', text: 'Fatias de polenta firme, douradas na chapa, com cogumelos salteados no alho e parmesão.' }
   ],
   modulesTitle: 'As 12 receitas do livro',
   modules: [
@@ -219,8 +219,8 @@ export function bookPageFor(book: string | null | undefined): BookPage {
   return (book && PAGES[book]) || TRATTORIA;
 }
 
-/** Livros com capa e fotos já publicadas no site. Os Volumes IV e V entram aqui quando as fotos chegarem. */
-export const READY_BOOKS = new Set<string>(['paes']);
+/** Livros com capa e fotos já publicadas no site. O Volume IV entra aqui quando as fotos chegarem. */
+export const READY_BOOKS = new Set<string>(['paes', 'risotos']);
 
 /** Capa de cada livro da coleção na página do kit. */
 export const COLLECTION_COVERS: Record<string, string> = {
