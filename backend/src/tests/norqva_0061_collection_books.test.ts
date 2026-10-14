@@ -68,8 +68,8 @@ describe.sequential('NORQVA-0061 — página da oferta e página do kit', () => 
     const paes = after.body.books.find((b: any) => b.book === 'paes');
     expect(paes).toBeTruthy();
     expect(paes.price).toBe(19.9);
-    // sem dados internos
-    expect(Object.keys(paes).sort()).toEqual(['book', 'human_id', 'price']);
+    // sem dados internos (NORQVA-0063: id da oferta e cartão, para o checkout do kit)
+    expect(Object.keys(paes).sort()).toEqual(['book', 'card', 'human_id', 'offer_id', 'price']);
   });
 
   it('oferta na lixeira sai da lista do kit', async () => {
