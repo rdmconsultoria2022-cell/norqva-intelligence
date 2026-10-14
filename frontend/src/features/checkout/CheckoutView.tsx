@@ -7,6 +7,7 @@ import { getAttributionContext, sendFunnelEvent } from '../../services/attributi
 import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from './checkoutValidation';
 import { savePurchaseSession } from '../../services/purchaseSession';
 import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallments';
+import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit } from './collectionChoice';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
@@ -17,7 +18,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   onOrderCreated,
   onCancel,
   showError,
-  showSuccess
+  showSuccess,
+  collectionBooks
 }) => {
   const [customerName, setCustomerName] = useState(initialCustomer?.name || currentUser?.name || '');
   const [customerEmail, setCustomerEmail] = useState(initialCustomer?.email || currentUser?.email || '');
@@ -26,8 +28,23 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [quantity, setQuantity] = useState(1);
   // NORQVA-0032: adicional nasce desmarcado; só entra se a pessoa marcar
   const [withBump, setWithBump] = useState(false);
-  // NORQVA-0038: Pix ou cartão (cartão só aparece se a oferta aceitar)
-  const card = offer.card && Number(offer.card.total) > 0 ? offer.card : null;
+  // NORQVA-0063: na página do kit, a pessoa escolhe o kit completo (padrão) ou livros avulsos
+  const saleBooks = (collectionBooks || [])
+    .filter(b => b && b.offer_id && b.human_id && Number(b.price) > 0 && SALE_BOOK_INFO[b.book])
+    .sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book));
+  const hasChoice = saleBooks.length > 0;
+  const [buyMode, setBuyMode] = useState<'kit' | 'avulso'>('kit');
+  const [picked, setPicked] = useState<string[]>([]);
+  const avulso = hasChoice && buyMode === 'avulso';
+  const chosen = saleBooks.filter(b => picked.includes(b.book));
+  const mainBook = avulso ? chosen[0] || null : null;
+  const avulsoCents = chosen.reduce((acc, b) => acc + Math.round(Number(b.price) * 100), 0);
+  const togglePick = (key: string) => setPicked(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+  const fullKit = isFullKit(offer);
+  // NORQVA-0038: Pix ou cartão (cartão só aparece se a oferta aceitar; nos avulsos, vale o cartão do primeiro livro)
+  const card = avulso
+    ? (mainBook?.card && Number(mainBook.card.total) > 0 ? mainBook.card : null)
+    : (offer.card && Number(offer.card.total) > 0 ? offer.card : null);
   const [payMethod, setPayMethod] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
   const method = card ? payMethod : 'PIX';
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,13 +62,20 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const basePrice = offer.promotional_price !== null && offer.promotional_price !== undefined
     ? parseFloat(String(offer.promotional_price))
     : parseFloat(String(offer.price));
-  const bump = offer.bump && Number(offer.bump.price) > 0 ? offer.bump : null;
+  const bump = !avulso && offer.bump && Number(offer.bump.price) > 0 ? offer.bump : null;
   const bumpPrice = bump ? Number(bump.price) : 0;
   // Total mostrado ao comprador (o servidor recalcula e é o valor dele que vai para o Pix)
-  const displayPrice = Math.round((basePrice + (bump && withBump ? bumpPrice : 0)) * 100) / 100;
+  const displayPrice = avulso
+    ? avulsoCents / 100
+    : Math.round((basePrice + (bump && withBump ? bumpPrice : 0)) * 100) / 100;
+  const noBookChosen = avulso && chosen.length === 0;
   // NORQVA-0041: o comprador escolhe as parcelas (sem juros até o limite da oferta; acima, com juros)
   const fmt = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
-  const cardBaseCents = card ? Math.round(Number(card.total) * 100) + (bump && withBump ? Math.round(bumpPrice * 100) : 0) : 0;
+  // Avulsos: cartão do primeiro livro + os outros pelo preço do Pix, nunca abaixo do total no Pix (igual ao servidor)
+  const cardBaseCents = !card ? 0
+    : avulso
+      ? Math.max(Math.round(Number(card.total) * 100) + avulsoCents - Math.round(Number(mainBook?.price || 0) * 100), avulsoCents)
+      : Math.round(Number(card.total) * 100) + (bump && withBump ? Math.round(bumpPrice * 100) : 0);
   const cardPlan = card ? (card.plan || { max: Math.max(1, Number(card.max_installments) || 1), free: Math.max(1, Number(card.max_installments) || 1), rate: 0 }) : null;
   const cardOpts = card && cardPlan ? installmentOptions(cardBaseCents, cardPlan) : [];
   const freeOpts = cardOpts.filter(o => !o.interest);
@@ -114,6 +138,11 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     });
 
     if (isSubmittingRef.current || isSubmitting) {
+      return;
+    }
+
+    if (avulso && !mainBook) {
+      showError('Escolha pelo menos 1 livro.');
       return;
     }
 
@@ -185,9 +214,12 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         ...(attrCtx.site_source_name ? { site_source_name: attrCtx.site_source_name } : {})
       };
 
+      // NORQVA-0063: avulsos = pedido do primeiro livro escolhido + os outros pelo código (o servidor confere e cobra)
+      const extraCodes = avulso ? chosen.slice(1).map(b => b.human_id) : [];
       const orderPayload = {
-        offer_id: offer.id,
+        offer_id: avulso && mainBook ? mainBook.offer_id : offer.id,
         ...(bump && withBump ? { with_bump: true } : {}),
+        ...(extraCodes.length > 0 ? { extra_offer_human_ids: extraCodes } : {}),
         customer_id: customerId,
         quantity: quantity,
         idempotency_key: idempotencyKey,
@@ -210,7 +242,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       }, isDemo ? 'demo' : 'real', currentUser);
 
       // Emit first-party CHECKOUT_STARTED telemetry event
-      sendFunnelEvent('CHECKOUT_STARTED', offer.human_id || offer.id, { quantity, total_amount: orderResult.total_amount }, isDemo);
+      sendFunnelEvent('CHECKOUT_STARTED', (avulso && mainBook ? mainBook.human_id : offer.human_id) || offer.id, { quantity, total_amount: orderResult.total_amount }, isDemo);
 
       if (showSuccess) {
         showSuccess('Pedido gerado com sucesso!');
@@ -223,7 +255,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             orderId: orderResult.id,
             value: parseFloat(String(orderResult.total_amount)) || displayPrice * quantity,
             currency: 'BRL',
-            contentIds: [offer.human_id || offer.id, ...(bump && withBump ? [bump.offer_human_id] : [])],
+            contentIds: avulso
+              ? chosen.map(b => b.human_id)
+              : [offer.human_id || offer.id, ...(bump && withBump ? [bump.offer_human_id] : [])],
             numItems: quantity,
             pixelId: (offer as any).meta_pixel_id || null
           });
@@ -237,9 +271,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         savePurchaseSession({
           orderId: orderResult.id,
           checkoutToken: orderResult.checkout_token,
-          offerHumanId: offer.human_id || 'OFF-000001',
+          offerHumanId: (avulso && mainBook ? mainBook.human_id : offer.human_id) || 'OFF-000001',
           status: 'PENDING',
-          offerName: offer.name
+          offerName: avulso && mainBook ? chosen.map(b => SALE_BOOK_INFO[b.book].name).join(' + ') : offer.name
         });
       }
 
@@ -281,8 +315,134 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           </button>
         </div>
 
+        {hasChoice && (
+          <div className="mb-6 space-y-3" data-testid="checkout-choice">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#B83B1E]">1. Escolha sua compra</div>
+            {(() => {
+              const kitCovers = fullKit ? SALE_BOOK_ORDER.map(k => SALE_BOOK_INFO[k].cover) : [SALE_BOOK_INFO.trattoria.cover, SALE_BOOK_INFO.dolci.cover];
+              const fromPrice = offer.promotional_price !== null && offer.promotional_price !== undefined ? Number(offer.price) : null;
+              const sumAll = saleBooks.length === 5 ? saleBooks.reduce((acc, b) => acc + Number(b.price), 0) : null;
+              const strike = fullKit && sumAll !== null && sumAll > basePrice ? sumAll : fromPrice !== null && fromPrice > basePrice ? fromPrice : null;
+              const saving = strike !== null ? strike - basePrice : 0;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setBuyMode('kit')}
+                  aria-pressed={!avulso}
+                  disabled={isSubmitting}
+                  data-testid="choice-kit"
+                  className={`relative w-full text-left rounded-2xl bg-white p-4 pt-5 transition ${!avulso ? 'border-[2.5px] border-[#B83B1E]' : 'border border-stone-300'}`}
+                >
+                  <span className="absolute -top-2.5 left-4 rounded-full bg-[#2B3D2B] px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-white">MELHOR ESCOLHA</span>
+                  <span className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-[#B83B1E]">
+                      {!avulso && <span className="h-2.5 w-2.5 rounded-full bg-[#B83B1E]" />}
+                    </span>
+                    <span className="flex-1">
+                      <span className="block font-serif text-base font-bold text-stone-900">
+                        {fullKit ? 'Kit completo · 5 livros' : offer.name}
+                      </span>
+                      <span className="block text-sm text-stone-600">
+                        {fullKit ? `${FULL_KIT_RECIPES} receitas italianas, da massa à sobremesa` : 'Trattoria em Casa + Dolci della Nonna'}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="mt-3 flex items-end justify-between gap-3 pl-8">
+                    <span className="flex">
+                      {kitCovers.map((src, i) => (
+                        <img key={src} src={src} alt="" className={`h-14 w-10 rounded-sm object-cover shadow ${i > 0 ? '-ml-3' : ''}`} onError={e => { (e.target as HTMLElement).style.display = 'none'; }} />
+                      ))}
+                    </span>
+                    <span className="text-right">
+                      {strike !== null && <span className="block text-sm text-stone-500 line-through">R$ {strike.toFixed(2).replace('.', ',')}</span>}
+                      <span className="block font-serif text-2xl font-bold text-[#B83B1E]" data-testid="choice-kit-price">R$ {basePrice.toFixed(2).replace('.', ',')}</span>
+                    </span>
+                  </span>
+                  {saving > 0.004 && (
+                    <span className="mt-2 ml-8 inline-block rounded-lg bg-[#EEF3EA] px-3 py-1 text-sm font-bold text-[#2B3D2B]">
+                      Você economiza R$ {saving.toFixed(2).replace('.', ',')}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
+            <button
+              type="button"
+              onClick={() => setBuyMode('avulso')}
+              aria-pressed={avulso}
+              disabled={isSubmitting}
+              data-testid="choice-avulso"
+              className={`w-full text-left rounded-2xl bg-white p-4 transition flex items-center gap-3 ${avulso ? 'border-[2.5px] border-[#B83B1E]' : 'border border-stone-300'}`}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-[#B83B1E]">
+                {avulso && <span className="h-2.5 w-2.5 rounded-full bg-[#B83B1E]" />}
+              </span>
+              <span className="flex-1">
+                <span className="block font-serif text-base font-bold text-stone-900">Escolher livros avulsos</span>
+                <span className="block text-sm text-stone-600">
+                  {(() => {
+                    const prices = saleBooks.map(b => Number(b.price));
+                    const min = Math.min(...prices);
+                    const same = prices.every(p => Math.abs(p - min) < 0.005);
+                    return `${same ? '' : 'a partir de '}R$ ${min.toFixed(2).replace('.', ',')} cada livro`;
+                  })()}
+                </span>
+              </span>
+            </button>
+
+            {avulso && (
+              <div className="space-y-2" data-testid="choice-books">
+                {saleBooks.map(b => {
+                  const info = SALE_BOOK_INFO[b.book];
+                  const on = picked.includes(b.book);
+                  return (
+                    <label
+                      key={b.book}
+                      className={`flex min-h-[72px] cursor-pointer items-center gap-3 rounded-xl p-3 ${on ? 'border-2 border-[#B83B1E] bg-[#FFF6F1]' : 'border border-stone-300 bg-white'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => togglePick(b.book)}
+                        disabled={isSubmitting}
+                        data-testid={`choice-book-${b.book}`}
+                        className="h-6 w-6 shrink-0 accent-[#B83B1E]"
+                      />
+                      <img src={info.cover} alt="" className="h-14 w-10 shrink-0 rounded-sm object-cover" onError={e => { (e.target as HTMLElement).style.display = 'none'; }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-stone-900">{info.name}</span>
+                        <span className="block text-xs text-stone-600">{info.note}</span>
+                      </span>
+                      <span className="shrink-0 text-sm font-bold text-[#B83B1E]">R$ {Number(b.price).toFixed(2).replace('.', ',')}</span>
+                    </label>
+                  );
+                })}
+                {fullKit && chosen.length > 0 && chosen.length < 5 && (
+                  <div className="space-y-2 rounded-xl border-[1.5px] border-dashed border-[#2B3D2B] bg-[#EEF3EA] p-3" data-testid="choice-nudge">
+                    <p className="text-sm text-[#1F3F27]">
+                      {basePrice > avulsoCents / 100
+                        ? <><b>Por mais R$ {(basePrice - avulsoCents / 100).toFixed(2).replace('.', ',')},</b> você leva os 5 livros ({FULL_KIT_RECIPES} receitas) em vez de {chosen.length}.</>
+                        : <><b>O kit sai mais barato.</b> Os 5 livros saem por R$ {basePrice.toFixed(2).replace('.', ',')}.</>}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setBuyMode('kit')}
+                      disabled={isSubmitting}
+                      className="min-h-[44px] rounded-lg bg-[#2B3D2B] px-4 text-sm font-bold text-white"
+                    >
+                      Trocar para o kit completo
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="pt-2 text-[11px] font-bold uppercase tracking-wider text-[#B83B1E]">2. Seus dados</div>
+          </div>
+        )}
+
         {/* Product Summary Card */}
-        {(() => {
+        {!hasChoice && (() => {
           const isBolso = Boolean(
             offer.human_id?.toUpperCase().includes('BOLSO') ||
             offer.name?.toLowerCase().includes('bolso')
@@ -291,8 +451,11 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           const lname = String(offer.name || '').toLowerCase();
           const isKit = lname.includes('kit');
           const isDolci = !isKit && lname.includes('dolci');
-          const covers = isKit ? ['/images/kit/capa_trat.jpg', '/images/kit/capa_dolci.jpg'] : [isDolci ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg'];
-          const subtitle = isKit ? 'Trattoria em Casa + Dolci della Nonna • 2 livros em PDF'
+          const covers = isKit
+            ? (fullKit ? SALE_BOOK_ORDER.map(k => SALE_BOOK_INFO[k].cover) : ['/images/kit/capa_trat.jpg', '/images/kit/capa_dolci.jpg'])
+            : [isDolci ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg'];
+          const subtitle = isKit && fullKit ? `5 livros em PDF • ${FULL_KIT_RECIPES} receitas italianas`
+            : isKit ? 'Trattoria em Casa + Dolci della Nonna • 2 livros em PDF'
             : isDolci ? 'Doces italianos da nonna • Livro em PDF'
             : '28 receitas italianas • Livro em PDF';
           return (
@@ -403,7 +566,9 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               <span className="text-[11px] text-stone-500 mt-1 block">
                 {offer.human_id?.toUpperCase().includes('BOLSO') || offer.name?.toLowerCase().includes('bolso')
                   ? 'Você receberá os links e dados de acesso neste e-mail.'
-                  : 'Você receberá seu e-book e os links de acesso permanente neste e-mail.'}
+                  : hasChoice || Number(offer.delivery_files) > 1 || String(offer.name || '').toLowerCase().includes('kit')
+                    ? 'Os livros em PDF chegam neste e-mail logo após o pagamento.'
+                    : 'O livro em PDF chega neste e-mail logo após o pagamento.'}
               </span>
             )}
           </div>
@@ -440,7 +605,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
               </p>
             ) : (
               <span className="text-[11px] text-stone-500 mt-1 block">
-                {card ? 'Necessário para emitir a cobrança.' : 'Necessário para emissão do Pix pelo Banco Central.'}
+                {card ? 'Necessário para emitir a cobrança.' : 'O banco exige o CPF para gerar o Pix. Ele fica protegido e é apagado depois do pagamento.'}
               </span>
             )}
           </div>
@@ -565,10 +730,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)}
+              disabled={isSubmitting || noBookChosen || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)}
               aria-label={method === 'CREDIT_CARD' ? `Continuar para o cartão: ${cardLabel}` : `Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix — Gerar Pedido & Pagamento`}
               className={`px-6 py-3 rounded-xl text-white text-sm font-bold flex items-center gap-2 transition active:scale-95 ${
-                isSubmitting || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)
+                isSubmitting || noBookChosen || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)
                   ? 'bg-stone-400 cursor-not-allowed shadow-none'
                   : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-lg shadow-[#B83B1E]/20'
               }`}
@@ -579,7 +744,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                   <span>Processando...</span>
                 </>
               ) : (
-                <span>{method === 'CREDIT_CARD' ? 'Continuar para o cartão' : `Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix`}</span>
+                <span>{noBookChosen ? 'Escolha pelo menos 1 livro' : method === 'CREDIT_CARD' ? 'Continuar para o cartão' : `Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix`}</span>
               )}
             </button>
           </div>
