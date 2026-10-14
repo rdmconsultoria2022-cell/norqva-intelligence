@@ -61,7 +61,7 @@ describe('NORQVA-0061 — páginas dos livros da coleção', () => {
     expect(bookPageFor('outro').brand).toBe('TRATTORIA EM CASA');
   });
 
-  it('página do kit: livro ativo vira "Disponível separadamente" com link; os outros seguem "Em breve"', async () => {
+  it('página do kit: os cinco livros aparecem como incluídos; o livro ativo ganha link da venda separada', async () => {
     const kit = { id: 'k', human_id: 'OFF-KIT', name: 'Kit Cozinha Italiana', description: 'x', price: 34.8, promotional_price: 27.9, bonus: null, is_demo: false };
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/public/collection')) return Promise.resolve({ ok: true, json: async () => ({ books: [{ book: 'paes', human_id: 'OFF-000020', price: 19.9 }] }) });
@@ -72,10 +72,9 @@ describe('NORQVA-0061 — páginas dos livros da coleção', () => {
         <KitLandingPage showError={vi.fn()} showSuccess={vi.fn()} />
       </MemoryRouter>
     );
-    const link = await screen.findByTestId('collection-paes');
-    expect(link).toHaveAttribute('href', '/p/OFF-000020');
-    expect(link).toHaveTextContent('Disponível separadamente · R$ 19,90');
-    expect(screen.queryByTestId('collection-antipasti')).toBeNull();
-    expect(screen.getAllByText('Em breve · não incluído no kit')).toHaveLength(2);
+    const link = await screen.findByText('Também à venda separadamente · R$ 19,90');
+    expect(link.closest('a')).toHaveAttribute('href', '/p/OFF-000020');
+    expect(screen.getAllByText('Incluído no kit')).toHaveLength(5);
+    expect(screen.queryByText('Em breve · não incluído no kit')).toBeNull();
   });
 });
