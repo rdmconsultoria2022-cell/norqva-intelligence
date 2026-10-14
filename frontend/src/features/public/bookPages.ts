@@ -219,8 +219,8 @@ export function bookPageFor(book: string | null | undefined): BookPage {
   return (book && PAGES[book]) || TRATTORIA;
 }
 
-/** Livros com capa e fotos já publicadas no site. O Volume IV entra aqui quando as fotos chegarem. */
-export const READY_BOOKS = new Set<string>(['paes', 'risotos']);
+/** Livros com capa e fotos já publicadas no site. Os três volumes já têm capa e fotos no site. */
+export const READY_BOOKS = new Set<string>(['paes', 'antipasti', 'risotos']);
 
 /** Capa de cada livro da coleção na página do kit. */
 export const COLLECTION_COVERS: Record<string, string> = {
