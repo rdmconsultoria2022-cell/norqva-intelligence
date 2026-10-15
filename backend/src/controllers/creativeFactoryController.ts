@@ -129,6 +129,17 @@ export async function reviseFactoryCreative(req: AuthenticatedRequest, res: Resp
   }
 }
 
+// NORQVA-0066: trocar a oferta (e o produto) de um criativo ainda não publicado
+export async function changeFactoryCreativeOffer(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const result = await service.changeOffer(pool, String(req.params.id), String(req.body?.offer_id || ''), req.user?.id || null, isDemoReq(req));
+    return res.status(200).json(result);
+  } catch (err) {
+    return handle(res, err, 'Falha ao trocar a oferta do criativo.');
+  }
+}
+
 export async function linkFactoryCreativeAd(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {

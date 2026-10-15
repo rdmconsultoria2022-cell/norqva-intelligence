@@ -769,6 +769,77 @@ export class CreativeFactoryService {
   }
 
   /**
+   * NORQVA-0066: troca a oferta (e, junto, o produto) de um criativo ainda não publicado. É classificação, não conteúdo:
+   * a versão, o texto e a aprovação continuam. As promessas ligadas são levadas para o produto novo (mesmo texto e tipo,
+   * com o mesmo status), porque cada promessa pertence a um produto.
+   */
+  async changeOffer(pool: Pool, creativeId: string, offerId: string, userId: string | null, isDemo: boolean) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(offerId || ''))) {
+      throw new CreativeFactoryError(400, 'Escolha a oferta.');
+    }
+    const cRes = await pool.query(
+      'SELECT id, human_id, product_id, offer_id, approval_status FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
+      [creativeId, isDemo]
+    );
+    if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
+    const cur = cRes.rows[0];
+    if (cur.approval_status === 'SUPERSEDED') throw new CreativeFactoryError(409, 'Troque a oferta na versão mais nova deste criativo.');
+    const oRes = await pool.query(
+      'SELECT id, human_id, name, product_id FROM offers WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
+      [offerId, isDemo]
+    );
+    if (oRes.rows.length === 0) throw new CreativeFactoryError(404, 'Oferta não encontrada.');
+    const offer = oRes.rows[0];
+    if (String(cur.offer_id || '') === String(offer.id)) throw new CreativeFactoryError(400, 'O criativo já está nesta oferta.');
+    const linked = await pool.query('SELECT 1 FROM creative_meta_ads WHERE creative_id = $1 LIMIT 1', [creativeId]);
+    if (linked.rows.length > 0) throw new CreativeFactoryError(409, 'Este criativo já está ligado a um anúncio da Meta: não dá para trocar a oferta.');
+
+    const client = await pool.connect();
+    let moved = 0;
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE creatives SET product_id = $1, offer_id = $2, updated_at = NOW() WHERE id = $3', [offer.product_id, offer.id, creativeId]);
+      if (String(cur.product_id || '') !== String(offer.product_id)) {
+        const claims = await client.query(
+          `SELECT cr.id, cr.claim_text, cr.claim_type, cr.source, cr.evidence, cr.status, cr.status_note, cr.verified_by, cr.verified_at, cr.valid_until, cr.product_id
+           FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id WHERE cc.creative_id = $1`,
+          [creativeId]
+        );
+        for (const cl of claims.rows) {
+          if (String(cl.product_id || '') === String(offer.product_id)) continue;
+          let targetId: string;
+          const same = await client.query(
+            `SELECT id FROM claims_registry WHERE product_id = $1 AND is_demo = $2 AND claim_text = $3 AND claim_type = $4 AND status <> 'REJECTED' ORDER BY created_at LIMIT 1`,
+            [offer.product_id, isDemo, cl.claim_text, cl.claim_type]
+          );
+          if (same.rows.length > 0) {
+            targetId = same.rows[0].id;
+          } else {
+            const ins = await client.query(
+              `INSERT INTO claims_registry (human_id, product_id, claim_text, claim_type, source, evidence, status, status_note, verified_by, verified_at, valid_until, is_demo)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+              [`CLM-${crypto.randomBytes(4).toString('hex').toUpperCase()}${demoSuffix(isDemo)}`, offer.product_id, cl.claim_text, cl.claim_type,
+               `Levada do criativo ${cur.human_id} ao trocar a oferta`, cl.evidence, cl.status, cl.status_note, cl.verified_by, cl.verified_at, cl.valid_until, isDemo]
+            );
+            targetId = ins.rows[0].id;
+          }
+          await client.query('DELETE FROM creative_claims WHERE creative_id = $1 AND claim_id = $2', [creativeId, cl.id]);
+          await client.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [creativeId, targetId]);
+          moved++;
+        }
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    await writeAuditLog(pool, userId, 'CREATIVE_OFFER_CHANGED', `Criativo ${cur.human_id}: oferta trocada para ${offer.human_id}${moved ? ` (${moved} promessa(s) levada(s) ao novo produto)` : ''}`, String(cur.offer_id || ''), offer.human_id, isDemo);
+    return { creative_id: creativeId, offer_id: offer.id, product_id: offer.product_id, claims_moved: moved };
+  }
+
+  /**
    * NORQVA-0007: attach (or replace) the produced file of a creative without creating a new version.
    * The file is the production of the approved copy; approval and the Meta link are kept.
    */

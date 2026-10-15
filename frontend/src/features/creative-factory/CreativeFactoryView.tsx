@@ -231,6 +231,20 @@ export function CreativeFactoryView({
     });
   };
 
+  // NORQVA-0066: trocar a oferta (e o produto) de um criativo ainda não publicado
+  const [offerPick, setOfferPick] = useState<Record<string, string>>({});
+  const submitOffer = (c: any) => {
+    const offerId = offerPick[c.id] || '';
+    if (!offerId || offerId === String(c.offer_id || '')) return;
+    return run(
+      `offer-${c.id}`,
+      () => post(`/creative-factory/creatives/${c.id}/offer?mode=${mode}`, { offer_id: offerId }),
+      'Oferta do criativo trocada.'
+    ).then(ok => {
+      if (ok) setEditing(null);
+    });
+  };
+
   const submitEdit = () => {
     if (!editing) return;
     const { id, hook, mechanism, headline, primary_text, cta, script, file_url } = editing;
@@ -859,6 +873,31 @@ export function CreativeFactoryView({
                     onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, file_url: v } : prev)); }}
                     className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
                   />
+                  <div className="space-y-1 border-t border-slate-800 pt-2" data-testid="creative-offer-change">
+                    <span className="block text-slate-500">Oferta deste criativo (muda também o produto; as promessas acompanham)</span>
+                    <div className="flex gap-2">
+                      <select
+                        aria-label="Oferta do criativo"
+                        value={offerPick[c.id] ?? String(c.offer_id || '')}
+                        onChange={e => { const v = e.target.value; setOfferPick(prev => ({ ...prev, [c.id]: v })); }}
+                        className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      >
+                        {!c.offer_id && <option value="">Sem oferta</option>}
+                        {offers.map((o: any) => (
+                          <option key={o.id} value={o.id}>
+                            {(products.find((p: any) => String(p.id) === String(o.product_id))?.name || 'Produto')} · {o.human_id} · {o.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => submitOffer(c)}
+                        disabled={!offerPick[c.id] || offerPick[c.id] === String(c.offer_id || '') || busy === `offer-${c.id}`}
+                        className="px-2.5 py-1 rounded border border-emerald-700 text-emerald-300 disabled:opacity-40"
+                      >
+                        Trocar oferta
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={submitEdit} className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold">
                       Salvar
