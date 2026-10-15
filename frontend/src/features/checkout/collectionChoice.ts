@@ -1,4 +1,6 @@
 // NORQVA-0063: livros da coleção que o checkout do kit oferece como avulsos.
+import { READY_BOOKS } from '../public/bookPages';
+import type { CollectionSaleBook } from './checkoutTypes';
 // Nome, capa e número de receitas são fixos aqui; preço, oferta e cartão vêm sempre do servidor (/public/collection).
 
 export interface SaleBookInfo {
@@ -23,3 +25,14 @@ export const FULL_KIT_RECIPES = 74;
 
 /** Kit com os 5 livros: a oferta entrega 5 PDFs ou mais. */
 export const isFullKit = (offer: { delivery_files?: number | null } | null | undefined) => Number(offer?.delivery_files) >= 5;
+
+/**
+ * NORQVA-0064: livros da lista pública (/public/collection) que podem ser vendidos avulsos no checkout:
+ * Trattoria e Dolci, e os volumes com página pronta no site (READY_BOOKS). Preço e oferta vêm do servidor.
+ */
+export function toSaleBooks(raw: unknown): CollectionSaleBook[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((b: any) => b && b.book && b.human_id && b.offer_id && Number(b.price) > 0 && SALE_BOOK_INFO[String(b.book)] && (READY_BOOKS.has(String(b.book)) || b.book === 'trattoria' || b.book === 'dolci'))
+    .map((b: any) => ({ book: String(b.book), human_id: String(b.human_id), offer_id: String(b.offer_id), price: Number(b.price), card: b.card || null }));
+}

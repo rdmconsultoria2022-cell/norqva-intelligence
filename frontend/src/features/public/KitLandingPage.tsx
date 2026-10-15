@@ -10,7 +10,7 @@ import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
 import type { CollectionSaleBook } from '../checkout/checkoutTypes';
-import { isFullKit, FULL_KIT_RECIPES } from '../checkout/collectionChoice';
+import { isFullKit, FULL_KIT_RECIPES, toSaleBooks } from '../checkout/collectionChoice';
 
 // NORQVA-0038: página de vendas do Kit Cozinha Italiana (Trattoria em Casa + Dolci della Nonna).
 // Preços, parcelas e "de/por" vêm sempre da oferta no servidor; nada de valor fixo aqui.
@@ -153,11 +153,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         const map: Record<string, { human_id: string; price: number }> = {};
         for (const b of data.books) if (b && b.book && b.human_id && READY_BOOKS.has(String(b.book))) map[String(b.book)] = { human_id: String(b.human_id), price: Number(b.price) };
         setForSale(map);
-        setSaleBooks(
-          data.books
-            .filter((b: any) => b && b.book && b.human_id && b.offer_id && Number(b.price) > 0 && (READY_BOOKS.has(String(b.book)) || b.book === 'trattoria' || b.book === 'dolci'))
-            .map((b: any) => ({ book: String(b.book), human_id: String(b.human_id), offer_id: String(b.offer_id), price: Number(b.price), card: b.card || null }))
-        );
+        setSaleBooks(toSaleBooks(data.books));
       })
       .catch(() => {});
     return () => {

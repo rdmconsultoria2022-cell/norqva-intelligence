@@ -1,13 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ShieldCheck, User, Mail, Phone, FileText, Loader2, X, Lock, AlertCircle, CreditCard, QrCode } from 'lucide-react';
 import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, API_BASE } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
 import { getAttributionContext, sendFunnelEvent } from '../../services/attribution';
 import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from './checkoutValidation';
 import { savePurchaseSession } from '../../services/purchaseSession';
 import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallments';
-import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit } from './collectionChoice';
+import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit, toSaleBooks } from './collectionChoice';
+import type { CollectionSaleBook } from './checkoutTypes';
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   offer,
@@ -28,8 +29,24 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const [quantity, setQuantity] = useState(1);
   // NORQVA-0032: adicional nasce desmarcado; só entra se a pessoa marcar
   const [withBump, setWithBump] = useState(false);
+  // NORQVA-0064: o kit de 5 livros vendido por qualquer página (/p/, /kit/) busca os livros avulsos sozinho
+  const [fetchedBooks, setFetchedBooks] = useState<CollectionSaleBook[] | null>(null);
+  const offerIsFullKit = isFullKit(offer);
+  useEffect(() => {
+    if (collectionBooks !== undefined || !offerIsFullKit) return;
+    let alive = true;
+    fetch(`${API_BASE}/public/collection`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (alive && data) setFetchedBooks(toSaleBooks(data.books));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [collectionBooks, offerIsFullKit]);
   // NORQVA-0063: na página do kit, a pessoa escolhe o kit completo (padrão) ou livros avulsos
-  const saleBooks = (collectionBooks || [])
+  const saleBooks = (collectionBooks ?? (offerIsFullKit ? fetchedBooks : null) ?? [])
     .filter(b => b && b.offer_id && b.human_id && Number(b.price) > 0 && SALE_BOOK_INFO[b.book])
     .sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book));
   const hasChoice = saleBooks.length > 0;
