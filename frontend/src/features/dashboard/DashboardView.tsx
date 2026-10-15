@@ -319,9 +319,12 @@ export function DashboardView({
 
   if (activeSubView === 'executive' && loading && !execData) {
     return (
-      <div className="h-72 flex flex-col items-center justify-center text-slate-400">
-        <Activity className="h-8 w-8 text-emerald-500 animate-spin mb-2" />
-        Carregando dados executivos reais...
+      <div className="space-y-4">
+        <div className="h-72 flex flex-col items-center justify-center text-slate-400">
+          <Activity className="h-8 w-8 text-emerald-500 animate-spin mb-2" />
+          Carregando dados executivos reais...
+        </div>
+        {metaCreditSlot}
       </div>
     );
   }

@@ -176,7 +176,7 @@ export function GlobalPeriodSelector({ appliesToScreen = true }: { appliesToScre
       <button
         type="button"
         onClick={toggle}
-        aria-haspopup="dialog"
+        aria-haspopup="true"
         aria-expanded={open}
         aria-label={`Período: ${current}`}
         title="Mudar o período"
