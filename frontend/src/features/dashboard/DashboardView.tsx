@@ -24,8 +24,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Info,
-  Layers2,
-  ChevronRight
+  Layers2
 } from 'lucide-react';
 import { DashboardProps } from './dashboardTypes';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
@@ -40,6 +39,25 @@ const LABEL_TONE_CLASS: Record<string, string> = {
   warn: 'bg-amber-955/40 text-amber-400 border border-amber-500/20',
   muted: 'bg-slate-800 text-slate-400'
 };
+
+// NORQVA-0072: valores curtos para os cartões no celular (todos cabem numa linha sem deslizar).
+// No computador os valores aparecem completos.
+function brlShort(value: number | null | undefined): string {
+  const n = Number(value) || 0;
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `R$ ${(n / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`;
+  if (abs >= 10_000) return `R$ ${(n / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`;
+  if (abs >= 1_000) return `R$ ${Math.round(n).toLocaleString('pt-BR')}`;
+  return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function numShort(value: number | null | undefined): string {
+  const n = Number(value) || 0;
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`;
+  if (abs >= 1_000) return `${(n / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`;
+  return n.toLocaleString('pt-BR');
+}
 
 export function DashboardView({
   currentUser,
@@ -1088,141 +1106,129 @@ export function DashboardView({
           {/* NORQVA-0071: ordem da Visão Geral = 1) resultados, 2) funil, 3) tráfego Meta Ads, todos na horizontal.
               No celular cada faixa desliza para o lado; no computador cabe tudo numa linha. */}
 
-          {/* 1. Resultados do período */}
-          <section aria-labelledby="overview-results-title" data-testid="overview-results" className="space-y-2">
-            <h3 id="overview-results-title" className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-emerald-400" /> Resultados · {periodLabel(globalPeriod)}
+          {/* 1. Resultados do período (NORQVA-0072: tudo numa linha, sem deslizar; no celular, rótulos e valores curtos) */}
+          <section aria-labelledby="overview-results-title" data-testid="overview-results" className="space-y-1.5 sm:space-y-2">
+            <h3 id="overview-results-title" className="font-bold text-[10px] sm:text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-400" /> Resultados · {periodLabel(globalPeriod)}
             </h3>
-            <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 custom-scrollbar md:grid md:grid-cols-4 md:overflow-visible">
-            <div className="min-w-[158px] flex-1 snap-start p-3.5 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg flex flex-col justify-between">
-              <div className="flex justify-between items-center gap-2 text-[10px] sm:text-xs font-mono uppercase text-slate-400">
-                <span className="leading-tight">Investimento de Mídia</span>
-                <TrendingUp className="h-4 w-4 text-blue-400 shrink-0" />
-              </div>
-              <div className="mt-2.5">
-                <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight whitespace-nowrap text-slate-100">
-                  R$ {meta.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
+              <div className="min-w-0 p-2 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg">
+                <div className="flex justify-between items-center gap-1 text-[9px] sm:text-xs font-mono uppercase text-slate-400">
+                  <span className="truncate"><span className="sm:hidden">Invest.</span><span className="hidden sm:inline">Investimento de Mídia</span></span>
+                  <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-blue-400 shrink-0 hidden min-[400px]:block sm:block" />
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {meta.impressions.toLocaleString('pt-BR')} imp. | {meta.clicks.toLocaleString('pt-BR')} cliques
+                <div className="mt-1 sm:mt-2.5 text-[12px] min-[400px]:text-[13px] sm:text-2xl font-bold font-sans sm:font-mono tabular-nums tracking-tight whitespace-nowrap overflow-hidden text-ellipsis text-slate-100">
+                  <span className="hidden sm:inline">R$ {(meta.spend).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span><span className="sm:hidden">{brlShort(meta.spend)}</span>
                 </div>
-              </div>
-            </div>
-            <div className="min-w-[158px] flex-1 snap-start p-3.5 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg flex flex-col justify-between">
-              <div className="flex justify-between items-center gap-2 text-[10px] sm:text-xs font-mono uppercase text-slate-400">
-                <span className="leading-tight">Faturamento Confirmado</span>
-                <DollarSign className="h-4 w-4 text-emerald-400 shrink-0" />
-              </div>
-              <div className="mt-2.5">
-                <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight whitespace-nowrap text-emerald-400">
-                  R$ {finance.confirmedRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  Ticket Médio: R$ {commerce.aov.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                <div className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 sm:mt-1 font-mono truncate">
+                  <span className="sm:hidden">{meta.clicks.toLocaleString('pt-BR')} cliques</span><span className="hidden sm:inline">{meta.impressions.toLocaleString('pt-BR')} imp. | {meta.clicks.toLocaleString('pt-BR')} cliques</span>
                 </div>
               </div>
-            </div>
-            <div className="min-w-[158px] flex-1 snap-start p-3.5 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg flex flex-col justify-between">
-              <div className="flex justify-between items-center gap-2 text-[10px] sm:text-xs font-mono uppercase text-slate-400">
-                <span className="leading-tight">Pedidos Pagos / Criados</span>
-                <ShoppingCart className="h-4 w-4 text-amber-400 shrink-0" />
+              <div className="min-w-0 p-2 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg">
+                <div className="flex justify-between items-center gap-1 text-[9px] sm:text-xs font-mono uppercase text-slate-400">
+                  <span className="truncate"><span className="sm:hidden">Fatur.</span><span className="hidden sm:inline">Faturamento Confirmado</span></span>
+                  <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-400 shrink-0 hidden min-[400px]:block sm:block" />
+                </div>
+                <div className="mt-1 sm:mt-2.5 text-[12px] min-[400px]:text-[13px] sm:text-2xl font-bold font-sans sm:font-mono tabular-nums tracking-tight whitespace-nowrap overflow-hidden text-ellipsis text-emerald-400">
+                  <span className="hidden sm:inline">R$ {(finance.confirmedRevenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span><span className="sm:hidden">{brlShort(finance.confirmedRevenue)}</span>
+                </div>
+                <div className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 sm:mt-1 font-mono truncate">
+                  <span className="sm:hidden">TM {brlShort(commerce.aov)}</span><span className="hidden sm:inline">Ticket Médio: R$ {commerce.aov.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
               </div>
-              <div className="mt-2.5">
-                <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight whitespace-nowrap text-slate-100">
+              <div className="min-w-0 p-2 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg">
+                <div className="flex justify-between items-center gap-1 text-[9px] sm:text-xs font-mono uppercase text-slate-400">
+                  <span className="truncate"><span className="sm:hidden">Pedidos</span><span className="hidden sm:inline">Pedidos Pagos / Criados</span></span>
+                  <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 text-amber-400 shrink-0 hidden min-[400px]:block sm:block" />
+                </div>
+                <div className="mt-1 sm:mt-2.5 text-[12px] min-[400px]:text-[13px] sm:text-2xl font-bold font-sans sm:font-mono tabular-nums tracking-tight whitespace-nowrap overflow-hidden text-ellipsis text-slate-100">
                   {commerce.paidOrders} / {commerce.totalOrders}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {commerce.pendingOrders} pendentes | {commerce.cancelledOrders} cancelados
+                <div className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 sm:mt-1 font-mono truncate">
+                  <span className="sm:hidden">{commerce.pendingOrders} pend.</span><span className="hidden sm:inline">{commerce.pendingOrders} pendentes | {commerce.cancelledOrders} cancelados</span>
                 </div>
               </div>
-            </div>
-            <div className="min-w-[158px] flex-1 snap-start p-3.5 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg flex flex-col justify-between">
-              <div className="flex justify-between items-center gap-2 text-[10px] sm:text-xs font-mono uppercase text-slate-400">
-                <span className="leading-tight">Entregas & Downloads</span>
-                <Download className="h-4 w-4 text-emerald-400 shrink-0" />
-              </div>
-              <div className="mt-2.5">
-                <div className="text-xl sm:text-2xl font-bold font-mono tracking-tight whitespace-nowrap text-slate-100">
-                  {delivery.totalEntitlements} disp.
+              <div className="min-w-0 p-2 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-lg">
+                <div className="flex justify-between items-center gap-1 text-[9px] sm:text-xs font-mono uppercase text-slate-400">
+                  <span className="truncate"><span className="sm:hidden">Entregas</span><span className="hidden sm:inline">Entregas & Downloads</span></span>
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-400 shrink-0 hidden min-[400px]:block sm:block" />
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                  {delivery.completedDownloads} baixados | {delivery.pendingDownloads} aguardando
+                <div className="mt-1 sm:mt-2.5 text-[12px] min-[400px]:text-[13px] sm:text-2xl font-bold font-sans sm:font-mono tabular-nums tracking-tight whitespace-nowrap overflow-hidden text-ellipsis text-slate-100">
+                  {delivery.totalEntitlements}<span className="hidden sm:inline"> disp.</span>
+                </div>
+                <div className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 sm:mt-1 font-mono truncate">
+                  <span className="sm:hidden">{delivery.completedDownloads} baixados</span><span className="hidden sm:inline">{delivery.completedDownloads} baixados | {delivery.pendingDownloads} aguardando</span>
                 </div>
               </div>
-            </div>
             </div>
           </section>
 
           {/* 2. Funil transacional, da esquerda para a direita */}
-          <section data-testid="overview-funnel" className="p-4 sm:p-5 border border-slate-800 bg-slate-900/40 rounded-lg space-y-3">
+          <section data-testid="overview-funnel" className="p-2.5 sm:p-5 border border-slate-800 bg-slate-900/40 rounded-lg space-y-2 sm:space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-1">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
-                <Zap className="h-4 w-4 text-emerald-400" /> Funil Transacional Determinístico (100% Real)
+              <h3 className="font-bold text-[10px] sm:text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-400" /> <span className="sm:hidden">Funil</span><span className="hidden sm:inline">Funil Transacional Determinístico (100% Real)</span>
               </h3>
-              <span className="text-[10px] font-mono text-slate-500">Relações comprovadas por chaves estrangeiras</span>
+              <span className="hidden sm:inline text-[10px] font-mono text-slate-500">Relações comprovadas por chaves estrangeiras</span>
             </div>
-            <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 custom-scrollbar items-stretch">
-              <div className="min-w-[124px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">1. Pedidos Criados</div>
-                <div className="text-xl font-bold font-mono text-slate-200 mt-1">{commerce.totalOrders}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">Checkout iniciado</div>
+            <div className="grid grid-cols-5 gap-1 sm:gap-3">
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Pedidos</span><span className="hidden sm:inline">1. Pedidos Criados</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{commerce.totalOrders}</div>
+                <div className="text-[8px] sm:text-[9px] text-slate-500 font-mono mt-0.5 truncate"><span className="sm:hidden">criados</span><span className="hidden sm:inline">Checkout iniciado</span></div>
               </div>
-              <ChevronRight className="h-4 w-4 text-slate-600 shrink-0 self-center" aria-hidden="true" />
-              <div className="min-w-[124px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">2. Pix Gerados</div>
-                <div className="text-xl font-bold font-mono text-slate-200 mt-1">{finance.totalPixCreated}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">Payload Asaas emitido</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Pix</span><span className="hidden sm:inline">2. Pix Gerados</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{finance.totalPixCreated}</div>
+                <div className="text-[8px] sm:text-[9px] text-slate-500 font-mono mt-0.5 truncate"><span className="sm:hidden">gerados</span><span className="hidden sm:inline">Payload Asaas emitido</span></div>
               </div>
-              <ChevronRight className="h-4 w-4 text-slate-600 shrink-0 self-center" aria-hidden="true" />
-              <div className="min-w-[124px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">3. Pagamentos Confirmados</div>
-                <div className="text-xl font-bold font-mono text-emerald-400 mt-1">{finance.totalPixConfirmed}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">{finance.approvalRate !== null ? `Taxa: ${finance.approvalRate}%` : 'Taxa: — (Aguardando dados)'}</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Pagos</span><span className="hidden sm:inline">3. Pagamentos Confirmados</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-emerald-400 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{finance.totalPixConfirmed}</div>
+                <div className="text-[8px] sm:text-[9px] text-slate-500 font-mono mt-0.5 truncate"><span className="sm:hidden">{finance.approvalRate !== null ? `${finance.approvalRate}%` : '—'}</span><span className="hidden sm:inline">{finance.approvalRate !== null ? `Taxa: ${finance.approvalRate}%` : 'Taxa: — (Aguardando dados)'}</span></div>
               </div>
-              <ChevronRight className="h-4 w-4 text-slate-600 shrink-0 self-center" aria-hidden="true" />
-              <div className="min-w-[124px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">4. Entregas Disponibilizadas</div>
-                <div className="text-xl font-bold font-mono text-slate-200 mt-1">{delivery.totalEntitlements}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">Tokens ativos gerados</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Entreg.</span><span className="hidden sm:inline">4. Entregas Disponibilizadas</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{delivery.totalEntitlements}</div>
+                <div className="text-[8px] sm:text-[9px] text-slate-500 font-mono mt-0.5 truncate"><span className="sm:hidden">liberadas</span><span className="hidden sm:inline">Tokens ativos gerados</span></div>
               </div>
-              <ChevronRight className="h-4 w-4 text-slate-600 shrink-0 self-center" aria-hidden="true" />
-              <div className="min-w-[124px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">5. Downloads Concluídos</div>
-                <div className="text-xl font-bold font-mono text-emerald-400 mt-1">{delivery.completedDownloads}</div>
-                <div className="text-[9px] text-slate-500 font-mono mt-1">{delivery.totalDownloads} downloads totais</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Downl.</span><span className="hidden sm:inline">5. Downloads Concluídos</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-emerald-400 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{delivery.completedDownloads}</div>
+                <div className="text-[8px] sm:text-[9px] text-slate-500 font-mono mt-0.5 truncate"><span className="sm:hidden">{delivery.totalDownloads} total</span><span className="hidden sm:inline">{delivery.totalDownloads} downloads totais</span></div>
               </div>
             </div>
           </section>
 
           {/* 3. Tráfego Meta Ads */}
-          <section data-testid="overview-meta-traffic" className="p-4 sm:p-5 border border-slate-800 bg-slate-900/40 rounded-lg space-y-3">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
-              <Eye className="h-4 w-4 text-blue-400" /> Tráfego Meta Ads
+          <section data-testid="overview-meta-traffic" className="p-2.5 sm:p-5 border border-slate-800 bg-slate-900/40 rounded-lg space-y-2 sm:space-y-3">
+            <h3 className="font-bold text-[10px] sm:text-xs uppercase tracking-wider text-slate-300 font-mono flex items-center gap-1.5">
+              <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-400" /> Tráfego Meta Ads
             </h3>
-            <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 custom-scrollbar md:grid md:grid-cols-6 md:overflow-visible">
-              <div className="min-w-[118px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">Impressões</div>
-                <div className="text-base sm:text-lg font-bold font-mono text-slate-200 mt-1 whitespace-nowrap">{meta.impressions.toLocaleString('pt-BR')}</div>
+            <div className="grid grid-cols-6 gap-1 sm:gap-3">
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Impr.</span><span className="hidden sm:inline">Impressões</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis"><span className="hidden sm:inline">{meta.impressions.toLocaleString('pt-BR')}</span><span className="sm:hidden">{numShort(meta.impressions)}</span></div>
               </div>
-              <div className="min-w-[118px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">Alcance Único</div>
-                <div className="text-base sm:text-lg font-bold font-mono text-slate-200 mt-1 whitespace-nowrap">{meta.reach.toLocaleString('pt-BR')}</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Alcance</span><span className="hidden sm:inline">Alcance Único</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis"><span className="hidden sm:inline">{meta.reach.toLocaleString('pt-BR')}</span><span className="sm:hidden">{numShort(meta.reach)}</span></div>
               </div>
-              <div className="min-w-[118px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">Cliques no Link</div>
-                <div className="text-base sm:text-lg font-bold font-mono text-slate-200 mt-1 whitespace-nowrap">{meta.clicks.toLocaleString('pt-BR')}</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">Cliques</span><span className="hidden sm:inline">Cliques no Link</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis"><span className="hidden sm:inline">{meta.clicks.toLocaleString('pt-BR')}</span><span className="sm:hidden">{numShort(meta.clicks)}</span></div>
               </div>
-              <div className="min-w-[118px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">CTR</div>
-                <div className="text-base sm:text-lg font-bold font-mono text-slate-200 mt-1 whitespace-nowrap">{meta.ctr !== null ? `${meta.ctr}%` : '—'}</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">CTR</span><span className="hidden sm:inline">CTR</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{meta.ctr !== null ? `${meta.ctr}%` : '—'}</div>
               </div>
-              <div className="min-w-[118px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">CPC Médio</div>
-                <div className="text-base sm:text-lg font-bold font-mono text-slate-200 mt-1 whitespace-nowrap">{meta.cpc !== null ? `R$ ${meta.cpc.toFixed(2)}` : '—'}</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">CPC</span><span className="hidden sm:inline">CPC Médio</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{meta.cpc !== null ? <><span className="hidden sm:inline">R$ </span>{meta.cpc.toFixed(2).replace('.', ',')}</> : '—'}</div>
               </div>
-              <div className="min-w-[118px] flex-1 snap-start p-3 bg-slate-950 border border-slate-800 rounded">
-                <div className="text-[10px] font-mono text-slate-400 uppercase leading-tight">CPM Médio</div>
-                <div className="text-base sm:text-lg font-bold font-mono text-slate-200 mt-1 whitespace-nowrap">{meta.cpm !== null ? `R$ ${meta.cpm.toFixed(2)}` : '—'}</div>
+              <div className="min-w-0 px-1 py-2 sm:p-3 bg-slate-950 border border-slate-800 rounded text-center sm:text-left">
+                <div className="text-[8.5px] sm:text-[10px] font-mono text-slate-400 uppercase truncate"><span className="sm:hidden">CPM</span><span className="hidden sm:inline">CPM Médio</span></div>
+                <div className="text-[11px] min-[400px]:text-[12px] sm:text-xl font-bold font-sans sm:font-mono tabular-nums text-slate-200 mt-0.5 sm:mt-1 whitespace-nowrap overflow-hidden text-ellipsis">{meta.cpm !== null ? <><span className="hidden sm:inline">R$ </span>{meta.cpm.toFixed(2).replace('.', ',')}</> : '—'}</div>
               </div>
             </div>
             {(meta.ctr === null || meta.cpc === null || meta.cpm === null) && (
