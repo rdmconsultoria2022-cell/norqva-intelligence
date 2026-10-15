@@ -26,15 +26,40 @@ export interface EmailServiceResult {
   error?: string;
 }
 
+/** NORQVA-0074: lembrete de pagamento para pedido pendente (etapas 1, 2 e 3). */
+export interface SendPaymentReminderEmailParams {
+  email: string;
+  firstName: string;
+  offerName: string;
+  amount: number;
+  step: 1 | 2 | 3;
+  paymentMethod?: 'PIX' | 'CREDIT_CARD';
+  /** O pedido tinha um código Pix e ele venceu. */
+  pixExpired?: boolean;
+  /** Código Pix Copia e Cola ainda válido (sem ele, o e-mail manda para a página do produto). */
+  pixCopyPaste?: string | null;
+  pixExpiresAt?: string | null;
+  /** Página segura do Asaas para cartão. */
+  invoiceUrl?: string | null;
+  /** Página do produto, para gerar um Pix novo quando o anterior venceu. */
+  offerUrl: string;
+  orderId?: string;
+  isDemo?: boolean;
+}
+
 export interface IEmailProvider {
   sendPurchaseAccessEmail(params: SendPurchaseAccessEmailParams): Promise<EmailServiceResult>;
+  sendPaymentReminderEmail?(params: SendPaymentReminderEmailParams): Promise<EmailServiceResult>;
 }
+
+export const dispatchedRemindersForTesting: SendPaymentReminderEmailParams[] = [];
 
 // In-memory collector for unit tests
 export const dispatchedEmailsForTesting: SendPurchaseAccessEmailParams[] = [];
 
 export function clearTestEmails(): void {
   dispatchedEmailsForTesting.length = 0;
+  dispatchedRemindersForTesting.length = 0;
 }
 
 export class TransactionalEmailService implements IEmailProvider {
@@ -135,6 +160,22 @@ export class TransactionalEmailService implements IEmailProvider {
       messageId: 'sim-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
       simulated: true
     };
+  }
+
+  /** NORQVA-0074: lembrete de pagamento. Em produção sem provedor configurado, falha sem enviar. */
+  async sendPaymentReminderEmail(params: SendPaymentReminderEmailParams): Promise<EmailServiceResult> {
+    if (!params.email || !params.offerUrl) return { success: false, error: 'INVALID_PARAMETERS' };
+    if (process.env.NODE_ENV !== 'production' || process.env.VITEST) {
+      dispatchedRemindersForTesting.push(params);
+    }
+    const provider = this.getResolvedProvider(params.orderId);
+    if (provider && provider.sendPaymentReminderEmail) {
+      return provider.sendPaymentReminderEmail(params);
+    }
+    if (process.env.NODE_ENV === 'production' && !params.isDemo) {
+      return { success: false, error: 'EMAIL_PROVIDER_PENDING_CONFIG', simulated: false };
+    }
+    return { success: true, messageId: 'sim-reminder-' + Date.now(), simulated: true };
   }
 }
 
