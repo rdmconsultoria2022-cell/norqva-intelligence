@@ -66,7 +66,7 @@ describe('NORQVA-0069 — ofertas de saída no Voltar', () => {
     expect(screen.queryByTestId('exit-offer')).toBeNull();
   });
 
-  it('sem oferta de saída, ou em modo demo, o Voltar fecha na hora', () => {
+  it('sem oferta de saída, o Voltar fecha na hora', () => {
     const onCancel = vi.fn();
     renderIt(onCancel, { ...kit, exit_offer: null });
     fireEvent.click(screen.getByText('Voltar'));
