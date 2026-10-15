@@ -3,6 +3,7 @@ import { Download, AlertTriangle, Loader2, X, Sparkles, Mail, Heart, Smartphone,
 import { DigitalDeliveryProps, DeliveryTokenItem } from './deliveryTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
+import { PostPurchaseOffer } from './PostPurchaseOffer';
 
 export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   orderId,
@@ -390,6 +391,11 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                 );
               })}
             </div>
+
+            {/* NORQVA-0075: oferta depois da compra (o servidor decide se aparece) */}
+            {orderData?.post_purchase_offer && (
+              <PostPurchaseOffer offer={orderData.post_purchase_offer} isDemo={isDemo} showError={showError} showSuccess={showSuccess} />
+            )}
 
             {/* Email info & Support card */}
             <div className="p-4 rounded-xl bg-stone-100/90 border border-stone-200/80 space-y-2 text-xs text-stone-600">

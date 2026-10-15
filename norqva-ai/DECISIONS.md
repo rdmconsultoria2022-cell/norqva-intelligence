@@ -167,3 +167,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, 15/10/2026 10h38):** as telas mostram a operação a partir de **25/09/2026**, quando as vendas começaram de forma contínua. O gasto e os pedidos da fase de testes (campanhas E2E e EXP-2026-001, R$ 1.480, e os pedidos de 09/09) ficam fora de todos os períodos, inclusive "Tudo".
 - **Como:** `OPERATION_START_DATE` no servidor (padrão 2026-09-25; `off` desliga). Nada é apagado; o histórico continua no banco.
 - **Tentativas de teste:** pedidos não pagos de Débora Souza Pena e Ricardo Andrade Lucas saem dos números por reclassificação (migration 064, critério da D-0002).
+
+## D-0075 — Oferta depois da compra do Trattoria (2026-10-15)
+
+- **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** quem compra o Trattoria vê, na tela de entrega, os outros 4 livros da coleção (Dolci, Pães, Antipasti, Risotos) por **R$ 27,90**, num pagamento novo.
+- **Regras:** só para pedido pago da conta real; não aparece para quem já tem algum desses livros no pedido nem para quem já comprou a oferta. O preço é o da oferta no servidor (migration 066, `offers.post_purchase_offer_id`).
