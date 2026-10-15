@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { UserObj } from '../../types';
 
 export interface DashboardProps {
@@ -18,4 +19,6 @@ export interface DashboardProps {
    * Resultados. Sem valor, mantém as três sub-telas antigas.
    */
   section?: 'overview' | 'financial';
+  /** NORQVA-0071: resumo do crédito Meta, mostrado logo depois do tráfego Meta Ads na Visão Geral. */
+  metaCreditSlot?: ReactNode;
 }

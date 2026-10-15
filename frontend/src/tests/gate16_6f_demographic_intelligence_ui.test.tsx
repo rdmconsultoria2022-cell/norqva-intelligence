@@ -360,24 +360,28 @@ describe('GATE 16.6F: Demographic Intelligence UI (Read-Only Presentation)', () 
     });
 
     // Click Ontem
+    fireEvent.click(screen.getByRole('button', { name: /^Período:/ })); // NORQVA-0071: abre o menu do período
     fireEvent.click(screen.getByRole('button', { name: 'Ontem' }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=real&period=yesterday');
     });
 
     // Click 7 dias
+    fireEvent.click(screen.getByRole('button', { name: /^Período:/ })); // NORQVA-0071: abre o menu do período
     fireEvent.click(screen.getByRole('button', { name: '7 dias' }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=real&period=7d');
     });
 
     // Click 30 dias
+    fireEvent.click(screen.getByRole('button', { name: /^Período:/ })); // NORQVA-0071: abre o menu do período
     fireEvent.click(screen.getByRole('button', { name: '30 dias' }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=real&period=30d');
     });
 
     // Click 90 dias
+    fireEvent.click(screen.getByRole('button', { name: /^Período:/ })); // NORQVA-0071: abre o menu do período
     fireEvent.click(screen.getByRole('button', { name: '90 dias' }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=real&period=90d');

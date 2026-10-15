@@ -329,6 +329,7 @@ describe('Creative Performance Dashboard View (Read-Only UI)', () => {
       </GlobalPeriodProvider>
     );
 
+    fireEvent.click(await screen.findByRole('button', { name: /^Período:/ })); // NORQVA-0071
     const btn7d = await screen.findByRole('button', { name: '7 dias' });
     fireEvent.click(btn7d);
 
@@ -353,6 +354,7 @@ describe('Creative Performance Dashboard View (Read-Only UI)', () => {
       </GlobalPeriodProvider>
     );
 
+    fireEvent.click(await screen.findByRole('button', { name: /^Período:/ })); // NORQVA-0071
     const customBtn = await screen.findByRole('button', { name: /Personalizado/i });
     fireEvent.click(customBtn);
 
