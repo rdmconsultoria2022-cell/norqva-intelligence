@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Pool } from 'pg';
-import { MetaSchedulerService, MetaSyncLock } from '../services/meta/metaSchedulerService';
+import { MetaSchedulerService, MetaSyncLock, automaticSyncRange, FIRST_SYNC_DELAY_MINUTES } from '../services/meta/metaSchedulerService';
 import { MetaSyncService, MetaSyncResult } from '../services/meta/metaSyncService';
 import { MetaClient } from '../services/meta/metaClient';
 
@@ -66,6 +66,32 @@ describe('GATE: META_AUTOMATED_SYNC_V1 — Automated Analytics Sync Suite', () =
     expect(status.intervalMinutes).toBe(60);
     expect(status.nextMetaSync).not.toBeNull();
     scheduler.stop();
+  });
+
+  it('NORQVA-0066: a primeira sincronização sai poucos minutos depois de o servidor subir, lendo até hoje', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-15T01:00:00Z')); // 14/10 22h em São Paulo
+      process.env.META_AUTO_SYNC_ENABLED = 'true';
+      process.env.META_AUTO_SYNC_INTERVAL_MINUTES = '60';
+      const scheduler = new MetaSchedulerService(mockSyncService);
+      scheduler.start(mockPool);
+      expect(FIRST_SYNC_DELAY_MINUTES).toBeLessThanOrEqual(5);
+      expect(new Date(scheduler.getStatus().nextMetaSync as string).getTime() - Date.now()).toBe(FIRST_SYNC_DELAY_MINUTES * 60 * 1000);
+      await vi.advanceTimersByTimeAsync(FIRST_SYNC_DELAY_MINUTES * 60 * 1000 + 50);
+      expect(mockSyncService.syncAll).toHaveBeenCalled();
+      const opts = mockSyncService.syncAll.mock.calls[0][3];
+      expect(opts.timeRange).toEqual({ since: '2026-10-08', until: '2026-10-14' });
+      expect(opts.datePreset).toBeUndefined();
+      scheduler.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('NORQVA-0066: o período automático termina no dia de hoje de São Paulo', () => {
+    expect(automaticSyncRange(new Date('2026-10-15T02:30:00Z'))).toEqual({ since: '2026-10-08', until: '2026-10-14' });
+    expect(automaticSyncRange(new Date('2026-10-15T12:00:00Z'))).toEqual({ since: '2026-10-09', until: '2026-10-15' });
   });
 
   it('3. Enforces minimum 60-minute interval when lower value is provided', () => {
