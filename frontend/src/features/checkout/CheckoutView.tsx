@@ -25,6 +25,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   showError,
   showSuccess,
   collectionBooks,
+  initialBook = null,
   summary = null
 }) => {
   const [customerName, setCustomerName] = useState(initialCustomer?.name || currentUser?.name || '');
@@ -55,8 +56,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
     .filter(b => b && b.offer_id && b.human_id && Number(b.price) > 0 && SALE_BOOK_INFO[b.book])
     .sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book));
   const hasChoice = saleBooks.length > 0;
-  const [buyMode, setBuyMode] = useState<'kit' | 'avulso'>('kit');
-  const [picked, setPicked] = useState<string[]>([]);
+  // NORQVA-0076: vindo do botão de um livro da lista, abre já nos avulsos com esse livro marcado
+  const [buyMode, setBuyMode] = useState<'kit' | 'avulso'>(initialBook ? 'avulso' : 'kit');
+  const [picked, setPicked] = useState<string[]>(initialBook ? [initialBook] : []);
   const avulso = hasChoice && buyMode === 'avulso';
   const chosen = saleBooks.filter(b => picked.includes(b.book));
   const mainBook = avulso ? chosen[0] || null : null;

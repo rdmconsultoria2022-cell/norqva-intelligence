@@ -1,6 +1,6 @@
 // NORQVA-0070: página do kit com livros em 3D, números animados e barra de compra. Sem IntersectionObserver (jsdom) tudo aparece parado e completo.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { KitLandingPage } from '../features/public/KitLandingPage';
@@ -54,13 +54,13 @@ describe('NORQVA-0070 — página do kit: 3D e movimento', () => {
     expect(screen.queryByText('7 dias para pedir reembolso')).toBeNull();
   });
 
-  it('a barra de compra do celular traz o parcelamento do servidor e abre o pagamento', async () => {
+  it('a barra do celular mostra "a partir de" (NORQVA-0076) e leva às ofertas', async () => {
     renderKit(kit);
     const bar = await screen.findByTestId('kit-sticky-bar');
-    expect(bar).toHaveTextContent('4x R$ 19,98');
-    expect(bar).toHaveTextContent('Kit com 5 livros');
-    fireEvent.click(screen.getByTestId('kit-sticky-cta'));
-    await waitFor(() => expect(screen.getByText('Voltar')).toBeInTheDocument());
+    await waitFor(() => expect(bar).toHaveTextContent('Ofertas a partir de'));
+    expect(bar).toHaveTextContent('R$ 79,92');
+    expect(bar).not.toHaveTextContent('4x');
+    expect(screen.getByTestId('kit-sticky-cta')).toHaveAttribute('href', '#oferta');
   });
 
   it('kit de dois livros continua com os dois livros em 3D e números de 2 livros', async () => {
@@ -68,6 +68,6 @@ describe('NORQVA-0070 — página do kit: 3D e movimento', () => {
     await waitFor(() => expect(screen.getAllByLabelText(/Os dois livros do kit/).length).toBe(2));
     expect(container.querySelectorAll('.stk .b3')).toHaveLength(4);
     expect(within(container.querySelector('.stats4') as HTMLElement).getByText('Livros digitais').parentElement).toHaveTextContent('2');
-    expect(screen.getByTestId('kit-sticky-bar')).toHaveTextContent('Kit com 2 livros');
+    await waitFor(() => expect(screen.getByTestId('kit-sticky-bar')).toHaveTextContent(/Ofertas a partir de\s*R\$ 27,90/));
   });
 });
