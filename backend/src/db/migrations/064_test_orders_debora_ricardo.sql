@@ -16,7 +16,7 @@ BEGIN
   FROM orders o
   JOIN customers c ON c.id = o.customer_id
   WHERE o.is_demo = FALSE
-    AND o.status <> 'PAID'
+    AND o.status IN ('PENDING', 'CANCELLED')
     AND o.data_provenance = 'COMMERCIAL_PRODUCTION'
     AND lower(translate(trim(c.name), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
         IN ('debora souza pena', 'ricardo andrade lucas', 'ricardo a lucas');
@@ -34,7 +34,7 @@ BEGIN
     VALUES (gen_random_uuid(), NULL, 'ORDER_RECLASSIFIED_TEST',
             'Migration 064: 5 tentativas de compra não pagas de teste (Débora Souza Pena e Ricardo Andrade Lucas) tiradas dos números, a pedido do operador em 15/10/2026',
             'COMMERCIAL_PRODUCTION', 'STAGING_SANDBOX_QA', FALSE);
-  ELSE
+  ELSIF n > 0 THEN
     INSERT INTO audit_logs (id, user_id, event_type, description, previous_value, new_value, is_demo)
     VALUES (gen_random_uuid(), NULL, 'ORDER_RECLASSIFY_SKIPPED',
             'Migration 064: ' || n || ' pedidos encontrados no critério (esperado 5); nada foi reclassificado',
