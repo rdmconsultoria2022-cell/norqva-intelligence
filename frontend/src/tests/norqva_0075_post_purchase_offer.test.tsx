@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { DigitalDelivery } from '../features/delivery/DigitalDelivery';
 import { bookCard } from '../features/delivery/PostPurchaseOffer';
+import { CheckoutView } from '../features/checkout/CheckoutView';
 
 const upsell = {
   human_id: 'OFF-000013',
@@ -62,5 +63,23 @@ describe('NORQVA-0075: oferta depois da compra', () => {
     expect(bookCard('Dolci della Nonna').cover).toBe('/images/kit/capa_dolci.jpg');
     expect(bookCard('PAES_E_FERMENTACAO').title).toBe('Pães & Fermentação Natural');
     expect(bookCard('Risotos & Polentas').cover).toBe('/images/livros/risotos/capa.jpg');
+  });
+
+  it('o pagamento mostra os 4 livros, não o Trattoria', () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as any;
+    render(
+      <CheckoutView
+        offer={{ id: 'u1', human_id: 'OFF-000013', name: 'COMPLETE A COLEÇÃO — +4 LIVROS', price: 27.9, delivery_files: 4 }}
+        isDemo={false}
+        summary={{ covers: ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg'], label: '4 livros digitais', subtitle: 'Dolci della Nonna • Pães & Fermentação Natural' }}
+        onOrderCreated={vi.fn()}
+        onCancel={vi.fn()}
+        showError={vi.fn()}
+      />
+    );
+    expect(screen.getByText('4 livros digitais')).toBeInTheDocument();
+    expect(screen.getByText('Dolci della Nonna • Pães & Fermentação Natural')).toBeInTheDocument();
+    expect(screen.queryByText('28 receitas italianas • Livro em PDF')).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-covers').querySelectorAll('img')).toHaveLength(4);
   });
 });

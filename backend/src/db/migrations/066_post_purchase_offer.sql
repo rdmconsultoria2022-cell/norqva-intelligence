@@ -45,7 +45,15 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT * INTO card FROM offers WHERE human_id = 'OFF-000006' AND is_demo = FALSE AND price = 27.90 AND card_enabled = TRUE;
+  -- Cartão só se as condições do Kit Cozinha Italiana forem coerentes com R$ 27,90:
+  -- total no cartão entre R$ 27,90 e R$ 28,00 (parcelas iguais), parcelas sem juros até o máximo e juros quando há parcelas com juros.
+  SELECT * INTO card FROM offers
+  WHERE human_id = 'OFF-000006' AND is_demo = FALSE AND is_deleted = FALSE
+    AND COALESCE(promotional_price, price) = 27.90 AND card_enabled = TRUE
+    AND card_total_price BETWEEN 27.90 AND 28.00
+    AND card_max_installments >= 1
+    AND (card_free_installments IS NULL OR card_free_installments <= card_max_installments)
+    AND (COALESCE(card_free_installments, card_max_installments) >= card_max_installments OR card_interest_monthly > 0);
   IF FOUND THEN
     use_card := TRUE;
   END IF;

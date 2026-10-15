@@ -2885,21 +2885,17 @@ export async function resolvePostPurchaseOffer(pool: Pool, orderId: string): Pro
   );
   const t = r.rows[0];
   if (!t) return null;
+  // Qualquer livro da oferta já comprado (neste pedido ou em outro pago do mesmo comprador) tira a oferta.
   const overlap = await pool.query(
-    `SELECT 1 FROM order_items i
+    `SELECT 1 FROM orders o
+     JOIN order_items i ON i.order_id = o.id
      JOIN offer_digital_assets a ON a.offer_id = i.offer_id
-     WHERE i.order_id = $1
+     WHERE o.customer_id = $3 AND (o.id = $1 OR o.status = 'PAID')
        AND a.asset_id IN (SELECT asset_id FROM offer_digital_assets WHERE offer_id = $2)
      LIMIT 1`,
-    [orderId, t.id]
+    [orderId, t.id, t.customer_id]
   );
   if (overlap.rows.length) return null;
-  const already = await pool.query(
-    `SELECT 1 FROM orders o JOIN order_items i ON i.order_id = o.id
-     WHERE o.customer_id = $1 AND o.status = 'PAID' AND i.offer_id = $2 LIMIT 1`,
-    [t.customer_id, t.id]
-  );
-  if (already.rows.length) return null;
   const books = await pool.query(
     `SELECT d.name FROM offer_digital_assets a JOIN digital_assets d ON d.id = a.asset_id
      WHERE a.offer_id = $1 ORDER BY d.name`,

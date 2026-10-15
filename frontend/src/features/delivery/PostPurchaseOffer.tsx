@@ -22,14 +22,14 @@ export function bookCard(title: string): { title: string; cover: string } {
   if (/p[ãa]es/i.test(title)) return { title: 'Pães & Fermentação Natural', cover: '/images/livros/paes/capa.jpg' };
   if (/antipasti/i.test(title)) return { title: 'Antipasti & Aperitivo', cover: '/images/livros/antipasti/capa.jpg' };
   if (/risoto|polenta/i.test(title)) return { title: 'Risotos & Polentas', cover: '/images/livros/risotos/capa.jpg' };
-  return { title, cover: '/images/kit/capa_trat.jpg' };
+  return { title, cover: '/images/kit/capa_kit.jpg' };
 }
 
 export const PostPurchaseOffer: React.FC<{
   offer: PostPurchaseOfferData;
   isDemo?: boolean;
   showError: (msg: string) => void;
-  showSuccess: (msg: string) => void;
+  showSuccess?: (msg: string) => void;
 }> = ({ offer, isDemo, showError, showSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [fullOffer, setFullOffer] = useState<any | null>(null);
@@ -67,7 +67,7 @@ export const PostPurchaseOffer: React.FC<{
           Complete a coleção: mais {books.length} livros por {brl(offer.price)}
         </h4>
         <p className="text-xs text-stone-600">
-          Menos de {brl(Math.ceil(perBook * 100) / 100)} por livro. Entrega na hora, no mesmo formato.
+          Sai por {brl(Math.floor(perBook * 100) / 100)} cada livro, em PDF. Liberados assim que o pagamento for confirmado.
         </p>
       </div>
 
@@ -99,6 +99,7 @@ export const PostPurchaseOffer: React.FC<{
           isDemo={Boolean(isDemo || fullOffer.is_demo)}
           initialCustomer={customerDraft}
           onCustomerChange={setCustomerDraft}
+          summary={{ covers: books.map(b => b.cover), label: `${books.length} livros digitais`, subtitle: books.map(b => b.title).join(' • ') }}
           onOrderCreated={(order: any) => {
             setShowCheckout(false);
             if (order?.id && order?.checkout_token) {

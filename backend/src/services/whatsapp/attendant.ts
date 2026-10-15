@@ -146,6 +146,8 @@ export async function loadCatalog(pool: Pool, brandId: string | null) {
      FROM offers o JOIN products p ON p.id = o.product_id
      WHERE o.status = 'ATIVA' AND o.is_demo = FALSE AND o.is_deleted = FALSE AND p.is_deleted = FALSE
        AND ($1::uuid IS NULL OR p.brand_id = $1::uuid)
+       -- NORQVA-0075: oferta de saída e oferta depois da compra não entram no catálogo do atendente
+       AND NOT EXISTS (SELECT 1 FROM offers src WHERE src.exit_offer_id = o.id OR src.post_purchase_offer_id = o.id)
      ORDER BY o.created_at ASC
      LIMIT 20`,
     [brandId]
