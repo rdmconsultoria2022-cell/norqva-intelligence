@@ -6,11 +6,13 @@ import { PaymentStatus } from '../payment/PaymentStatus';
 import { rateLabel } from '../../lib/cardInstallments';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { BuyChoice, requestWhatsAppLink, goToWhatsApp } from './WhatsAppChoice';
-import { savePurchaseSession, updatePurchaseSessionStatus } from '../../services/purchaseSession';
+import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
+import type { CollectionSaleBook } from '../checkout/checkoutTypes';
+import { isFullKit, FULL_KIT_RECIPES, toSaleBooks } from '../checkout/collectionChoice';
 
-// NORQVA-0038: página de vendas do Kit Cozinha Italiana. NORQVA-0066: o kit reúne os cinco livros (Trattoria, Dolci, Pães, Antipasti e Risotos).
+// NORQVA-0038: página de vendas do Kit Cozinha Italiana (Trattoria em Casa + Dolci della Nonna).
 // Preços, parcelas e "de/por" vêm sempre da oferta no servidor; nada de valor fixo aqui.
 // Depoimentos só entram quando houver depoimentos reais, com autorização (a lista abaixo fica vazia até lá).
 
@@ -24,6 +26,8 @@ type PublicKitOffer = {
   is_demo: boolean;
   meta_pixel_id?: string | null;
   bump?: any;
+  /** NORQVA-0063: PDFs entregues pela oferta (5 = kit completo da coleção) */
+  delivery_files?: number;
   whatsapp?: { available: boolean } | null;
   card?: { max_installments: number; total: number; installment_value: number; interest_monthly?: number; options?: { n: number; installment_value: number | null; total: number; interest: boolean }[] } | null;
 };
@@ -138,6 +142,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
 
   // NORQVA-0061: livros da coleção já à venda separadamente (oferta ATIVA)
   const [forSale, setForSale] = useState<Record<string, { human_id: string; price: number }>>({});
+  // NORQVA-0063: livros que o checkout oferece avulsos (Trattoria e Dolci + volumes com página pronta)
+  const [saleBooks, setSaleBooks] = useState<CollectionSaleBook[]>([]);
   useEffect(() => {
     let alive = true;
     fetch(`${API_BASE}/public/collection`)
@@ -147,6 +153,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         const map: Record<string, { human_id: string; price: number }> = {};
         for (const b of data.books) if (b && b.book && b.human_id && READY_BOOKS.has(String(b.book))) map[String(b.book)] = { human_id: String(b.human_id), price: Number(b.price) };
         setForSale(map);
+        setSaleBooks(toSaleBooks(data.books));
       })
       .catch(() => {});
     return () => {
@@ -197,13 +204,27 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   // NORQVA-0041: maior número de parcelas com juros (repassados ao comprador), se houver
   const maxWithInterest = card?.options?.filter(o => o.interest).reduce((m, o) => Math.max(m, o.n), 0) || 0;
   const ctaLabel = card ? `Quero o kit · ${card.max_installments}x ${brl(card.installment_value)}` : `Quero o kit por ${brl(pix)}`;
+  // NORQVA-0063: oferta com os 5 PDFs = kit completo da coleção (textos e capas dos 5 livros)
+  const full = isFullKit(offer);
+  const KIT_BOOKS = full
+    ? [
+        { img: `${IMG}/capa_trat.jpg`, name: 'Trattoria em Casa', note: '28 receitas · massas, molhos e pizzas' },
+        { img: COLLECTION_COVERS.risotos, name: 'Risotos & Polentas', note: '12 receitas do norte da Itália' },
+        { img: COLLECTION_COVERS.antipasti, name: 'Antipasti & Aperitivo', note: '12 receitas para abrir a mesa' },
+        { img: COLLECTION_COVERS.paes, name: 'Pães & Fermentação Natural', note: '12 receitas de pães italianos' },
+        { img: `${IMG}/capa_dolci.jpg`, name: 'Dolci della Nonna', note: '10 doces italianos de família' }
+      ]
+    : [
+        { img: `${IMG}/capa_trat.jpg`, name: 'Trattoria em Casa', note: '28 receitas · massas, molhos e pizzas' },
+        { img: `${IMG}/capa_dolci.jpg`, name: 'Dolci della Nonna', note: '10 doces italianos de família' }
+      ];
 
   return (
     <div className="kl">
       <style>{CSS}</style>
 
       <div style={{ background: '#1f1b17', color: '#e9dfcf', textAlign: 'center', padding: '10px 16px', fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase' }}>
-        Oferta de lançamento · os cinco livros juntos com desconto
+        {full ? 'Oferta de lançamento · os cinco livros juntos com desconto' : 'Oferta de lançamento · os dois livros juntos com desconto'}
       </div>
 
       <div className="wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, paddingTop: 24, paddingBottom: 24, borderBottom: '1px solid #e6dccd' }}>
@@ -228,22 +249,30 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             A cozinha da <span style={{ fontStyle: 'italic', color: '#8a3a26' }}>nonna</span>,<br />explicada receita por receita.
           </h1>
           <p className="lead" style={{ maxWidth: 600 }}>
-            Massas frescas, molhos, pizzas, pães, antipasti, risotos, polentas e os doces de família da Itália, com foto de cada prato e medidas precisas para dar certo já na primeira vez.
+            Massas frescas, molhos clássicos, pizzas e os doces de família da Itália, com foto de cada prato e medidas precisas para dar certo já na primeira vez.
           </p>
         </div>
 
         <div className="hero3" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr)', gap: 56, alignItems: 'center', marginTop: 64 }}>
           <div>
             <div style={{ paddingBottom: 24, borderBottom: '1px solid #e6dccd' }}>
-              <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>74</div>
+              <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>{full ? FULL_KIT_RECIPES : 38}</div>
               <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>Receitas</div>
-              <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Em cinco livros: massas, doces, pães, antipasti, risotos e polentas.</div>
+              <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Massas, molhos, pizzas, pães e sobremesas italianas.</div>
             </div>
-            <div style={{ padding: '24px 0', borderBottom: '1px solid #e6dccd' }}>
-              <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>187</div>
-              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>Páginas ilustradas</div>
-              <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Uma foto de página inteira para cada receita.</div>
-            </div>
+            {full ? (
+              <div style={{ padding: '24px 0', borderBottom: '1px solid #e6dccd' }}>
+                <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>5</div>
+                <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>Livros digitais</div>
+                <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Massas, risotos, antepastos, pães e sobremesas.</div>
+              </div>
+            ) : (
+              <div style={{ padding: '24px 0', borderBottom: '1px solid #e6dccd' }}>
+                <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>94</div>
+                <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>Páginas ilustradas</div>
+                <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Uma foto de página inteira para cada receita.</div>
+              </div>
+            )}
             <div style={{ paddingTop: 24 }}>
               <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase' }}>Entrega imediata</div>
               <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Link de download no seu e-mail assim que o pagamento é confirmado.</div>
@@ -263,13 +292,11 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             {[
               ['trat_carbonara', 'Trattoria', 'Carbonara', 'cremosa, sem creme de leite'],
               ['dolci_tiramisu', 'Dolci', 'Tiramisù', 'a receita clássica de família'],
-              ['trat_pizza', 'Trattoria', 'Pizza', 'massa de fermentação lenta'],
-              ['/images/livros/risotos/milanese', 'Risotos & Polentas', 'Risoto alla milanese', 'cremoso, com açafrão'],
-              ['/images/livros/antipasti/arancini', 'Antipasti', 'Arancini', 'com coração de muçarela']
+              ['trat_pizza', 'Trattoria', 'Pizza', 'massa de fermentação lenta']
             ].map(([img, book, name, note]) => (
               <div key={img} style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
                 <div className="plate" style={{ width: 120, height: 120, flex: '0 0 auto' }}>
-                  <img src={img.startsWith('/') ? `${img}.jpg` : `${IMG}/${img}.jpg`} alt={name} />
+                  <img src={`${IMG}/${img}.jpg`} alt={name} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8a6b45' }}>{book}</div>
@@ -304,30 +331,53 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             <h2 className="h2">Uma biblioteca de cozinha italiana que cresce com você</h2>
           </div>
           <p className="lead" style={{ maxWidth: 360, fontSize: 15 }}>
-Os cinco livros da coleção estão no kit. Arraste para conhecer.
+            {full
+              ? 'Os cinco livros da coleção estão no kit. Arraste para conhecer.'
+              : Object.keys(forSale).length > 0
+                ? 'Dois títulos no kit e outros livros da coleção à venda separadamente. Arraste para conhecer.'
+                : 'Dois títulos já disponíveis e novos livros entrando na coleção. Arraste para conhecer.'}
           </p>
         </div>
         <div className="carousel" style={{ maxWidth: 1264, margin: '0 auto', boxSizing: 'border-box' }}>
-          {[
-            { cover: `${IMG}/capa_trat.jpg`, name: 'Trattoria em Casa', note: '28 receitas · massas, molhos e pizzas' },
-            { cover: `${IMG}/capa_dolci.jpg`, name: 'Dolci della Nonna', note: '10 doces italianos de família' },
-            { cover: COLLECTION_COVERS.paes, name: 'Pães & Fermentação Natural', note: '12 receitas · fermento natural e pães', key: 'paes' },
-            { cover: COLLECTION_COVERS.antipasti, name: 'Antipasti & Aperitivo', note: '12 receitas · para abrir a mesa', key: 'antipasti' },
-            { cover: COLLECTION_COVERS.risotos, name: 'Risotos & Polentas', note: '12 receitas · risotos, polentas e caldo', key: 'risotos' }
-          ].map(b => {
-            const sale = b.key ? forSale[b.key] : undefined;
+          {KIT_BOOKS.map(b => (
+            <div key={b.img} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div className="cov"><img src={b.img} alt={`Capa ${b.name}`} /></div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2f5a3d' }}>Incluído no kit</div>
+                <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{b.name}</div>
+                <div style={{ fontSize: 14, color: '#6b6358', marginTop: 2 }}>{b.note}</div>
+              </div>
+            </div>
+          ))}
+          {(full ? ([] as string[][]) : [
+            ['Volume III', 'Pães & Fermentação Natural', '#efe7da', 'paes'],
+            ['Volume IV', 'Antipasti & Aperitivo', '#ecdcd2', 'antipasti'],
+            ['Volume V', 'Risotos & Polentas', '#e2e5d6', 'risotos']
+          ]).map(([vol, name, bg, key]) => {
+            const sale = forSale[key];
+            if (sale) {
+              return (
+                <a key={name} href={`/p/${encodeURIComponent(sale.human_id)}`} style={{ display: 'flex', flexDirection: 'column', gap: 18, color: 'inherit', textDecoration: 'none' }} data-testid={`collection-${key}`}>
+                  <div className="cov"><img src={COLLECTION_COVERS[key]} alt={`Capa ${name}`} /></div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2f5a3d' }}>
+                      Disponível separadamente · R$ {sale.price.toFixed(2).replace('.', ',')}
+                    </div>
+                    <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{name}</div>
+                    <div style={{ fontSize: 14, color: '#8a4b2a', marginTop: 2, textDecoration: 'underline' }}>Ver o livro</div>
+                  </div>
+                </a>
+              );
+            }
             return (
-              <div key={b.name} style={{ display: 'flex', flexDirection: 'column', gap: 18 }} data-testid={b.key ? `collection-${b.key}` : undefined}>
-                <div className="cov"><img src={b.cover} alt={`Capa ${b.name}`} /></div>
+              <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div className="cov soon" style={{ background: bg }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.3em', textTransform: 'uppercase', color: '#8a6b45' }}>{vol}</div>
+                  <div className="serif" style={{ fontSize: 30, color: '#3a322a', marginTop: 14, lineHeight: 1.08 }}>{name}</div>
+                </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2f5a3d' }}>Incluído no kit</div>
-                  <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{b.name}</div>
-                  <div style={{ fontSize: 14, color: '#6b6358', marginTop: 2 }}>{b.note}</div>
-                  {sale && (
-                    <a href={`/p/${encodeURIComponent(sale.human_id)}`} style={{ display: 'inline-block', fontSize: 13, color: '#8a4b2a', marginTop: 6, textDecoration: 'underline' }}>
-                      Também à venda separadamente · R$ {sale.price.toFixed(2).replace('.', ',')}
-                    </a>
-                  )}
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8d8377' }}>Em breve · não incluído no kit</div>
+                  <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{name}</div>
                 </div>
               </div>
             );
@@ -369,14 +419,10 @@ Os cinco livros da coleção estão no kit. Arraste para conhecer.
               ['trat_ravioli', 'Ravioli'],
               ['dolci_cannoli', 'Cannoli'],
               ['trat_pesto', 'Pesto alla genovese'],
-              ['dolci_pannacotta', 'Panna cotta'],
-              ['/images/livros/paes/focaccia', 'Focaccia barese'],
-              ['/images/livros/antipasti/caponata', 'Caponata siciliana'],
-              ['/images/livros/risotos/funghi', 'Risoto de cogumelos'],
-              ['/images/livros/risotos/polenta_grelhada', 'Polenta grelhada']
+              ['dolci_pannacotta', 'Panna cotta']
             ].map(([img, name]) => (
               <figure key={img}>
-                <img src={img.startsWith('/') ? `${img}.jpg` : `${IMG}/${img}.jpg`} alt={name} />
+                <img src={`${IMG}/${img}.jpg`} alt={name} />
                 <figcaption className="frost">{name}</figcaption>
               </figure>
             ))}
@@ -389,17 +435,32 @@ Os cinco livros da coleção estão no kit. Arraste para conhecer.
         <div className="wrap">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 60 }}>
             <div className="kicker c">04 · Oferta de lançamento</div>
-            <h2 className="h2" style={{ maxWidth: 760 }}>Os cinco livros juntos, por menos</h2>
+            <h2 className="h2" style={{ maxWidth: 760 }}>{full ? 'Os cinco livros juntos, por menos' : 'Os dois livros juntos, por menos'}</h2>
           </div>
           <div className="two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 72, alignItems: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <img src={`${IMG}/capa_kit.jpg`} alt="Kit Cozinha Italiana com os cinco livros: Trattoria, Dolci, Pães, Antipasti e Risotos" style={{ width: '100%', maxWidth: 460, height: 'auto', borderRadius: 4, boxShadow: '0 30px 60px rgba(60,40,25,.28)' }} />
-            </div>
+            {full ? (
+              <div style={{ position: 'relative', height: 340 }} data-testid="kit-five-covers">
+                {KIT_BOOKS.map((b, i) => {
+                  const pos = [2, 0, 1, 3, 4][i];
+                  const z = [5, 1, 3, 2, 4][i];
+                  return (
+                    <div key={b.img} className={i % 2 === 0 ? 'book' : 'book r'} style={{ position: 'absolute', width: '30%', left: `${pos * 17.5}%`, top: Math.abs(pos - 2) * 14, zIndex: z }}>
+                      <img src={b.img} alt={`Capa do livro ${b.name}`} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ position: 'relative', height: 340 }}>
+                <div className="book r" style={{ position: 'absolute', width: '40%', left: '12%', top: 28, zIndex: 1 }}><img src={`${IMG}/capa_dolci.jpg`} alt="Capa do livro Dolci della Nonna" /></div>
+                <div className="book" style={{ position: 'absolute', width: '44%', right: '12%', top: 0, zIndex: 2 }}><img src={`${IMG}/capa_trat.jpg`} alt="Capa do livro Trattoria em Casa" /></div>
+              </div>
+            )}
 
             <div style={{ background: '#fff', border: '1px solid #e6dccd', borderRadius: 6, padding: 44, display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 40px 80px rgba(60,40,25,.12)', position: 'relative' }} data-testid="kit-offer-card">
               <div style={{ position: 'absolute', top: 0, left: 44, right: 44, height: 3, background: '#8a3a26' }} />
               <div className="kicker" style={{ fontSize: 11 }}>{offer.name}</div>
-              <div className="serif" style={{ fontSize: 28, lineHeight: 1.15 }}>Cozinha Italiana em Casa: os 5 livros</div>
+              <div className="serif" style={{ fontSize: 28, lineHeight: 1.15 }}>{full ? 'Os 5 livros da coleção Cozinha Italiana em Casa' : 'Trattoria em Casa + Dolci della Nonna'}</div>
               {from !== null && (
                 <div style={{ fontSize: 15, color: '#8d8377' }}>
                   de <span className="strike">{brl(from)}</span> por
@@ -420,8 +481,18 @@ Os cinco livros da coleção estão no kit. Arraste para conhecer.
                 <div className="serif price" style={{ fontSize: 80, fontWeight: 600, lineHeight: 0.9, color: '#8a3a26' }} data-testid="kit-pix">{brl(pix)}</div>
               )}
               <div style={{ height: 1, background: '#e6dccd' }} />
-              <Tick>74 receitas com foto e passo a passo, em 5 livros</Tick>
-              <Tick>Trattoria, Dolci, Pães, Antipasti e Risotos & Polentas</Tick>
+              {full ? (
+                <>
+                  <Tick>{FULL_KIT_RECIPES} receitas passo a passo, com medidas caseiras</Tick>
+                  <Tick>Massas, risotos, antepastos, pães e sobremesas</Tick>
+                  {saleBooks.length > 0 && <Tick>Prefere só alguns? Na hora de pagar dá para escolher livros avulsos</Tick>}
+                </>
+              ) : (
+                <>
+                  <Tick>38 receitas com foto e passo a passo</Tick>
+                  <Tick>Guia de harmonização de massas e molhos</Tick>
+                </>
+              )}
               <Tick>Download no e-mail assim que o pagamento é confirmado</Tick>
               <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice">
                 <button className="btn" onClick={openCheckout} style={{ width: '100%', minHeight: 60 }} data-testid="kit-cta">
@@ -464,7 +535,7 @@ Os cinco livros da coleção estão no kit. Arraste para conhecer.
           <div>
             {[
               ['Os livros são físicos?', 'Não. São livros digitais em PDF, com acabamento de livro impresso. Leia no celular, no tablet ou no computador, ou imprima.'],
-              ['Como recebo depois de pagar?', 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os cinco livros.'],
+              ['Como recebo depois de pagar?', full ? 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os livros.' : 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os dois livros.'],
               ['Preciso de equipamento profissional?', 'Não. As receitas foram pensadas para a cozinha de casa, com rolo, faca e forno comum.'],
               ['E se eu não gostar?', 'Você tem 7 dias a partir da compra para pedir o reembolso, como garante o Código de Defesa do Consumidor. Basta escrever para suporte@norqva.com.']
             ].map(([q, a], i) => (
@@ -507,14 +578,13 @@ Os cinco livros da coleção estão no kit. Arraste para conhecer.
           onCustomerChange={setCustomerDraft}
           onOrderCreated={order => {
             setShowCheckout(false);
-            if (order?.id && order?.checkout_token) {
-              savePurchaseSession({ orderId: order.id, checkoutToken: order.checkout_token, offerHumanId: offer.human_id, status: 'PENDING', offerName: offer.name });
-            }
+            // NORQVA-0063: a sessão de compra já foi salva pelo checkout (com o livro certo nos avulsos)
             setActiveOrder(order);
           }}
           onCancel={() => setShowCheckout(false)}
           showError={showError}
           showSuccess={showSuccess}
+          collectionBooks={full ? saleBooks : []}
         />
       )}
 

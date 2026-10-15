@@ -796,7 +796,8 @@ export default function App() {
                     const r = await fetch(`${API_BASE_LIB}/public/offers/${encodeURIComponent(off.human_id)}`);
                     if (r.ok) {
                       const pub = await r.json();
-                      merged = { ...off, card: pub?.card ?? null, bump: pub?.bump ?? off.bump ?? null };
+                      // NORQVA-0065: delivery_files diz se é o kit de 5 (mostra kit ou livros avulsos, igual ao comprador)
+                      merged = { ...off, card: pub?.card ?? null, bump: pub?.bump ?? off.bump ?? null, delivery_files: pub?.delivery_files ?? null };
                     }
                   }
                 } catch (_) { /* sem a página pública, segue só com Pix */ }

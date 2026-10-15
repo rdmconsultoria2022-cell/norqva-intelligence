@@ -1,5 +1,5 @@
 import { planFromOffer, installmentOption, installmentOptions } from '../services/commerce/cardInstallments';
-import { bookKeyForProduct, activeCollectionBooks } from '../services/catalog/collectionBooks';
+import { bookKeyForProduct, activeCollectionBooks, resolveCollectionExtras, CollectionOrderError, CollectionExtra } from '../services/catalog/collectionBooks';
 import { whatsappNumberForOffer } from '../services/whatsapp/whatsappRefs';
 import { Response } from 'express';
 import { anonymizeIp } from '../utils/ipPrivacy';
@@ -1129,7 +1129,12 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       // NORQVA-0038: cartão (null = só Pix). Total e parcelas exatos, para a página mostrar o parcelamento certo.
       card: publicCardTerms(offer),
       // NORQVA-0054: WhatsApp da marca disponível agora (conectado e com o atendente ligado)
-      whatsapp: (await whatsappNumberForOffer(pool, offer.id).catch(() => null)) ? { available: true } : null
+      whatsapp: (await whatsappNumberForOffer(pool, offer.id).catch(() => null)) ? { available: true } : null,
+      // NORQVA-0063: quantos PDFs a oferta entrega (a página do kit mostra 2 ou 5 livros a partir disso)
+      delivery_files: await pool
+        .query('SELECT COUNT(*)::int AS n FROM offer_digital_assets WHERE offer_id = $1', [offer.id])
+        .then(r => Number(r.rows[0]?.n) || 0)
+        .catch(() => 0)
     });
   } catch (err) {
     console.error('Get public offer error:', err);
@@ -1141,7 +1146,11 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
 export async function getPublicCollection(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   try {
-    return res.status(200).json({ books: await activeCollectionBooks(pool) });
+    // NORQVA-0063: id da oferta (o checkout do kit cria o pedido com ela) e o cartão de cada livro
+    const books = await activeCollectionBooks(pool);
+    return res.status(200).json({
+      books: books.map(b => ({ book: b.book, human_id: b.human_id, price: b.price, offer_id: b.offer_id, card: publicCardTerms(b.offer) }))
+    });
   } catch (err) {
     console.error('Get public collection error:', err);
     return res.status(200).json({ books: [] });
@@ -2390,6 +2399,15 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   }
   // NORQVA-0032: o navegador só diz se quer o adicional; preço e oferta do adicional vêm do servidor
   const wantsBump = req.body?.with_bump === true;
+  // NORQVA-0063: livros avulsos da coleção no mesmo pedido (só os códigos; preço e oferta vêm do servidor)
+  const extraCodes = req.body?.extra_offer_human_ids;
+  const wantsExtras = extraCodes !== undefined && extraCodes !== null;
+  if (wantsExtras && wantsBump) {
+    return res.status(400).json({ error: 'Escolha os livros avulsos ou o adicional, não os dois.' });
+  }
+  if (wantsExtras && qty !== 1) {
+    return res.status(400).json({ error: 'Livros avulsos são vendidos um de cada.' });
+  }
 
   const client = await pool.connect();
   let derivedIsDemo: boolean | undefined;
@@ -2472,7 +2490,18 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'O adicional desta oferta não está disponível agora. Tente de novo sem ele.' });
     }
-    const totalAmount = Math.round((totalPrice + (bump ? bump.price : 0)) * 100) / 100;
+    let extras: CollectionExtra[] = [];
+    if (wantsExtras) {
+      try {
+        extras = await resolveCollectionExtras(client, offer, product, extraCodes);
+      } catch (e: any) {
+        await client.query('ROLLBACK');
+        if (e instanceof CollectionOrderError) return res.status(e.status).json({ error: e.message });
+        throw e;
+      }
+    }
+    const extrasTotal = extras.reduce((acc, x) => acc + x.price, 0);
+    const totalAmount = Math.round((totalPrice + (bump ? bump.price : 0) + extrasTotal) * 100) / 100;
 
     // CHECK constraint enforcement for REAL orders
     if (!isDemo && totalAmount <= 0) {
@@ -2563,6 +2592,16 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
           bump.price,
           derivedProvenance
         ]
+      );
+    }
+
+    // NORQVA-0063: cada livro avulso entra como item extra (is_bump = TRUE): entregue no mesmo PAID, e os
+    // relatórios, o cartão e o WhatsApp seguem tratando o primeiro livro como o principal do pedido.
+    for (const x of extras) {
+      await client.query(
+        `INSERT INTO order_items (id, order_id, offer_id, product_id, product_name_snapshot, offer_name_snapshot, offer_description_snapshot, unit_price, quantity, total_price, data_provenance, is_bump)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $8, $9, TRUE)`,
+        [crypto.randomUUID(), orderId, x.offer.id, x.product.id, x.product.name, x.offer.name, x.offer.description || null, x.price, derivedProvenance]
       );
     }
 

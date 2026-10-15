@@ -3,6 +3,16 @@ import { MetaSyncService, MetaSyncResult, MetaSyncOptions } from './metaSyncServ
 import { writeAuditLog } from '../../db/audit';
 import { getDB } from '../../db/db';
 import { AdAlertService } from '../alerts/adAlertService';
+import { getCommercialTimeBoundaries } from '../../utils/commercialTimezone';
+
+/** NORQVA-0066: primeira sincronização logo depois que o servidor sobe (cada deploy reinicia o relógio). */
+export const FIRST_SYNC_DELAY_MINUTES = 2;
+
+/** NORQVA-0066: a sincronização automática lê os últimos 7 dias INCLUINDO hoje (o 'last_3d' da Meta deixa hoje de fora). */
+export function automaticSyncRange(now: Date = new Date()) {
+  const b = getCommercialTimeBoundaries('7d', undefined, undefined, now);
+  return { since: b.dateStartMeta, until: b.dateStopMeta };
+}
 
 export interface MetaSchedulerStatus {
   enabled: boolean;
@@ -142,8 +152,8 @@ export class MetaSchedulerService {
 
     console.log(`[MetaSchedulerService]: Starting automated Meta analytics sync scheduler (Interval: ${intervalMinutes}m)...`);
 
-    // Schedule next run
-    this.scheduleNext(intervalMinutes);
+    // NORQVA-0066: primeira rodada em poucos minutos; depois, no intervalo normal
+    this.scheduleNext(intervalMinutes, FIRST_SYNC_DELAY_MINUTES);
   }
 
   public stop(): void {
@@ -155,13 +165,13 @@ export class MetaSchedulerService {
     console.log('[MetaSchedulerService]: Scheduler stopped.');
   }
 
-  private scheduleNext(minutes: number): void {
+  private scheduleNext(minutes: number, firstDelayMinutes?: number): void {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
 
-    const delayMs = minutes * 60 * 1000;
+    const delayMs = (firstDelayMinutes ?? minutes) * 60 * 1000;
     const nextDate = new Date(Date.now() + delayMs);
     this.status.nextMetaSync = nextDate.toISOString();
 
@@ -170,7 +180,7 @@ export class MetaSchedulerService {
         await this.executeSyncCycle({
           trigger: 'AUTOMATIC',
           isDemo: false,
-          syncOptions: { datePreset: 'last_3d' }
+          syncOptions: { timeRange: automaticSyncRange() }
         });
       } catch (err: any) {
         console.error('[MetaSchedulerService]: Unhandled error during scheduled cycle (isolated):', err.message);

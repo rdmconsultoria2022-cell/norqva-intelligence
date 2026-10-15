@@ -22,6 +22,17 @@ export interface CheckoutOffer {
     plan?: { max: number; free: number; rate: number };
     options?: { n: number; installment_value: number | null; total: number; interest: boolean }[];
   } | null;
+  /** NORQVA-0063: quantos PDFs a oferta entrega (kit com 5 = kit completo da coleção). */
+  delivery_files?: number | null;
+}
+
+/** NORQVA-0063: livro da coleção à venda avulso (dados do servidor, /public/collection). */
+export interface CollectionSaleBook {
+  book: string;
+  human_id: string;
+  offer_id: string;
+  price: number;
+  card?: CheckoutOffer['card'];
 }
 
 export interface CheckoutCustomer {
@@ -74,6 +85,8 @@ export interface CheckoutViewProps {
   onCancel: () => void;
   showError: (msg: string) => void;
   showSuccess?: (msg: string) => void;
+  /** NORQVA-0063: livros avulsos que a página do kit oferece no pagamento (vazio = sem escolha). */
+  collectionBooks?: CollectionSaleBook[];
 }
 
 

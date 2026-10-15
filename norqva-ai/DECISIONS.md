@@ -153,3 +153,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Página:** cada livro tem a sua página de venda (`bookPages.ts`), no visual do Trattoria, sem preço nos textos além do botão de compra.
 - **Volumes IV e V:** só são ativados depois das fotos. Antes, é preciso pôr as imagens em `frontend/public/images/livros/<livro>/` e incluir o livro em `READY_BOOKS`; sem isso, a página do kit não o mostra.
 - **Chave do livro:** `products.collection_key` (migration 062). Renomear o produto na tela não muda a página de venda.
+
+## D-0063 — Kit completo ou livros avulsos no mesmo pagamento (2026-10-14)
+
+- **Decisão (Ricardo, 14/10/2026 20h11, contrato NORQVA-0063):** na página do kit com os 5 livros, o pagamento oferece o kit completo (marcado por padrão) ou livros avulsos, todos num único Pix ou cartão.
+- **Pedido:** o navegador manda só os códigos das ofertas (`extra_offer_human_ids`); o servidor confere cada livro (coleção, oferta ATIVA, mesmo ambiente, sem repetir livro nem arquivo, até 5 no total) e usa o preço da oferta. O primeiro livro é o item principal; os outros entram como itens extras (`is_bump = TRUE`), entregues no mesmo PAID. Não combina com o adicional.
+- **Quais livros:** Trattoria = oferta OFF-000001 e Dolci = OFF-000005 (código fixo); Pães, Antipasti e Risotos pela chave do produto (D-0061). Só aparecem avulsos os que têm oferta ATIVA na conta real (`GET /api/public/collection`).
+- **Kit de 5:** a página e o pagamento mostram os 5 livros quando a oferta do kit entrega 5 PDFs ou mais (`delivery_files`); com menos, continua a página do kit de 2 livros, sem avulsos.
+- **Textos:** o pagamento não promete mais "acesso permanente" e explica o CPF ("o banco exige para gerar o Pix; fica protegido e é apagado depois do pagamento").
