@@ -77,5 +77,7 @@ describe('NORQVA-0041 — parcelas escolhidas pelo comprador', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.installments).toBe(6);
     expect(screen.getByTestId('card-invoice-link')).toHaveAttribute('href', 'https://asaas/x');
+    // o link não pode herdar o terracota da página do kit (.kl a): o texto sumia no botão terracota
+    expect(screen.getByTestId('card-invoice-link').style.color).toBe('rgb(255, 255, 255)');
   });
 });
