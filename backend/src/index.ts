@@ -113,6 +113,7 @@ import {
   updateFactoryClaim,
   reviewFactoryCreative,
   reviseFactoryCreative,
+  changeFactoryCreativeOffer,
   linkFactoryCreativeAd,
   attachFactoryCreativeFile, fetchFactoryCreativeMetaVideo,
   addFactoryCreativeClaim,
@@ -543,6 +544,7 @@ app.post('/api/creative-factory/batches/:code/import', requireRole(['ADMIN']), i
 app.patch('/api/creative-factory/claims/:id', requireRole(['ADMIN']), updateFactoryClaim);
 app.post('/api/creative-factory/creatives/:id/review', requireRole(['ADMIN']), reviewFactoryCreative);
 app.post('/api/creative-factory/creatives/:id/revise', requireRole(['ADMIN', 'CREATIVE']), reviseFactoryCreative);
+app.post('/api/creative-factory/creatives/:id/offer', requireRole(['ADMIN', 'CREATIVE']), changeFactoryCreativeOffer);
 // NORQVA-0058: lixeira de criativos (só ADMIN, com o código digitado)
 app.get('/api/creative-factory/trash', requireRole(['ADMIN']), listCreativeTrash);
 app.post('/api/creative-factory/creatives/:id/delete', requireRole(['ADMIN']), deleteFactoryCreative);
