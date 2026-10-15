@@ -167,6 +167,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, 15/10/2026 10h38):** as telas mostram a operação a partir de **25/09/2026**, quando as vendas começaram de forma contínua. O gasto e os pedidos da fase de testes (campanhas E2E e EXP-2026-001, R$ 1.480, e os pedidos de 09/09) ficam fora de todos os períodos, inclusive "Tudo".
 - **Como:** `OPERATION_START_DATE` no servidor (padrão 2026-09-25; `off` desliga). Nada é apagado; o histórico continua no banco.
 - **Tentativas de teste:** pedidos não pagos de Débora Souza Pena e Ricardo Andrade Lucas saem dos números por reclassificação (migration 064, critério da D-0002).
+## D-0074 — Lembrete de pagamento para pedido pendente (2026-10-15)
+
+- **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** o NORQVA manda até 3 e-mails para quem gerou Pix ou cobrança no cartão e não pagou: aos 15 minutos, às 2 horas e às 20 horas.
+- **Regras:** só pedidos reais das últimas 30 horas; nunca para quem já pagou outro pedido; um e-mail por etapa; com Pix vencido, o e-mail leva para a página gerar outro. Desliga com `PAYMENT_REMINDER_ENABLED=false`.
 
 ## D-0075 — Oferta depois da compra do Trattoria (2026-10-15)
 

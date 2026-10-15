@@ -4,7 +4,7 @@
  */
 
 import { Resend } from 'resend';
-import { IEmailProvider, SendPurchaseAccessEmailParams, EmailServiceResult } from './emailService';
+import { IEmailProvider, SendPurchaseAccessEmailParams, SendPaymentReminderEmailParams, EmailServiceResult } from './emailService';
 import { sanitizeEmailProviderError } from './emailConfig';
 
 export class ResendEmailProvider implements IEmailProvider {
@@ -17,6 +17,24 @@ export class ResendEmailProvider implements IEmailProvider {
     }
     this.resend = new Resend(apiKey);
     this.defaultFrom = defaultFrom || process.env.EMAIL_FROM || 'NORQVA <acesso@mail.norqva.com.br>';
+  }
+
+  /** NORQVA-0074: lembrete de pagamento de pedido pendente. */
+  async sendPaymentReminderEmail(params: SendPaymentReminderEmailParams): Promise<EmailServiceResult> {
+    const { subject, text, html } = buildPaymentReminderEmail(params);
+    try {
+      const { data, error } = await this.resend.emails.send({
+        from: this.defaultFrom || process.env.EMAIL_FROM || 'NORQVA <acesso@mail.norqva.com.br>',
+        to: [params.email],
+        subject,
+        html,
+        text
+      });
+      if (error) return { success: false, error: sanitizeEmailProviderError(error) };
+      return { success: true, messageId: data?.id };
+    } catch (err: any) {
+      return { success: false, error: sanitizeEmailProviderError(err) };
+    }
   }
 
   async sendPurchaseAccessEmail(params: SendPurchaseAccessEmailParams): Promise<EmailServiceResult> {
@@ -194,6 +212,76 @@ export class ResendEmailProvider implements IEmailProvider {
       };
     }
   }
+}
+
+
+/** NORQVA-0074: texto e HTML do lembrete de pagamento (exportado para os testes). */
+export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now: Date = new Date()): { subject: string; text: string; html: string } {
+  const brl = (n: number) => 'R$ ' + Number(n || 0).toFixed(2).replace('.', ',');
+  const pixValid = Boolean(p.pixCopyPaste) && (!p.pixExpiresAt || new Date(p.pixExpiresAt).getTime() > now.getTime());
+  const name = (p.firstName || '').trim();
+  const hello = name ? `Olá, ${name}!` : 'Olá!';
+  const isCard = p.paymentMethod === 'CREDIT_CARD';
+  const subject =
+    p.step === 1 ? (isCard ? `Seu pagamento de ${p.offerName} está esperando` : `Seu Pix de ${p.offerName} está esperando`) :
+    p.step === 2 ? `Ainda dá tempo: ${p.offerName}` :
+    `Último lembrete: ${p.offerName}`;
+  const intro = `Você começou a compra de ${p.offerName} (${brl(p.amount)}), mas o pagamento ainda não chegou para nós.`;
+  const until = p.pixExpiresAt
+    ? new Date(p.pixExpiresAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : null;
+  // Só diz "venceu" quando havia um código e ele venceu.
+  const hadCode = Boolean(p.pixCopyPaste) || Boolean(p.pixExpired);
+  const expiredLine = hadCode
+    ? 'O código Pix anterior venceu. Gere um novo em menos de 1 minuto'
+    : 'Para concluir, volte à página e finalize em menos de 1 minuto';
+  const closing = 'Se você já pagou, pode ignorar este e-mail: a confirmação às vezes leva alguns minutos.';
+
+  const textParts = [hello, '', intro, ''];
+  if (pixValid) {
+    textParts.push('Para concluir, abra o app do seu banco, escolha Pix > Pix Copia e Cola e cole este código:', '', String(p.pixCopyPaste), '');
+    if (until) textParts.push(`O código vale até ${until}.`, '');
+  } else if (p.invoiceUrl) {
+    textParts.push('Para concluir o pagamento com cartão, use a página segura:', p.invoiceUrl, '');
+  } else {
+    textParts.push(expiredLine + ':', p.offerUrl, '');
+  }
+  textParts.push(closing, '', 'Equipe NORQVA');
+  const text = textParts.join('\n');
+
+  const button = (href: string, label: string) => `
+              <table border="0" cellspacing="0" cellpadding="0" style="margin: 8px 0 20px 0;"><tr>
+                <td align="center" style="border-radius: 8px; background-color: #b5532f;">
+                  <a href="${escapeHtml(href)}" target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px;">${escapeHtml(label)}</a>
+                </td></tr></table>`;
+  let action = '';
+  if (pixValid) {
+    action = `
+              <p style="margin: 0 0 8px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">Para concluir, abra o app do seu banco, escolha <strong>Pix &gt; Pix Copia e Cola</strong> e cole este código:</p>
+              <div style="margin: 0 0 12px 0; padding: 12px; background-color: #f6efe6; border: 1px solid #e3d5c3; border-radius: 8px; font-family: Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; color: #3d342c; word-break: break-all;">${escapeHtml(String(p.pixCopyPaste))}</div>
+              ${until ? `<p style="margin: 0 0 20px 0; font-size: 13px; color: #7a6a5a;">O código vale até ${escapeHtml(until)}.</p>` : ''}`;
+  } else if (p.invoiceUrl) {
+    action = `
+              <p style="margin: 0 0 8px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">Para concluir o pagamento com cartão, use a página segura:</p>${button(p.invoiceUrl, 'Concluir pagamento')}`;
+  } else {
+    action = `
+              <p style="margin: 0 0 8px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">${escapeHtml(expiredLine)}:</p>${button(p.offerUrl, hadCode ? 'Gerar novo Pix' : 'Concluir a compra')}`;
+  }
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>
+<body style="margin: 0; padding: 0; background-color: #fbf7f1; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #fbf7f1; padding: 32px 16px;"><tr><td align="center">
+    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #ffffff; border: 1px solid #eadfd2; border-radius: 12px;">
+      <tr><td style="padding: 28px 28px 8px 28px;">
+        <p style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: #3d342c;">${escapeHtml(hello)}</p>
+        <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">${escapeHtml(intro)}</p>${action}
+        <p style="margin: 0 0 24px 0; font-size: 13px; line-height: 1.5; color: #7a6a5a;">${escapeHtml(closing)}</p>
+        <p style="margin: 0 0 24px 0; font-size: 13px; color: #7a6a5a;">Equipe NORQVA</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+  return { subject, text, html };
 }
 
 function escapeHtml(str: string): string {

@@ -13,17 +13,20 @@ import { Pool } from 'pg';
 import { sendPaidOrderAccessEmail, PURCHASE_ACCESS_MAX_ATTEMPTS } from './purchaseAccessService';
 import { shouldCheckProvider, withTimeout } from './paymentCheckThrottle';
 import { sweepWhatsAppDeliveries } from './whatsapp/whatsappDelivery';
+import { runPaymentReminders, PaymentReminderDeps } from './paymentReminderService';
 
 export interface PaymentSweepDeps {
   reconcile: (paymentId: string, pool: Pool) => Promise<any>;
   retryWebhookEvent: (pool: Pool, externalEventId: string, eventType: string, paymentId: string) => Promise<boolean | null>;
   sendAccessEmail?: (pool: Pool, orderId: string) => Promise<any>;
+  reminders?: PaymentReminderDeps;
 }
 
 export interface PaymentSweepResult {
   webhooksRetried: number;
   paymentsChecked: number;
   emailsAttempted: number;
+  remindersSent?: number;
 }
 
 const BATCH = 25;
@@ -101,6 +104,14 @@ export async function runPaymentSweep(pool: Pool, deps: PaymentSweepDeps): Promi
     console.warn('[PAYMENT SWEEP] whatsapp delivery error', err?.message);
   }
 
+  // 5. NORQVA-0074: lembrete de pagamento para pedidos pendentes (depois de conferir no Asaas, no item 2)
+  try {
+    const rem = await runPaymentReminders(pool, deps.reminders || {});
+    result.remindersSent = rem.sent;
+  } catch (err: any) {
+    console.warn('[PAYMENT SWEEP] payment reminder error', err?.message);
+  }
+
   return result;
 }
 
@@ -113,7 +124,7 @@ export function startPaymentSweepScheduler(pool: Pool, deps: PaymentSweepDeps): 
     running = true;
     try {
       const r = await runPaymentSweep(pool, deps);
-      if (r.webhooksRetried || r.paymentsChecked || r.emailsAttempted) {
+      if (r.webhooksRetried || r.paymentsChecked || r.emailsAttempted || r.remindersSent) {
         console.log('[PAYMENT SWEEP]', JSON.stringify(r));
       }
     } catch (err: any) {
