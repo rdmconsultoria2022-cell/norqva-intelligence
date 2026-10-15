@@ -42,14 +42,16 @@ describe('NORQVA-0070 — página do kit: 3D e movimento', () => {
     expect(container.querySelectorAll('.carousel .b3')).toHaveLength(5);
   });
 
-  it('os números mostram o valor final (sem animação disponível) e a garantia de 7 dias', async () => {
+  it('os números mostram o valor final (sem animação disponível); sem a frase de reembolso (NORQVA-0076)', async () => {
     const { container } = renderKit(kit);
     await waitFor(() => expect(container.querySelector('.stats4')).not.toBeNull());
     const stats = within(container.querySelector('.stats4') as HTMLElement);
     expect(stats.getByText('Receitas').parentElement).toHaveTextContent('74');
     expect(stats.getByText('Livros digitais').parentElement).toHaveTextContent('5');
     expect(stats.getByText('Páginas ilustradas').parentElement).toHaveTextContent('187');
-    expect(stats.getByText('Dias de garantia').parentElement).toHaveTextContent('7');
+    expect(stats.getByText('Pagamento único').parentElement).toHaveTextContent('1');
+    expect(stats.queryByText('Dias de garantia')).toBeNull();
+    expect(screen.queryByText('7 dias para pedir reembolso')).toBeNull();
   });
 
   it('a barra de compra do celular traz o parcelamento do servidor e abre o pagamento', async () => {
