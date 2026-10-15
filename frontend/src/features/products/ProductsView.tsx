@@ -27,6 +27,7 @@ export function productCover(prd: any): string | null {
   const path = key && READY_BOOKS.has(key) ? COLLECTION_COVERS[key]
     : /dolci/.test(name) ? '/images/kit/capa_dolci.jpg'
     : /trattoria/.test(name) ? '/images/kit/capa_trat.jpg'
+    : /^kit\b/.test(name) ? '/images/kit/capa_kit.jpg'
     : null;
   if (!path) return null;
   try {
