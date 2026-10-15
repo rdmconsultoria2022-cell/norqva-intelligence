@@ -770,15 +770,16 @@ export class CreativeFactoryService {
 
   /**
    * NORQVA-0066: troca a oferta (e, junto, o produto) de um criativo ainda não publicado. É classificação, não conteúdo:
-   * a versão, o texto e a aprovação continuam. As promessas ligadas são levadas para o produto novo (mesmo texto e tipo,
-   * com o mesmo status), porque cada promessa pertence a um produto.
+   * a versão, o texto e a aprovação continuam. As promessas ligadas são levadas para o produto novo (mesmo texto e tipo),
+   * porque cada promessa pertence a um produto. A verificação não atravessa produtos: a cópia nasce NÃO VERIFICADA e quem
+   * verifica é o dono, no produto novo. Promessa de preço não é levada (anúncio sem preço, D-0053).
    */
   async changeOffer(pool: Pool, creativeId: string, offerId: string, userId: string | null, isDemo: boolean) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(offerId || ''))) {
       throw new CreativeFactoryError(400, 'Escolha a oferta.');
     }
     const cRes = await pool.query(
-      'SELECT id, human_id, product_id, offer_id, approval_status FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
+      'SELECT id, human_id, product_id, offer_id, status, approval_status FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
       [creativeId, isDemo]
     );
     if (cRes.rows.length === 0) throw new CreativeFactoryError(404, 'Criativo não encontrado.');
@@ -791,41 +792,46 @@ export class CreativeFactoryService {
     if (oRes.rows.length === 0) throw new CreativeFactoryError(404, 'Oferta não encontrada.');
     const offer = oRes.rows[0];
     if (String(cur.offer_id || '') === String(offer.id)) throw new CreativeFactoryError(400, 'O criativo já está nesta oferta.');
+    if (cur.status === 'ATIVO' || cur.status === 'TESTANDO') throw new CreativeFactoryError(409, 'Este criativo está em teste ou no ar: não dá para trocar a oferta.');
     const linked = await pool.query('SELECT 1 FROM creative_meta_ads WHERE creative_id = $1 LIMIT 1', [creativeId]);
     if (linked.rows.length > 0) throw new CreativeFactoryError(409, 'Este criativo já está ligado a um anúncio da Meta: não dá para trocar a oferta.');
 
     const client = await pool.connect();
     let moved = 0;
+    let unverified = 0;
     try {
       await client.query('BEGIN');
       await client.query('UPDATE creatives SET product_id = $1, offer_id = $2, updated_at = NOW() WHERE id = $3', [offer.product_id, offer.id, creativeId]);
       if (String(cur.product_id || '') !== String(offer.product_id)) {
         const claims = await client.query(
-          `SELECT cr.id, cr.claim_text, cr.claim_type, cr.source, cr.evidence, cr.status, cr.status_note, cr.verified_by, cr.verified_at, cr.valid_until, cr.product_id
-           FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id WHERE cc.creative_id = $1`,
+          `SELECT cr.id, cr.claim_text, cr.claim_type, cr.product_id, cur_p.name AS product_name
+           FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id LEFT JOIN products cur_p ON cur_p.id = cr.product_id
+           WHERE cc.creative_id = $1`,
           [creativeId]
         );
         for (const cl of claims.rows) {
           if (String(cl.product_id || '') === String(offer.product_id)) continue;
-          let targetId: string;
+          await client.query('DELETE FROM creative_claims WHERE creative_id = $1 AND claim_id = $2', [creativeId, cl.id]);
+          if (cl.claim_type === 'PRICE') continue;
+          let target: { id: string; status: string };
           const same = await client.query(
-            `SELECT id FROM claims_registry WHERE product_id = $1 AND is_demo = $2 AND claim_text = $3 AND claim_type = $4 AND status <> 'REJECTED' ORDER BY created_at LIMIT 1`,
+            `SELECT id, status FROM claims_registry WHERE product_id = $1 AND is_demo = $2 AND claim_text = $3 AND claim_type = $4 AND status <> 'REJECTED' ORDER BY created_at LIMIT 1`,
             [offer.product_id, isDemo, cl.claim_text, cl.claim_type]
           );
           if (same.rows.length > 0) {
-            targetId = same.rows[0].id;
+            target = same.rows[0];
           } else {
             const ins = await client.query(
-              `INSERT INTO claims_registry (human_id, product_id, claim_text, claim_type, source, evidence, status, status_note, verified_by, verified_at, valid_until, is_demo)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+              `INSERT INTO claims_registry (human_id, product_id, claim_text, claim_type, source, status, status_note, is_demo)
+               VALUES ($1, $2, $3, $4, $5, 'UNVERIFIED', $6, $7) RETURNING id, status`,
               [`CLM-${crypto.randomBytes(4).toString('hex').toUpperCase()}${demoSuffix(isDemo)}`, offer.product_id, cl.claim_text, cl.claim_type,
-               `Levada do criativo ${cur.human_id} ao trocar a oferta`, cl.evidence, cl.status, cl.status_note, cl.verified_by, cl.verified_at, cl.valid_until, isDemo]
+               `Levada do criativo ${cur.human_id} ao trocar a oferta`, `Levada de ${cl.product_name || 'outro produto'}: verificar neste produto`, isDemo]
             );
-            targetId = ins.rows[0].id;
+            target = ins.rows[0];
           }
-          await client.query('DELETE FROM creative_claims WHERE creative_id = $1 AND claim_id = $2', [creativeId, cl.id]);
-          await client.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [creativeId, targetId]);
+          await client.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [creativeId, target.id]);
           moved++;
+          if (target.status !== 'VERIFIED') unverified++;
         }
       }
       await client.query('COMMIT');
@@ -835,8 +841,8 @@ export class CreativeFactoryService {
     } finally {
       client.release();
     }
-    await writeAuditLog(pool, userId, 'CREATIVE_OFFER_CHANGED', `Criativo ${cur.human_id}: oferta trocada para ${offer.human_id}${moved ? ` (${moved} promessa(s) levada(s) ao novo produto)` : ''}`, String(cur.offer_id || ''), offer.human_id, isDemo);
-    return { creative_id: creativeId, offer_id: offer.id, product_id: offer.product_id, claims_moved: moved };
+    await writeAuditLog(pool, userId, 'CREATIVE_OFFER_CHANGED', `Criativo ${cur.human_id}: oferta trocada para ${offer.human_id}${moved ? ` (${moved} promessa(s) levada(s) ao novo produto, ${unverified} para verificar)` : ''}`, String(cur.offer_id || ''), offer.human_id, isDemo);
+    return { creative_id: creativeId, offer_id: offer.id, product_id: offer.product_id, claims_moved: moved, claims_unverified: unverified };
   }
 
   /**

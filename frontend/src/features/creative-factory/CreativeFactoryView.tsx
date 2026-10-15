@@ -239,9 +239,9 @@ export function CreativeFactoryView({
     return run(
       `offer-${c.id}`,
       () => post(`/creative-factory/creatives/${c.id}/offer?mode=${mode}`, { offer_id: offerId }),
-      'Oferta do criativo trocada.'
+      'Oferta do criativo trocada. Confira as promessas: as levadas ao produto novo precisam ser verificadas de novo.'
     ).then(ok => {
-      if (ok) setEditing(null);
+      if (ok) setOfferPick(prev => { const n = { ...prev }; delete n[c.id]; return n; });
     });
   };
 

@@ -49,6 +49,11 @@ describe.sequential('NORQVA-0066 — trocar a oferta do criativo', () => {
     );
     claim1 = cl.rows[0].id;
     await pool.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2)', [creative, claim1]);
+    const price = await pool.query(
+      `INSERT INTO claims_registry (human_id, product_id, claim_text, claim_type, status, is_demo) VALUES ($1, $2, 'R$ 27,90 no Pix', 'PRICE', 'VERIFIED', FALSE) RETURNING id`,
+      [`CLM-T66P${tag}`, p1]
+    );
+    await pool.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2)', [creative, price.rows[0].id]);
   });
 
   afterAll(async () => {
@@ -60,10 +65,11 @@ describe.sequential('NORQVA-0066 — trocar a oferta do criativo', () => {
     await pool.query('DELETE FROM products WHERE id IN ($1, $2)', [p1, p2]).catch(() => {});
   });
 
-  it('troca a oferta, muda o produto, mantém a aprovação e leva a promessa verificada ao produto novo', async () => {
+  it('troca a oferta, muda o produto, mantém a aprovação e leva a promessa ao produto novo sem a verificação', async () => {
     const r = await post(`/api/creative-factory/creatives/${creative}/offer?mode=real`, { offer_id: o2 });
     expect(r.status).toBe(200);
     expect(r.body.claims_moved).toBe(1);
+    expect(r.body.claims_unverified).toBe(1);
     const c = await pool.query('SELECT product_id, offer_id, approval_status FROM creatives WHERE id = $1', [creative]);
     expect(c.rows[0].offer_id).toBe(o2);
     expect(c.rows[0].product_id).toBe(p2);
@@ -72,9 +78,9 @@ describe.sequential('NORQVA-0066 — trocar a oferta do criativo', () => {
       `SELECT cr.product_id, cr.status, cr.claim_text FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id WHERE cc.creative_id = $1`,
       [creative]
     );
-    expect(cl.rows).toHaveLength(1);
+    expect(cl.rows).toHaveLength(1); // a promessa de preço não é levada (anúncio sem preço)
     expect(cl.rows[0].product_id).toBe(p2);
-    expect(cl.rows[0].status).toBe('VERIFIED');
+    expect(cl.rows[0].status).toBe('UNVERIFIED');
     expect(cl.rows[0].claim_text).toBe('O kit reúne 5 livros em PDF');
     const audit = await pool.query(`SELECT 1 FROM audit_logs WHERE event_type = 'CREATIVE_OFFER_CHANGED' AND description LIKE $1`, [`%T66${tag}%`]);
     expect(audit.rows.length).toBeGreaterThan(0);
