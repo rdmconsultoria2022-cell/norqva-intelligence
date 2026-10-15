@@ -1095,7 +1095,8 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo,
              card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly,
              (SELECT p.name FROM products p WHERE p.id = offers.product_id) AS product_name,
-             (SELECT p.collection_key FROM products p WHERE p.id = offers.product_id) AS collection_key
+             (SELECT p.collection_key FROM products p WHERE p.id = offers.product_id) AS collection_key,
+             (SELECT x.human_id FROM offers x WHERE x.id = offers.exit_offer_id AND x.is_deleted = FALSE AND x.status = 'ATIVA' AND x.is_demo = offers.is_demo) AS exit_offer_human_id
       FROM offers 
       WHERE (human_id = $1 OR id::text = $1) 
         AND is_deleted = FALSE 
@@ -1130,6 +1131,8 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       card: publicCardTerms(offer),
       // NORQVA-0054: WhatsApp da marca disponível agora (conectado e com o atendente ligado)
       whatsapp: (await whatsappNumberForOffer(pool, offer.id).catch(() => null)) ? { available: true } : null,
+      // NORQVA-0069: oferta de saída (preço menor) para o botão Voltar do pagamento; null = não há
+      exit_offer: offer.exit_offer_human_id ? { human_id: offer.exit_offer_human_id } : null,
       // NORQVA-0063: quantos PDFs a oferta entrega (a página do kit mostra 2 ou 5 livros a partir disso)
       delivery_files: await pool
         .query('SELECT COUNT(*)::int AS n FROM offer_digital_assets WHERE offer_id = $1', [offer.id])

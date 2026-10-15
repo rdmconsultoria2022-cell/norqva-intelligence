@@ -8,9 +8,12 @@ import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from
 import { savePurchaseSession } from '../../services/purchaseSession';
 import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallments';
 import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit, toSaleBooks } from './collectionChoice';
-import type { CollectionSaleBook } from './checkoutTypes';
+import type { CollectionSaleBook, CheckoutOffer } from './checkoutTypes';
+import { ExitOfferScreen } from './ExitOfferScreen';
 
-export const CheckoutView: React.FC<CheckoutViewProps> = ({
+type CheckoutFormProps = CheckoutViewProps & { onBack?: () => void };
+
+const CheckoutForm: React.FC<CheckoutFormProps> = ({
   offer,
   isDemo,
   currentUser = null,
@@ -18,6 +21,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   onCustomerChange,
   onOrderCreated,
   onCancel,
+  onBack,
   showError,
   showSuccess,
   collectionBooks
@@ -740,7 +744,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             <button
               type="button"
               disabled={isSubmitting}
-              onClick={onCancel}
+              onClick={onBack || onCancel}
               className="px-4 py-2.5 rounded-xl bg-stone-200 text-stone-700 hover:bg-stone-300 text-xs font-semibold disabled:opacity-50 transition"
             >
               Voltar
@@ -772,3 +776,79 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   );
 };
 
+// NORQVA-0069: ofertas de saída. No botão Voltar do pagamento do kit, a pessoa vê uma proposta de preço menor (e, ao voltar
+// de novo, outra ainda menor). O preço de cada proposta é de uma oferta real do sistema (o servidor cobra o valor dela),
+// e a sequência aparece uma vez por navegador.
+const SEEN_KEY = 'norqva.exitoffer.seen.v1';
+const readSeen = () => {
+  try {
+    return window.localStorage.getItem(SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const markSeen = () => {
+  try {
+    window.localStorage.setItem(SEEN_KEY, '1');
+  } catch {
+    /* sem armazenamento: vale só nesta visita */
+  }
+};
+
+export const CheckoutView: React.FC<CheckoutViewProps> = props => {
+  const [current, setCurrent] = useState<CheckoutOffer>(props.offer);
+  const [exit, setExit] = useState<{ offer: CheckoutOffer; step: number } | null>(null);
+  const [loadingExit, setLoadingExit] = useState(false);
+  // vale para esta visita: decidido ao abrir (quem já viu as propostas em outra visita não vê de novo)
+  const [enabled] = useState(() => !readSeen());
+  const switched = current.id !== props.offer.id;
+
+  const fetchExit = async (humanId: string): Promise<CheckoutOffer | null> => {
+    try {
+      const r = await fetch(`${API_BASE}/public/offers/${encodeURIComponent(humanId)}`);
+      if (!r.ok) return null;
+      return (await r.json()) as CheckoutOffer;
+    } catch {
+      return null;
+    }
+  };
+  const priceOf = (o: CheckoutOffer) => Number(o.promotional_price ?? o.price);
+
+  const showNext = async (from: CheckoutOffer, step: number) => {
+    const next = enabled && !props.isDemo && from.exit_offer?.human_id ? from.exit_offer.human_id : null;
+    if (!next) return props.onCancel();
+    setLoadingExit(true);
+    const offer = await fetchExit(next);
+    setLoadingExit(false);
+    if (!offer || !(priceOf(offer) > 0) || priceOf(offer) >= priceOf(from)) return props.onCancel();
+    markSeen();
+    setExit({ offer, step });
+  };
+
+  if (exit) {
+    return (
+      <ExitOfferScreen
+        offer={exit.offer}
+        step={exit.step}
+        loading={loadingExit}
+        onAccept={() => {
+          setCurrent(exit.offer);
+          setExit(null);
+        }}
+        onBack={() => showNext(exit.offer, exit.step + 1)}
+      />
+    );
+  }
+  return (
+    <CheckoutForm
+      key={current.id}
+      {...props}
+      offer={current}
+      collectionBooks={switched ? [] : props.collectionBooks}
+      onBack={() => {
+        if (!enabled || props.isDemo || !current.exit_offer?.human_id) return props.onCancel();
+        return showNext(current, switched ? 2 : 1);
+      }}
+    />
+  );
+};

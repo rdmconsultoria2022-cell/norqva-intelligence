@@ -24,6 +24,8 @@ export interface CheckoutOffer {
   } | null;
   /** NORQVA-0063: quantos PDFs a oferta entrega (kit com 5 = kit completo da coleção). */
   delivery_files?: number | null;
+  /** NORQVA-0069: oferta de saída (preço menor) mostrada quando a pessoa clica em Voltar no pagamento. */
+  exit_offer?: { human_id: string } | null;
 }
 
 /** NORQVA-0063: livro da coleção à venda avulso (dados do servidor, /public/collection). */
