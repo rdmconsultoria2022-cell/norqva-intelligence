@@ -1,18 +1,18 @@
-# NORQVA-0064: livros avulsos no pagamento do kit de 5 em qualquer página
+# NORQVA-0064: livro Massas Coloridas (Volume VI)
 
-**Branch:** `ai/NORQVA-0064-avulsos-em-toda-pagina` · **Executor:** Claude · **Revisão:** CI + revisão independente · **Merge:** Claude
-**Pedido:** Ricardo, 14/10/2026 21h26, com print do pagamento do kit OFF-000010 (R$ 79,92): "Não apareceu a opção de compra avulsa". **Autorização:** correção de erro do contrato NORQVA-0063 (aprovado em 14/10/2026 20h11). · **Risco:** LOW
+**Branch:** `ai/NORQVA-0064-livro-massas-coloridas` · **Executor:** Claude · **Revisão:** revisão culinária independente + CI · **Merge:** Claude
+**Autorização:** conteúdo de produto (PDF), sem aprovação prévia (D-0037). Pedido do Ricardo em 15/10/2026 12h53 ("livro com técnicas de colorir massas"); proposta aceita às 12h54 ("Pode seguir com a construção"). · **Risco:** LOW (só arquivos de conteúdo)
 
-## Causa
+## Escopo
 
-O kit de 5 livros (OFF-000010, 5 PDFs) foi aberto pela página da oferta (`/p/`), e a lista de livros avulsos só era passada ao pagamento pela página `/kit/`.
+- `norqva-ai/produtos/coloridas/`:
+  - `content_coloridas.py`: 12 receitas, quadro das cores, planejamento, harmonização e os pedidos das fotos;
+  - `build_coloridas.py`: gera `MASSAS_COLORIDAS.pdf` (31 páginas);
+  - `gerar_fotos.py`: fotos na KIE, cerca de 52 créditos, rodando no computador do Ricardo;
+  - `revisao_coloridas.md`.
 
-## Correção
+## Falta
 
-- O pagamento (`CheckoutView`) busca sozinho `GET /api/public/collection` quando a oferta é o kit de 5 (5 PDFs ou mais) e a página não mandou a lista. Vale para `/p/` e `/kit/`.
-- Filtro dos livros vendáveis num lugar só (`toSaleBooks` em `collectionChoice.ts`).
-- Sem mudança no servidor, no pedido ou no pagamento.
-
-## Testes
-
-- `frontend/src/tests/norqva_0063_checkout_avulsos.test.tsx`: dois testes novos (busca sozinho no kit de 5; não busca nas outras ofertas).
+- Fotos e a conferência de cada uma contra a receita.
+- Revisão do Ricardo.
+- Venda: cadastro do produto, oferta e página (o kit e a migration 062 cobrem só os Volumes III a V), com aprovação.
