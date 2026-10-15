@@ -46,7 +46,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     };
   }, [collectionBooks, offerIsFullKit]);
   // NORQVA-0063: na página do kit, a pessoa escolhe o kit completo (padrão) ou livros avulsos
-  const saleBooks = (collectionBooks ?? fetchedBooks ?? [])
+  const saleBooks = (collectionBooks ?? (offerIsFullKit ? fetchedBooks : null) ?? [])
     .filter(b => b && b.offer_id && b.human_id && Number(b.price) > 0 && SALE_BOOK_INFO[b.book])
     .sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book));
   const hasChoice = saleBooks.length > 0;
