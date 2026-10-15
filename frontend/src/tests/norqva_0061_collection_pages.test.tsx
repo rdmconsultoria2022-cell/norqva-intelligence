@@ -74,7 +74,9 @@ describe('NORQVA-0061 — páginas dos livros da coleção', () => {
     );
     const link = await screen.findByTestId('collection-paes');
     expect(link).toHaveAttribute('href', '/p/OFF-000020');
-    expect(link).toHaveTextContent('Disponível separadamente · R$ 19,90');
+    // NORQVA-0076: o preço só aparece na seção de ofertas, não na coleção
+    expect(link).toHaveTextContent('Disponível separadamente');
+    expect(link).not.toHaveTextContent('R$');
     expect(screen.queryByTestId('collection-antipasti')).toBeNull();
     expect(screen.getAllByText('Em breve · não incluído no kit')).toHaveLength(2);
   });

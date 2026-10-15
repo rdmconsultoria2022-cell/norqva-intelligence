@@ -69,7 +69,7 @@ describe('NORQVA-0076 — lista de livros, contagem e botão do kit', () => {
     // tudo o que vem antes da seção de ofertas não tem outro preço nem parcelas
     const html = container.innerHTML;
     const before = html.slice(0, html.indexOf('id="oferta"'));
-    expect(before).not.toMatch(/R\$\s?(19,|79,|94,)/);
+    expect(before.match(/R\$/g)).toHaveLength(2); // faixa do alto e topo, os dois com R$ 14,90
     expect(before).not.toMatch(/\d+x/);
     // a seção de ofertas vem depois das dúvidas
     expect(html.indexOf('id="perguntas"')).toBeLessThan(html.indexOf('id="oferta"'));
@@ -103,6 +103,17 @@ describe('NORQVA-0076 — lista de livros, contagem e botão do kit', () => {
     });
     expect(screen.getByTestId('kit-timer-list')).toHaveTextContent('00:00');
     expect(screen.getByTestId('kit-timer-card')).toHaveTextContent('Tempo de reserva encerrado');
+  });
+
+  it('kit de dois livros: a coleção não mostra o preço do livro avulso antes das ofertas', async () => {
+    const { container } = renderKit({ ...kit, delivery_files: 2, promotional_price: 27.9, price: 34.8, card: null }, [
+      { book: 'paes', human_id: 'OFF-000007', offer_id: 'o7', price: 19.9, card: null }
+    ]);
+    await waitFor(() => expect(screen.getByTestId('collection-paes')).toBeInTheDocument());
+    expect(screen.getByTestId('collection-paes')).toHaveTextContent('Disponível separadamente');
+    expect(screen.getByTestId('collection-paes')).not.toHaveTextContent('R$');
+    const html = container.innerHTML;
+    expect(html.slice(0, html.indexOf('id="oferta"'))).not.toMatch(/R\$\s?19,90/);
   });
 
   it('kit de dois livros não mostra a lista nem a contagem', async () => {

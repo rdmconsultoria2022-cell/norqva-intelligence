@@ -279,8 +279,10 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
     ? [...saleBooks].sort((a, b) => a.price - b.price || SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book))
     : [];
   // Menor preço entre os livros avulsos e o kit: é o único preço que aparece antes das ofertas ("a partir de")
-  const minPrice = colReady ? Math.min(pix, ...bookList.map(b => b.price)) : null;
-  const fromLabel = minPrice !== null ? `Ofertas a partir de ${brl(minPrice)}` : 'Ver as ofertas';
+  const validPrices = [pix, ...bookList.map(b => b.price)].filter(p => Number.isFinite(p) && p > 0);
+  const minPrice = colReady && validPrices.length > 0 ? Math.min(...validPrices) : null;
+  // Textos que falam só de livros avulsos usam o menor preço entre eles
+  const minBookPrice = bookList.length > 0 ? Math.min(...bookList.map(b => b.price)) : null;
   const booksTotal = bookList.reduce((acc, b) => acc + Math.round(b.price * 100), 0) / 100;
   // "de" riscado: o preço cheio da oferta; sem ele, a soma dos livros avulsos (se for maior)
   const strikeFrom = from !== null ? from : bookList.length === 5 && booksTotal > pix ? booksTotal : null;
@@ -311,7 +313,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       <div className="prog" aria-hidden="true" />
 
       <div style={{ background: '#1f1b17', color: '#e9dfcf', textAlign: 'center', padding: '10px 16px', fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase' }}>
-        {minPrice !== null ? <strong style={{ color: '#f3c9a8' }} data-testid="kit-from-banner">{fromLabel}</strong> : 'Coleção Cozinha Italiana em Casa'}
+        {minPrice !== null ? <strong style={{ color: '#f3c9a8' }} data-testid="kit-from-banner">Ofertas a partir de {brl(minPrice)}</strong> : 'Coleção Cozinha Italiana em Casa'}
       </div>
 
       <div className={`hdr${scrolled ? ' on' : ''}`}>
@@ -518,7 +520,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                   <div className="cov"><img src={COLLECTION_COVERS[key]} alt={`Capa ${name}`} /></div>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2f5a3d' }}>
-                      Disponível separadamente · R$ {sale.price.toFixed(2).replace('.', ',')}
+                      Disponível separadamente
                     </div>
                     <div className="serif" style={{ fontSize: 24, marginTop: 6 }}>{name}</div>
                     <div style={{ fontSize: 14, color: '#8a4b2a', marginTop: 2, textDecoration: 'underline' }}>Ver o livro</div>
@@ -593,7 +595,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 40 }}>
                 <div className="kicker c">05 · As ofertas</div>
                 <h2 className="h2" style={{ maxWidth: 760 }}>Escolha o seu livro ou leve a coleção inteira</h2>
-                {minPrice !== null && <p className="lead" style={{ fontSize: 16 }}>Livros a partir de <strong style={{ color: '#8a3a26' }}>{brl(minPrice)}</strong>. Comece pelo que mais combina com você.</p>}
+                {minBookPrice !== null && <p className="lead" style={{ fontSize: 16 }}>Livros a partir de <strong style={{ color: '#8a3a26' }}>{brl(minBookPrice)}</strong>. Comece pelo que mais combina com você.</p>}
                 <Timer left={timeLeft} testId="kit-timer-list" />
               </div>
               <div className="bk-list">
@@ -692,8 +694,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice-bottom">
               <button className="btn shine" onClick={openCheckout}>Quero o kit completo</button>
             </BuyChoice>
-            {bookList.length > 0 && minPrice !== null && (
-              <a className="link" href="#oferta">ou escolha um livro a partir de {brl(minPrice)}</a>
+            {minBookPrice !== null && (
+              <a className="link" href="#oferta">ou escolha um livro a partir de {brl(minBookPrice)}</a>
             )}
           </div>
         </div>
