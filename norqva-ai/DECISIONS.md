@@ -171,3 +171,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** o NORQVA manda até 3 e-mails para quem gerou Pix ou cobrança no cartão e não pagou: aos 15 minutos, às 2 horas e às 20 horas.
 - **Regras:** só pedidos reais das últimas 30 horas; nunca para quem já pagou outro pedido; um e-mail por etapa; com Pix vencido, o e-mail leva para a página gerar outro. Desliga com `PAYMENT_REMINDER_ENABLED=false`.
+
+## D-0075 — Oferta depois da compra do Trattoria (2026-10-15)
+
+- **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** quem compra o Trattoria vê, na tela de entrega, os outros 4 livros da coleção (Dolci, Pães, Antipasti, Risotos) por **R$ 27,90**, num pagamento novo.
+- **Regras:** só para pedido pago da conta real; não aparece para quem já tem algum desses livros no pedido nem para quem já comprou a oferta. O preço é o da oferta no servidor (migration 066, `offers.post_purchase_offer_id`).

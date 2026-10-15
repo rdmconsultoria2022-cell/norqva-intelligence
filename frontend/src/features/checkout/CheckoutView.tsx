@@ -24,7 +24,8 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   onBack,
   showError,
   showSuccess,
-  collectionBooks
+  collectionBooks,
+  summary = null
 }) => {
   const [customerName, setCustomerName] = useState(initialCustomer?.name || currentUser?.name || '');
   const [customerEmail, setCustomerEmail] = useState(initialCustomer?.email || currentUser?.email || '');
@@ -472,10 +473,10 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
           const lname = String(offer.name || '').toLowerCase();
           const isKit = lname.includes('kit');
           const isDolci = !isKit && lname.includes('dolci');
-          const covers = isKit
+          const covers = summary ? summary.covers : isKit
             ? (fullKit ? SALE_BOOK_ORDER.map(k => SALE_BOOK_INFO[k].cover) : ['/images/kit/capa_trat.jpg', '/images/kit/capa_dolci.jpg'])
             : [isDolci ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg'];
-          const subtitle = isKit && fullKit ? `5 livros em PDF • ${FULL_KIT_RECIPES} receitas italianas`
+          const subtitle = summary ? summary.subtitle : isKit && fullKit ? `5 livros em PDF • ${FULL_KIT_RECIPES} receitas italianas`
             : isKit ? 'Trattoria em Casa + Dolci della Nonna • 2 livros em PDF'
             : isDolci ? 'Doces italianos da nonna • Livro em PDF'
             : '28 receitas italianas • Livro em PDF';
@@ -499,7 +500,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   )}
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#B83B1E] block">
-                      {isBolso ? 'Método & Aplicativo Web' : isKit ? 'Kit de livros digitais' : 'Livro digital'}
+                      {isBolso ? 'Método & Aplicativo Web' : summary ? summary.label : isKit ? 'Kit de livros digitais' : 'Livro digital'}
                     </span>
                     <h4 className="text-sm font-serif font-bold text-stone-900 leading-tight">
                       {offer.name}

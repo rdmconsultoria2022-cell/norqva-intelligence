@@ -2861,6 +2861,49 @@ export async function confirmPendingOrderWithProvider(pool: Pool, orderId: strin
   }
 }
 
+/**
+ * NORQVA-0075 (D-0075): oferta mostrada na tela de entrega a quem acabou de comprar.
+ * Vem de offers.post_purchase_offer_id da oferta principal do pedido. Não aparece se a oferta
+ * não estiver ATIVA, se o comprador já tem algum dos livros dela neste pedido (ex.: levou o Dolci
+ * no adicional) ou se já comprou essa oferta antes.
+ */
+export async function resolvePostPurchaseOffer(pool: Pool, orderId: string): Promise<null | {
+  human_id: string; name: string; price: number; books: string[];
+}> {
+  const r = await pool.query(
+    `SELECT t.id, t.human_id, t.name, COALESCE(t.promotional_price, t.price) AS price, o.customer_id
+     FROM orders o
+     JOIN LATERAL (
+       SELECT i.offer_id FROM order_items i WHERE i.order_id = o.id
+       ORDER BY COALESCE(i.is_bump, FALSE) ASC, i.created_at ASC LIMIT 1
+     ) main ON TRUE
+     JOIN offers src ON src.id = main.offer_id
+     JOIN offers t ON t.id = src.post_purchase_offer_id
+     WHERE o.id = $1 AND o.status = 'PAID' AND o.is_demo = FALSE
+       AND t.status = 'ATIVA' AND COALESCE(t.is_deleted, FALSE) = FALSE AND t.is_demo = FALSE`,
+    [orderId]
+  );
+  const t = r.rows[0];
+  if (!t) return null;
+  // Qualquer livro da oferta já comprado (neste pedido ou em outro pago do mesmo comprador) tira a oferta.
+  const overlap = await pool.query(
+    `SELECT 1 FROM orders o
+     JOIN order_items i ON i.order_id = o.id
+     JOIN offer_digital_assets a ON a.offer_id = i.offer_id
+     WHERE o.customer_id = $3 AND (o.id = $1 OR o.status = 'PAID')
+       AND a.asset_id IN (SELECT asset_id FROM offer_digital_assets WHERE offer_id = $2)
+     LIMIT 1`,
+    [orderId, t.id, t.customer_id]
+  );
+  if (overlap.rows.length) return null;
+  const books = await pool.query(
+    `SELECT d.name FROM offer_digital_assets a JOIN digital_assets d ON d.id = a.asset_id
+     WHERE a.offer_id = $1 ORDER BY d.name`,
+    [t.id]
+  );
+  return { human_id: t.human_id, name: t.name, price: Number(t.price), books: books.rows.map((b: any) => String(b.name || '')) };
+}
+
 export async function getOrderById(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const role = req.user?.role;
@@ -2945,6 +2988,10 @@ export async function getOrderById(req: AuthenticatedRequest, res: Response) {
         is_demo: order.is_demo,
         // D-0009 (fase B): pixel da marca para o Purchase do navegador (null = pixel padrão)
         meta_pixel_id: await resolveBrandPixelId(pool, { orderId: order.id }),
+        // NORQVA-0075: oferta depois da compra (só pedido pago da conta real)
+        post_purchase_offer: currentStatus === 'PAID' && !order.is_demo
+          ? await resolvePostPurchaseOffer(pool, order.id).catch(() => null)
+          : null,
         created_at: order.created_at,
         updated_at: order.updated_at
       });
