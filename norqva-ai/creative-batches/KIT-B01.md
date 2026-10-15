@@ -1,7 +1,7 @@
 # Lote KIT-B01: Kit Cozinha Italiana em Casa (6 vídeos)
 
 **Oferta:** OFF-000006 (Kit Cozinha Italiana) · **Página:** `https://norqva-intelligence-frontend.vercel.app/kit/OFF-000006`
-**Status:** vídeos prontos para o Ricardo revisar. Nada foi publicado na Meta. Tudo nasce pausado.
+**Status:** em 15/10/2026 o Ricardo aprovou os vídeos H02, H03, H05 e H06. H01 e H04 não foram aprovados (ficam guardados). Nada foi publicado na Meta. Tudo nasce pausado.
 **Autor:** Claude · 2026-10-15
 
 ## Regras seguidas
