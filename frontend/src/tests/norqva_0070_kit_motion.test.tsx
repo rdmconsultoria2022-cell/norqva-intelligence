@@ -42,7 +42,7 @@ describe('NORQVA-0070 — página do kit: 3D e movimento', () => {
     expect(container.querySelectorAll('.carousel .b3')).toHaveLength(5);
   });
 
-  it('os números mostram o valor final (sem animação disponível); sem a frase de reembolso (NORQVA-0076)', async () => {
+  it('os números mostram o valor final (sem animação disponível); sem a frase de reembolso (NORQVA-0077)', async () => {
     const { container } = renderKit(kit);
     await waitFor(() => expect(container.querySelector('.stats4')).not.toBeNull());
     const stats = within(container.querySelector('.stats4') as HTMLElement);

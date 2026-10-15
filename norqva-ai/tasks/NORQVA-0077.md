@@ -1,4 +1,4 @@
-# NORQVA-0076: tirar "7 dias para pedir reembolso" da página do kit
+# NORQVA-0077: tirar "7 dias para pedir reembolso" da página do kit
 
 **Pedido:** Ricardo, 15/10/2026 12h24. **Autorização:** mudança de texto (D-0037). **Risco:** LOW
 
