@@ -112,6 +112,24 @@ describe('NORQVA-0063 — checkout do kit: kit completo ou livros avulsos', () =
     expect(screen.queryByText(/acesso permanente/)).toBeNull();
   });
 
+  it('NORQVA-0064: kit de 5 livros aberto por outra página (/p/) busca os avulsos sozinho', async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({ ok: true, json: async () => (String(url).endsWith('/public/collection') ? { books } : {}) })
+    ) as any;
+    render(<CheckoutView offer={kit as any} isDemo={false} onOrderCreated={vi.fn()} onCancel={vi.fn()} showError={vi.fn()} />);
+    await waitFor(() => expect(screen.getByTestId('choice-avulso')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('choice-avulso'));
+    expect(screen.getAllByRole('checkbox')).toHaveLength(5);
+  });
+
+  it('NORQVA-0064: oferta que não é o kit de 5 não busca a lista', () => {
+    const f = vi.fn();
+    global.fetch = f as any;
+    render(<CheckoutView offer={{ ...kit, delivery_files: 1 } as any} isDemo={false} onOrderCreated={vi.fn()} onCancel={vi.fn()} showError={vi.fn()} />);
+    expect(f).not.toHaveBeenCalledWith(expect.stringContaining('/public/collection'));
+    expect(screen.queryByTestId('checkout-choice')).toBeNull();
+  });
+
   it('página do kit com 5 PDFs mostra os cinco livros', async () => {
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/public/collection')) return Promise.resolve({ ok: true, json: async () => ({ books }) });
