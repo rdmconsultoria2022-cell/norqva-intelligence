@@ -235,7 +235,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         <div className="hero3" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr)', gap: 56, alignItems: 'center', marginTop: 64 }}>
           <div>
             <div style={{ paddingBottom: 24, borderBottom: '1px solid #e6dccd' }}>
-              <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>62</div>
+              <div className="serif" style={{ fontSize: 58, lineHeight: 0.9, color: '#8a3a26' }}>74</div>
               <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>Receitas</div>
               <div style={{ fontSize: 14, color: '#6b6358', marginTop: 6, lineHeight: 1.6 }}>Em cinco livros: massas, doces, pães, antipasti, risotos e polentas.</div>
             </div>
@@ -420,7 +420,7 @@ Os cinco livros da coleção estão no kit. Arraste para conhecer.
                 <div className="serif price" style={{ fontSize: 80, fontWeight: 600, lineHeight: 0.9, color: '#8a3a26' }} data-testid="kit-pix">{brl(pix)}</div>
               )}
               <div style={{ height: 1, background: '#e6dccd' }} />
-              <Tick>62 receitas com foto e passo a passo, em 5 livros</Tick>
+              <Tick>74 receitas com foto e passo a passo, em 5 livros</Tick>
               <Tick>Trattoria, Dolci, Pães, Antipasti e Risotos & Polentas</Tick>
               <Tick>Download no e-mail assim que o pagamento é confirmado</Tick>
               <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice">
