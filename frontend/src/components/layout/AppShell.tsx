@@ -23,7 +23,8 @@ export function AppShell({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans w-full overflow-x-hidden">
+    {/* NORQVA-0071: the shell has the screen height, so the top bar (menu + period) stays fixed and only the content scrolls */}
+    <div className="h-[100dvh] bg-slate-950 text-slate-100 flex font-sans w-full overflow-hidden">
       {/* Global Toast Error & Success */}
       {globalError && (
         <div className="fixed top-4 right-4 z-50 bg-red-950 border border-red-500 text-red-200 px-4 py-3 rounded-md shadow-lg flex items-center gap-2 max-w-md animate-bounce">
@@ -63,7 +64,7 @@ export function AppShell({
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
         {isDemoView && (
           <div className="bg-amber-500 text-slate-950 px-4 py-1 text-center text-xs font-mono font-bold tracking-wider z-20 flex items-center justify-center gap-2 border-b border-amber-600">
             <AlertTriangle className="h-4 w-4 shrink-0 text-slate-950" />
@@ -79,7 +80,7 @@ export function AppShell({
         />
 
         {/* Child Screen Contents */}
-        <section className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 custom-scrollbar">
+        <section className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 md:p-8 custom-scrollbar">
           {children}
         </section>
       </main>

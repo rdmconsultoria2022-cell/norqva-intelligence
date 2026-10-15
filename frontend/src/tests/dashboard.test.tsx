@@ -315,6 +315,7 @@ describe('DashboardView Component — Financial Intelligence & Executive Views',
     expect(screen.getAllByText(/NORQVA E2E META TESTE 01/i).length).toBeGreaterThanOrEqual(1);
 
     // Check period switching
+    fireEvent.click(screen.getByRole('button', { name: /^Período:/ })); // NORQVA-0071: abre o menu do período
     fireEvent.click(screen.getByRole('button', { name: '7 dias' }));
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(

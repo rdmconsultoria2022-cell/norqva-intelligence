@@ -53,7 +53,7 @@ import { CreditSummary } from './features/dashboard/CreditSummary';
 import { BrandsView } from './features/brands/BrandsView';
 import { DemographicIntelligenceView } from './features/intelligence/DemographicIntelligenceView';
 import { AppShell } from './components/layout/AppShell';
-import { GlobalPeriodProvider, GlobalPeriodSelector } from './lib/globalPeriod';
+import { GlobalPeriodProvider } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
@@ -687,23 +687,25 @@ export default function App() {
         isDemoView,
         setIsDemoView,
         authMode,
-        loadData
+        loadData,
+        // NORQVA-0004 + NORQVA-0071: one period for every screen, in the fixed top bar,
+        // shown only on the screens where it filters the numbers
+        showPeriodFilter: PERIOD_AWARE_TABS.includes(activeTab)
       }}
     >
-          {/* NORQVA-0004: one period for every screen */}
-          <div className="mb-4">
-            <GlobalPeriodSelector appliesToScreen={PERIOD_AWARE_TABS.includes(activeTab)} />
-          </div>
           {activeTab === 'dashboard' && (
             <div className="space-y-4">
-              {/* NORQVA-0030: Visão Geral = entrada do dia (visão executiva) + resumo do crédito Meta (ADMIN) */}
-              <CreditSummary
-                currentUser={currentUser}
-                isDemoView={isDemoView}
-                apiFetch={apiFetch}
-                onOpenDetails={() => setActiveTab('meta-credit')}
-              />
+              {/* NORQVA-0030: Visão Geral = entrada do dia (visão executiva) + resumo do crédito Meta (ADMIN).
+                  NORQVA-0071: o crédito Meta vem logo depois do tráfego Meta Ads (resultados, funil e tráfego primeiro). */}
               <DashboardView
+                metaCreditSlot={
+                  <CreditSummary
+                    currentUser={currentUser}
+                    isDemoView={isDemoView}
+                    apiFetch={apiFetch}
+                    onOpenDetails={() => setActiveTab('meta-credit')}
+                  />
+                }
                 section="overview"
                 currentUser={currentUser}
                 isDemoView={isDemoView}
