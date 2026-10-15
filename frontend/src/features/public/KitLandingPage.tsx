@@ -355,7 +355,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               <a className="link" href="#dentro">Ver por dentro dos livros</a>
             </div>
             <ul className="trust up" style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', gap: '10px 26px', flexWrap: 'wrap', fontSize: 13, color: '#5a5249', ['--d' as any]: '360ms' }}>
-              {['Entrega imediata no e-mail', card ? `Pix ou cartão em até ${Math.max(card.max_installments, maxWithInterest)}x` : 'Pagamento seguro via Pix', '7 dias para pedir reembolso'].map(t => (
+              {['Entrega imediata no e-mail', card ? `Pix ou cartão em até ${Math.max(card.max_installments, maxWithInterest)}x` : 'Pagamento seguro via Pix'].map(t => (
                 <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a3a26" strokeWidth="2"><path d="M4 12.5l5 5L20 6.5" /></svg>
                   {t}
@@ -379,7 +379,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             [full ? FULL_KIT_RECIPES : 38, 'Receitas', 'passo a passo, com foto'],
             [full ? 5 : 2, 'Livros digitais', full ? 'massas, risotos, pães, antepastos e doces' : 'massas, molhos, pizzas e doces'],
             [full ? 187 : 94, 'Páginas ilustradas', 'uma foto para cada receita'],
-            [7, 'Dias de garantia', 'para pedir o reembolso']
+            [1, 'Pagamento único', 'sem mensalidade nem assinatura']
           ].map(([n, label, note], i) => (
             <div key={String(label)} className="stat rv" style={{ ['--d' as any]: `${i * 90}ms` }}>
               <div className="serif" style={{ fontSize: 52, lineHeight: 0.95, color: '#8a3a26' }}><Counter value={Number(n)} /></div>
