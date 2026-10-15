@@ -10,7 +10,7 @@ import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
 import type { CollectionSaleBook } from '../checkout/checkoutTypes';
-import { isFullKit, FULL_KIT_RECIPES, toSaleBooks } from '../checkout/collectionChoice';
+import { isFullKit, FULL_KIT_RECIPES, toSaleBooks, SALE_BOOK_INFO, SALE_BOOK_ORDER } from '../checkout/collectionChoice';
 import { KIT_MOTION_CSS, useRevealOnScroll, useKitScroll, Counter, Book3D, BookStack } from './kitMotion';
 
 // NORQVA-0038: página de vendas do Kit Cozinha Italiana (Trattoria em Casa + Dolci della Nonna).
@@ -81,11 +81,67 @@ const CSS = `
 .kl .gal figure{margin:0;position:relative;overflow:hidden;border-radius:3px}
 .kl .gal img{width:100%;height:100%;object-fit:cover;display:block}
 .kl .gal figcaption{position:absolute;left:12px;bottom:12px;padding:7px 12px;border-radius:3px;font-family:'Cormorant Garamond',serif;font-size:17px}
+.kl .timer{display:inline-flex;align-items:center;gap:12px;padding:10px 18px;border-radius:999px;background:#1f1b17;color:#faf7f2;font-size:13px;letter-spacing:.06em}
+.kl .timer b{font-family:'Manrope',sans-serif;font-variant-numeric:tabular-nums;font-size:18px;letter-spacing:.04em;color:#f3c9a8}
+.kl .timer.end b{color:#d9cfc1}
+.kl .bk-list{background:#fff;border:1px solid #e6dccd;border-radius:6px;padding:8px 36px;box-shadow:0 30px 60px rgba(60,40,25,.08)}
+.kl .bk-row{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:28px;align-items:center;padding:24px 0}
+.kl .bk-row + .bk-row{border-top:1px solid #eee5d8}
+.kl .bk-cov{width:92px;aspect-ratio:663/936;border-radius:2px 4px 4px 2px;overflow:hidden;box-shadow:8px 10px 18px rgba(60,40,25,.22)}
+.kl .bk-cov img{width:100%;height:100%;object-fit:cover;display:block}
+.kl .bk-buy{display:flex;flex-direction:column;align-items:flex-end;gap:10px;text-align:right}
+.kl .btn.ghost{background:transparent;color:#8a3a26;border:1px solid #8a3a26;min-height:46px;padding:0 20px;font-size:12px;letter-spacing:.08em}
+.kl .btn.ghost:hover{background:#8a3a26;color:#fffaf3}
+@keyframes kl-beat{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(138,58,38,.5)}50%{transform:scale(1.04);box-shadow:0 0 0 16px rgba(138,58,38,0)}}
+.kl .btn.beat{animation:kl-beat 1.8s ease-in-out infinite}
+.kl .btn.beat:hover{animation:none}
+@media (prefers-reduced-motion:reduce){.kl .btn.beat{animation:none}}
+@media (max-width:720px){.kl .bk-list{padding:4px 20px}.kl .bk-row{grid-template-columns:minmax(0,1fr);justify-items:center;text-align:center;gap:16px;padding:28px 0}.kl .bk-cov{width:120px}.kl .bk-buy{align-items:stretch;text-align:center;width:100%}.kl .bk-buy .btn{width:100%}}
 @media (max-width:960px){.kl .hero3,.kl .two{grid-template-columns:minmax(0,1fr)!important;gap:40px!important}.kl .seals{grid-template-columns:repeat(2,minmax(0,1fr))!important}.kl .gal{grid-template-columns:repeat(2,minmax(0,1fr))}.kl .gal > :first-child{grid-column:span 2!important;grid-row:auto!important}.kl .nav{display:none!important}}
 @media (max-width:560px){.kl .wrap{padding:0 18px}.kl .price{font-size:58px!important}}
 `;
 
 const PAGE_CSS = CSS + KIT_MOTION_CSS;
+
+// NORQVA-0076: lista dos livros na oferta. Textos fixos aqui; preço e oferta de cada livro vêm do servidor (/public/collection).
+const BOOK_BLURB: Record<string, string> = {
+  trattoria: 'Massa fresca à mão, nhoque, ravioli e lasanha, molhos clássicos como carbonara, ragù e pesto, e pizza de fermentação lenta.',
+  risotos: 'Risoto alla milanese, de cogumelos, de abóbora e de camarão, e polentas cremosa, grelhada e gratinada.',
+  antipasti: 'Bruschetta, crostini, caponata, arancini, frittata e a tábua de frios com spritz para abrir a mesa.',
+  paes: 'Fermento natural, pão rústico, ciabatta, focaccia barese, grissini, taralli e piadina feitos em casa.',
+  dolci: 'Tiramisù, panna cotta, cannoli, torta della nonna, cantucci e outros doces de família.'
+};
+
+/** NORQVA-0076: contagem regressiva de 5 minutos nas ofertas; o início fica guardado na aba para não recomeçar ao recarregar. */
+const COUNTDOWN_MS = 5 * 60 * 1000;
+function useCountdown(key: string, on: boolean): number {
+  const [left, setLeft] = useState(COUNTDOWN_MS);
+  useEffect(() => {
+    if (!on) return;
+    let start = Date.now();
+    try {
+      const saved = Number(sessionStorage.getItem(key));
+      if (saved > 0 && saved <= start) start = saved;
+      else sessionStorage.setItem(key, String(start));
+    } catch (_) {}
+    const tick = () => setLeft(Math.max(0, COUNTDOWN_MS - (Date.now() - start)));
+    tick();
+    const t = window.setInterval(tick, 1000);
+    return () => window.clearInterval(t);
+  }, [key, on]);
+  return left;
+}
+const mmss = (ms: number) => {
+  const s = Math.ceil(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
+
+const Timer: React.FC<{ left: number; testId?: string }> = ({ left, testId }) => (
+  <div className={`timer${left === 0 ? ' end' : ''}`} role="timer" aria-live="off" data-testid={testId}>
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9 2h6" /></svg>
+    {left > 0 ? <span>Condição reservada para você por <b>{mmss(left)}</b></span> : <span>Tempo de reserva encerrado <b>00:00</b></span>}
+  </div>
+);
 
 const Tick: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="tick">
@@ -169,9 +225,20 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   useRevealOnScroll(`${offer?.id || ''}-${Object.keys(forSale).length}`);
   const { scrolled, showBar } = useKitScroll(rootRef, !!offer);
 
+  // NORQVA-0076: lista de livros avulsos + contagem regressiva nas ofertas (só no kit de 5)
+  const [buyBook, setBuyBook] = useState<string | null>(null);
+  const timeLeft = useCountdown(`kl-timer-${humanId}`, !!offer);
+
   const openCheckout = () => {
     if (!offer) return;
     sendFunnelEvent('CHECKOUT_MODAL_OPENED', offer.human_id, { offer_name: offer.name }, offer.is_demo);
+    setBuyBook(null);
+    setShowCheckout(true);
+  };
+  const openBook = (book: string) => {
+    if (!offer) return;
+    sendFunnelEvent('CHECKOUT_MODAL_OPENED', offer.human_id, { offer_name: offer.name, single_book: book }, offer.is_demo);
+    setBuyBook(book);
     setShowCheckout(true);
   };
   // NORQVA-0054: com o WhatsApp da marca disponível, o botão de cima também abre a conversa
@@ -214,6 +281,11 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   const ctaLabel = card ? `Quero o kit · ${card.max_installments}x ${brl(card.installment_value)}` : `Quero o kit por ${brl(pix)}`;
   // NORQVA-0063: oferta com os 5 PDFs = kit completo da coleção (textos e capas dos 5 livros)
   const full = isFullKit(offer);
+  // NORQVA-0076: todos os livros à venda, na ordem da coleção (o Dolci fecha a lista)
+  const bookList = full ? [...saleBooks].sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book)) : [];
+  const booksTotal = bookList.reduce((acc, b) => acc + Math.round(b.price * 100), 0) / 100;
+  // "de" riscado: o preço cheio da oferta; sem ele, a soma dos livros avulsos (se for maior)
+  const strikeFrom = from !== null ? from : booksTotal > pix ? booksTotal : null;
   const KIT_BOOKS = full
     ? [
         { img: `${IMG}/capa_trat.jpg`, name: 'Trattoria em Casa', note: '28 receitas · massas, molhos e pizzas' },
@@ -468,8 +540,36 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       {/* Oferta */}
       <div id="oferta" style={{ paddingTop: 112, paddingBottom: 120, background: 'linear-gradient(180deg,#faf7f2 0%,#f1e6d8 100%)', borderTop: '1px solid #e6dccd' }}>
         <div className="wrap">
+          {bookList.length > 0 && (
+            <div style={{ marginBottom: 96 }} data-testid="kit-book-list">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 40 }}>
+                <div className="kicker c">04 · Os livros da coleção</div>
+                <h2 className="h2" style={{ maxWidth: 760 }}>Escolha o seu livro ou leve a coleção inteira</h2>
+                <Timer left={timeLeft} testId="kit-timer-list" />
+              </div>
+              <div className="bk-list">
+                {bookList.map(b => {
+                  const info = SALE_BOOK_INFO[b.book];
+                  return (
+                    <div key={b.book} className="bk-row" data-testid={`kit-book-${b.book}`}>
+                      <div className="bk-cov"><img src={info.cover} alt={`Capa do livro ${info.name}`} loading="lazy" /></div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8a6b45' }}>{info.note}</div>
+                        <div className="serif" style={{ fontSize: 28, lineHeight: 1.1, marginTop: 6 }}>{info.name}</div>
+                        <p style={{ margin: '8px 0 0', fontSize: 14.5, lineHeight: 1.6, color: '#5a5249' }}>{BOOK_BLURB[b.book]}</p>
+                      </div>
+                      <div className="bk-buy">
+                        <div className="serif" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1, color: '#8a3a26' }} data-testid={`kit-book-price-${b.book}`}>{brl(b.price)}</div>
+                        <button className="btn ghost" onClick={() => openBook(b.book)} data-testid={`kit-book-buy-${b.book}`}>Quero comprar somente esse exemplar</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 60 }}>
-            <div className="kicker c">04 · Oferta de lançamento</div>
+            <div className="kicker c">{bookList.length > 0 ? 'Kit completo · oferta de lançamento' : '04 · Oferta de lançamento'}</div>
             <h2 className="h2" style={{ maxWidth: 760 }}>{full ? 'Os cinco livros juntos, por menos' : 'Os dois livros juntos, por menos'}</h2>
           </div>
           <div className="two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 72, alignItems: 'center' }}>
@@ -485,9 +585,11 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               <div style={{ position: 'absolute', top: 0, left: 44, right: 44, height: 3, background: '#8a3a26' }} />
               <div className="kicker" style={{ fontSize: 11 }}>{offer.name}</div>
               <div className="serif" style={{ fontSize: 28, lineHeight: 1.15 }}>{full ? 'Os 5 livros da coleção Cozinha Italiana em Casa' : 'Trattoria em Casa + Dolci della Nonna'}</div>
-              {from !== null && (
-                <div style={{ fontSize: 15, color: '#8d8377' }}>
-                  de <span className="strike">{brl(from)}</span> por
+              {bookList.length > 0 && <Timer left={timeLeft} testId="kit-timer-card" />}
+              {strikeFrom !== null && (
+                <div style={{ fontSize: 18, color: '#8d8377' }} data-testid="kit-from">
+                  de <span className="strike">{brl(strikeFrom)}</span> por
+                  {bookList.length > 0 && Math.abs(strikeFrom - booksTotal) < 0.005 && <span style={{ display: 'block', fontSize: 13, marginTop: 4 }}>soma dos {bookList.length} livros comprados separadamente</span>}
                 </div>
               )}
               {card ? (
@@ -519,7 +621,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               )}
               <Tick>Download no e-mail assim que o pagamento é confirmado</Tick>
               <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice">
-                <button className="btn shine pulse" onClick={openCheckout} style={{ width: '100%', minHeight: 60 }} data-testid="kit-cta">
+                <button className="btn shine beat" onClick={openCheckout} style={{ width: '100%', minHeight: 60 }} data-testid="kit-cta">
                   Quero o kit
                 </button>
               </BuyChoice>
@@ -619,6 +721,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           showError={showError}
           showSuccess={showSuccess}
           collectionBooks={full ? saleBooks : []}
+          initialBook={full ? buyBook : null}
         />
       )}
 

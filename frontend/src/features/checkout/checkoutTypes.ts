@@ -89,6 +89,8 @@ export interface CheckoutViewProps {
   showSuccess?: (msg: string) => void;
   /** NORQVA-0063: livros avulsos que a página do kit oferece no pagamento (vazio = sem escolha). */
   collectionBooks?: CollectionSaleBook[];
+  /** NORQVA-0076: livro (chave) já marcado como avulso ao abrir, vindo do botão "somente esse exemplar". */
+  initialBook?: string | null;
   /** NORQVA-0075: resumo do produto quando o nome da oferta não diz quais livros são (oferta depois da compra). */
   summary?: { covers: string[]; label: string; subtitle: string } | null;
 }
