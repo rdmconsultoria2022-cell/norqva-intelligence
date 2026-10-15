@@ -161,3 +161,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Quais livros:** Trattoria = oferta OFF-000001 e Dolci = OFF-000005 (código fixo); Pães, Antipasti e Risotos pela chave do produto (D-0061). Só aparecem avulsos os que têm oferta ATIVA na conta real (`GET /api/public/collection`).
 - **Kit de 5:** a página e o pagamento mostram os 5 livros quando a oferta do kit entrega 5 PDFs ou mais (`delivery_files`); com menos, continua a página do kit de 2 livros, sem avulsos.
 - **Textos:** o pagamento não promete mais "acesso permanente" e explica o CPF ("o banco exige para gerar o Pix; fica protegido e é apagado depois do pagamento").
+
+## D-0074 — Lembrete de pagamento para pedido pendente (2026-10-15)
+
+- **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** o NORQVA manda até 3 e-mails para quem gerou Pix ou cobrança no cartão e não pagou: aos 15 minutos, às 2 horas e às 20 horas.
+- **Regras:** só pedidos reais das últimas 30 horas; nunca para quem já pagou outro pedido; um e-mail por etapa; com Pix vencido, o e-mail leva para a página gerar outro. Desliga com `PAYMENT_REMINDER_ENABLED=false`.
