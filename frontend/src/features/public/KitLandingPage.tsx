@@ -5,7 +5,7 @@ import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { rateLabel } from '../../lib/cardInstallments';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
-import { BuyChoice, requestWhatsAppLink, goToWhatsApp } from './WhatsAppChoice';
+import { BuyChoice } from './WhatsAppChoice';
 import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
@@ -208,6 +208,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   const [forSale, setForSale] = useState<Record<string, { human_id: string; price: number }>>({});
   // NORQVA-0063: livros que o checkout oferece avulsos (Trattoria e Dolci + volumes com página pronta)
   const [saleBooks, setSaleBooks] = useState<CollectionSaleBook[]>([]);
+  // NORQVA-0076: "a partir de" só aparece depois que a lista de livros respondeu (sem piscar o preço do kit)
+  const [colReady, setColReady] = useState(false);
   useEffect(() => {
     let alive = true;
     fetch(`${API_BASE}/public/collection`)
@@ -219,7 +221,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         setForSale(map);
         setSaleBooks(toSaleBooks(data.books));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => alive && setColReady(true));
     return () => {
       alive = false;
     };
@@ -246,20 +249,6 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
     setBuyBook(book);
     setShowCheckout(true);
   };
-  // NORQVA-0054: com o WhatsApp da marca disponível, o botão de cima também abre a conversa
-  const [topBusy, setTopBusy] = useState(false);
-  const openTop = async () => {
-    if (!offer || topBusy) return;
-    if (!offer.whatsapp?.available) return openCheckout();
-    setTopBusy(true);
-    try {
-      goToWhatsApp(await requestWhatsAppLink(offer.human_id));
-    } catch {
-      openCheckout();
-    } finally {
-      setTopBusy(false);
-    }
-  };
 
   if (fail) {
     return (
@@ -283,11 +272,15 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   const savings = from !== null ? from - pix : 0;
   // NORQVA-0041: maior número de parcelas com juros (repassados ao comprador), se houver
   const maxWithInterest = card?.options?.filter(o => o.interest).reduce((m, o) => Math.max(m, o.n), 0) || 0;
-  const ctaLabel = card ? `Quero o kit · ${card.max_installments}x ${brl(card.installment_value)}` : `Quero o kit por ${brl(pix)}`;
   // NORQVA-0063: oferta com os 5 PDFs = kit completo da coleção (textos e capas dos 5 livros)
   const full = isFullKit(offer);
-  // NORQVA-0076: todos os livros à venda, na ordem da coleção (o Dolci fecha a lista)
-  const bookList = full ? [...saleBooks].sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book)) : [];
+  // NORQVA-0076: todos os livros à venda, do mais barato ao mais caro (empate: ordem da coleção)
+  const bookList = full
+    ? [...saleBooks].sort((a, b) => a.price - b.price || SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book))
+    : [];
+  // Menor preço entre os livros avulsos e o kit: é o único preço que aparece antes das ofertas ("a partir de")
+  const minPrice = colReady ? Math.min(pix, ...bookList.map(b => b.price)) : null;
+  const fromLabel = minPrice !== null ? `Ofertas a partir de ${brl(minPrice)}` : 'Ver as ofertas';
   const booksTotal = bookList.reduce((acc, b) => acc + Math.round(b.price * 100), 0) / 100;
   // "de" riscado: o preço cheio da oferta; sem ele, a soma dos livros avulsos (se for maior)
   const strikeFrom = from !== null ? from : bookList.length === 5 && booksTotal > pix ? booksTotal : null;
@@ -318,7 +311,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       <div className="prog" aria-hidden="true" />
 
       <div style={{ background: '#1f1b17', color: '#e9dfcf', textAlign: 'center', padding: '10px 16px', fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase' }}>
-        {full ? 'Oferta de lançamento · os cinco livros juntos com desconto' : 'Oferta de lançamento · os dois livros juntos com desconto'}
+        {minPrice !== null ? <strong style={{ color: '#f3c9a8' }} data-testid="kit-from-banner">{fromLabel}</strong> : 'Coleção Cozinha Italiana em Casa'}
       </div>
 
       <div className={`hdr${scrolled ? ' on' : ''}`}>
@@ -328,12 +321,13 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 9.5, letterSpacing: '.42em', color: '#8a6b45', marginTop: 5 }}>em casa · coleção</div>
           </div>
           <nav className="nav" style={{ display: 'flex', gap: 36, fontSize: 14 }}>
-            <a href="#colecao" style={{ color: '#4a433b', textDecoration: 'none' }}>A coleção</a>
-            <a href="#dentro" style={{ color: '#4a433b', textDecoration: 'none' }}>Por dentro</a>
+            <a href="#pratos" style={{ color: '#4a433b', textDecoration: 'none' }}>Os pratos</a>
             <a href="#receitas" style={{ color: '#4a433b', textDecoration: 'none' }}>Receitas</a>
+            <a href="#dentro" style={{ color: '#4a433b', textDecoration: 'none' }}>Por dentro</a>
+            <a href="#colecao" style={{ color: '#4a433b', textDecoration: 'none' }}>A coleção</a>
             <a href="#perguntas" style={{ color: '#4a433b', textDecoration: 'none' }}>Dúvidas</a>
           </nav>
-          <a className="btn line" href="#oferta" style={{ minHeight: 44, padding: '0 22px', fontSize: 12 }}>Ver o kit</a>
+          <a className="btn line" href="#oferta" style={{ minHeight: 44, padding: '0 22px', fontSize: 12 }}>Ver ofertas</a>
         </div>
       </div>
 
@@ -350,12 +344,18 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                 ? 'Massas, risotos, pães, antepastos, pizzas e os doces de família da Itália, com foto de cada prato e medidas precisas para dar certo já na primeira vez.'
                 : 'Massas frescas, molhos clássicos, pizzas e os doces de família da Itália, com foto de cada prato e medidas precisas para dar certo já na primeira vez.'}
             </p>
+            {minPrice !== null && (
+              <div className="up" style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', ['--d' as any]: '230ms' }} data-testid="kit-from-hero">
+                <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8a6b45' }}>Ofertas a partir de</span>
+                <span className="serif" style={{ fontSize: 'clamp(40px,4vw,54px)', fontWeight: 600, lineHeight: 1, color: '#8a3a26' }}>{brl(minPrice)}</span>
+              </div>
+            )}
             <div className="cta-row up" style={{ display: 'flex', alignItems: 'center', gap: 26, flexWrap: 'wrap', marginTop: 6, ['--d' as any]: '270ms' }}>
-              <button className="btn shine" onClick={openTop} data-testid="kit-cta-top">Quero o kit completo</button>
-              <a className="link" href="#dentro">Ver por dentro dos livros</a>
+              <a className="btn shine" href="#oferta" data-testid="kit-cta-top">Ver as ofertas</a>
+              <a className="link" href="#pratos">Conhecer os pratos</a>
             </div>
             <ul className="trust up" style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', gap: '10px 26px', flexWrap: 'wrap', fontSize: 13, color: '#5a5249', ['--d' as any]: '360ms' }}>
-              {['Entrega imediata no e-mail', card ? `Pix ou cartão em até ${Math.max(card.max_installments, maxWithInterest)}x` : 'Pagamento seguro via Pix'].map(t => (
+              {['Entrega imediata no e-mail', card ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'].map(t => (
                 <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a3a26" strokeWidth="2"><path d="M4 12.5l5 5L20 6.5" /></svg>
                   {t}
@@ -372,35 +372,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
       </section>
 
-      {/* Números */}
-      <div style={{ borderTop: '1px solid #e6dccd', background: '#f4eee4' }}>
-        <div className="wrap stats4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 0, paddingTop: 34, paddingBottom: 34 }}>
-          {[
-            [full ? FULL_KIT_RECIPES : 38, 'Receitas', 'passo a passo, com foto'],
-            [full ? 5 : 2, 'Livros digitais', full ? 'massas, risotos, pães, antepastos e doces' : 'massas, molhos, pizzas e doces'],
-            [full ? 187 : 94, 'Páginas ilustradas', 'uma foto para cada receita'],
-            [1, 'Pagamento único', 'sem mensalidade nem assinatura']
-          ].map(([n, label, note], i) => (
-            <div key={String(label)} className="stat rv" style={{ ['--d' as any]: `${i * 90}ms` }}>
-              <div className="serif" style={{ fontSize: 52, lineHeight: 0.95, color: '#8a3a26' }}><Counter value={Number(n)} /></div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>{label}</div>
-              <div style={{ fontSize: 13.5, color: '#6b6358', marginTop: 4, lineHeight: 1.5 }}>{note}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ borderTop: '1px solid #e6dccd', borderBottom: '1px solid #e6dccd', background: '#faf7f2' }}>
-        <div className="wrap seals" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 24, paddingTop: 22, paddingBottom: 22, fontSize: 14, color: '#3d3731' }}>
-          <span>Celular, tablet e computador</span>
-          <span>Medidas em gramas e xícaras</span>
-          <span>Tempo e nível em cada receita</span>
-          <span>{card ? `Pix ou cartão em até ${Math.max(card.max_installments, maxWithInterest)}x` : 'Pagamento seguro via Pix'}</span>
-        </div>
-      </div>
-
       {/* Feito à mão */}
-      <section className="wrap" style={{ paddingTop: 104, paddingBottom: 24 }}>
+      <section id="pratos" className="wrap" style={{ paddingTop: 104, paddingBottom: 104 }}>
         <div className="strip" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,.85fr) minmax(0,1.15fr)', gap: 72, alignItems: 'center' }}>
           <div className="strip-arch rv fl-l" style={{ position: 'relative', width: '100%' }}>
             <div className="arch" style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', boxShadow: '0 40px 80px rgba(60,40,25,.22)' }}>
@@ -433,11 +406,85 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
       </section>
 
+      {/* Números */}
+      <div style={{ borderTop: '1px solid #e6dccd', background: '#f4eee4' }}>
+        <div className="wrap stats4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 0, paddingTop: 34, paddingBottom: 34 }}>
+          {[
+            [full ? FULL_KIT_RECIPES : 38, 'Receitas', 'passo a passo, com foto'],
+            [full ? 5 : 2, 'Livros digitais', full ? 'massas, risotos, pães, antepastos e doces' : 'massas, molhos, pizzas e doces'],
+            [full ? 187 : 94, 'Páginas ilustradas', 'uma foto para cada receita'],
+            [1, 'Pagamento único', 'sem mensalidade nem assinatura']
+          ].map(([n, label, note], i) => (
+            <div key={String(label)} className="stat rv" style={{ ['--d' as any]: `${i * 90}ms` }}>
+              <div className="serif" style={{ fontSize: 52, lineHeight: 0.95, color: '#8a3a26' }}><Counter value={Number(n)} /></div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', marginTop: 10 }}>{label}</div>
+              <div style={{ fontSize: 13.5, color: '#6b6358', marginTop: 4, lineHeight: 1.5 }}>{note}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid #e6dccd', borderBottom: '1px solid #e6dccd', background: '#faf7f2' }}>
+        <div className="wrap seals" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 24, paddingTop: 22, paddingBottom: 22, fontSize: 14, color: '#3d3731' }}>
+          <span>Celular, tablet e computador</span>
+          <span>Medidas em gramas e xícaras</span>
+          <span>Tempo e nível em cada receita</span>
+          <span>{card ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'}</span>
+        </div>
+      </div>
+
+      {/* Receitas */}
+      <div id="receitas" style={{ paddingTop: 112, paddingBottom: 112 }}>
+        <div className="wrap">
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 52 }}>
+            <div className="kicker c">01 · Algumas das receitas</div>
+            <h2 className="h2">Do primeiro prato à sobremesa</h2>
+          </div>
+          <div className="gal">
+            <figure className="rv zoom" style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
+              <img src={`${IMG}/trat_ragu.jpg`} alt="Ragù alla bolognese" />
+              <figcaption className="frost" style={{ fontSize: 20 }}>Ragù alla bolognese</figcaption>
+            </figure>
+            {[
+              ['trat_ravioli', 'Ravioli'],
+              ['dolci_cannoli', 'Cannoli'],
+              ['trat_pesto', 'Pesto alla genovese'],
+              ['dolci_pannacotta', 'Panna cotta']
+            ].map(([img, name], i) => (
+              <figure key={img} className="rv zoom" style={{ ['--d' as any]: `${(i + 1) * 90}ms` }}>
+                <img src={`${IMG}/${img}.jpg`} alt={name} />
+                <figcaption className="frost">{name}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Por dentro */}
+      <div id="dentro" style={{ background: '#f4eee4', paddingTop: 112, paddingBottom: 112, borderTop: '1px solid #e6dccd', borderBottom: '1px solid #e6dccd' }}>
+        <div className="wrap two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: 80, alignItems: 'center' }}>
+          <div className="spread-wrap rv fl-l">
+          <div className="spread">
+            <div><img src={`${IMG}/trat_carbonara.jpg`} alt="Página de foto da receita de carbonara" /></div>
+            <div style={{ background: '#fffdf8' }}><img src={`${IMG}/pag_trat.jpg`} alt="Página da receita com ingredientes e modo de preparo" style={{ objectFit: 'contain' }} /></div>
+          </div>
+          </div>
+          <div className="rv fl-r" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div className="kicker">02 · Por dentro</div>
+            <h2 className="h2">Cada receita abre com uma foto de página inteira</h2>
+            <p className="lead">Na página ao lado: rendimento, tempo, nível, ingredientes separados por etapa, modo de preparo numerado, o erro mais comum e como conservar.</p>
+            <Tick>Massa fresca à mão, sem máquina, com a proporção certa</Tick>
+            <Tick>Molhos clássicos explicados do jeito italiano</Tick>
+            <Tick>Tiramisù, cannoli e panna cotta de confeitaria</Tick>
+          </div>
+        </div>
+      </div>
+
       {/* Coleção */}
       <div id="colecao" style={{ paddingTop: 112, paddingBottom: 72 }}>
         <div className="wrap" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 32, flexWrap: 'wrap', marginBottom: 36 }}>
           <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div className="kicker">01 · A coleção</div>
+            <div className="kicker">03 · A coleção</div>
             <h2 className="h2">Uma biblioteca de cozinha italiana que cresce com você</h2>
           </div>
           <p className="lead" style={{ maxWidth: 360, fontSize: 15 }}>
@@ -495,48 +542,44 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
       </div>
 
-      {/* Por dentro */}
-      <div id="dentro" style={{ background: '#f4eee4', paddingTop: 112, paddingBottom: 112, borderTop: '1px solid #e6dccd', borderBottom: '1px solid #e6dccd' }}>
-        <div className="wrap two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: 80, alignItems: 'center' }}>
-          <div className="spread-wrap rv fl-l">
-          <div className="spread">
-            <div><img src={`${IMG}/trat_carbonara.jpg`} alt="Página de foto da receita de carbonara" /></div>
-            <div style={{ background: '#fffdf8' }}><img src={`${IMG}/pag_trat.jpg`} alt="Página da receita com ingredientes e modo de preparo" style={{ objectFit: 'contain' }} /></div>
-          </div>
-          </div>
-          <div className="rv fl-r" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="kicker">02 · Por dentro</div>
-            <h2 className="h2">Cada receita abre com uma foto de página inteira</h2>
-            <p className="lead">Na página ao lado: rendimento, tempo, nível, ingredientes separados por etapa, modo de preparo numerado, o erro mais comum e como conservar.</p>
-            <Tick>Massa fresca à mão, sem máquina, com a proporção certa</Tick>
-            <Tick>Molhos clássicos explicados do jeito italiano</Tick>
-            <Tick>Tiramisù, cannoli e panna cotta de confeitaria</Tick>
+      {TESTIMONIALS.length > 0 && (
+        <div style={{ paddingTop: 112, paddingBottom: 104 }}>
+          <div className="wrap">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 52 }}>
+              <div className="kicker c">Leitores</div>
+              <h2 className="h2">O que dizem os leitores</h2>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 24 }}>
+              {TESTIMONIALS.map(t => (
+                <div key={t.who} style={{ background: '#fff', border: '1px solid #e6dccd', borderRadius: 4, padding: 34 }}>
+                  <p className="serif" style={{ margin: 0, fontSize: 21, lineHeight: 1.5, fontStyle: 'italic' }}>“{t.text}”</p>
+                  <div style={{ marginTop: 18, fontSize: 12, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: '#8a6b45' }}>{t.who}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Receitas */}
-      <div id="receitas" style={{ paddingTop: 112, paddingBottom: 112 }}>
-        <div className="wrap">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 52 }}>
-            <div className="kicker c">03 · Algumas das receitas</div>
-            <h2 className="h2">Do primeiro prato à sobremesa</h2>
+      {/* Dúvidas */}
+      <div id="perguntas" style={{ paddingTop: 104, paddingBottom: 112 }}>
+        <div className="wrap two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,.8fr) minmax(0,1.2fr)', gap: 72, alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div className="kicker">04 · Dúvidas</div>
+            <h2 className="h2">Perguntas frequentes</h2>
+            <p className="lead" style={{ fontSize: 15 }}>Não encontrou o que procura? Escreva para <a href="mailto:suporte@norqva.com">suporte@norqva.com</a>.</p>
           </div>
-          <div className="gal">
-            <figure className="rv zoom" style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-              <img src={`${IMG}/trat_ragu.jpg`} alt="Ragù alla bolognese" />
-              <figcaption className="frost" style={{ fontSize: 20 }}>Ragù alla bolognese</figcaption>
-            </figure>
+          <div>
             {[
-              ['trat_ravioli', 'Ravioli'],
-              ['dolci_cannoli', 'Cannoli'],
-              ['trat_pesto', 'Pesto alla genovese'],
-              ['dolci_pannacotta', 'Panna cotta']
-            ].map(([img, name], i) => (
-              <figure key={img} className="rv zoom" style={{ ['--d' as any]: `${(i + 1) * 90}ms` }}>
-                <img src={`${IMG}/${img}.jpg`} alt={name} />
-                <figcaption className="frost">{name}</figcaption>
-              </figure>
+              ['Os livros são físicos?', 'Não. São livros digitais em PDF, com acabamento de livro impresso. Leia no celular, no tablet ou no computador, ou imprima.'],
+              ['Como recebo depois de pagar?', full ? 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os livros.' : 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os dois livros.'],
+              ['Preciso de equipamento profissional?', 'Não. As receitas foram pensadas para a cozinha de casa, com rolo, faca e forno comum.'],
+              ['E se eu não gostar?', 'Você tem 7 dias a partir da compra para pedir o reembolso, como garante o Código de Defesa do Consumidor. Basta escrever para suporte@norqva.com.']
+            ].map(([q, a], i) => (
+              <details key={q} className="rv" style={{ ['--d' as any]: `${i * 80}ms`, borderTop: '1px solid #ddd0bd', borderBottom: i === 3 ? '1px solid #ddd0bd' : undefined, padding: '22px 0' }}>
+                <summary>{q}</summary>
+                <p style={{ margin: '14px 0 0', fontSize: 15, lineHeight: 1.7, color: '#5a5249' }}>{a}</p>
+              </details>
             ))}
           </div>
         </div>
@@ -548,8 +591,9 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           {bookList.length > 0 && (
             <div style={{ marginBottom: 96 }} data-testid="kit-book-list">
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 40 }}>
-                <div className="kicker c">04 · Os livros da coleção</div>
+                <div className="kicker c">05 · As ofertas</div>
                 <h2 className="h2" style={{ maxWidth: 760 }}>Escolha o seu livro ou leve a coleção inteira</h2>
+                {minPrice !== null && <p className="lead" style={{ fontSize: 16 }}>Livros a partir de <strong style={{ color: '#8a3a26' }}>{brl(minPrice)}</strong>. Comece pelo que mais combina com você.</p>}
                 <Timer left={timeLeft} testId="kit-timer-list" />
               </div>
               <div className="bk-list">
@@ -574,8 +618,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 60 }}>
-            <div className="kicker c">{bookList.length > 0 ? 'Kit completo · oferta de lançamento' : '04 · Oferta de lançamento'}</div>
-            <h2 className="h2" style={{ maxWidth: 760 }}>{full ? 'Os cinco livros juntos, por menos' : 'Os dois livros juntos, por menos'}</h2>
+            <div className="kicker c">{bookList.length > 0 ? 'Kit completo · oferta de lançamento' : '05 · Oferta de lançamento'}</div>
+            <h2 className="h2" style={{ maxWidth: 760 }}>{full ? (bookList.length > 0 ? 'Ou leve os cinco livros juntos, por menos' : 'Os cinco livros juntos, por menos') : 'Os dois livros juntos, por menos'}</h2>
           </div>
           <div className="two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 72, alignItems: 'center' }}>
             <div className="rv fl-l" style={{ alignSelf: 'center' }}>
@@ -636,49 +680,6 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
       </div>
 
-      {TESTIMONIALS.length > 0 && (
-        <div style={{ paddingTop: 112, paddingBottom: 104 }}>
-          <div className="wrap">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, textAlign: 'center', marginBottom: 52 }}>
-              <div className="kicker c">Leitores</div>
-              <h2 className="h2">O que dizem os leitores</h2>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 24 }}>
-              {TESTIMONIALS.map(t => (
-                <div key={t.who} style={{ background: '#fff', border: '1px solid #e6dccd', borderRadius: 4, padding: 34 }}>
-                  <p className="serif" style={{ margin: 0, fontSize: 21, lineHeight: 1.5, fontStyle: 'italic' }}>“{t.text}”</p>
-                  <div style={{ marginTop: 18, fontSize: 12, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: '#8a6b45' }}>{t.who}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Dúvidas */}
-      <div id="perguntas" style={{ paddingTop: 104, paddingBottom: 112 }}>
-        <div className="wrap two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,.8fr) minmax(0,1.2fr)', gap: 72, alignItems: 'start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div className="kicker">05 · Dúvidas</div>
-            <h2 className="h2">Perguntas frequentes</h2>
-            <p className="lead" style={{ fontSize: 15 }}>Não encontrou o que procura? Escreva para <a href="mailto:suporte@norqva.com">suporte@norqva.com</a>.</p>
-          </div>
-          <div>
-            {[
-              ['Os livros são físicos?', 'Não. São livros digitais em PDF, com acabamento de livro impresso. Leia no celular, no tablet ou no computador, ou imprima.'],
-              ['Como recebo depois de pagar?', full ? 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os livros.' : 'Assim que o pagamento é confirmado (Pix ou cartão), você recebe no e-mail o link para baixar os dois livros.'],
-              ['Preciso de equipamento profissional?', 'Não. As receitas foram pensadas para a cozinha de casa, com rolo, faca e forno comum.'],
-              ['E se eu não gostar?', 'Você tem 7 dias a partir da compra para pedir o reembolso, como garante o Código de Defesa do Consumidor. Basta escrever para suporte@norqva.com.']
-            ].map(([q, a], i) => (
-              <details key={q} className="rv" style={{ ['--d' as any]: `${i * 80}ms`, borderTop: '1px solid #ddd0bd', borderBottom: i === 3 ? '1px solid #ddd0bd' : undefined, padding: '22px 0' }}>
-                <summary>{q}</summary>
-                <p style={{ margin: '14px 0 0', fontSize: 15, lineHeight: 1.7, color: '#5a5249' }}>{a}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <div id="fecho" style={{ position: 'relative', overflow: 'hidden', borderTop: '1px solid #e6dccd' }}>
         <div className="cta-bg" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <img src={`${IMG}/trat_focaccia.jpg`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -689,8 +690,11 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             <div className="kicker">Comece hoje</div>
             <h2 className="h2">Hoje à noite, o jantar pode ser uma <span style={{ fontStyle: 'italic', color: '#8a3a26' }}>massa feita por você</span>.</h2>
             <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice-bottom">
-              <button className="btn shine" onClick={openCheckout}>{ctaLabel}</button>
+              <button className="btn shine" onClick={openCheckout}>Quero o kit completo</button>
             </BuyChoice>
+            {bookList.length > 0 && minPrice !== null && (
+              <a className="link" href="#oferta">ou escolha um livro a partir de {brl(minPrice)}</a>
+            )}
           </div>
         </div>
       </div>
@@ -705,10 +709,10 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
 
       <div className={`sbar${barOn ? ' on' : ''}`} aria-hidden={!barOn} data-testid="kit-sticky-bar">
         <div style={{ lineHeight: 1.2 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8a6b45' }}>{full ? 'Kit com 5 livros' : 'Kit com 2 livros'}</div>
-          <div className="serif" style={{ fontSize: 25, fontWeight: 600, color: '#8a3a26' }}>{card ? `${card.max_installments}x ${brl(card.installment_value)}` : brl(pix)}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8a6b45' }}>{minPrice !== null ? 'Ofertas a partir de' : full ? 'Coleção com 5 livros' : 'Coleção com 2 livros'}</div>
+          {minPrice !== null && <div className="serif" style={{ fontSize: 25, fontWeight: 600, color: '#8a3a26' }}>{brl(minPrice)}</div>}
         </div>
-        <button className="btn shine" onClick={openTop} tabIndex={barOn ? 0 : -1} data-testid="kit-sticky-cta">Quero o kit</button>
+        <a className="btn shine" href="#oferta" tabIndex={barOn ? 0 : -1} data-testid="kit-sticky-cta">Ver ofertas</a>
       </div>
 
       {showCheckout && (

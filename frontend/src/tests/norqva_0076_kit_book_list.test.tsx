@@ -45,17 +45,35 @@ describe('NORQVA-0076 — lista de livros, contagem e botão do kit', () => {
     vi.useRealTimers();
   });
 
-  it('lista os 5 livros na ordem da coleção, com o preço do servidor e o Dolci por último', async () => {
+  it('lista os 5 livros do mais barato ao mais caro (Dolci primeiro), com o preço do servidor', async () => {
     renderKit(kit);
     const list = await screen.findByTestId('kit-book-list');
     const rows = list.querySelectorAll('.bk-row');
     expect(Array.from(rows).map(r => r.getAttribute('data-testid'))).toEqual([
-      'kit-book-trattoria', 'kit-book-risotos', 'kit-book-antipasti', 'kit-book-paes', 'kit-book-dolci'
+      'kit-book-dolci', 'kit-book-trattoria', 'kit-book-risotos', 'kit-book-antipasti', 'kit-book-paes'
     ]);
     expect(screen.getByTestId('kit-book-price-dolci')).toHaveTextContent('R$ 14,90');
     expect(screen.getByTestId('kit-book-price-paes')).toHaveTextContent('R$ 19,90');
-    expect(rows[4].querySelector('img')).toHaveAttribute('alt', 'Capa do livro Dolci della Nonna');
+    expect(rows[0].querySelector('img')).toHaveAttribute('alt', 'Capa do livro Dolci della Nonna');
     expect(screen.getAllByText('Quero comprar somente esse exemplar')).toHaveLength(5);
+  });
+
+  it('antes das ofertas só aparece "a partir de" com o menor preço; o parcelamento do kit fica só no fim', async () => {
+    const { container } = renderKit(kit);
+    await screen.findByTestId('kit-book-list');
+    expect(screen.getByTestId('kit-from-hero')).toHaveTextContent('Ofertas a partir de');
+    expect(screen.getByTestId('kit-from-hero')).toHaveTextContent('R$ 14,90');
+    expect(screen.getByTestId('kit-from-banner')).toHaveTextContent('Ofertas a partir de R$ 14,90');
+    expect(screen.getByTestId('kit-sticky-bar')).toHaveTextContent('R$ 14,90');
+    expect(screen.getByTestId('kit-sticky-bar')).not.toHaveTextContent('19,98');
+    // tudo o que vem antes da seção de ofertas não tem outro preço nem parcelas
+    const html = container.innerHTML;
+    const before = html.slice(0, html.indexOf('id="oferta"'));
+    expect(before).not.toMatch(/R\$\s?(19,|79,|94,)/);
+    expect(before).not.toMatch(/\d+x/);
+    // a seção de ofertas vem depois das dúvidas
+    expect(html.indexOf('id="perguntas"')).toBeLessThan(html.indexOf('id="oferta"'));
+    expect(html.indexOf('id="pratos"')).toBeLessThan(html.indexOf('id="receitas"'));
   });
 
   it('o kit mostra o preço cheio riscado (soma dos livros) e o preço promocional', async () => {
