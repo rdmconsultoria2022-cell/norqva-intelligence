@@ -295,6 +295,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
   // NORQVA-0041: visual do produto (creme, terracota, títulos com serifa), no mesmo tom do checkout.
   if (look === 'light') {
     const accentStyle = { ['--pay-accent' as any]: accent } as React.CSSProperties;
+    // O link fica branco por estilo direto: a página do kit pinta todo link de terracota (`.kl a`) e o texto sumia no botão terracota.
     const btn = 'w-full py-3.5 px-4 rounded-xl bg-[var(--pay-accent)] text-white hover:brightness-90 font-semibold text-sm tracking-wide flex items-center justify-center gap-2 transition shadow-md';
     const box = 'p-5 rounded-2xl bg-white border border-stone-200 text-center';
     const waiting = (
@@ -371,7 +372,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                 <div className="text-xs text-stone-600 mt-1" data-testid="card-terms">{cardSubline}</div>
               </div>
               {payment?.invoice_url ? (
-                <a href={payment.invoice_url} target="_blank" rel="noopener noreferrer" data-testid="card-invoice-link" className={btn}>
+                <a href={payment.invoice_url} target="_blank" rel="noopener noreferrer" data-testid="card-invoice-link" className={btn} style={{ color: '#fff' }}>
                   <CreditCard className="h-4 w-4" />
                   Pagar com cartão em ambiente seguro
                   <ExternalLink className="h-4 w-4" />
