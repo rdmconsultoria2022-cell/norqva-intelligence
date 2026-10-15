@@ -124,9 +124,14 @@ function useCountdown(key: string, on: boolean): number {
       if (saved > 0 && saved <= start) start = saved;
       else sessionStorage.setItem(key, String(start));
     } catch (_) {}
-    const tick = () => setLeft(Math.max(0, COUNTDOWN_MS - (Date.now() - start)));
+    let t = 0;
+    const tick = () => {
+      const rest = Math.max(0, COUNTDOWN_MS - (Date.now() - start));
+      setLeft(rest);
+      if (rest === 0) window.clearInterval(t);
+    };
+    t = window.setInterval(tick, 1000);
     tick();
-    const t = window.setInterval(tick, 1000);
     return () => window.clearInterval(t);
   }, [key, on]);
   return left;
@@ -227,7 +232,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
 
   // NORQVA-0076: lista de livros avulsos + contagem regressiva nas ofertas (só no kit de 5)
   const [buyBook, setBuyBook] = useState<string | null>(null);
-  const timeLeft = useCountdown(`kl-timer-${humanId}`, !!offer);
+  const timeLeft = useCountdown(`kl-timer-${humanId}`, isFullKit(offer) && saleBooks.length > 0);
 
   const openCheckout = () => {
     if (!offer) return;
@@ -285,7 +290,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   const bookList = full ? [...saleBooks].sort((a, b) => SALE_BOOK_ORDER.indexOf(a.book) - SALE_BOOK_ORDER.indexOf(b.book)) : [];
   const booksTotal = bookList.reduce((acc, b) => acc + Math.round(b.price * 100), 0) / 100;
   // "de" riscado: o preço cheio da oferta; sem ele, a soma dos livros avulsos (se for maior)
-  const strikeFrom = from !== null ? from : booksTotal > pix ? booksTotal : null;
+  const strikeFrom = from !== null ? from : bookList.length === 5 && booksTotal > pix ? booksTotal : null;
   const KIT_BOOKS = full
     ? [
         { img: `${IMG}/capa_trat.jpg`, name: 'Trattoria em Casa', note: '28 receitas · massas, molhos e pizzas' },
@@ -560,7 +565,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                       </div>
                       <div className="bk-buy">
                         <div className="serif" style={{ fontSize: 34, fontWeight: 600, lineHeight: 1, color: '#8a3a26' }} data-testid={`kit-book-price-${b.book}`}>{brl(b.price)}</div>
-                        <button className="btn ghost" onClick={() => openBook(b.book)} data-testid={`kit-book-buy-${b.book}`}>Quero comprar somente esse exemplar</button>
+                        <button className="btn ghost" onClick={() => openBook(b.book)} aria-label={`Comprar somente o livro ${info.name}`} data-testid={`kit-book-buy-${b.book}`}>Quero comprar somente esse exemplar</button>
                       </div>
                     </div>
                   );
