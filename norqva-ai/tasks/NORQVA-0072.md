@@ -4,6 +4,6 @@
 
 **Mudanças** (`DashboardView.tsx`, `AppShell.tsx`):
 - Resultados em 4 colunas fixas, Funil em 5 e Tráfego Meta Ads em 6, em qualquer largura de tela (antes: faixa deslizante no celular).
-- No celular (< 640px): rótulos curtos (Invest., Fatur., Pedidos, Entregas; Pedidos, Pix, Pagos, Entreg., Downl.; Impr., Alcance, Cliques, CTR, CPC, CPM), valores menores em fonte mais estreita e valores resumidos (`brlShort`: R$ 772,65 / R$ 1.234 / R$ 12,3 mil; `numShort`: 10 mil). Do tablet para cima continua o texto completo.
+- Abaixo de 1280px (celular, tablet e notebook com o menu lateral): rótulos curtos (Invest., Fatur., Pedidos, Entregas; Pedidos, Pix, Pagos, Entreg., Downl.; Impr., Alcance, Cliques, CTR, CPC, CPM), valores menores em fonte mais estreita e valores resumidos (`brlShort`: R$ 772,65 / R$ 1.234 / R$ 12 mil; `numShort`: 1,9 mil / 46 mil). A partir de 1280px voltam o texto e os valores completos. Nenhum número fica cortado com "…" de 360px a 1440px (simulação da revisão).
 - Margem lateral do conteúdo no celular de 16 para 12 px; menos espaço interno nos blocos.
 - Números e consultas não mudam.
