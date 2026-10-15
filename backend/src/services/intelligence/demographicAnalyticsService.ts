@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { getCommercialTimeBoundaries, COMMERCIAL_TIMEZONE } from '../../utils/commercialTimezone';
+import { getCommercialTimeBoundaries, COMMERCIAL_TIMEZONE, operationStartDate } from '../../utils/commercialTimezone';
 
 export type MediaSampleConfidence = 'NO_DATA' | 'OBSERVING' | 'LEARNING' | 'SUFFICIENT_MEDIA_SAMPLE';
 
@@ -224,7 +224,10 @@ export class DemographicAnalyticsService {
     // NORQVA-0004: 'all' = whole history (no lower bound) up to today.
     const isAll = period.toLowerCase() === 'all';
     const boundaries = getCommercialTimeBoundaries(isAll ? 'today' : period, options.startDate, options.endDate);
-    const startDateMeta = isAll ? '2000-01-01' : boundaries.dateStartMeta;
+    // NORQVA-0073: nada antes do início da operação de vendas.
+    const opStart = operationStartDate();
+    const rawStart = isAll ? '2000-01-01' : boundaries.dateStartMeta;
+    const startDateMeta = opStart && rawStart < opStart ? opStart : rawStart;
     const endDateMeta = boundaries.dateStopMeta;
 
     // 1. Build Query

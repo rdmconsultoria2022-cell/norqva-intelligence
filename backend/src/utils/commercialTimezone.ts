@@ -228,13 +228,43 @@ export function resolvePeriodFilter(
   endDateParam?: string
 ): ResolvedPeriodFilter | null {
   const requested = (periodParam || 'all').toLowerCase();
-  if (requested === 'all') return null;
+  const start = operationStartDate();
+  if (requested === 'all') {
+    if (!start) return null;
+    // NORQVA-0073: "Tudo" = desde o início da operação de vendas, não desde os testes.
+    const b = getCommercialTimeBoundaries('custom', start, getLocalComponentsInTimezone(new Date(), COMMERCIAL_TIMEZONE).dateStr);
+    return { period: 'all', startIso: b.startDateIso, endIso: b.endDateIso, metaStart: b.dateStartMeta, metaStop: b.dateStopMeta };
+  }
   const b = getCommercialTimeBoundaries(requested, startDateParam, endDateParam);
-  return {
+  return clampToOperationStart({
     period: b.period,
     startIso: b.startDateIso,
     endIso: b.endDateIso,
     metaStart: b.dateStartMeta,
     metaStop: b.dateStopMeta
-  };
+  }, start);
+}
+
+/**
+ * NORQVA-0073 (D-0073): os números das telas começam no início da operação de vendas
+ * (25/09/2026, primeira semana com vendas seguidas). Gasto e pedidos da fase de testes
+ * (campanhas E2E e EXP-2026-001, pedidos de 09/09) ficam fora de todos os períodos.
+ * OPERATION_START_DATE=YYYY-MM-DD muda a data; OPERATION_START_DATE=off desliga.
+ * Nos testes automáticos (VITEST) fica desligado, a não ser que a variável seja definida.
+ */
+export const DEFAULT_OPERATION_START_DATE = '2026-09-25';
+
+export function operationStartDate(): string | null {
+  const raw = (process.env.OPERATION_START_DATE || '').trim();
+  if (raw.toLowerCase() === 'off') return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') return null;
+  return DEFAULT_OPERATION_START_DATE;
+}
+
+export function clampToOperationStart(range: ResolvedPeriodFilter, start: string | null = operationStartDate()): ResolvedPeriodFilter {
+  if (!start || range.metaStart >= start) return range;
+  const b = getCommercialTimeBoundaries('custom', start, start);
+  // Janela inteira antes do início: começo depois do fim, então nada é contado.
+  return { ...range, startIso: b.startDateIso, metaStart: start };
 }
