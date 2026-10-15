@@ -24,11 +24,11 @@ export const KIT_MOTION_CSS = `
 .kl .up{animation:kl-up 1s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d,0ms)}
 @keyframes kl-up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 @keyframes kl-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-11px)}}
-@keyframes kl-sway{0%,100%{transform:rotateY(-4deg)}50%{transform:rotateY(4deg)}}
 @keyframes kl-shine{0%{transform:translateX(-120%) skewX(-18deg)}60%,100%{transform:translateX(220%) skewX(-18deg)}}
 @keyframes kl-pulse{0%,100%{box-shadow:0 0 0 0 rgba(138,58,38,.35)}60%{box-shadow:0 0 0 14px rgba(138,58,38,0)}}
 /* barra de progresso e cabeçalho fixo */
-.kl .prog{position:fixed;left:0;top:0;height:3px;width:100%;transform-origin:left;transform:scaleX(var(--sp,0));background:linear-gradient(90deg,#b89b72,#8a3a26);z-index:60;pointer-events:none}
+.kl .prog{position:fixed;left:0;top:0;height:3px;width:100%;transform-origin:left;transform:scaleX(var(--sp,0));background:linear-gradient(90deg,#b89b72,#8a3a26);z-index:49;pointer-events:none}
+.kl [id]{scroll-margin-top:84px}
 .kl .hdr{position:sticky;top:0;z-index:50;background:rgba(250,247,242,.0);transition:background .3s,box-shadow .3s,backdrop-filter .3s}
 .kl .hdr.on{background:rgba(250,247,242,.88);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);box-shadow:0 6px 24px rgba(60,40,25,.08)}
 .kl .hdr .wrap{transition:padding .3s}
@@ -37,6 +37,7 @@ export const KIT_MOTION_CSS = `
 .kl .btn.shine{position:relative;overflow:hidden;isolation:isolate}
 .kl .btn.shine:after{content:"";position:absolute;top:0;bottom:0;width:38%;left:0;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.28),rgba(255,255,255,0));animation:kl-shine 3.8s ease-in-out infinite;z-index:-1}
 .kl .btn.pulse{animation:kl-pulse 2.6s ease-out infinite}
+.kl .btn.pulse:hover{animation:none}
 .kl .btn{transition:background .2s,transform .2s,box-shadow .2s}
 .kl .btn:hover{transform:translateY(-2px);box-shadow:0 14px 28px rgba(138,58,38,.28)}
 .kl .btn:active{transform:translateY(0)}
@@ -70,8 +71,6 @@ export const KIT_MOTION_CSS = `
 .kl .spread-wrap:hover .spread{transform:rotateY(-5deg) rotateX(2deg);box-shadow:30px 40px 70px rgba(60,40,25,.26)}
 .kl .arch img{transition:transform 1.2s cubic-bezier(.2,.7,.2,1)}
 .kl .arch:hover img{transform:scale(1.05)}
-.kl .dish{transition:transform .4s cubic-bezier(.2,.7,.2,1)}
-.kl .dish:hover{transform:translateX(6px)}
 .kl .dish .plate{transition:transform .6s cubic-bezier(.2,.7,.2,1)}
 .kl .dish:hover .plate{transform:rotate(8deg) scale(1.05)}
 .kl .cta-bg img{transform:translateY(calc(var(--cp,0)*-36px)) scale(1.12)}
@@ -107,7 +106,7 @@ export const KIT_MOTION_CSS = `
   .kl .rv,.kl .rv.in{opacity:1;transform:none;transition:none}
   .kl .up{animation:none}
   .kl .b3 .fl,.kl .chip,.kl .btn.shine:after,.kl .btn.pulse{animation:none}
-  .kl .b3 .bi,.kl .stk .stkb,.kl .spread,.kl .gal figure img,.kl .arch img,.kl .dish,.kl .dish .plate{transition:none}
+  .kl .b3 .bi,.kl .stk .stkb,.kl .spread,.kl .gal figure img,.kl .arch img,.kl .dish .plate{transition:none}
   .kl .sbar{transition:none}
   .kl .cta-bg img{transform:scale(1.05)}
 }
@@ -218,13 +217,13 @@ export const Counter: React.FC<{ value: number }> = ({ value }) => {
 type Css = React.CSSProperties & Record<string, string | number>;
 
 /** Livro em 3D de verdade: capa, lombada, borda das páginas e fundo. Inclina ao passar o mouse e flutua devagar. */
-export const Book3D: React.FC<{ src: string; alt: string; ry?: number; depth?: number; float?: number; delay?: number; style?: Css }> = ({
-  src, alt, ry = -24, depth = 22, float = 6.5, delay = 0, style
+export const Book3D: React.FC<{ src: string; alt: string; ry?: number; depth?: number; float?: number; delay?: number; eager?: boolean; style?: Css }> = ({
+  src, alt, ry = -24, depth = 22, float = 6.5, delay = 0, eager = false, style
 }) => (
   <div className="b3" style={{ ['--ry' as any]: `${ry}deg`, ['--d' as any]: `${depth}px`, ['--ft' as any]: `${float}s`, ['--fd' as any]: `${delay}s`, ...style } as Css}>
     <div className="fl">
       <div className="bi">
-        <div className="f"><img src={src} alt={alt} loading="lazy" /></div>
+        <div className="f"><img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} /></div>
         <div className="sp" />
         <div className="pg" />
         <div className="bk" />
@@ -256,8 +255,8 @@ const TWO = [
   { left: 40, w: 46, bottom: 2, ry: -14, z: 60, px: 8 }
 ];
 
-/** Pilha de livros em leque, que reage ao mouse (e balança sozinha no celular). Cinco livros ou dois. */
-export const BookStack: React.FC<{ books: StackBook[]; testId?: string; ariaLabel?: string; large?: boolean }> = ({ books, testId, ariaLabel, large }) => {
+/** Pilha de livros em leque: reage ao mouse e, sem mouse (celular), os livros só flutuam. Cinco livros ou dois. `eager` carrega as capas na hora (topo da página). */
+export const BookStack: React.FC<{ books: StackBook[]; testId?: string; ariaLabel?: string; large?: boolean; eager?: boolean }> = ({ books, testId, ariaLabel, large, eager }) => {
   const ref = useRef<HTMLDivElement>(null);
   const raf = useRef(0);
   const set = (mx: number, my: number) => {
@@ -289,7 +288,7 @@ export const BookStack: React.FC<{ books: StackBook[]; testId?: string; ariaLabe
         const p = layout[i] || layout[layout.length - 1];
         return (
           <div key={b.src} className="stkb" style={{ left: `${p.left}%`, width: `${p.w}%`, bottom: `${p.bottom}%`, ['--z' as any]: `${p.z}px`, ['--px' as any]: p.px } as Css}>
-            <Book3D src={b.src} alt={b.alt} ry={p.ry} depth={books.length === 2 ? 22 : 18} float={6 + (i % 3) * 0.9} delay={-i * 1.1} />
+            <Book3D src={b.src} alt={b.alt} ry={p.ry} depth={books.length === 2 ? 22 : 18} float={6 + (i % 3) * 0.9} delay={-i * 1.1} eager={eager} />
           </div>
         );
       })}

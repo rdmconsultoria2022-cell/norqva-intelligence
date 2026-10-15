@@ -227,6 +227,9 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         { img: `${IMG}/capa_dolci.jpg`, name: 'Dolci della Nonna', note: '10 doces italianos de família' }
       ];
 
+  // NORQVA-0070: a barra de compra do celular só vale com a página livre (sem checkout nem pagamento abertos)
+  const barOn = showBar && !showCheckout && !activeOrder;
+
   // NORQVA-0070: ordem do leque (esquerda → direita), com o Trattoria na frente
   const stackBooks = full
     ? [KIT_BOOKS[1], KIT_BOOKS[2], KIT_BOOKS[0], KIT_BOOKS[3], KIT_BOOKS[4]].map(b => ({ src: b.img, alt: `Capa do livro ${b.name}` }))
@@ -285,7 +288,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           </div>
 
           <div className="up" style={{ position: 'relative', ['--d' as any]: '200ms' }}>
-            <BookStack books={stackBooks} ariaLabel={full ? 'Os cinco livros do kit em leque' : 'Os dois livros do kit'} />
+            <BookStack eager books={stackBooks} ariaLabel={full ? 'Os cinco livros do kit em leque' : 'Os dois livros do kit'} />
             <div className="chip" style={{ width: '20%', aspectRatio: '1', left: '-1%', top: '4%', zIndex: 3, ['--ft' as any]: '7.5s' }}><img src={`${IMG}/trat_carbonara.jpg`} alt="Carbonara" /></div>
             <div className="chip" style={{ width: '17%', aspectRatio: '1', right: '1%', top: '0', zIndex: 3, ['--ft' as any]: '6.2s', ['--fd' as any]: '-2s' }}><img src={`${IMG}/dolci_tiramisu.jpg`} alt="Tiramisù" /></div>
           </div>
@@ -593,12 +596,12 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
       </div>
 
-      <div className={`sbar${showBar && !showCheckout && !activeOrder ? ' on' : ''}`} aria-hidden={!showBar} data-testid="kit-sticky-bar">
+      <div className={`sbar${barOn ? ' on' : ''}`} aria-hidden={!barOn} data-testid="kit-sticky-bar">
         <div style={{ lineHeight: 1.2 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8a6b45' }}>{full ? 'Kit com 5 livros' : 'Kit com 2 livros'}</div>
           <div className="serif" style={{ fontSize: 25, fontWeight: 600, color: '#8a3a26' }}>{card ? `${card.max_installments}x ${brl(card.installment_value)}` : brl(pix)}</div>
         </div>
-        <button className="btn shine" onClick={openTop} tabIndex={showBar ? 0 : -1} data-testid="kit-sticky-cta">Quero o kit</button>
+        <button className="btn shine" onClick={openTop} tabIndex={barOn ? 0 : -1} data-testid="kit-sticky-cta">Quero o kit</button>
       </div>
 
       {showCheckout && (
