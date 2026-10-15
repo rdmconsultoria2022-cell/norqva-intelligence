@@ -8,7 +8,7 @@
 - Na varredura de pagamentos (a cada 5 minutos), depois de conferir no Asaas os pendentes, o NORQVA manda e-mail para pedidos ainda PENDING: etapa 1 aos 15 minutos, etapa 2 às 2 horas, etapa 3 às 20 horas da criação. Se a varredura atrasar, manda só a etapa mais recente.
 - Pix ainda válido: o e-mail traz o código Pix Copia e Cola e a validade. Pix vencido: botão "Gerar novo Pix" para a página do produto. Cartão: botão para a página segura do Asaas.
 - Só conta real (`is_demo = false`, `COMMERCIAL_PRODUCTION`), pedidos das últimas 30 horas, com e-mail. Não manda se o comprador pagou outro pedido desde 1 dia antes, e com vários pendentes do mesmo comprador só o mais novo recebe.
-- Registro em `order_payment_reminders` (migration 065, aditiva): uma linha por pedido e etapa, reservada antes do envio (nunca em dobro), com SENT ou FAILED.
+- Registro em `order_payment_reminders` (migration 065, aditiva): uma linha por pedido e etapa, reservada antes do envio como SENDING (nunca em dobro; confere de novo que o pedido segue pendente), depois SENT ou FAILED. Pagamento sem cobrança criada no Asaas não recebe lembrete. Cartão recebe texto de cartão; "venceu" só quando havia código Pix e ele venceu.
 - `PAYMENT_REMINDER_ENABLED=false` desliga. Em produção sem o Resend configurado, não envia.
 - Textos sem promessa nova e sem desconto.
 

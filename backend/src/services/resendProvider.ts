@@ -221,14 +221,20 @@ export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now
   const pixValid = Boolean(p.pixCopyPaste) && (!p.pixExpiresAt || new Date(p.pixExpiresAt).getTime() > now.getTime());
   const name = (p.firstName || '').trim();
   const hello = name ? `Olá, ${name}!` : 'Olá!';
+  const isCard = p.paymentMethod === 'CREDIT_CARD';
   const subject =
-    p.step === 1 ? `Seu Pix de ${p.offerName} está esperando` :
+    p.step === 1 ? (isCard ? `Seu pagamento de ${p.offerName} está esperando` : `Seu Pix de ${p.offerName} está esperando`) :
     p.step === 2 ? `Ainda dá tempo: ${p.offerName}` :
     `Último lembrete: ${p.offerName}`;
   const intro = `Você começou a compra de ${p.offerName} (${brl(p.amount)}), mas o pagamento ainda não chegou para nós.`;
   const until = p.pixExpiresAt
     ? new Date(p.pixExpiresAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : null;
+  // Só diz "venceu" quando havia um código e ele venceu.
+  const hadCode = Boolean(p.pixCopyPaste) || Boolean(p.pixExpired);
+  const expiredLine = hadCode
+    ? 'O código Pix anterior venceu. Gere um novo em menos de 1 minuto'
+    : 'Para concluir, volte à página e finalize em menos de 1 minuto';
   const closing = 'Se você já pagou, pode ignorar este e-mail: a confirmação às vezes leva alguns minutos.';
 
   const textParts = [hello, '', intro, ''];
@@ -238,7 +244,7 @@ export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now
   } else if (p.invoiceUrl) {
     textParts.push('Para concluir o pagamento com cartão, use a página segura:', p.invoiceUrl, '');
   } else {
-    textParts.push('O código Pix anterior venceu. Gere um novo em menos de 1 minuto:', p.offerUrl, '');
+    textParts.push(expiredLine + ':', p.offerUrl, '');
   }
   textParts.push(closing, '', 'Equipe NORQVA');
   const text = textParts.join('\n');
@@ -259,7 +265,7 @@ export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now
               <p style="margin: 0 0 8px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">Para concluir o pagamento com cartão, use a página segura:</p>${button(p.invoiceUrl, 'Concluir pagamento')}`;
   } else {
     action = `
-              <p style="margin: 0 0 8px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">O código Pix anterior venceu. Gere um novo em menos de 1 minuto:</p>${button(p.offerUrl, 'Gerar novo Pix')}`;
+              <p style="margin: 0 0 8px 0; font-size: 15px; line-height: 1.6; color: #3d342c;">${escapeHtml(expiredLine)}:</p>${button(p.offerUrl, hadCode ? 'Gerar novo Pix' : 'Concluir a compra')}`;
   }
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>

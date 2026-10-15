@@ -33,6 +33,9 @@ export interface SendPaymentReminderEmailParams {
   offerName: string;
   amount: number;
   step: 1 | 2 | 3;
+  paymentMethod?: 'PIX' | 'CREDIT_CARD';
+  /** O pedido tinha um código Pix e ele venceu. */
+  pixExpired?: boolean;
   /** Código Pix Copia e Cola ainda válido (sem ele, o e-mail manda para a página do produto). */
   pixCopyPaste?: string | null;
   pixExpiresAt?: string | null;

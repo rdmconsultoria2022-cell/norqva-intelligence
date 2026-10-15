@@ -6133,16 +6133,13 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     let metaStartDateParam: string | null = null;
     let metaEndDateParam: string | null = null;
 
-    if (period !== 'all') {
-      const boundaries = getCommercialTimeBoundaries(
-        period,
-        req.query.startDate as string,
-        req.query.endDate as string
-      );
-      startDateParam = boundaries.startDateIso;
-      endDateParam = boundaries.endDateIso;
-      metaStartDateParam = boundaries.dateStartMeta;
-      metaEndDateParam = boundaries.dateStopMeta;
+    // NORQVA-0073: mesma regra de período das outras telas, com o início da operação de vendas.
+    const finRange = resolvePeriodFilter(period, req.query.startDate as string, req.query.endDate as string);
+    if (finRange) {
+      startDateParam = finRange.startIso;
+      endDateParam = finRange.endIso;
+      metaStartDateParam = finRange.metaStart;
+      metaEndDateParam = finRange.metaStop;
     }
 
     // Fail-Closed Provenance Filters:

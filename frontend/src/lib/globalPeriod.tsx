@@ -67,7 +67,14 @@ export function periodQuery(gp: GlobalPeriod): string {
   return params.toString();
 }
 
+/**
+ * NORQVA-0073 (D-0073): os números começam no início da operação de vendas.
+ * O servidor aplica a mesma data (OPERATION_START_DATE, padrão 2026-09-25).
+ */
+export const OPERATION_START_LABEL = '25/09/2026';
+
 export function periodLabel(gp: GlobalPeriod): string {
+  if (gp.period === 'all') return `Desde ${OPERATION_START_LABEL.slice(0, 5)}`;
   if (gp.period === 'custom' && gp.startDate && gp.endDate) {
     const fmt = (d: string) => d.split('-').reverse().join('/');
     return `${fmt(gp.startDate)} a ${fmt(gp.endDate)}`;
@@ -214,6 +221,10 @@ export function GlobalPeriodSelector({ appliesToScreen = true }: { appliesToScre
               {isActive(opt.id) && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           ))}
+
+          <p className="mt-1 px-2.5 pb-1 text-[10px] font-mono text-slate-500 leading-snug" data-testid="operation-start-note">
+            Os números começam em {OPERATION_START_LABEL}, início das vendas. A fase de testes fica de fora.
+          </p>
 
           {showCustom && (
             <form onSubmit={applyCustom} className="mt-1.5 pt-2 border-t border-slate-800 space-y-2 px-1 text-xs font-mono">

@@ -69,16 +69,16 @@ export async function runPaymentReminders(pool: Pool, deps: PaymentReminderDeps 
   const rows = await pool.query(
     `SELECT o.id AS order_id, o.created_at, o.total_amount, o.customer_id,
             c.email, c.name AS customer_name,
-            p.pix_copy_paste, p.expires_at, p.invoice_url, p.payment_method,
+            p.pix_copy_paste, p.expires_at, p.invoice_url, p.payment_method, p.payment_amount,
             oi.offer_name_snapshot, off.human_id AS offer_human_id,
             (SELECT COUNT(*) FROM offer_digital_assets oda WHERE oda.offer_id = oi.offer_id) AS asset_count,
             COALESCE((SELECT MAX(r.step) FROM order_payment_reminders r WHERE r.order_id = o.id), 0) AS last_step
      FROM orders o
      JOIN customers c ON c.id = o.customer_id
      JOIN LATERAL (
-       SELECT pay.pix_copy_paste, pay.expires_at, pay.invoice_url, pay.payment_method
+       SELECT pay.pix_copy_paste, pay.expires_at, pay.invoice_url, pay.payment_method, pay.amount AS payment_amount
        FROM payments pay
-       WHERE pay.order_id = o.id AND pay.status IN ('PENDING', 'CREATED')
+       WHERE pay.order_id = o.id AND pay.status = 'PENDING' AND pay.provider_payment_id IS NOT NULL
        ORDER BY pay.created_at DESC
        LIMIT 1
      ) p ON TRUE
@@ -105,11 +105,16 @@ export async function runPaymentReminders(pool: Pool, deps: PaymentReminderDeps 
          SELECT 1 FROM orders newer
          WHERE newer.customer_id = o.customer_id AND newer.status = 'PENDING'
            AND newer.created_at > o.created_at
+           AND EXISTS (SELECT 1 FROM payments np WHERE np.order_id = newer.id AND np.status = 'PENDING' AND np.provider_payment_id IS NOT NULL)
        )
+       AND (CASE WHEN o.created_at <= $4::timestamptz - INTERVAL '20 hours' THEN 3
+                 WHEN o.created_at <= $4::timestamptz - INTERVAL '2 hours' THEN 2
+                 ELSE 1 END)
+           > COALESCE((SELECT MAX(r.step) FROM order_payment_reminders r WHERE r.order_id = o.id), 0)
        AND ($3::uuid[] IS NULL OR o.id = ANY($3::uuid[]))
      ORDER BY o.created_at ASC
      LIMIT ${BATCH}`,
-    [firstStepAt, oldest, deps.orderIds && deps.orderIds.length ? deps.orderIds : null]
+    [firstStepAt, oldest, deps.orderIds && deps.orderIds.length ? deps.orderIds : null, now.toISOString()]
   );
 
   for (const row of rows.rows) {
@@ -124,7 +129,9 @@ export async function runPaymentReminders(pool: Pool, deps: PaymentReminderDeps 
       email: row.email,
       firstName: firstName(row.customer_name),
       offerName: row.offer_name_snapshot,
-      amount: Number(row.total_amount),
+      amount: Number(row.payment_amount || row.total_amount),
+      paymentMethod: row.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX',
+      pixExpired,
       step,
       pixCopyPaste: pixExpired ? null : row.pix_copy_paste || null,
       pixExpiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
@@ -135,9 +142,11 @@ export async function runPaymentReminders(pool: Pool, deps: PaymentReminderDeps 
     };
 
     // Reserva a etapa antes de mandar: duas varreduras ao mesmo tempo nunca mandam em dobro.
+    // Confere de novo que o pedido segue pendente (o pagamento pode ter chegado agora).
     const claim = await pool.query(
       `INSERT INTO order_payment_reminders (order_id, step, status, pix_expired)
-       VALUES ($1, $2, 'SKIPPED', $3)
+       SELECT $1::uuid, $2::int, 'SENDING', $3::boolean
+       WHERE EXISTS (SELECT 1 FROM orders WHERE id = $1::uuid AND status = 'PENDING')
        ON CONFLICT (order_id, step) DO NOTHING
        RETURNING id`,
       [row.order_id, step, pixExpired]

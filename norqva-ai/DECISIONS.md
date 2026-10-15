@@ -162,6 +162,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Kit de 5:** a página e o pagamento mostram os 5 livros quando a oferta do kit entrega 5 PDFs ou mais (`delivery_files`); com menos, continua a página do kit de 2 livros, sem avulsos.
 - **Textos:** o pagamento não promete mais "acesso permanente" e explica o CPF ("o banco exige para gerar o Pix; fica protegido e é apagado depois do pagamento").
 
+## D-0073 — Números desde o início das vendas (2026-10-15)
+
+- **Decisão (Ricardo, 15/10/2026 10h38):** as telas mostram a operação a partir de **25/09/2026**, quando as vendas começaram de forma contínua. O gasto e os pedidos da fase de testes (campanhas E2E e EXP-2026-001, R$ 1.480, e os pedidos de 09/09) ficam fora de todos os períodos, inclusive "Tudo".
+- **Como:** `OPERATION_START_DATE` no servidor (padrão 2026-09-25; `off` desliga). Nada é apagado; o histórico continua no banco.
+- **Tentativas de teste:** pedidos não pagos de Débora Souza Pena e Ricardo Andrade Lucas saem dos números por reclassificação (migration 064, critério da D-0002).
 ## D-0074 — Lembrete de pagamento para pedido pendente (2026-10-15)
 
 - **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** o NORQVA manda até 3 e-mails para quem gerou Pix ou cobrança no cartão e não pagou: aos 15 minutos, às 2 horas e às 20 horas.

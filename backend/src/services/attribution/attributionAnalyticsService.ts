@@ -8,7 +8,9 @@ import {
   COMMERCIAL_TIMEZONE,
   getCommercialTimeBoundaries,
   AttributionPeriod,
-  CommercialTimeBoundaries
+  CommercialTimeBoundaries,
+  resolvePeriodFilter,
+  operationStartDate
 } from '../../utils/commercialTimezone';
 
 export type PerformanceSampleStatus = 'NO_DATA' | 'INSUFFICIENT_DATA' | 'OBSERVING';
@@ -291,13 +293,24 @@ export async function getAttributionAnalyticsReport(
   }
 ): Promise<AttributionAnalyticsResponse> {
   const isDemo = options.mode === 'demo';
-  const timeWindow = parseTimeRangeWindow(
-    options.period,
-    options.startDate,
-    options.endDate,
-    options.baseDate || new Date(),
-    options.timeZone || COMMERCIAL_TIMEZONE
-  );
+  // NORQVA-0073: "Tudo" = desde o início da operação de vendas; nenhum período começa antes dele.
+  const opRange = operationStartDate() && !options.baseDate ? resolvePeriodFilter(options.period, options.startDate, options.endDate) : null;
+  const timeWindow = opRange
+    ? {
+        ...parseTimeRangeWindow('custom', opRange.metaStart <= opRange.metaStop ? opRange.metaStart : opRange.metaStop, opRange.metaStop, new Date(), options.timeZone || COMMERCIAL_TIMEZONE),
+        startDateIso: opRange.startIso,
+        endDateIso: opRange.endIso,
+        dateStartMeta: opRange.metaStart,
+        dateStopMeta: opRange.metaStop,
+        period: opRange.period as AttributionPeriod
+      }
+    : parseTimeRangeWindow(
+        options.period,
+        options.startDate,
+        options.endDate,
+        options.baseDate || new Date(),
+        options.timeZone || COMMERCIAL_TIMEZONE
+      );
 
   const startDateParam = timeWindow.startDateIso;
   const endDateParam = timeWindow.endDateIso;
