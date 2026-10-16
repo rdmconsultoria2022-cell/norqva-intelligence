@@ -844,7 +844,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] text-stone-500 block">
-                    Pagamento único • Sem mensalidades
+                    {offer?.card ? 'Pix à vista ou cartão • Sem mensalidades' : 'Pagamento único • Sem mensalidades'}
                   </span>
                   {comboOffer && !(existingSession && existingSession.status === 'PAID') && (
                     <a href="#oferta" data-testid="hero-combo-link" className="text-[11px] sm:text-xs font-semibold text-[#2B3D2B] underline block pt-1">
@@ -1077,6 +1077,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           }}
           onBackToCheckout={() => {
             setActivePaymentOrder(null);
+            // NORQVA-0080: volta ao formulário sem remarcar o Dolci que a pessoa pode ter desmarcado
+            setCheckoutWithBump(false);
             setShowCheckout(true);
           }}
           onClose={() => {

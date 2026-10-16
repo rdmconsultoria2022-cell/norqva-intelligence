@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowRight, QrCode, CreditCard } from 'lucide-react';
-import { installmentOptions, CardPlan } from '../../lib/cardInstallments';
+import { installmentOptions, rateLabel, CardPlan } from '../../lib/cardInstallments';
 import type { CheckoutOffer } from '../checkout/checkoutTypes';
 import { BuyChoice } from './WhatsAppChoice';
 
@@ -65,7 +65,7 @@ export const BookComboOffer: React.FC<Props> = ({ offer, bookTitle, bookCover, o
     : card.n === 1
       ? `ou ${brl(card.totalCents)} no cartão`
       : card.interest
-        ? `ou em até ${card.n}x de ${brl(card.valueCents || 0)} no cartão, com acréscimo de ${m.rate.toFixed(2).replace('.', ',')}% ao mês (total ${brl(card.totalCents)})`
+        ? `ou em até ${card.n}x de ${brl(card.valueCents || 0)} no cartão, com acréscimo de ${rateLabel(m.rate)}, total ${brl(card.totalCents)}`
         : `ou em até ${card.n}x no cartão, sem acréscimo (total ${brl(card.totalCents)})`;
 
   return (

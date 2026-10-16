@@ -36,7 +36,7 @@ BEGIN
     FOR bk IN
       SELECT o.* FROM offers o
       WHERE o.human_id IN ('OFF-000001', 'OFF-000007', 'OFF-000008', 'OFF-000009')
-        AND o.is_demo = FALSE AND o.is_deleted = FALSE AND o.status IN ('ATIVA', 'TESTE')
+        AND o.is_demo = FALSE AND o.is_deleted = FALSE
       ORDER BY o.human_id
     LOOP
       SELECT count(*) INTO shared FROM offer_digital_assets a
@@ -122,7 +122,7 @@ BEGIN
   -- 5: oferta depois da compra do Trattoria a R$ 9,90
   SELECT * INTO trat FROM offers WHERE human_id = 'OFF-000001' AND is_demo = FALSE AND is_deleted = FALSE;
   IF FOUND AND trat.post_purchase_offer_id IS NOT NULL THEN
-    SELECT id INTO pp_id FROM offers WHERE id = trat.post_purchase_offer_id AND is_deleted = FALSE;
+    SELECT id INTO pp_id FROM offers WHERE id = trat.post_purchase_offer_id AND is_deleted = FALSE AND is_demo = FALSE;
     SELECT * INTO pp FROM offers WHERE id = pp_id;
   END IF;
   IF pp_id IS NULL THEN
