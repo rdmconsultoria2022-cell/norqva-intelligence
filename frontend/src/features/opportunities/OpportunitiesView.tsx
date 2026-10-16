@@ -310,8 +310,8 @@ export function OpportunitiesView({
     <div className="space-y-6 text-sm">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">{readOnly ? 'Histórico do módulo antigo' : 'Módulo de Oportunidades & Intelligence'}</h2>
-          <p className="text-xs text-slate-400" data-testid={readOnly ? 'legacy-readonly' : undefined}>
+          <h2 className="text-nq-section font-semibold text-nq-text">{readOnly ? 'Histórico do módulo antigo' : 'Módulo de oportunidades'}</h2>
+          <p className="text-xs text-nq-muted" data-testid={readOnly ? 'legacy-readonly' : undefined}>
             {readOnly
               ? 'Só para consulta: a análise deste módulo era simulada e ele não recebe oportunidades novas. As novas ficam na aba Oportunidades.'
               : 'Qualificação matemática, mapeamento de incertezas e governança de dados'}
@@ -320,7 +320,7 @@ export function OpportunitiesView({
         {isIntelligence && (
           <button
             onClick={() => setShowAddOpp(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-slate-950 font-bold rounded hover:bg-emerald-400 transition"
+            className="flex items-center gap-1.5 px-3 py-2 bg-nq-positive text-nq-on-positive font-bold rounded-full hover:brightness-110 transition min-h-[44px]"
           >
             <Plus className="h-4 w-4" />
             Nova Oportunidade
@@ -329,20 +329,20 @@ export function OpportunitiesView({
       </div>
 
       {/* 2D Executive Matrix Scatter Plot */}
-      <div className="p-5 border border-slate-800 bg-slate-900/40 rounded space-y-3">
-        <h3 className="text-xs font-mono font-bold text-slate-400 uppercase">Matriz Executiva (Score x Confiança)</h3>
-        <div className="relative w-full h-[320px] bg-slate-950 border border-slate-850 rounded overflow-hidden font-sans">
+      <div className="p-5 bg-nq-surface rounded-nq space-y-3">
+        <h3 className="text-xs font-bold text-nq-muted">Matriz Executiva (Score x Confiança)</h3>
+        <div className="relative w-full h-[320px] bg-nq-bg rounded overflow-hidden font-sans">
           {/* Quadrants background labels */}
-          <div className="w-1/2 h-1/2 absolute right-0 top-0 border-l border-b border-dashed border-slate-900 flex items-start justify-end p-2.5 text-[9px] uppercase font-mono text-emerald-500/80 font-bold bg-emerald-500/[0.01]">
+          <div className="w-1/2 h-1/2 absolute right-0 top-0 border-l border-b border-dashed border-nq-line flex items-start justify-end p-2.5 text-[12px] text-nq-positive-text font-bold bg-nq-positive/[0.01]">
             Alta Prioridade
           </div>
-          <div className="w-1/2 h-1/2 absolute left-0 top-0 border-r border-b border-dashed border-slate-900 flex items-start justify-start p-2.5 text-[9px] uppercase font-mono text-amber-500/80 font-bold bg-amber-500/[0.01]">
+          <div className="w-1/2 h-1/2 absolute left-0 top-0 border-r border-b border-dashed border-nq-line flex items-start justify-start p-2.5 text-[12px] text-nq-attention/80 font-bold bg-nq-attention/[0.01]">
             Alta Incerteza (Pesquisa)
           </div>
-          <div className="w-1/2 h-1/2 absolute right-0 bottom-0 border-l border-t border-dashed border-slate-900 flex items-end justify-end p-2.5 text-[9px] uppercase font-mono text-blue-500/80 font-bold bg-blue-500/[0.01]">
+          <div className="w-1/2 h-1/2 absolute right-0 bottom-0 border-l border-t border-dashed border-nq-line flex items-end justify-end p-2.5 text-[12px] text-nq-info/80 font-bold bg-nq-info/[0.01]">
             Validação de Escala
           </div>
-          <div className="w-1/2 h-1/2 absolute left-0 bottom-0 border-r border-t border-dashed border-slate-900 flex items-end justify-start p-2.5 text-[9px] uppercase font-mono text-slate-600/80 font-bold bg-slate-950">
+          <div className="w-1/2 h-1/2 absolute left-0 bottom-0 border-r border-t border-dashed border-nq-line flex items-end justify-start p-2.5 text-[12px] text-nq-subtle/80 font-bold bg-nq-bg">
             Baixo Sinal / Arquivar
           </div>
 
@@ -361,24 +361,24 @@ export function OpportunitiesView({
                 className="absolute -translate-x-1/2 translate-y-1/2 cursor-pointer group z-10"
                 style={{ left: `${left}%`, bottom: `${bottom}%` }}
               >
-                <div className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center font-mono text-[9px] font-bold shadow-md transition transform hover:scale-125 ${
-                  isHighPriority ? 'bg-emerald-500 text-slate-950 border-emerald-300 ring-2 ring-emerald-500/30' :
-                  isResearch ? 'bg-amber-500 text-slate-950 border-amber-300' :
-                  isScale ? 'bg-blue-500 text-slate-950 border-blue-300' : 'bg-slate-700 text-slate-200 border-slate-500'
+                <div className={`h-6 min-w-6 px-1 rounded-full border flex items-center justify-center text-[12px] font-bold transition transform hover:scale-125 ${
+                  isHighPriority ? 'bg-nq-positive text-nq-on-positive border-nq-positive/40' :
+                  isResearch ? 'bg-nq-attention text-nq-on-positive border-nq-attention/40' :
+                  isScale ? 'bg-nq-info text-nq-on-positive border-nq-info/40' : 'bg-nq-line text-nq-text border-nq-line'
                 }`}>
                   {o.human_id.replace('OPP-', '')}
                 </div>
                 {/* Tooltip */}
-                <div className="hidden group-hover:block absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-800 p-2 rounded text-[11px] font-mono text-slate-200 whitespace-nowrap shadow-xl z-30">
+                <div className="hidden group-hover:block absolute bottom-6 left-1/2 -translate-x-1/2 bg-nq-surface p-2 rounded-nq text-[12px] text-nq-text whitespace-nowrap z-30">
                   <div className="font-bold">{o.title}</div>
-                  <div className="text-slate-400 mt-0.5">Score: {parseFloat(o.final_product_score || 0).toFixed(1)}</div>
-                  <div className="text-slate-400">Confiança: {parseFloat(o.confidence_score || 0).toFixed(1)}%</div>
+                  <div className="text-nq-muted mt-0.5">Score: {parseFloat(o.final_product_score || 0).toFixed(1)}</div>
+                  <div className="text-nq-muted">Confiança: {parseFloat(o.confidence_score || 0).toFixed(1)}%</div>
                 </div>
               </div>
             );
           })}
         </div>
-        <div className="text-[10px] text-slate-500 font-mono text-center">
+        <div className="text-[12px] text-nq-subtle text-center">
           Eixo X: Confiança (%) • Eixo Y: Product Score (0-100) • Clique em um ponto para expandir a auditoria detalhada.
         </div>
       </div>
@@ -386,14 +386,14 @@ export function OpportunitiesView({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: List of opportunities */}
         <div className="lg:col-span-1 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-850 pb-2">
-            <h3 className="text-xs font-mono font-bold text-slate-400 uppercase">Lista de Oportunidades</h3>
-            <span className="text-[10px] font-mono text-slate-500">{opportunities.length} ativas</span>
+          <div className="flex items-center justify-between border-b border-nq-line pb-2">
+            <h3 className="text-xs font-bold text-nq-muted">Lista de Oportunidades</h3>
+            <span className="text-[12px] text-nq-subtle">{opportunities.length} ativas</span>
           </div>
 
           <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar">
             {opportunities.length === 0 ? (
-              <div className="p-8 border border-slate-850 rounded bg-slate-900/20 text-center text-slate-500 font-mono text-xs">
+              <div className="p-8 rounded-nq bg-nq-surface text-center text-nq-subtle text-xs">
                 Nenhuma oportunidade cadastrada.
               </div>
             ) : (
@@ -401,44 +401,44 @@ export function OpportunitiesView({
                 <div
                   key={opp.id}
                   onClick={() => selectOpportunity(opp)}
-                  className={`p-3.5 border rounded cursor-pointer transition flex flex-col justify-between space-y-2.5 ${
+                  className={`p-3.5 border rounded-nq cursor-pointer transition flex flex-col justify-between space-y-2.5 ${
                     selectedOpp?.id === opp.id
-                      ? 'border-emerald-500 bg-emerald-950/15'
-                      : 'border-slate-850 bg-slate-900/20 hover:border-slate-700'
+                      ? 'border-nq-positive/40 bg-nq-positive/10'
+                      : 'border-nq-line bg-nq-surface hover:border-nq-line'
                   }`}
                 >
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono text-emerald-400 font-bold text-[10px]">{opp.human_id}</span>
+                        <span className="text-nq-positive-text font-bold text-[12px]">{opp.human_id}</span>
                         {(opp.is_simulated || opp.ai_analysis_status === 'ANÁLISE SIMULADA' || opp.score_type === 'SIMULADA') && (
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-950/40 text-amber-300 border border-amber-500/30 font-bold">
+                          <span className="px-1.5 py-0.5 rounded text-[12px] bg-nq-attention/10 text-nq-attention border border-nq-attention/40 font-bold">
                             ANÁLISE SIMULADA
                           </span>
                         )}
                       </div>
-                      <h4 className="font-bold text-slate-200 mt-0.5 line-clamp-1">{opp.title}</h4>
+                      <h4 className="font-bold text-nq-text mt-0.5 line-clamp-1">{opp.title}</h4>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
-                      opp.status === 'APROVADA_PARA_TESTE' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' :
-                      opp.status === 'REJEITADA' ? 'bg-red-950/20 text-red-400' :
-                      opp.status === 'AGUARDANDO_DECISAO' ? 'bg-blue-950/30 text-blue-400' :
-                      opp.status === 'AGUARDANDO_REVISAO' ? 'bg-amber-950/30 text-amber-400' : 'bg-slate-800 text-slate-400'
+                    <span className={`px-2 py-0.5 rounded text-[12px] font-bold ${
+                      opp.status === 'APROVADA_PARA_TESTE' ? 'bg-nq-positive/10 text-nq-positive-text border border-nq-positive/40' :
+                      opp.status === 'REJEITADA' ? 'bg-nq-critical/10 text-nq-critical-text' :
+                      opp.status === 'AGUARDANDO_DECISAO' ? 'bg-nq-info/10 text-nq-info' :
+                      opp.status === 'AGUARDANDO_REVISAO' ? 'bg-nq-attention/10 text-nq-attention' : 'bg-nq-raised text-nq-muted'
                     }`}>
                       {opp.status.replace('_', ' ')}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs font-mono pt-1.5 border-t border-slate-900/50">
+                  <div className="flex items-center justify-between text-xs pt-1.5 border-t border-nq-line">
                     <div>
-                      <span className="text-slate-500">Score:</span>{' '}
-                      <span className="text-slate-200 font-bold">
+                      <span className="text-nq-subtle">Score:</span>{' '}
+                      <span className="text-nq-text font-bold">
                         {opp.final_product_score ? parseFloat(opp.final_product_score).toFixed(1) : 'S/N'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-500">Confiança:</span>{' '}
-                      <span className="text-slate-200 font-bold">
+                      <span className="text-nq-subtle">Confiança:</span>{' '}
+                      <span className="text-nq-text font-bold">
                         {opp.confidence_score ? `${parseFloat(opp.confidence_score).toFixed(0)}%` : 'S/N'}
                       </span>
                     </div>
@@ -452,29 +452,29 @@ export function OpportunitiesView({
         {/* Right column: Audit Detail Panel */}
         <div className="lg:col-span-2 space-y-4">
           {!selectedOpp ? (
-            <div className="h-[450px] border border-slate-850 rounded bg-slate-900/10 flex flex-col items-center justify-center text-slate-500 font-mono text-xs">
+            <div className="h-[450px] rounded-nq bg-nq-surface flex flex-col items-center justify-center text-nq-subtle text-xs">
               Selecione uma oportunidade para auditar seus subscores, evidências, riscos e histórico.
             </div>
           ) : (
-            <div className="border border-slate-800 bg-slate-900/20 rounded p-6 space-y-6">
+            <div className="bg-nq-surface rounded-nq p-6 space-y-6">
               {/* Header Panel */}
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-850 pb-4">
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-nq-line pb-4">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-emerald-400 font-bold text-xs">{selectedOpp.human_id}</span>
+                    <span className="text-nq-positive-text font-bold text-xs">{selectedOpp.human_id}</span>
                     {(selectedOpp.is_simulated || selectedOpp.ai_analysis_status === 'ANÁLISE SIMULADA' || selectedOpp.score_type === 'SIMULADA') && (
-                      <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-amber-950/40 text-amber-300 border border-amber-500/30 font-bold">
+                      <span className="px-2 py-0.5 rounded text-[12px] bg-nq-attention/10 text-nq-attention border border-nq-attention/40 font-bold">
                         ANÁLISE SIMULADA
                       </span>
                     )}
                     {selectedOpp.is_human_override && (
-                      <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-amber-950/30 text-amber-400 border border-amber-500/20 font-bold">
+                      <span className="px-2 py-0.5 rounded text-[12px] bg-nq-attention/10 text-nq-attention border border-nq-attention/40 font-bold">
                         SOBRESCRO ADMIN
                       </span>
                     )}
                   </div>
-                  <h3 className="text-lg font-bold text-slate-100 mt-1">{selectedOpp.title}</h3>
-                  <div className="text-xs text-slate-400 font-mono mt-0.5">
+                  <h3 className="text-lg font-bold text-nq-text mt-1">{selectedOpp.title}</h3>
+                  <div className="text-xs text-nq-muted mt-0.5">
                     Responsável: {selectedOpp.responsible_name || 'Não atribuído'}
                   </div>
                 </div>
@@ -485,7 +485,7 @@ export function OpportunitiesView({
                     <button
                       disabled={analysisRunning}
                       onClick={() => handleRunAnalysis(selectedOpp.id)}
-                      className="px-3 py-1.5 rounded bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-bold font-mono text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 rounded-full bg-nq-positive text-nq-on-positive hover:brightness-110 font-bold text-nq-aux flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
                     >
                       <RefreshCw className={`h-3.5 w-3.5 ${analysisRunning ? 'animate-spin' : ''}`} />
                       {analysisRunning ? 'Rodando...' : 'Rodar Análise de IA'}
@@ -495,43 +495,43 @@ export function OpportunitiesView({
               </div>
 
               {/* Description & metadata summary */}
-              <div className="p-3.5 border border-slate-850 rounded bg-slate-950/40 text-xs text-slate-300 italic">
+              <div className="p-3.5 rounded bg-nq-bg text-xs text-nq-text italic">
                 "{selectedOpp.description}"
               </div>
 
               {/* Subscores breakdown grid */}
               <div className="space-y-3">
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase">Painel de Subscores e Componentes</h4>
+                <h4 className="text-xs font-bold text-nq-muted">Painel de Subscores e Componentes</h4>
                 {selectedOpp.score_components && selectedOpp.score_components.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     {selectedOpp.score_components.map((c: any) => (
-                      <div key={c.id} className="p-3 border border-slate-850 bg-slate-950 rounded space-y-1.5">
+                      <div key={c.id} className="p-3 bg-nq-bg rounded space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px]">
+                          <span className="font-bold text-nq-text text-[12px]">
                             {c.component_key.replace('_', ' ')}
                           </span>
-                          <span className="font-mono text-emerald-400 font-bold">
+                          <span className="text-nq-positive-text font-bold">
                             Score: {parseFloat(c.score).toFixed(1)}/10
                           </span>
                         </div>
-                        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <div className="flex justify-between text-[12px] text-nq-subtle">
                           <span>Peso: {parseFloat(c.weight).toFixed(0)}%</span>
                           <span>Evidências: {c.evidence_count}</span>
-                          <span className={`px-1 rounded text-[9px] font-bold ${
-                            c.confidence === 'HIGH' ? 'text-emerald-400 bg-emerald-950/20' :
-                            c.confidence === 'MEDIUM' ? 'text-amber-400 bg-amber-950/20' : 'text-red-400 bg-red-950/20'
+                          <span className={`px-1 rounded text-[12px] font-bold ${
+                            c.confidence === 'HIGH' ? 'text-nq-positive-text bg-nq-positive/10' :
+                            c.confidence === 'MEDIUM' ? 'text-nq-attention bg-nq-attention/10' : 'text-nq-critical-text bg-nq-critical/10'
                           }`}>
                             {c.confidence}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed pt-1.5 border-t border-slate-900/50">
+                        <p className="text-[12px] text-nq-muted leading-relaxed pt-1.5 border-t border-nq-line">
                           {c.reasoning_summary}
                         </p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="p-4 rounded border border-dashed border-slate-850 text-center text-slate-500 font-mono text-xs">
+                  <div className="p-4 rounded border border-dashed border-nq-line text-center text-nq-subtle text-xs">
                     Sem subscores gerados. Clique em "Rodar Análise de IA" para qualificar esta oportunidade.
                   </div>
                 )}
@@ -539,49 +539,49 @@ export function OpportunitiesView({
 
               {/* Risk findings with Double Counting Warning */}
               <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between border-b border-slate-850 pb-1">
-                  <h4 className="text-xs font-mono font-bold text-slate-400 uppercase">Riscos & Penalidades de IA</h4>
-                  <span className="text-[10px] font-mono text-slate-500">
-                    Ajuste Crítico: <span className="text-red-400 font-bold">{selectedOpp.critical_adjustment ? parseFloat(selectedOpp.critical_adjustment).toFixed(2) : '0.00'}</span>
+                <div className="flex items-center justify-between border-b border-nq-line pb-1">
+                  <h4 className="text-xs font-bold text-nq-muted">Riscos & Penalidades de IA</h4>
+                  <span className="text-[12px] text-nq-subtle">
+                    Ajuste Crítico: <span className="text-nq-critical-text font-bold">{selectedOpp.critical_adjustment ? parseFloat(selectedOpp.critical_adjustment).toFixed(2) : '0.00'}</span>
                   </span>
                 </div>
 
                 {selectedOpp.risks && selectedOpp.risks.length > 0 ? (
                   <div className="space-y-2">
                     {selectedOpp.risks.map((r: any) => (
-                      <div key={r.id} className="p-3 rounded bg-slate-950 border border-red-950/30 flex items-start justify-between gap-4">
+                      <div key={r.id} className="p-3 rounded bg-nq-bg border border-nq-critical/40 flex items-start justify-between gap-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-red-950/30 text-red-400 border border-red-500/20">
+                            <span className="px-2 py-0.5 rounded text-[12px] font-bold bg-nq-critical/10 text-nq-critical-text border border-nq-critical/40">
                               {r.risk_type}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-500">
-                              Severidade: <span className="text-slate-300 font-bold">{r.severity}</span> • Probabilidade: {r.probability}
+                            <span className="text-[12px] text-nq-subtle">
+                              Severidade: <span className="text-nq-text font-bold">{r.severity}</span> • Probabilidade: {r.probability}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-350">{r.description}</p>
+                          <p className="text-xs text-nq-text">{r.description}</p>
                         </div>
                       </div>
                     ))}
                     
                     {/* Double Counting protection hint */}
-                    <div className="p-2 border border-blue-900/30 bg-blue-950/10 rounded text-[10px] text-slate-400 font-mono">
+                    <div className="p-2 border border-nq-info/40 bg-nq-info/10 rounded text-[12px] text-nq-muted">
                       ℹ️ PROTEÇÃO CONTRA DUPLA CONTAGEM ATIVA: Penalidades semanticamente repetidas sobre o mesmo componente e tipo de risco foram agrupadas pelo motor matemático. Aplica-se apenas o maior fator de severidade por grupo.
                     </div>
                   </div>
                 ) : (
-                  <div className="text-slate-500 italic text-xs font-mono">Nenhum risco detectado pelo Critical Analyst.</div>
+                  <div className="text-nq-subtle italic text-xs">Nenhum risco detectado pelo Critical Analyst.</div>
                 )}
               </div>
 
               {/* Evidences list */}
               <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between border-b border-slate-850 pb-1.5">
-                  <h4 className="text-xs font-mono font-bold text-slate-400 uppercase">Evidências de Suporte ({selectedOpp.evidences ? selectedOpp.evidences.length : 0})</h4>
+                <div className="flex items-center justify-between border-b border-nq-line pb-1.5">
+                  <h4 className="text-xs font-bold text-nq-muted">Evidências de Suporte ({selectedOpp.evidences ? selectedOpp.evidences.length : 0})</h4>
                   {isIntelligence && (
                     <button
                       onClick={() => setShowAddEvidence(selectedOpp.id)}
-                      className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                      className="text-nq-aux text-nq-positive-text hover:text-nq-positive-text font-semibold flex items-center gap-1 min-h-[44px]"
                     >
                       <Plus className="h-3.5 w-3.5" /> Anexar Evidência
                     </button>
@@ -590,24 +590,24 @@ export function OpportunitiesView({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {!selectedOpp.evidences || selectedOpp.evidences.length === 0 ? (
-                    <div className="text-slate-500 italic text-xs py-2 font-mono col-span-2">Sem evidências associadas. Anexe dados para aumentar a cobertura e confiança.</div>
+                    <div className="text-nq-subtle italic text-xs py-2 col-span-2">Sem evidências associadas. Anexe dados para aumentar a cobertura e confiança.</div>
                   ) : (
                     selectedOpp.evidences.map((ev: any) => (
-                      <div key={ev.id} className="p-3 rounded bg-slate-950 border border-slate-850 flex flex-col justify-between space-y-2">
+                      <div key={ev.id} className="p-3 rounded bg-nq-bg flex flex-col justify-between space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${
-                            ev.type === 'FATO' ? 'bg-blue-950/40 text-blue-400 border border-blue-500/20' :
-                            ev.type === 'INFERENCIA' ? 'bg-amber-950/30 text-amber-400' : 'bg-slate-800 text-slate-400'
+                          <span className={`px-2 py-0.5 rounded text-[12px] font-bold ${
+                            ev.type === 'FATO' ? 'bg-nq-info/10 text-nq-info border border-nq-info/40' :
+                            ev.type === 'INFERENCIA' ? 'bg-nq-attention/10 text-nq-attention' : 'bg-nq-raised text-nq-muted'
                           }`}>
                             {ev.type}
                           </span>
-                          <span className="text-[10px] font-mono text-slate-500">Confiabilidade: {ev.reliability}</span>
+                          <span className="text-[12px] text-nq-subtle">Confiabilidade: {ev.reliability}</span>
                         </div>
-                        <p className="text-xs text-slate-350 italic">"{ev.description}"</p>
+                        <p className="text-xs text-nq-text italic">"{ev.description}"</p>
                         
-                        <div className="text-[10px] text-slate-500 font-mono flex items-center justify-between pt-1 border-t border-slate-900/50">
+                        <div className="text-[12px] text-nq-subtle flex items-center justify-between pt-1 border-t border-nq-line">
                           <span>Grupo: {ev.source_group || 'Não classificado'}</span>
-                          {ev.url && <a href={ev.url} target="_blank" rel="noreferrer" className="text-emerald-500 hover:underline">Link</a>}
+                          {ev.url && <a href={ev.url} target="_blank" rel="noreferrer" className="text-nq-positive-text hover:underline">Link</a>}
                         </div>
                       </div>
                     ))
@@ -616,10 +616,10 @@ export function OpportunitiesView({
               </div>
 
               {/* Review & Decision Governance Panel */}
-              <div className="p-4 border border-slate-800 rounded bg-slate-950/40 space-y-4">
+              <div className="p-4 rounded bg-nq-bg space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-mono font-bold text-slate-400 uppercase">Governança e Fluxo de Decisões</h4>
-                  <span className="text-[10px] font-mono text-slate-500">Fase Atual: {selectedOpp.status}</span>
+                  <h4 className="text-xs font-bold text-nq-muted">Governança e Fluxo de Decisões</h4>
+                  <span className="text-[12px] text-nq-subtle">Fase Atual: {selectedOpp.status}</span>
                 </div>
 
                 {/* Workflow Buttons */}
@@ -630,7 +630,7 @@ export function OpportunitiesView({
                         setShowReviewForm(true);
                         setReviewPayload({ action: 'ACCEPT_ANALYSIS', rejection_reason: '', notes: '' });
                       }}
-                      className="px-3.5 py-1.5 rounded bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-bold font-mono text-xs"
+                      className="px-3.5 py-1.5 rounded-full bg-nq-positive text-nq-on-positive hover:brightness-110 font-bold text-nq-aux min-h-[44px]"
                     >
                       Registrar Revisão
                     </button>
@@ -642,7 +642,7 @@ export function OpportunitiesView({
                         setShowDecideForm(true);
                         setDecidePayload({ decision: 'APPROVE_FOR_TEST', rejection_reason: '', justification: '' });
                       }}
-                      className="px-3.5 py-1.5 rounded bg-blue-500 text-slate-950 hover:bg-blue-400 font-bold font-mono text-xs"
+                      className="px-3.5 py-1.5 rounded-full bg-nq-info text-nq-on-positive hover:brightness-110 font-bold text-nq-aux min-h-[44px]"
                     >
                       Tomar Decisão Estratégica
                     </button>
@@ -654,7 +654,7 @@ export function OpportunitiesView({
                         setShowOverrideForm(true);
                         setOverridePayload({ score: parseFloat(selectedOpp.final_product_score).toFixed(1), reason: '' });
                       }}
-                      className="px-3.5 py-1.5 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 font-bold font-mono text-xs border border-amber-500/20"
+                      className="px-3.5 py-1.5 rounded-full bg-nq-attention/10 text-nq-attention hover:bg-nq-attention/20 font-bold text-nq-aux border border-nq-attention/40 min-h-[44px]"
                     >
                       Sobrescrever Pontuação (Admin)
                     </button>
@@ -664,7 +664,7 @@ export function OpportunitiesView({
                   {selectedOpp.status === 'AGUARDANDO_DECISAO' && isAdmin && (
                     <button
                       onClick={() => handleApproveOpp(selectedOpp.id)}
-                      className="px-3.5 py-1.5 rounded bg-emerald-600 text-slate-100 hover:bg-emerald-500 font-bold font-mono text-xs ml-auto"
+                      className="px-3.5 py-1.5 rounded-full bg-nq-positive text-nq-on-positive hover:brightness-110 font-bold text-nq-aux ml-auto min-h-[44px]"
                     >
                       Aprovar Imediato (Spawns Product)
                     </button>
@@ -672,12 +672,12 @@ export function OpportunitiesView({
                 </div>
 
                 {selectedOpp.reviews && selectedOpp.reviews.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-slate-900/50">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase font-bold block">Histórico de Revisões</span>
+                  <div className="space-y-2 pt-2 border-t border-nq-line">
+                    <span className="text-[12px] text-nq-subtle font-bold block">Histórico de Revisões</span>
                     <div className="space-y-1.5">
                       {selectedOpp.reviews.map((rev: any) => (
-                        <div key={rev.id} className="text-xs font-mono text-slate-400 bg-slate-950 p-2 rounded">
-                          <span className={`font-bold uppercase ${rev.action === 'ACCEPT_ANALYSIS' ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <div key={rev.id} className="text-xs text-nq-muted bg-nq-bg p-2 rounded">
+                          <span className={`font-bold ${rev.action === 'ACCEPT_ANALYSIS' ? 'text-nq-positive-text' : 'text-nq-critical-text'}`}>
                             {rev.action}
                           </span>{' '}
                           • Notas: "{rev.notes || 'N/A'}"
@@ -690,23 +690,23 @@ export function OpportunitiesView({
 
               {/* Version analysis history */}
               <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase">Histórico de Versões da IA (Auditoria)</h4>
+                <h4 className="text-xs font-bold text-nq-muted">Histórico de Versões da IA (Auditoria)</h4>
                 {historyLoading ? (
-                  <div className="text-xs text-slate-500 font-mono">Buscando logs de auditoria...</div>
+                  <div className="text-xs text-nq-subtle">Buscando logs de auditoria...</div>
                 ) : analysisHistory.length === 0 ? (
-                  <div className="text-xs text-slate-500 font-mono italic">Sem versões de análises salvas no histórico.</div>
+                  <div className="text-xs text-nq-subtle italic">Sem versões de análises salvas no histórico.</div>
                 ) : (
                   <div className="space-y-2">
                     {analysisHistory.map((h: any) => (
-                      <div key={h.id} className="p-3 rounded bg-slate-950 border border-slate-850 text-xs font-mono flex items-center justify-between">
+                      <div key={h.id} className="p-3 rounded bg-nq-bg text-xs flex items-center justify-between">
                         <div>
-                          <span className="text-emerald-400 font-bold">Versão {h.version}</span>
-                          <span className="text-slate-500 ml-2">({h.provider} - {h.model})</span>
-                          <div className="text-[10px] text-slate-400 mt-1 truncate max-w-md">Summary: {h.executive_summary}</div>
+                          <span className="text-nq-positive-text font-bold">Versão {h.version}</span>
+                          <span className="text-nq-subtle ml-2">({h.provider} - {h.model})</span>
+                          <div className="text-[12px] text-nq-muted mt-1 truncate max-w-md">Summary: {h.executive_summary}</div>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-500 block">Custo Estimado</span>
-                          <span className="text-slate-300 font-bold">${parseFloat(h.estimated_cost).toFixed(4)}</span>
+                          <span className="text-[12px] text-nq-subtle block">Custo Estimado</span>
+                          <span className="text-nq-text font-bold">${parseFloat(h.estimated_cost).toFixed(4)}</span>
                         </div>
                       </div>
                     ))}
@@ -720,127 +720,127 @@ export function OpportunitiesView({
 
       {/* Modal Add Opportunity */}
       {showAddOpp && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-2xl w-full p-6 text-sm overflow-y-auto max-h-[90vh] custom-scrollbar">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Adicionar Oportunidade</h3>
+        <div className="fixed inset-0 z-50 bg-nq-bg flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-2xl w-full p-6 text-sm overflow-y-auto max-h-[90vh] custom-scrollbar">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Adicionar Oportunidade</h3>
             <form onSubmit={handleAddOpp} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Título</label>
+                  <label className="block text-xs text-nq-muted mb-1">Título</label>
                   <input
                     type="text"
                     required
                     value={oppForm.title}
                     onChange={e => setOppForm({ ...oppForm, title: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Categoria</label>
+                  <label className="block text-xs text-nq-muted mb-1">Categoria</label>
                   <input
                     type="text"
                     required
                     value={oppForm.category}
                     onChange={e => setOppForm({ ...oppForm, category: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Subcategoria</label>
+                  <label className="block text-xs text-nq-muted mb-1">Subcategoria</label>
                   <input
                     type="text"
                     required
                     value={oppForm.subcategory}
                     onChange={e => setOppForm({ ...oppForm, subcategory: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Fonte</label>
+                  <label className="block text-xs text-nq-muted mb-1">Fonte</label>
                   <input
                     type="text"
                     required
                     value={oppForm.source}
                     onChange={e => setOppForm({ ...oppForm, source: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Descrição</label>
+                <label className="block text-xs text-nq-muted mb-1">Descrição</label>
                 <textarea
                   required
                   value={oppForm.description}
                   onChange={e => setOppForm({ ...oppForm, description: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Público Alvo Provável</label>
+                  <label className="block text-xs text-nq-muted mb-1">Público Alvo Provável</label>
                   <input
                     type="text"
                     required
                     value={oppForm.target_audience}
                     onChange={e => setOppForm({ ...oppForm, target_audience: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Problema / Desejo Central</label>
+                  <label className="block text-xs text-nq-muted mb-1">Problema / Desejo Central</label>
                   <input
                     type="text"
                     required
                     value={oppForm.problem_desire}
                     onChange={e => setOppForm({ ...oppForm, problem_desire: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Formato</label>
+                  <label className="block text-xs text-nq-muted mb-1">Formato</label>
                   <input
                     type="text"
                     required
                     value={oppForm.format}
                     onChange={e => setOppForm({ ...oppForm, format: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">URL de Referência</label>
+                  <label className="block text-xs text-nq-muted mb-1">URL de Referência</label>
                   <input
                     type="url"
                     value={oppForm.reference_url}
                     onChange={e => setOppForm({ ...oppForm, reference_url: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Observações</label>
+                <label className="block text-xs text-nq-muted mb-1">Observações</label>
                 <textarea
                   value={oppForm.notes}
                   onChange={e => setOppForm({ ...oppForm, notes: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddOpp(false)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Cadastrar Oportunidade
                 </button>
@@ -852,16 +852,16 @@ export function OpportunitiesView({
 
       {/* Modal Add Evidence */}
       {showAddEvidence && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Anexar Evidência</h3>
+        <div className="fixed inset-0 z-50 bg-nq-bg flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Anexar Evidência</h3>
             <form onSubmit={handleAddEvidence} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Classificação da Evidência</label>
+                <label className="block text-xs text-nq-muted mb-1">Classificação da Evidência</label>
                 <select
                   value={evidenceForm.type}
                   onChange={e => setEvidenceForm({ ...evidenceForm, type: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text min-h-[44px]"
                 >
                   <option value="FATO">FATO (Concreto/Verificado)</option>
                   <option value="INFERENCIA">INFERÊNCIA (Lógica baseada em fatos)</option>
@@ -870,67 +870,67 @@ export function OpportunitiesView({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Fonte da Evidência</label>
+                <label className="block text-xs text-nq-muted mb-1">Fonte da Evidência</label>
                 <input
                   type="text"
                   required
                   placeholder="Ex: IBGE, Pesquisa Google, Entrevista com X"
                   value={evidenceForm.source}
                   onChange={e => setEvidenceForm({ ...evidenceForm, source: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">URL (Opcional)</label>
+                <label className="block text-xs text-nq-muted mb-1">URL (Opcional)</label>
                 <input
                   type="url"
                   placeholder="https://..."
                   value={evidenceForm.url}
                   onChange={e => setEvidenceForm({ ...evidenceForm, url: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Descrição Detalhada</label>
+                <label className="block text-xs text-nq-muted mb-1">Descrição Detalhada</label>
                 <textarea
                   required
                   value={evidenceForm.description}
                   onChange={e => setEvidenceForm({ ...evidenceForm, description: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Confiabilidade</label>
+                <label className="block text-xs text-nq-muted mb-1">Confiabilidade</label>
                 <input
                   type="text"
                   required
                   placeholder="Ex: Alta, Média, Baixa"
                   value={evidenceForm.reliability}
                   onChange={e => setEvidenceForm({ ...evidenceForm, reliability: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Observações</label>
+                <label className="block text-xs text-nq-muted mb-1">Observações</label>
                 <textarea
                   value={evidenceForm.observations}
                   onChange={e => setEvidenceForm({ ...evidenceForm, observations: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddEvidence(null)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Anexar Evidência
                 </button>
@@ -942,16 +942,16 @@ export function OpportunitiesView({
 
       {/* Review Modal Form */}
       {showReviewForm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Registrar Revisão de IA</h3>
+        <div className="fixed inset-0 z-50 bg-nq-bg flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Registrar Revisão de IA</h3>
             <form onSubmit={submitReview} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Ação de Revisão</label>
+                <label className="block text-xs text-nq-muted mb-1">Ação de Revisão</label>
                 <select
                   value={reviewPayload.action}
                   onChange={e => setReviewPayload({ ...reviewPayload, action: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text min-h-[44px]"
                 >
                   <option value="ACCEPT_ANALYSIS">ACEITAR ANÁLISE (Envia para Decisão)</option>
                   <option value="REQUEST_MORE_RESEARCH">SOLICITAR MAIS EVIDÊNCIAS (Retorna para Coleta)</option>
@@ -961,12 +961,12 @@ export function OpportunitiesView({
 
               {reviewPayload.action === 'REJECT_ANALYSIS' && (
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Motivo de Rejeição</label>
+                  <label className="block text-xs text-nq-muted mb-1">Motivo de Rejeição</label>
                   <select
                     required
                     value={reviewPayload.rejection_reason}
                     onChange={e => setReviewPayload({ ...reviewPayload, rejection_reason: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text min-h-[44px]"
                   >
                     <option value="">Selecione o motivo...</option>
                     <option value="LOW_DEMAND_SIGNAL">Sinal de demanda baixo</option>
@@ -979,14 +979,14 @@ export function OpportunitiesView({
               )}
 
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Notas de Revisão</label>
+                <label className="block text-xs text-nq-muted mb-1">Notas de Revisão</label>
                 <textarea
                   required
                   placeholder="Justifique a aprovação ou solicitação de pesquisa..."
                   value={reviewPayload.notes}
                   onChange={e => setReviewPayload({ ...reviewPayload, notes: e.target.value })}
                   rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
 
@@ -994,13 +994,13 @@ export function OpportunitiesView({
                 <button
                   type="button"
                   onClick={() => setShowReviewForm(false)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Registrar Revisão
                 </button>
@@ -1012,16 +1012,16 @@ export function OpportunitiesView({
 
       {/* Decision Modal Form */}
       {showDecideForm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Decisão de Investimento (Admin)</h3>
+        <div className="fixed inset-0 z-50 bg-nq-bg flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Decisão de Investimento (Admin)</h3>
             <form onSubmit={submitDecision} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Decisão Final</label>
+                <label className="block text-xs text-nq-muted mb-1">Decisão Final</label>
                 <select
                   value={decidePayload.decision}
                   onChange={e => setDecidePayload({ ...decidePayload, decision: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text min-h-[44px]"
                 >
                   <option value="APPROVE_FOR_TEST">APROVAR PARA TESTE (Cria Produto Planejado)</option>
                   <option value="REJECT">REJEITAR OPORTUNIDADE</option>
@@ -1031,12 +1031,12 @@ export function OpportunitiesView({
 
               {decidePayload.decision === 'REJECT' && (
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Motivo de Rejeição</label>
+                  <label className="block text-xs text-nq-muted mb-1">Motivo de Rejeição</label>
                   <select
                     required
                     value={decidePayload.rejection_reason}
                     onChange={e => setDecidePayload({ ...decidePayload, rejection_reason: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text min-h-[44px]"
                   >
                     <option value="">Selecione o motivo...</option>
                     <option value="LOW_DEMAND_SIGNAL">Sinal de demanda baixo</option>
@@ -1049,14 +1049,14 @@ export function OpportunitiesView({
               )}
 
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Justificativa Final</label>
+                <label className="block text-xs text-nq-muted mb-1">Justificativa Final</label>
                 <textarea
                   required
                   placeholder="Justifique a decisão com base nos dados consolidados..."
                   value={decidePayload.justification}
                   onChange={e => setDecidePayload({ ...decidePayload, justification: e.target.value })}
                   rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
 
@@ -1064,13 +1064,13 @@ export function OpportunitiesView({
                 <button
                   type="button"
                   onClick={() => setShowDecideForm(false)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Gravar Decisão
                 </button>
@@ -1082,12 +1082,12 @@ export function OpportunitiesView({
 
       {/* Override Modal Form */}
       {showOverrideForm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Sobrescrever Pontuação (Admin)</h3>
+        <div className="fixed inset-0 z-50 bg-nq-bg flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Sobrescrever Pontuação (Admin)</h3>
             <form onSubmit={submitOverride} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Nova Pontuação Global (0 a 100)</label>
+                <label className="block text-xs text-nq-muted mb-1">Nova Pontuação Global (0 a 100)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -1096,31 +1096,31 @@ export function OpportunitiesView({
                   required
                   value={overridePayload.score}
                   onChange={e => setOverridePayload({ ...overridePayload, score: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 font-mono text-emerald-400 text-sm"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 text-nq-positive-text text-sm min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Justificativa da Alteração</label>
+                <label className="block text-xs text-nq-muted mb-1">Justificativa da Alteração</label>
                 <textarea
                   required
                   placeholder="Justifique por que esta pontuação foi alterada..."
                   value={overridePayload.reason}
                   onChange={e => setOverridePayload({ ...overridePayload, reason: e.target.value })}
                   rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:border-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowOverrideForm(false)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Sobrescrever Nota
                 </button>

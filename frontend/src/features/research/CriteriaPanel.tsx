@@ -82,7 +82,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
     load();
   }, [load]);
 
-  if (!data) return <p className="text-sm text-slate-500">Carregando os critérios…</p>;
+  if (!data) return <p className="text-sm text-nq-subtle">Carregando os critérios…</p>;
 
   const changed = Object.keys(form).filter(k => Number(String(form[k]).replace(',', '.')) !== base[k]);
 
@@ -123,7 +123,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
   return (
     <div className="space-y-5 text-sm" data-testid="criteria-panel">
       <div
-        className={`rounded border p-3 text-xs ${eff.validated ? 'border-emerald-700/50 bg-emerald-950/20 text-emerald-200' : 'border-amber-600/50 bg-amber-950/20 text-amber-200'}`}
+        className={`rounded border p-3 text-xs ${eff.validated ? 'border-nq-positive/40 bg-nq-positive/10 text-nq-positive-text' : 'border-nq-attention/40 bg-nq-attention/10 text-nq-attention'}`}
         data-testid="criteria-status"
       >
         {eff.validated && data.validated ? (
@@ -144,7 +144,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
       </div>
 
       {draft && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-sky-700/50 bg-sky-950/20 p-3 text-xs text-sky-100" data-testid="criteria-draft">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-nq bg-nq-info/10 p-4 text-nq-aux text-nq-info" data-testid="criteria-draft">
           <span>
             Rascunho v{draft.version}
             {draft.created_by_name ? ` de ${draft.created_by_name}` : ''} ({when(draft.created_at)}){draft.note ? `: ${draft.note}` : ''}.{' '}
@@ -156,7 +156,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
               disabled={busy || changed.length > 0}
               title={changed.length > 0 ? 'Salve ou desfaça os ajustes antes de validar' : undefined}
               data-testid="validate-criteria"
-              className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-full bg-nq-positive px-3 py-1.5 font-semibold text-nq-on-positive hover:brightness-110 disabled:opacity-40 min-h-[44px]"
             >
               <CheckCircle2 className="h-3.5 w-3.5" /> Validar v{draft.version}
             </button>
@@ -166,25 +166,25 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
 
       {GROUPS.map(g => (
         <section key={g.id} className="space-y-2" data-testid={`criteria-group-${g.id}`}>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">{g.title}</h3>
-          <p className="text-[11px] text-slate-500">{g.hint}</p>
-          <div className="divide-y divide-slate-800 rounded border border-slate-800">
+          <h3 className="text-nq-aux font-semibold text-nq-text">{g.title}</h3>
+          <p className="text-[12px] text-nq-subtle">{g.hint}</p>
+          <div className="divide-y divide-nq-line/60 rounded-nq bg-nq-surface">
             {data.defs.filter(d => d.group === g.id).map(d => {
               const isChanged = changed.includes(d.key);
               const draftDiff = draft && draft.numbers[d.key] !== eff.numbers[d.key];
               return (
                 <div key={d.key} className="grid grid-cols-1 items-center gap-2 p-2 text-xs sm:grid-cols-[1fr_8rem_9rem]">
-                  <span className="text-slate-200">
+                  <span className="text-nq-text">
                     {d.label}
                     {RECOMMENDED_CRITERIA[d.key] && (
-                      <span className="block text-[11px] text-violet-300/90" data-testid={`recommended-${d.key}`}>
+                      <span className="block text-[12px] text-nq-text" data-testid={`recommended-${d.key}`}>
                         Claude recomenda {fmt(RECOMMENDED_CRITERIA[d.key].value)}
                         {RECOMMENDED_CRITERIA[d.key].value !== eff.numbers[d.key] ? ' (muda)' : ''}: {RECOMMENDED_CRITERIA[d.key].why}
                       </span>
                     )}
                   </span>
-                  <span className="text-slate-400" title="Valor em vigor">
-                    em vigor: <span className="font-mono text-slate-200">{fmt(eff.numbers[d.key])}</span> {d.unit}
+                  <span className="text-nq-muted" title="Valor em vigor">
+                    em vigor: <span className="text-nq-text">{fmt(eff.numbers[d.key])}</span> {d.unit}
                   </span>
                   {isAdmin ? (
                     <input
@@ -192,10 +192,10 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
                       inputMode="decimal"
                       value={form[d.key] ?? ''}
                       onChange={e => setForm({ ...form, [d.key]: e.target.value })}
-                      className={`w-full rounded border bg-slate-950 px-2 py-1 font-mono text-slate-100 ${isChanged ? 'border-sky-500' : draftDiff ? 'border-sky-800' : 'border-slate-700'}`}
+                      className={`w-full min-h-[44px] rounded-xl border bg-nq-bg px-3 py-2 text-nq-body text-nq-text ${isChanged ? 'border-nq-info' : draftDiff ? 'border-nq-info/40' : 'border-nq-line'}`}
                     />
                   ) : (
-                    <span className="text-slate-500">{draftDiff ? `rascunho: ${fmt(draft!.numbers[d.key])}` : ''}</span>
+                    <span className="text-nq-subtle">{draftDiff ? `rascunho: ${fmt(draft!.numbers[d.key])}` : ''}</span>
                   )}
                 </div>
               );
@@ -205,7 +205,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
       ))}
 
       {isAdmin && (
-        <div className="flex flex-wrap items-end gap-2 rounded border border-dashed border-slate-700 p-3 text-xs">
+        <div className="flex flex-wrap items-end gap-2 rounded-nq bg-nq-surface p-4 text-nq-aux">
           <button
             onClick={() => {
               const next = { ...form };
@@ -214,26 +214,26 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
               if (!note.trim()) setNote('Recomendação do Claude (análise NORQVA-0031)');
             }}
             data-testid="use-recommendation"
-            className="inline-flex items-center gap-1 rounded bg-violet-600 px-3 py-1.5 font-semibold text-white hover:bg-violet-500"
+            className="inline-flex items-center gap-1 rounded-full bg-nq-text px-4 h-10 font-semibold text-nq-bg hover:brightness-95"
           >
             <Sparkles className="h-3.5 w-3.5" /> Usar a recomendação do Claude
           </button>
           <label className="flex flex-1 flex-col gap-1">
-            <span className="text-slate-400">Motivo do ajuste (opcional)</span>
-            <input value={note} onChange={e => setNote(e.target.value)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100" />
+            <span className="text-nq-muted">Motivo do ajuste (opcional)</span>
+            <input value={note} onChange={e => setNote(e.target.value)} className="rounded-xl bg-nq-bg px-2 py-2.5 text-nq-text min-h-[44px]" />
           </label>
           <button
             onClick={saveDraft}
             disabled={busy || (changed.length === 0 && !needsFreshDraft)}
             data-testid="save-criteria-draft"
-            className="inline-flex items-center gap-1 rounded bg-slate-200 px-3 py-1.5 font-semibold text-slate-900 disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded-full bg-nq-raised px-4 h-10 font-semibold text-nq-text disabled:opacity-40"
           >
             <Save className="h-3.5 w-3.5" /> Salvar como rascunho{changed.length ? ` (${changed.length})` : ''}
           </button>
           {changed.length > 0 && (
             <button
               onClick={() => setForm(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, String(v)])))}
-              className="inline-flex items-center gap-1 rounded border border-slate-700 px-3 py-1.5 text-slate-300"
+              className="inline-flex items-center gap-1 rounded-full border border-nq-line px-3 py-1.5 text-nq-text min-h-[44px]"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Desfazer
             </button>
@@ -242,27 +242,27 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
       )}
 
       <section className="space-y-2" data-testid="criteria-texts">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Checklist do validador</h3>
-        <p className="text-[11px] text-slate-500">O Claude crítico confere cada item. Se algum vier como falha, ele não pode aprovar.</p>
-        <ul className="list-disc space-y-0.5 pl-5 text-xs text-slate-300">
+        <h3 className="text-nq-aux font-semibold text-nq-text">Checklist do validador</h3>
+        <p className="text-[12px] text-nq-subtle">O Claude crítico confere cada item. Se algum vier como falha, ele não pode aprovar.</p>
+        <ul className="list-disc space-y-0.5 pl-5 text-xs text-nq-text">
           {data.texts.validator_checks.map(c => (
             <li key={c.key}>{c.label}</li>
           ))}
         </ul>
-        <h3 className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Regras que as IAs recebem</h3>
-        <ul className="list-disc space-y-0.5 pl-5 text-xs text-slate-300">
+        <h3 className="pt-2 text-nq-aux font-semibold text-nq-text">Regras que as IAs recebem</h3>
+        <ul className="list-disc space-y-0.5 pl-5 text-xs text-nq-text">
           {data.texts.ai_rules.map(r => (
             <li key={r}>{r}</li>
           ))}
         </ul>
-        <p className="text-[11px] text-slate-500">Estes textos entram na validação; mudar o texto é feito por contrato.</p>
+        <p className="text-[12px] text-nq-subtle">Estes textos entram na validação; mudar o texto é feito por contrato.</p>
       </section>
 
       <section className="space-y-1" data-testid="criteria-history">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Versões</h3>
+        <h3 className="text-nq-aux font-semibold text-nq-text">Versões</h3>
         {data.versions.map(v => (
-          <div key={v.version} className="flex flex-wrap gap-x-3 text-[11px] text-slate-400">
-            <span className="font-mono text-slate-200">v{v.version}</span>
+          <div key={v.version} className="flex flex-wrap gap-x-3 text-[12px] text-nq-muted">
+            <span className="text-nq-text">v{v.version}</span>
             <span>{STATUS_LABEL[v.status]}</span>
             <span>
               criada {when(v.created_at)}
@@ -274,7 +274,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
                 {v.validated_by_name ? ` por ${v.validated_by_name}` : ''}
               </span>
             )}
-            {v.note && <span className="text-slate-500">{v.note}</span>}
+            {v.note && <span className="text-nq-subtle">{v.note}</span>}
           </div>
         ))}
       </section>

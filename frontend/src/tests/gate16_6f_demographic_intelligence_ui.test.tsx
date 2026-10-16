@@ -394,7 +394,7 @@ describe('GATE 16.6F: Demographic Intelligence UI (Read-Only Presentation)', () 
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/intelligence/demographics?mode=demo&period=today');
-      expect(screen.getByText('Sandbox Demo')).toBeInTheDocument();
+      expect(screen.getByText('Dados de demonstração')).toBeInTheDocument();
     });
   });
 

@@ -25,6 +25,7 @@ import {
   ConfidenceReason,
   PeriodFilterOption
 } from './creativePerformanceTypes';
+import { useIsMobile } from '../../components/ui/premium';
 
 interface CreativePerformanceViewProps {
   currentUser: any;
@@ -110,22 +111,22 @@ export function getConfidenceBadge(confidence: ConfidenceGrade | string) {
     case 'CONFIDENT':
       return {
         label: 'Amostra confiável',
-        badgeClass: 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+        badgeClass: 'bg-nq-positive/10 text-nq-positive-text border border-nq-positive/40'
       };
     case 'LEARNING':
       return {
         label: 'Aprendendo',
-        badgeClass: 'bg-sky-950/80 text-sky-400 border border-sky-500/30'
+        badgeClass: 'bg-nq-info/10 text-nq-info border border-nq-info/40'
       };
     case 'OBSERVING':
       return {
         label: 'Observando',
-        badgeClass: 'bg-amber-950/80 text-amber-400 border border-amber-500/30'
+        badgeClass: 'bg-nq-attention/10 text-nq-attention border border-nq-attention/40'
       };
     default:
       return {
         label: 'Dados insuficientes',
-        badgeClass: 'bg-slate-900 text-slate-400 border border-slate-800'
+        badgeClass: 'bg-nq-surface text-nq-muted border border-nq-line'
       };
   }
 }
@@ -156,6 +157,7 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
   showError,
   showSuccess
 }) => {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<CreativePerformanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,73 +204,38 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
   const unattributed = data?.unattributed;
   const dataFreshness = data?.dataFreshness;
 
-  const campaignName = creatives[0]?.campaign_id
-    ? `NORQVA_TRATTORIA_REVENUE_V1`
-    : 'NORQVA TRATTORIA';
-
   return (
     <div className="space-y-6 text-sm">
       {/* ----------------------------------------------------------------- */}
       {/* HEADER & CONTROLS */}
       {/* ----------------------------------------------------------------- */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold tracking-tight text-slate-100 font-mono uppercase flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-emerald-400" />
-              Performance de Criativos
-            </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
-              V1 ENGINE
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Compare investimento, tráfego, conversões e receita por anúncio.
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-nq-section font-semibold text-nq-text">Performance de criativos</h2>
+          <p className="mt-1 text-nq-aux text-nq-muted">Compare investimento, tráfego, conversões e receita por anúncio.</p>
+          <p className="mt-1 flex items-center gap-1.5 text-nq-caption text-nq-subtle">
+            {dataFreshness?.meta_sync_status === 'SUCCESS' && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-nq-positive" />}
+            {dataFreshness?.meta_sync_status === 'FAILED' && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-nq-critical" />}
+            Última leitura da Meta: {formatDateTimeBR(dataFreshness?.last_meta_sync)}
           </p>
         </div>
-
-        {/* Info Chips & Actions */}
-        <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono">
-          <div className="px-3 py-1.5 rounded-md bg-slate-900/60 border border-slate-800 text-slate-300 flex items-center gap-1.5">
-            <Layers className="h-3.5 w-3.5 text-slate-400" />
-            <span className="text-slate-400">Campanha:</span>
-            <span className="font-bold text-slate-200 truncate max-w-[200px]" title={campaignName}>
-              {campaignName}
-            </span>
-          </div>
-
-          <div className="px-3 py-1.5 rounded-md bg-slate-900/60 border border-slate-800 text-slate-300 flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-slate-400" />
-            <span className="text-slate-400">Última Sync:</span>
-            <span className="font-bold text-slate-200">
-              {formatDateTimeBR(dataFreshness?.last_meta_sync)}
-            </span>
-            {dataFreshness?.meta_sync_status === 'SUCCESS' && (
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" title="Sincronização OK" />
-            )}
-            {dataFreshness?.meta_sync_status === 'FAILED' && (
-              <span className="h-2 w-2 rounded-full bg-rose-400" title="Falha na sincronização" />
-            )}
-          </div>
-
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md transition font-mono text-xs border border-slate-700 disabled:opacity-50"
-            title="Atualizar dados"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Atualizar</span>
-          </button>
-        </div>
+        <button
+          onClick={loadData}
+          disabled={loading}
+          className="h-11 w-11 shrink-0 flex items-center justify-center rounded-full bg-nq-surface text-nq-muted active:bg-nq-raised disabled:opacity-50"
+          title="Atualizar dados"
+          aria-label="Atualizar dados"
+        >
+          <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {/* ----------------------------------------------------------------- */}
       {/* DATA FRESHNESS ALERT (IF FAILED) */}
       {/* ----------------------------------------------------------------- */}
       {dataFreshness?.meta_sync_status === 'FAILED' && (
-        <div className="p-3.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs font-mono flex items-center gap-2.5">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+        <div className="p-3.5 rounded-lg bg-nq-attention/10 border border-nq-attention/40 text-nq-attention text-xs flex items-center gap-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-nq-attention" />
           <span>
             <strong>Aviso de Sincronização:</strong> O último ciclo de sincronização com a Meta falhou. Os dados exibidos correspondem à última captura válida ({formatDateTimeBR(dataFreshness?.last_meta_sync)}).
           </span>
@@ -279,12 +246,12 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
       {/* ERROR STATE */}
       {/* ----------------------------------------------------------------- */}
       {error && !loading && (
-        <div className="p-8 rounded-lg bg-red-950/20 border border-red-500/30 text-center space-y-3">
-          <AlertTriangle className="h-8 w-8 text-red-400 mx-auto" />
-          <p className="text-sm font-semibold text-red-200">{error}</p>
+        <div className="p-8 rounded-lg bg-nq-critical/10 border border-nq-critical/40 text-center space-y-3">
+          <AlertTriangle className="h-8 w-8 text-nq-critical-text mx-auto" />
+          <p className="text-sm font-semibold text-nq-critical-text">{error}</p>
           <button
             onClick={loadData}
-            className="px-4 py-2 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 rounded text-xs font-mono font-bold transition"
+            className="px-4 py-2 bg-nq-critical/20 border border-nq-critical/40 text-nq-critical-text hover:bg-nq-critical/30 rounded-full text-nq-aux font-bold transition min-h-[44px]"
           >
             Tentar Novamente
           </button>
@@ -298,11 +265,11 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
         <div className="space-y-6 animate-pulse">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-20 bg-slate-900/60 rounded-lg border border-slate-800" />
+              <div key={i} className="h-20 bg-nq-surface rounded-nq" />
             ))}
           </div>
-          <div className="h-28 bg-slate-900/60 rounded-lg border border-slate-800" />
-          <div className="h-64 bg-slate-900/60 rounded-lg border border-slate-800" />
+          <div className="h-28 bg-nq-surface rounded-nq" />
+          <div className="h-64 bg-nq-surface rounded-nq" />
         </div>
       )}
 
@@ -310,10 +277,10 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
       {/* EMPTY STATE */}
       {/* ----------------------------------------------------------------- */}
       {!loading && !error && creatives.length === 0 && (
-        <div className="p-12 rounded-lg bg-slate-900/20 border border-slate-800 text-center text-slate-400 space-y-2">
-          <Info className="h-8 w-8 text-slate-500 mx-auto" />
+        <div className="p-12 rounded-nq bg-nq-surface text-center text-nq-muted space-y-2">
+          <Info className="h-8 w-8 text-nq-subtle mx-auto" />
           <p className="text-sm font-semibold">Não há dados suficientes para este período.</p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-nq-subtle">
             Tente selecionar outro intervalo temporal ou aguarde a próxima sincronização com a Meta.
           </p>
         </div>
@@ -327,80 +294,80 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
           {/* 1. KPI SUMMARY CARDS (5 TOP CARDS) */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {/* Card 1: Investimento */}
-            <div className="p-3.5 rounded-lg bg-slate-900/50 border border-slate-800 space-y-1">
-              <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
-                <DollarSign className="h-3 w-3 text-emerald-400" /> Investimento
+            <div className="p-3.5 rounded-nq bg-nq-surface space-y-1">
+              <div className="text-[12px] text-nq-muted flex items-center gap-1">
+                <DollarSign className="h-3 w-3 text-nq-positive-text" /> Investimento
               </div>
-              <div className="text-lg font-bold text-slate-100 font-mono">
+              <div className="text-lg font-bold text-nq-text">
                 {formatBRL(summary?.total_spend)}
               </div>
             </div>
 
             {/* Card 2: Receita */}
-            <div className="p-3.5 rounded-lg bg-slate-900/50 border border-slate-800 space-y-1">
-              <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
-                <DollarSign className="h-3 w-3 text-emerald-400" /> Receita
+            <div className="p-3.5 rounded-nq bg-nq-surface space-y-1">
+              <div className="text-[12px] text-nq-muted flex items-center gap-1">
+                <DollarSign className="h-3 w-3 text-nq-positive-text" /> Receita
               </div>
-              <div className="text-lg font-bold text-emerald-400 font-mono">
+              <div className="text-lg font-bold text-nq-positive-text">
                 {formatBRL(summary?.total_revenue)}
               </div>
             </div>
 
             {/* Card 3: Vendas */}
-            <div className="p-3.5 rounded-lg bg-slate-900/50 border border-slate-800 space-y-1">
-              <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
-                <ShoppingCart className="h-3 w-3 text-cyan-400" /> Vendas
+            <div className="p-3.5 rounded-nq bg-nq-surface space-y-1">
+              <div className="text-[12px] text-nq-muted flex items-center gap-1">
+                <ShoppingCart className="h-3 w-3 text-nq-info" /> Vendas
               </div>
-              <div className="text-lg font-bold text-slate-100 font-mono">
+              <div className="text-lg font-bold text-nq-text">
                 {formatInteger(summary?.total_paid_orders)}
               </div>
             </div>
 
             {/* Card 4: CAC Médio (STRICT NULL DISPLAY: "—") */}
-            <div className="p-3.5 rounded-lg bg-slate-900/50 border border-slate-800 space-y-1">
-              <div className="text-[10px] font-mono text-slate-400 uppercase">CAC Médio</div>
-              <div className="text-lg font-bold text-slate-100 font-mono">
+            <div className="p-3.5 rounded-nq bg-nq-surface space-y-1">
+              <div className="text-[12px] text-nq-muted">CAC médio</div>
+              <div className="text-lg font-bold text-nq-text">
                 {formatCAC(summary?.blended_cac)}
               </div>
             </div>
 
             {/* Card 5: ROAS */}
-            <div className="col-span-2 md:col-span-1 p-3.5 rounded-lg bg-slate-900/50 border border-slate-800 space-y-1">
-              <div className="text-[10px] font-mono text-slate-400 uppercase">ROAS</div>
-              <div className="text-lg font-bold text-emerald-400 font-mono">
+            <div className="col-span-2 md:col-span-1 p-3.5 rounded-nq bg-nq-surface space-y-1">
+              <div className="text-[12px] text-nq-muted">ROAS</div>
+              <div className="text-lg font-bold text-nq-positive-text">
                 {formatROAS(summary?.blended_roas)}
               </div>
             </div>
           </div>
 
           {/* 2. COMPACT FUNNEL SECTION */}
-          <div className="p-4 rounded-lg bg-slate-900/40 border border-slate-800 space-y-3">
-            <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
-              Funil Comercial Agregado
+          <div className="p-4 rounded-nq bg-nq-surface space-y-3">
+            <div className="text-xs font-bold text-nq-text flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-nq-positive-text" />
+              Funil do período
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
               {/* Step 1: Impressões */}
-              <div className="p-3 rounded bg-slate-950/60 border border-slate-800 text-center space-y-0.5">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Impressões</div>
-                <div className="text-sm font-bold text-slate-100 font-mono">
+              <div className="p-3 rounded bg-nq-bg text-center space-y-0.5">
+                <div className="text-[12px] text-nq-muted">Impressões</div>
+                <div className="text-sm font-bold text-nq-text">
                   {formatInteger(summary?.total_impressions)}
                 </div>
               </div>
 
               {/* Step 2: Cliques */}
-              <div className="p-3 rounded bg-slate-950/60 border border-slate-800 text-center space-y-0.5">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Cliques</div>
-                <div className="text-sm font-bold text-slate-100 font-mono">
+              <div className="p-3 rounded bg-nq-bg text-center space-y-0.5">
+                <div className="text-[12px] text-nq-muted">Cliques</div>
+                <div className="text-sm font-bold text-nq-text">
                   {formatInteger(summary?.total_clicks)}
                 </div>
               </div>
 
               {/* Step 3: Visualizações da Oferta */}
-              <div className="p-3 rounded bg-slate-950/60 border border-slate-800 text-center space-y-0.5">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Visitas Oferta</div>
-                <div className="text-sm font-bold text-slate-100 font-mono">
+              <div className="p-3 rounded bg-nq-bg text-center space-y-0.5">
+                <div className="text-[12px] text-nq-muted">Visitas à oferta</div>
+                <div className="text-sm font-bold text-nq-text">
                   {formatInteger(
                     creatives.reduce((acc, c) => acc + (c.offer_views || 0), 0)
                   )}
@@ -408,17 +375,17 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
               </div>
 
               {/* Step 4: Checkouts */}
-              <div className="p-3 rounded bg-slate-950/60 border border-slate-800 text-center space-y-0.5">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Checkouts</div>
-                <div className="text-sm font-bold text-slate-100 font-mono">
+              <div className="p-3 rounded bg-nq-bg text-center space-y-0.5">
+                <div className="text-[12px] text-nq-muted">Checkouts</div>
+                <div className="text-sm font-bold text-nq-text">
                   {formatInteger(summary?.total_checkouts)}
                 </div>
               </div>
 
               {/* Step 5: Compras */}
-              <div className="col-span-2 sm:col-span-1 p-3 rounded bg-slate-950/60 border border-slate-800 text-center space-y-0.5">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Compras</div>
-                <div className="text-sm font-bold text-emerald-400 font-mono">
+              <div className="col-span-2 sm:col-span-1 p-3 rounded bg-nq-bg text-center space-y-0.5">
+                <div className="text-[12px] text-nq-muted">Compras</div>
+                <div className="text-sm font-bold text-nq-positive-text">
                   {formatInteger(summary?.total_paid_orders)}
                 </div>
               </div>
@@ -426,49 +393,88 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
           </div>
 
           {/* 3. CREATIVE COMPARISON TABLE (13 COLUMNS) */}
-          <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/20">
-            <div className="p-3.5 bg-slate-900/70 border-b border-slate-800 flex items-center justify-between">
-              <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
-                Comparação de Desempenho por Anúncio
+          <div className="rounded-nq overflow-hidden bg-nq-surface">
+            <div className="p-3.5 bg-nq-surface border-b border-nq-line flex items-center justify-between">
+              <div className="text-xs font-bold text-nq-text">
+                Comparação por anúncio
               </div>
-              <div className="text-[11px] font-mono text-slate-400">
-                {creatives.length} criativo(s) ativo(s)
+              <div className="text-[12px] text-nq-muted">
+                {creatives.length} {creatives.length === 1 ? 'anúncio' : 'anúncios'} no período
               </div>
             </div>
 
+            {isMobile ? (
+              <ul className="divide-y divide-nq-line/70" data-testid="creative-mobile-list">
+                {creatives.map(c => {
+                  const badge = getConfidenceBadge(c.confidence);
+                  const reasonText = getConfidenceReasonText(c.confidence_reason);
+                  return (
+                    <li key={c.ad_id} className="px-4 py-4 space-y-3">
+                      <div className="min-w-0">
+                        <div className="text-nq-body font-semibold text-nq-text break-words">{getShortAdName(c.ad_name)}</div>
+                        <div className="text-nq-caption text-nq-subtle break-words">{c.ad_name}</div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[12px] font-bold ${badge.badgeClass}`}>{badge.label}</span>
+                          <span className="text-nq-caption text-nq-muted">{reasonText}</span>
+                        </div>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        {([
+                          ['Investimento', formatBRL(c.spend), ''],
+                          ['Receita', formatBRL(c.gross_revenue), 'text-nq-positive-text'],
+                          ['Vendas', formatInteger(c.paid_orders), ''],
+                          ['ROAS', formatROAS(c.roas), ''],
+                          ['CAC', formatCAC(c.cac), ''],
+                          ['CPC', formatBRL(c.cpc), ''],
+                          ['Cliques (CTR)', `${formatInteger(c.clicks)} (${formatPercent(c.ctr)})`, ''],
+                          ['Impressões', formatInteger(c.impressions), ''],
+                          ['Visitas', formatInteger(c.offer_views), ''],
+                          ['Checkouts', formatInteger(c.checkout_started), '']
+                        ] as const).map(([k, v, cls]) => (
+                          <div key={k} className="min-w-0">
+                            <dt className="text-nq-caption text-nq-muted">{k}</dt>
+                            <dd className={`text-nq-body font-semibold tabular-nums ${cls || 'text-nq-text'}`}>{v}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full text-left text-xs whitespace-nowrap min-w-[1000px]">
-                <thead className="bg-slate-900/90 text-slate-400 font-mono border-b border-slate-800">
+                <thead className="bg-nq-surface text-nq-muted border-b border-nq-line">
                   <tr>
-                    <th className="p-3 sticky left-0 bg-slate-900 z-20 border-r border-slate-800 shadow-md">CRIATIVO</th>
-                    <th className="p-3">STATUS DE CONFIANÇA</th>
-                    <th className="p-3 text-right">INVESTIMENTO</th>
-                    <th className="p-3 text-right">IMPRESSÕES</th>
-                    <th className="p-3 text-right">CLIQUES</th>
+                    <th className="p-3 sticky left-0 bg-nq-surface z-20 border-r border-nq-line">Criativo</th>
+                    <th className="p-3">Confiança</th>
+                    <th className="p-3 text-right">Investimento</th>
+                    <th className="p-3 text-right">Impressões</th>
+                    <th className="p-3 text-right">Cliques</th>
                     <th className="p-3 text-right">CTR</th>
                     <th className="p-3 text-right">CPC</th>
-                    <th className="p-3 text-right">VISITAS</th>
-                    <th className="p-3 text-right">CHECKOUTS</th>
-                    <th className="p-3 text-right">VENDAS</th>
-                    <th className="p-3 text-right">RECEITA</th>
+                    <th className="p-3 text-right">Visitas</th>
+                    <th className="p-3 text-right">Checkouts</th>
+                    <th className="p-3 text-right">Vendas</th>
+                    <th className="p-3 text-right">Receita</th>
                     <th className="p-3 text-right">CAC</th>
                     <th className="p-3 text-right">ROAS</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-850">
+                <tbody className="divide-y divide-nq-line/60">
                   {creatives.map((c) => {
                     const badge = getConfidenceBadge(c.confidence);
                     const reasonText = getConfidenceReasonText(c.confidence_reason);
                     const shortName = getShortAdName(c.ad_name);
 
                     return (
-                      <tr key={c.ad_id} className="hover:bg-slate-800/30 transition">
+                      <tr key={c.ad_id} className="hover:bg-nq-raised transition">
                         {/* Col 1: Criativo (Sticky First Column) */}
-                        <td className="p-3 sticky left-0 bg-slate-900/95 z-10 border-r border-slate-800 shadow-md">
-                          <div className="font-bold text-slate-100" title={c.ad_name}>
+                        <td className="p-3 sticky left-0 bg-nq-surface z-10 border-r border-nq-line">
+                          <div className="font-bold text-nq-text" title={c.ad_name}>
                             {shortName}
                           </div>
-                          <div className="text-[10px] font-mono text-slate-500 truncate max-w-[140px] sm:max-w-[180px]" title={c.ad_id}>
+                          <div className="text-[12px] text-nq-subtle truncate max-w-[140px] sm:max-w-[180px]" title={c.ad_id}>
                             {c.ad_name}
                           </div>
                         </td>
@@ -476,65 +482,65 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
                         {/* Col 2: Status de Confiança */}
                         <td className="p-3">
                           <div className="flex items-center gap-1.5" title={reasonText}>
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${badge.badgeClass}`}>
+                            <span className={`px-2 py-0.5 rounded text-[12px] font-bold ${badge.badgeClass}`}>
                               {badge.label}
                             </span>
-                            <HelpCircle className="h-3 w-3 text-slate-500 cursor-help" />
+                            <HelpCircle className="h-3 w-3 text-nq-subtle cursor-help" />
                           </div>
                         </td>
 
                         {/* Col 3: Investimento */}
-                        <td className="p-3 text-right font-mono text-slate-200">
+                        <td className="p-3 text-right text-nq-text">
                           {formatBRL(c.spend)}
                         </td>
 
                         {/* Col 4: Impressões */}
-                        <td className="p-3 text-right font-mono text-slate-400">
+                        <td className="p-3 text-right text-nq-muted">
                           {formatInteger(c.impressions)}
                         </td>
 
                         {/* Col 5: Cliques */}
-                        <td className="p-3 text-right font-mono text-slate-300">
+                        <td className="p-3 text-right text-nq-text">
                           {formatInteger(c.clicks)}
                         </td>
 
                         {/* Col 6: CTR */}
-                        <td className="p-3 text-right font-mono text-slate-300">
+                        <td className="p-3 text-right text-nq-text">
                           {formatPercent(c.ctr)}
                         </td>
 
                         {/* Col 7: CPC */}
-                        <td className="p-3 text-right font-mono text-slate-300">
+                        <td className="p-3 text-right text-nq-text">
                           {formatBRL(c.cpc)}
                         </td>
 
                         {/* Col 8: Visitas / Oferta */}
-                        <td className="p-3 text-right font-mono text-slate-300">
+                        <td className="p-3 text-right text-nq-text">
                           {formatInteger(c.offer_views)}
                         </td>
 
                         {/* Col 9: Checkouts */}
-                        <td className="p-3 text-right font-mono text-slate-300">
+                        <td className="p-3 text-right text-nq-text">
                           {formatInteger(c.checkout_started)}
                         </td>
 
                         {/* Col 10: Vendas */}
-                        <td className="p-3 text-right font-mono font-bold text-slate-100">
+                        <td className="p-3 text-right font-bold text-nq-text">
                           {formatInteger(c.paid_orders)}
                         </td>
 
                         {/* Col 11: Receita */}
-                        <td className="p-3 text-right font-mono font-bold text-emerald-400">
+                        <td className="p-3 text-right font-bold text-nq-positive-text">
                           {formatBRL(c.gross_revenue)}
                         </td>
 
                         {/* Col 12: CAC (Strict null: "—") */}
-                        <td className="p-3 text-right font-mono text-slate-200">
+                        <td className="p-3 text-right text-nq-text">
                           {formatCAC(c.cac)}
                         </td>
 
                         {/* Col 13: ROAS */}
-                        <td className="p-3 text-right font-mono font-bold text-emerald-400">
+                        <td className="p-3 text-right font-bold text-nq-positive-text">
                           {formatROAS(c.roas)}
                         </td>
                       </tr>
@@ -543,31 +549,32 @@ export const CreativePerformanceView: React.FC<CreativePerformanceViewProps> = (
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
           {/* 4. UNATTRIBUTED REVENUE SECTION */}
           {unattributed && (
-            <div className="p-4 rounded-lg bg-slate-900/40 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="p-4 rounded-nq bg-nq-surface flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1">
-                <div className="text-xs font-mono font-bold uppercase text-slate-300 flex items-center gap-2">
-                  <Info className="h-4 w-4 text-slate-400" />
+                <div className="text-xs font-bold text-nq-text flex items-center gap-2">
+                  <Info className="h-4 w-4 text-nq-muted" />
                   Receita sem atribuição
                 </div>
-                <p className="text-xs text-slate-400 max-w-xl">
+                <p className="text-xs text-nq-muted max-w-xl">
                   Vendas confirmadas cuja origem não pôde ser associada deterministicamente a um anúncio.
                 </p>
               </div>
 
-              <div className="flex items-center gap-6 text-xs font-mono shrink-0">
+              <div className="flex items-center gap-6 text-xs shrink-0">
                 <div>
-                  <div className="text-[10px] text-slate-500 uppercase">Pedidos Não Atribuídos</div>
-                  <div className="text-base font-bold text-slate-200">
+                  <div className="text-[12px] text-nq-subtle">Pedidos não atribuídos</div>
+                  <div className="text-base font-bold text-nq-text">
                     {formatInteger(unattributed.unattributed_paid_orders)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-500 uppercase">Receita Não Atribuída</div>
-                  <div className="text-base font-bold text-emerald-400">
+                  <div className="text-[12px] text-nq-subtle">Receita não atribuída</div>
+                  <div className="text-base font-bold text-nq-positive-text">
                     {formatBRL(unattributed.unattributed_revenue)}
                   </div>
                 </div>

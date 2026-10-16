@@ -300,15 +300,14 @@ describe('DashboardView Component — Financial Intelligence & Executive Views',
 
     // Wait for financial dashboard to finish loading and render
     expect(await screen.findByText(/Integridade financeira/i)).toBeInTheDocument();
-    expect(screen.getByText(/^MODO REAL$/i)).toBeInTheDocument();
-    expect(screen.getByText(/Commerce: Pré-produção/i)).toBeInTheDocument();
+    expect(screen.getByText(/Finanças: Webhook Asaas/i)).toBeInTheDocument();
     
     // Verified Spend & Gross Revenue
     expect(screen.getAllByText(/304,44/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/0,00/).length).toBeGreaterThanOrEqual(1);
     
-    // Negative Results (R$ -304,44)
-    expect(screen.getAllByText(/-304,44/).length).toBeGreaterThanOrEqual(1);
+    // Negative Results (-R$ 304,44)  NORQVA-0086: formato brasileiro com o sinal antes do R$
+    expect(screen.getAllByText(/-R\$\s304,44/).length).toBeGreaterThanOrEqual(1);
 
     // Campaign list rendering
     expect(screen.getAllByText(/NORQVA \| EXP-2026-001 \| TRATTORIA \| SALES/i).length).toBeGreaterThanOrEqual(1);
