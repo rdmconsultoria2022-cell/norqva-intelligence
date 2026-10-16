@@ -57,7 +57,8 @@ import { GlobalPeriodProvider } from './lib/globalPeriod';
 import { CreativeFactoryView } from './features/creative-factory/CreativeFactoryView';
 
 // Screens whose numbers are filtered by the global period
-const PERIOD_AWARE_TABS = ['dashboard', 'campaigns', 'research', 'results', 'creative-factory', 'sales'];
+// NORQVA-0082: na Visão Geral o período fica na própria tela (botões logo abaixo da receita)
+const PERIOD_AWARE_TABS = ['campaigns', 'research', 'results', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 import { KitLandingPage } from './features/public/KitLandingPage';
 
@@ -710,6 +711,7 @@ export default function App() {
                 onAuthorizeCapital={() => {}}
                 refreshTrigger={dashboardRefreshTrigger}
                 onViewSales={() => setActiveTab('sales')}
+                onOpenTab={setActiveTab}
                 showError={showError}
                 showSuccess={showSuccess}
               />

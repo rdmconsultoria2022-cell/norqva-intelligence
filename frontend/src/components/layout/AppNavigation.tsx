@@ -19,7 +19,7 @@ function Badge({ n, id }: { n?: number; id: string }) {
     <span
       data-testid={id}
       title="Alertas abertos"
-      className="min-w-[1.1rem] px-1 py-px rounded-full bg-red-500 text-white text-[10px] font-bold leading-4 text-center"
+      className="min-w-[1.1rem] px-1 py-px rounded-full bg-nq-critical text-white text-[12px] font-semibold leading-4 text-center"
     >
       {n}
     </span>
@@ -62,7 +62,7 @@ export function AreaSubTabs({ groups, activeTab, setActiveTab, badges }: NavProp
   const group = groupOfTab(groups, activeTab);
   if (!group || group.items.length < 2) return null;
   return (
-    <nav aria-label={`Telas de ${group.label}`} data-testid="area-subtabs" className="md:hidden flex gap-2 px-3 py-2 overflow-x-auto no-scrollbar border-b border-slate-800 bg-slate-950 shrink-0">
+    <nav aria-label={`Telas de ${group.label}`} data-testid="area-subtabs" className="md:hidden flex gap-2 px-4 py-2.5 overflow-x-auto no-scrollbar border-b border-nq-line/50 bg-nq-bg shrink-0">
       {group.items.map(item => {
         const active = item.id === activeTab;
         return (
@@ -71,8 +71,8 @@ export function AreaSubTabs({ groups, activeTab, setActiveTab, badges }: NavProp
             type="button"
             onClick={() => setActiveTab(item.id)}
             aria-current={active ? 'page' : undefined}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition ${
-              active ? 'bg-slate-100 text-slate-900' : 'bg-slate-900 text-slate-400 border border-slate-800'
+            className={`flex items-center gap-1.5 h-9 px-4 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${
+              active ? 'bg-nq-text text-nq-bg' : 'bg-nq-surface text-nq-muted'
             }`}
           >
             {item.label}
@@ -91,7 +91,7 @@ export function AreaTabBar({ groups, activeTab, setActiveTab, badges }: NavProps
     <nav
       aria-label="Áreas"
       data-testid="area-tabbar"
-      className="md:hidden shrink-0 border-t border-slate-800 bg-slate-950 pb-[env(safe-area-inset-bottom)]"
+      className="md:hidden shrink-0 border-t border-nq-line/50 bg-nq-bg pb-[env(safe-area-inset-bottom)]"
     >
       <div className="flex">
         {groups.map(g => {
@@ -108,19 +108,20 @@ export function AreaTabBar({ groups, activeTab, setActiveTab, badges }: NavProps
               }}
               aria-current={active ? 'page' : undefined}
               aria-label={count > 0 ? `${g.label}, ${count} alerta(s)` : g.label}
-              className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-1 h-16 transition ${
-                active ? 'text-white' : 'text-slate-500'
+              className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-1 h-16 transition-colors ${
+                active ? 'text-nq-text' : 'text-nq-subtle'
               }`}
             >
+              {active && <span aria-hidden="true" className="absolute top-0 h-0.5 w-8 rounded-full bg-nq-positive" />}
               <span className="relative">
-                <Icon className="h-6 w-6" strokeWidth={active ? 2.2 : 1.6} />
+                <Icon className="h-6 w-6" strokeWidth={active ? 2 : 1.6} />
                 {count > 0 && (
-                  <span aria-hidden="true" className="absolute -top-1.5 -right-2.5 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-4 text-center">
+                  <span aria-hidden="true" className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] px-1 rounded-full bg-nq-critical text-white text-[12px] font-semibold leading-[18px] text-center">
                     {count}
                   </span>
                 )}
               </span>
-              <span className="text-[11px] leading-none truncate max-w-full px-1">{g.label}</span>
+              <span className={`text-[12px] leading-none tracking-[-0.01em] truncate max-w-full ${active ? 'font-medium' : ''}`}>{g.shortLabel || g.label}</span>
             </button>
           );
         })}

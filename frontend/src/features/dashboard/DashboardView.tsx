@@ -31,6 +31,7 @@ import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
 import { ExperimentGuardCard } from '../acquisition/ExperimentGuardCard';
 import { deliveryStatusLabel, accessEmailLabel } from '../../utils/deliveryStatusLabel';
+import { ExecutiveOverview } from './ExecutiveOverview';
 
 // NORQVA-0023: cores do rótulo de entrega e do e-mail de acesso
 const LABEL_TONE_CLASS: Record<string, string> = {
@@ -60,7 +61,14 @@ function numShort(value: number | null | undefined): string {
   return n.toLocaleString('pt-BR');
 }
 
-export function DashboardView({
+// NORQVA-0082 (protótipo): a Visão Geral passou para ExecutiveOverview (mesmos dados, nova apresentação).
+// O restante (aba Financeiro de Resultados e as sub-telas antigas) continua aqui sem mudança.
+export function DashboardView(props: DashboardProps) {
+  if (props.section === 'overview') return <ExecutiveOverview {...props} />;
+  return <LegacyDashboardView {...props} />;
+}
+
+function LegacyDashboardView({
   currentUser,
   isDemoView,
   experiments,

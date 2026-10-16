@@ -63,13 +63,13 @@ export function UserMenu({ user, onSignOut }: Props) {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-label={`Perfil: ${user.name}`}
-        className="flex items-center gap-2 min-w-0 max-w-full rounded-full pr-2 hover:bg-slate-800/60 transition"
+        className="flex items-center gap-2 min-w-0 max-w-full h-10 rounded-full pr-2 hover:bg-nq-surface transition"
       >
-        <span className="h-8 w-8 shrink-0 rounded-full bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center">
+        <span className="h-9 w-9 shrink-0 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold flex items-center justify-center">
           {initialsOf(user.name)}
         </span>
-        <span className="text-sm font-semibold text-slate-100 truncate max-w-[9rem] sm:max-w-[14rem]">{firstNameOf(user.name)}</span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className="hidden min-[380px]:inline text-[15px] font-medium text-nq-text truncate max-w-[7rem] sm:max-w-[14rem]">{firstNameOf(user.name)}</span>
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-nq-subtle transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (

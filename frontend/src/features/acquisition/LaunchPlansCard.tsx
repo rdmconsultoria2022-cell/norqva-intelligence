@@ -35,11 +35,11 @@ type Answer = 'YES' | 'NO';
 
 const brl = (n: number) => `R$ ${Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const isPlan = (p: any): p is LaunchPlan =>
+export const isPlan = (p: any): p is LaunchPlan =>
   !!p && typeof p.id === 'string' && !!p.spec?.campaign?.name && Array.isArray(p.spec?.adsets) && Array.isArray(p.spec?.ads);
 
 // Aguardando resposta, ou aprovado com ativação incompleta (responder Sim de novo retoma).
-const needsOperator = (p: LaunchPlan) => p.status === 'AWAITING_OPERATOR' || (p.status === 'APPROVED' && !!p.last_error);
+export const needsOperator = (p: LaunchPlan) => p.status === 'AWAITING_OPERATOR' || (p.status === 'APPROVED' && !!p.last_error);
 
 export const LaunchPlansCard: React.FC<{
   apiFetch: (url: string, options?: any, mode?: string, user?: any) => Promise<any>;
