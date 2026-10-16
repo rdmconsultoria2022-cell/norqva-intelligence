@@ -409,8 +409,8 @@ describe('Auth System Regression', () => {
           </MemoryRouter>
         );
 
-        expect(await screen.findByText('AUTH_MODE=demo')).toBeInTheDocument();
-        expect(await screen.findByText('AUTH_MODE=real')).toBeInTheDocument();
+        expect(await screen.findByText('Demonstração')).toBeInTheDocument();
+        expect(await screen.findByText('Conta real')).toBeInTheDocument();
         expect(await screen.findByText('Selecione uma Persona para Acesso Simulado (RBAC)')).toBeInTheDocument();
         expect(await screen.findByText('Admin User')).toBeInTheDocument();
       } finally {

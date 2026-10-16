@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MetaAdsView } from '../features/acquisition/MetaAdsView';
 import { aggregateMetrics } from '../features/acquisition/MetaResults';
-import { Sidebar } from '../components/layout/Sidebar';
+import { ScreenTabs } from '../components/layout/AppNavigation';
+import { visibleGroups } from '../components/layout/navigation';
 
 const admin = { id: 'u1', name: 'Admin', email: 'a@norqva.test', role: 'ADMIN' };
 
@@ -73,8 +74,8 @@ describe('NORQVA-0009 — Meta results & alerts', () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/alerts/al1/ack?mode=real', { method: 'POST' }, 'real', admin));
   });
 
-  it('sidebar shows the open alerts badge on Campanhas (NORQVA-0028)', () => {
-    render(<Sidebar currentUser={admin as any} activeTab="dashboard" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ campaigns: 2 }} />);
+  it('menu shows the open alerts badge on Campanhas (NORQVA-0028)', () => {
+    render(<ScreenTabs groups={visibleGroups('ADMIN')} activeTab="dashboard" setActiveTab={vi.fn()} badges={{ campaigns: 2 }} />);
     expect(screen.getByTestId('badge-campaigns')).toHaveTextContent('2');
   });
 });

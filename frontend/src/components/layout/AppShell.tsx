@@ -1,14 +1,30 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
-import { Sidebar, SidebarProps } from './Sidebar';
-import { Header, HeaderProps } from './Header';
+import { UserObj } from '../../types';
+import { Header } from './Header';
+import { AreaSubTabs, AreaTabBar } from './AppNavigation';
+import { visibleGroups } from './navigation';
+
+// NORQVA-0081: sem menu lateral. Menu fixo no topo (perfil, logo, período e, no computador, as telas);
+// no celular, as áreas ficam numa barra fixa embaixo. Só o conteúdo rola.
+
+export interface AppShellNav {
+  currentUser: UserObj;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  handleSignOut: () => void;
+  // NORQVA-0009/0028: contadores ao lado das telas (ex.: alertas abertos em "Campanhas")
+  badges?: Record<string, number>;
+}
 
 export interface AppShellProps {
   globalError: string | null;
   globalSuccess: string | null;
   isDemoView: boolean;
-  sidebarProps: SidebarProps;
-  headerProps: HeaderProps;
+  setIsDemoView: (isDemo: boolean) => void;
+  nav: AppShellNav;
+  /** NORQVA-0071: o período fica no topo, só nas telas em que ele filtra números. */
+  showPeriodFilter?: boolean;
   children: React.ReactNode;
 }
 
@@ -16,24 +32,21 @@ export function AppShell({
   globalError,
   globalSuccess,
   isDemoView,
-  sidebarProps,
-  headerProps,
+  setIsDemoView,
+  nav,
+  showPeriodFilter = false,
   children
 }: AppShellProps) {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const groups = visibleGroups(nav.currentUser?.role);
 
-  // NORQVA-0071: the shell has the screen height, so the top bar (menu + period) stays fixed and
-  // only the content scrolls. h-screen is the fallback where dvh is not supported.
+  // uma tela nova começa do topo
   const contentRef = useRef<HTMLElement>(null);
-  const activeTab = headerProps.activeTab;
   useEffect(() => {
-    // a new screen starts at the top
     if (contentRef.current) contentRef.current.scrollTop = 0;
-  }, [activeTab]);
+  }, [nav.activeTab]);
 
   return (
-    <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-slate-950 text-slate-100 flex font-sans w-full overflow-hidden">
-      {/* Global Toast Error & Success */}
+    <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-slate-950 text-slate-100 flex flex-col font-sans w-full overflow-hidden">
       {globalError && (
         <div className="fixed top-4 right-4 z-50 bg-red-950 border border-red-500 text-red-200 px-4 py-3 rounded-md shadow-lg flex items-center gap-2 max-w-md animate-bounce">
           <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" />
@@ -47,51 +60,32 @@ export function AppShell({
         </div>
       )}
 
-      {/* Desktop Sidebar Navigation (Hidden on mobile < md) */}
-      <div className="hidden md:flex md:w-64 shrink-0">
-        <Sidebar {...sidebarProps} />
-      </div>
-
-      {/* Mobile Drawer (Visible when isMobileMenuOpen is true on mobile) */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-          {/* Drawer Panel */}
-          <div className="relative flex flex-col w-64 max-w-xs h-full bg-slate-900 z-50 shadow-2xl border-r border-slate-800 animate-in slide-in-from-left duration-200">
-            <Sidebar
-              {...sidebarProps}
-              onNavigate={() => setIsMobileMenuOpen(false)}
-              onClose={() => setIsMobileMenuOpen(false)}
-            />
-          </div>
+      {isDemoView && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-1 text-center text-xs font-mono font-bold tracking-wider z-20 flex items-center justify-center gap-2 border-b border-amber-600 shrink-0">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-slate-950" />
+          AMBIENTE DEMO ATIVO: OPERANDO SOBRE DADOS DE DEMONSTRAÇÃO E ACESSO SIMULADO.
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
-        {isDemoView && (
-          <div className="bg-amber-500 text-slate-950 px-4 py-1 text-center text-xs font-mono font-bold tracking-wider z-20 flex items-center justify-center gap-2 border-b border-amber-600">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-slate-950" />
-            ⚠️ AMBIENTE DEMO ATIVO: OPERANDO SOBRE DADOS DE DEMONSTRAÇÃO E ACESSO SIMULADO.
-          </div>
-        )}
+      <Header
+        activeTab={nav.activeTab}
+        setActiveTab={nav.setActiveTab}
+        currentUser={nav.currentUser}
+        handleSignOut={nav.handleSignOut}
+        groups={groups}
+        badges={nav.badges}
+        isDemoView={isDemoView}
+        setIsDemoView={setIsDemoView}
+        showPeriodFilter={showPeriodFilter}
+      />
 
-        {/* Header controls with mobile hamburger integration */}
-        <Header
-          {...headerProps}
-          isMobileMenuOpen={isMobileMenuOpen}
-          onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        />
+      <AreaSubTabs groups={groups} activeTab={nav.activeTab} setActiveTab={nav.setActiveTab} badges={nav.badges} />
 
-        {/* Child Screen Contents */}
-        <section ref={contentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6 md:p-8 custom-scrollbar">
-          {children}
-        </section>
+      <main ref={contentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6 md:p-8 custom-scrollbar">
+        <div className="max-w-[1400px] mx-auto w-full">{children}</div>
       </main>
+
+      <AreaTabBar groups={groups} activeTab={nav.activeTab} setActiveTab={nav.setActiveTab} badges={nav.badges} />
     </div>
   );
 }

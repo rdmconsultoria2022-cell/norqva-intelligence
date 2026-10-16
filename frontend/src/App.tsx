@@ -675,23 +675,17 @@ export default function App() {
       globalError={globalError}
       globalSuccess={globalSuccess}
       isDemoView={isDemoView}
-      sidebarProps={{
+      setIsDemoView={setIsDemoView}
+      nav={{
         currentUser: currentUser!,
         activeTab,
         setActiveTab,
         handleSignOut,
         badges: { 'campaigns': openAlertsCount }
       }}
-      headerProps={{
-        activeTab,
-        isDemoView,
-        setIsDemoView,
-        authMode,
-        loadData,
-        // NORQVA-0004 + NORQVA-0071: one period for every screen, in the fixed top bar,
-        // shown only on the screens where it filters the numbers
-        showPeriodFilter: PERIOD_AWARE_TABS.includes(activeTab)
-      }}
+      // NORQVA-0004 + NORQVA-0071: one period for every screen, in the fixed top bar,
+      // shown only on the screens where it filters the numbers
+      showPeriodFilter={PERIOD_AWARE_TABS.includes(activeTab)}
     >
           {activeTab === 'dashboard' && (
             <div className="space-y-4">
@@ -1725,10 +1719,6 @@ function ConfigView({ isDemoView, currentUser, auditLogs, apiFetch, showError, s
         <div className="p-5 border border-slate-800 bg-slate-900/30 rounded space-y-4">
           <h3 className="font-bold text-xs uppercase tracking-wider text-slate-350">Status do Ambiente</h3>
           <div className="space-y-2 text-xs font-mono">
-            <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
-              <span className="text-slate-500">AUTH_MODE</span>
-              <span className="text-emerald-400 font-bold">demo</span>
-            </div>
             <div className="flex justify-between p-2 rounded bg-slate-950 border border-slate-850">
               <span className="text-slate-500">DATABASE_PROVIDER</span>
               <span className="text-slate-300">PostgreSQL</span>

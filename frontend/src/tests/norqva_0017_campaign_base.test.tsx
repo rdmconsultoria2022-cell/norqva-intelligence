@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CampaignBaseView } from '../features/intelligence/CampaignBaseView';
 import { GlobalPeriodProvider } from '../lib/globalPeriod';
-import { Sidebar } from '../components/layout/Sidebar';
+import { ScreenTabs } from '../components/layout/AppNavigation';
+import { visibleGroups } from '../components/layout/navigation';
 
 beforeEach(() => {
   try { window.localStorage.clear(); } catch { /* ignore */ }
@@ -76,8 +77,8 @@ describe('NORQVA-0017 — Base de campanhas', () => {
   });
 
   // NORQVA-0029: a Base fica dentro da tela Pesquisa
-  it('is in the sidebar (inside Pesquisa)', () => {
-    render(<Sidebar currentUser={{ id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any} activeTab="dashboard" setActiveTab={vi.fn()} handleSignOut={vi.fn()} />);
+  it('is in the menu (inside Pesquisa)', () => {
+    render(<ScreenTabs groups={visibleGroups('ADMIN')} activeTab="dashboard" setActiveTab={vi.fn()} />);
     expect(screen.getByText('Pesquisa')).toBeInTheDocument();
   });
 });
