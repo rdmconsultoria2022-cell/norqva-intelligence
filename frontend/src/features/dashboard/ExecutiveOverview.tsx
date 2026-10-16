@@ -22,6 +22,7 @@ import {
   multiple
 } from '../../components/ui/premium';
 import { previousPeriodOf, changePct, todayInSaoPaulo } from './previousPeriod';
+import { DailyChart, DailyPoint } from './DailyChart';
 import { DashboardProps } from './dashboardTypes';
 
 // NORQVA-0082 (protótipo): Visão Geral como painel executivo de leitura rápida.
@@ -169,10 +170,12 @@ export function ExecutiveOverview({
   // recalcula na virada do dia (a tela pode ficar aberta)
   const today = todayInSaoPaulo();
   const prev = useMemo(() => previousPeriodOf(globalPeriod), [periodQs, today]);
+  const prevQs = prev.query ? periodQuery(prev.query) : null;
 
   const [exec, setExec] = useState<any>(null);
   const [fin, setFin] = useState<any>(null);
   const [prevFin, setPrevFin] = useState<any>(null);
+  const [daily, setDaily] = useState<DailyPoint[] | null>(null);
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -191,17 +194,19 @@ export function ExecutiveOverview({
     setLoading(true);
     setFailed(false);
     const opts = { signal: c.signal };
-    const prevQs = prev.query ? periodQuery(prev.query) : null;
     Promise.all([
       apiFetch(`/executive/dashboard?mode=${mode}&${periodQs}`, opts),
       apiFetch(`/financial/dashboard?mode=${mode}&${periodQs}`, opts),
-      prevQs ? apiFetch(`/financial/dashboard?mode=${mode}&${prevQs}`, opts).catch(() => null) : Promise.resolve(null)
+      prevQs ? apiFetch(`/financial/dashboard?mode=${mode}&${prevQs}`, opts).catch(() => null) : Promise.resolve(null),
+      // série por dia (D-0082): se falhar, a tela segue sem o gráfico
+      apiFetch(`/executive/daily?mode=${mode}&${periodQs}`, opts).catch(() => null)
     ])
-      .then(([e, f, pf]) => {
+      .then(([e, f, pf, dd]) => {
         if (c.signal.aborted) return;
         setExec(e);
         setFin(f);
         setPrevFin(pf);
+        setDaily(Array.isArray(dd?.days) ? dd.days : null);
       })
       .catch(err => {
         if (isAbort(err) || c.signal.aborted) return;
@@ -212,13 +217,14 @@ export function ExecutiveOverview({
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [mode, periodQs, refreshTrigger, reload, apiFetch]);
+  }, [mode, periodQs, prevQs, refreshTrigger, reload, apiFetch]);
 
   // período ou modo novo: some com os números antigos até chegarem os novos
   useEffect(() => {
     setExec(null);
     setFin(null);
     setPrevFin(null);
+    setDaily(null);
   }, [mode, periodQs]);
 
   // Planos de campanha (aprovação e teto): mesma rota e mesma regra dos cartões originais, só ADMIN.
@@ -266,6 +272,7 @@ export function ExecutiveOverview({
         return {
           id: c.id,
           name: c.name,
+          productName: f?.productName ? String(f.productName) : null,
           metaId: c.meta_campaign_id,
           raw,
           statusLabel: sentence(getMetaDeliveryStatus(c.effective_status, c.status).label),
@@ -279,6 +286,10 @@ export function ExecutiveOverview({
       })
       .sort((a, b) => (a.raw === 'ACTIVE' ? 0 : 1) - (b.raw === 'ACTIVE' ? 0 : 1) || (b.spend ?? 0) - (a.spend ?? 0));
   }, [meta, fin]);
+  // mais de uma campanha do mesmo produto: mostra também o nome da Meta, para distinguir
+  const repeatedProducts = new Set(
+    campaigns.map(c => c.productName).filter((n, i, all): n is string => !!n && all.indexOf(n) !== i)
+  );
 
   const recent: any[] = Array.isArray(exec?.recentOrders) ? exec.recentOrders : [];
   const metaSync = timeOnly(meta?.lastSync);
@@ -419,6 +430,11 @@ export function ExecutiveOverview({
 
   const performance = (
     <Section title="Desempenho" testId="overview-performance">
+      {daily && daily.length >= 2 && (
+        <Surface className="p-4">
+          <DailyChart days={daily} />
+        </Surface>
+      )}
       <Surface className="p-4 space-y-5">
         {s && ps ? (
           <>
@@ -571,7 +587,13 @@ export function ExecutiveOverview({
               <div key={c.id} data-testid="overview-campaign">
                 <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-nq-body text-nq-text break-all" title={c.name}>{c.name}</div>
+                    {/* D-0082: o nome do produto ligado à campanha; o nome da Meta fica nos detalhes */}
+                    <div className={`text-nq-body text-nq-text ${c.productName ? 'break-words' : 'break-all'}`} data-testid="overview-campaign-name">
+                      {c.productName || c.name}
+                    </div>
+                    {c.productName && repeatedProducts.has(c.productName) && (
+                      <div className="text-nq-caption text-nq-subtle break-all">{c.name}</div>
+                    )}
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                       <StatusPill tone={c.tone}>{c.statusLabel}</StatusPill>
                       {losing && <StatusPill tone="attention">Receita abaixo do investimento</StatusPill>}
@@ -589,6 +611,8 @@ export function ExecutiveOverview({
                 </div>
                 <Disclosure summary="Detalhes técnicos" className="-mt-1">
                   <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-nq-caption">
+                    <dt className="text-nq-muted">Campanha na Meta</dt>
+                    <dd className="font-mono text-nq-text break-all">{c.name}</dd>
                     <dt className="text-nq-muted">ID na Meta</dt>
                     <dd className="font-mono text-nq-text break-all">{c.metaId}</dd>
                     <dt className="text-nq-muted">Situação na Meta</dt>
