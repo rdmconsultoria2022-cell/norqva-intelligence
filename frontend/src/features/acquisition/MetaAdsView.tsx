@@ -17,6 +17,7 @@ import {
   PerfItem
 } from './MetaResults';
 import { LaunchPlansCard } from './LaunchPlansCard';
+import { useIsMobile, StatusPill, Tone, brl as brlFmt, int as intFmt, multiple } from '../../components/ui/premium';
 import { ExperimentGuardCard } from './ExperimentGuardCard';
 import { 
   TrendingUp, 
@@ -57,62 +58,62 @@ export function getMetaDeliveryStatus(effectiveStatus?: string | null, configure
     case 'ACTIVE':
       return {
         label: 'VEICULANDO',
-        badgeClass: 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+        badgeClass: 'bg-nq-positive/10 text-nq-positive-text border border-nq-positive/40'
       };
     case 'PENDING_START_TIME':
       return {
         label: 'PROGRAMADO',
-        badgeClass: 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+        badgeClass: 'bg-nq-attention/10 text-nq-attention border border-nq-attention/40'
       };
     case 'IN_PROCESS':
       return {
         label: 'EM PROCESSAMENTO',
-        badgeClass: 'bg-amber-950/40 text-amber-400 border border-amber-500/20'
+        badgeClass: 'bg-nq-attention/10 text-nq-attention border border-nq-attention/40'
       };
     case 'WITH_ISSUES':
       return {
         label: 'COM PROBLEMAS',
-        badgeClass: 'bg-orange-950/60 text-orange-400 border border-orange-500/30'
+        badgeClass: 'bg-nq-attention/10 text-nq-attention border border-nq-attention/40'
       };
     case 'PAUSED':
       return {
         label: 'PAUSADO',
-        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+        badgeClass: 'bg-nq-raised text-nq-muted border border-nq-line'
       };
     case 'CAMPAIGN_PAUSED':
       return {
         label: 'PAUSADO P/ CAMPANHA',
-        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+        badgeClass: 'bg-nq-raised text-nq-muted border border-nq-line'
       };
     case 'ADSET_PAUSED':
       return {
         label: 'PAUSADO P/ CONJUNTO',
-        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+        badgeClass: 'bg-nq-raised text-nq-muted border border-nq-line'
       };
     case 'DISAPPROVED':
       return {
         label: 'REJEITADO',
-        badgeClass: 'bg-rose-950/60 text-rose-400 border border-rose-500/30'
+        badgeClass: 'bg-nq-critical/10 text-nq-critical-text border border-nq-critical/40'
       };
     case 'ARCHIVED':
       return {
         label: 'ARQUIVADO',
-        badgeClass: 'bg-slate-900 text-slate-500 border border-slate-800'
+        badgeClass: 'bg-nq-surface text-nq-subtle border border-nq-line'
       };
     case 'DELETED':
       return {
         label: 'EXCLUÍDO',
-        badgeClass: 'bg-slate-900 text-slate-500 border border-slate-800'
+        badgeClass: 'bg-nq-surface text-nq-subtle border border-nq-line'
       };
     case 'COMPLETED':
       return {
         label: 'CONCLUÍDO',
-        badgeClass: 'bg-slate-800 text-emerald-400/80 border border-slate-700'
+        badgeClass: 'bg-nq-raised text-nq-positive-text border border-nq-line'
       };
     default:
       return {
         label: raw || 'DESCONHECIDO',
-        badgeClass: 'bg-slate-800 text-slate-400 border border-slate-700'
+        badgeClass: 'bg-nq-raised text-nq-muted border border-nq-line'
       };
   }
 }
@@ -127,6 +128,8 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
   const scoped = !!scopeCampaignId;
+  // NORQVA-0083: no celular, as tabelas largas viram lista (só um dos dois layouts é desenhado)
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'campaigns' | 'adsets' | 'ads' | 'insights'>('campaigns');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -180,11 +183,11 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
     return (
       <div className="flex flex-col gap-0.5 items-start" title={tooltip}>
-        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${deliveryStatus.badgeClass}`}>
+        <span className={`px-2 py-0.5 rounded text-[12px] font-bold ${deliveryStatus.badgeClass}`}>
           {deliveryStatus.label}
         </span>
         {item.status && item.effective_status && item.status !== item.effective_status && (
-          <span className="text-[9px] font-mono text-slate-500">
+          <span className="text-[12px] text-nq-subtle">
             Admin: {item.status}
           </span>
         )}
@@ -280,6 +283,146 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const avgCpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
   const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
 
+  // ---- NORQVA-0083: lista para celular (mesmos dados, filtros, ordem e ações das tabelas) ----
+  const statusTone = (raw?: string): Tone => {
+    const v = String(raw || '').toUpperCase();
+    if (v === 'ACTIVE') return 'positive';
+    if (['DISAPPROVED', 'WITH_ISSUES'].includes(v)) return 'critical';
+    if (['PENDING_START_TIME', 'IN_PROCESS', 'PENDING_REVIEW'].includes(v)) return 'attention';
+    return 'neutral';
+  };
+  const sentenceCase = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t);
+  const mobileItem = (opts: {
+    key: string;
+    title: React.ReactNode;
+    subtitle?: React.ReactNode;
+    item: { status?: string; effective_status?: string };
+    budget?: string | null;
+    m: ReturnType<typeof aggregateMetrics>;
+    actions?: React.ReactNode;
+    extra?: React.ReactNode;
+  }) => (
+    <div key={opts.key} className="px-4 py-4 space-y-3" data-testid="meta-mobile-row">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[15px] leading-[22px] text-nq-text break-all">{opts.title}</div>
+          {opts.subtitle && <div className="text-[12px] leading-4 text-nq-subtle break-all mt-0.5">{opts.subtitle}</div>}
+        </div>
+        <div className="text-right shrink-0">
+          <div className={`text-[15px] font-semibold tabular-nums ${opts.m.roas === null ? 'text-nq-muted' : opts.m.roas >= 1 ? 'text-nq-positive-text' : 'text-nq-critical-text'}`}>{multiple(opts.m.roas)}</div>
+          <div className="text-[12px] text-nq-muted">ROAS</div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <StatusPill tone={statusTone(opts.item.effective_status || opts.item.status)}>
+          {sentenceCase(getMetaDeliveryStatus(opts.item.effective_status, opts.item.status).label)}
+        </StatusPill>
+        {opts.budget && <span className="text-[12px] text-nq-muted tabular-nums">{opts.budget}/dia</span>}
+        {opts.extra}
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-[12px] leading-4">
+        <div className="min-w-0"><div className="text-nq-muted">Investido</div><div className="mt-0.5 text-nq-text tabular-nums truncate">{brlFmt(opts.m.spend)}</div></div>
+        <div className="min-w-0"><div className="text-nq-muted">Vendas</div><div className="mt-0.5 text-nq-text tabular-nums">{intFmt(opts.m.sales)}</div></div>
+        <div className="min-w-0"><div className="text-nq-muted">CPA</div><div className="mt-0.5 text-nq-text tabular-nums truncate">{brlFmt(opts.m.cpa)}</div></div>
+        <div className="min-w-0"><div className="text-nq-muted">Cliques</div><div className="mt-0.5 text-nq-text tabular-nums">{intFmt(opts.m.linkClicks)}</div></div>
+      </div>
+      {opts.actions}
+    </div>
+  );
+  const mobileList = (rows: React.ReactNode[], empty: string) => (
+    <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70" data-testid="meta-mobile-list">
+      {rows.length === 0 ? <div className="p-6 text-center text-[13px] text-nq-muted">{empty}</div> : rows}
+    </div>
+  );
+  const adsOfFilter = (a: any) => {
+    if (adsetFilter) return String(a.adset_id) === String(adsetFilter.id);
+    if (campaignFilter) {
+      const setIds = new Set(adSets.filter(s => String(s.campaign_id) === String(campaignFilter.id)).map(s => String(s.id)));
+      return setIds.has(String(a.adset_id));
+    }
+    return true;
+  };
+  const money2 = (v: any) => (v ? `R$ ${parseFloat(v).toFixed(2).replace('.', ',')}` : null);
+  const mobileCampaigns = mobileList(
+    [...campaigns]
+      .map(c => ({ c, m: metricsFor(p => String(p.campaign_id) === String(c.meta_campaign_id)) }))
+      .sort((x, y) => y.m.spend - x.m.spend)
+      .map(({ c, m }) =>
+        mobileItem({
+          key: String(c.id),
+          title: (
+            <button onClick={() => { setCampaignFilter(c); setAdsetFilter(null); setActiveTab('adsets'); }} className="text-left underline-offset-2 hover:underline">
+              {c.name}
+            </button>
+          ),
+          item: c,
+          budget: money2(c.daily_budget),
+          m,
+          actions: isAdmin ? (
+            <MetaControlActions
+              status={control.status}
+              onRequest={setPendingControl}
+              target={{ entityType: 'campaign', id: c.meta_campaign_id, name: c.name, status: c.status, dailyBudget: toBudget(c.daily_budget) }}
+            />
+          ) : null
+        })
+      ),
+    'Nenhuma campanha sincronizada.'
+  );
+  const mobileAdsets = mobileList(
+    adSets
+      .filter(s => !campaignFilter || String(s.campaign_id) === String(campaignFilter.id))
+      .map(s => ({ s, m: metricsFor(p => String(p.adset_id) === String(s.meta_adset_id)) }))
+      .sort((x, y) => y.m.spend - x.m.spend)
+      .map(({ s, m }) =>
+        mobileItem({
+          key: String(s.id),
+          title: (
+            <button onClick={() => { setAdsetFilter(s); setActiveTab('ads'); }} className="text-left underline-offset-2 hover:underline">
+              {s.name}
+            </button>
+          ),
+          subtitle: s.campaign_name || null,
+          item: s,
+          budget: money2(s.daily_budget),
+          m,
+          actions: isAdmin ? (
+            <MetaControlActions
+              status={control.status}
+              onRequest={setPendingControl}
+              target={{ entityType: 'adset', id: s.meta_adset_id, name: s.name, status: s.status, dailyBudget: toBudget(s.daily_budget) }}
+            />
+          ) : null
+        })
+      ),
+    'Nenhum conjunto de anúncios sincronizado.'
+  );
+  const mobileAds = mobileList(
+    ads
+      .filter(adsOfFilter)
+      .map(a => ({ a, m: metricsFor(p => String(p.ad_id) === String(a.meta_ad_id)) }))
+      .sort((x, y) => y.m.spend - x.m.spend)
+      .map(({ a, m }) => {
+        const alert = openAlertByAd.get(String(a.meta_ad_id));
+        return mobileItem({
+          key: String(a.id),
+          title: a.name,
+          subtitle: a.adset_name || null,
+          item: a,
+          m,
+          extra: alert ? <span className="text-[12px] font-semibold text-nq-critical-text" data-testid="ad-alert-badge">Pausar recomendado</span> : null,
+          actions: isAdmin ? (
+            <MetaControlActions
+              status={control.status}
+              onRequest={setPendingControl}
+              target={{ entityType: 'ad', id: a.meta_ad_id, name: a.name, status: a.status }}
+            />
+          ) : null
+        });
+      }),
+    'Nenhum anúncio sincronizado.'
+  );
+
   return (
     <div className="space-y-6 text-sm">
       {/* Header & Controls */}
@@ -287,16 +430,16 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono uppercase">
+            <h2 className="text-lg font-bold tracking-tight text-nq-text">
               Aquisição — Meta Ads
             </h2>
             {status?.apiVersion && (
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950 text-blue-400 border border-blue-500/30">
+              <span className="px-2 py-0.5 rounded text-[12px] font-bold bg-nq-info/10 text-nq-info border border-nq-info/40">
                 Graph API {status.apiVersion}
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-nq-muted">
             Resultados por campanha, conjunto e anúncio no período: gasto da Meta + visitas, checkouts e vendas do NORQVA
           </p>
         </div>
@@ -306,7 +449,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 text-slate-950 font-bold rounded-md hover:bg-emerald-400 disabled:opacity-50 transition font-mono text-xs shadow-md shadow-emerald-500/10"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-nq-positive text-nq-on-positive font-bold rounded-md hover:brightness-110 disabled:opacity-50 transition text-xs"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Sincronizando...' : 'Sincronizar Agora'}
@@ -325,8 +468,8 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
       {isAdmin && control.status ? (
         <MetaControlBanner status={control.status} onRecheck={() => control.refresh(true)} />
       ) : (
-        <div className="p-3.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-center gap-2.5">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+        <div className="p-4 rounded-2xl bg-nq-attention/10 text-nq-attention text-[13px] leading-[18px] flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-nq-attention" />
           <span>
             <strong>Dados de mídia em modo somente leitura.</strong> Atribuição de vendas ainda não certificada (Phase A - Read-Only Ingestion).
           </span>
@@ -363,95 +506,61 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
       {perf.length > 0 && <ResultsSummary m={aggregateMetrics(perf)} />}
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <div className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
-            <DollarSign className="h-3 w-3 text-emerald-400" /> Investimento
+      {/* Summary KPI Cards (NORQVA-0083: uma superfície só, sem bordas) */}
+      <div className="rounded-2xl bg-nq-surface p-4 grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-5" data-testid="meta-kpis">
+        {[
+          ['Investimento', `R$ ${totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
+          ['Impressões', totalImpressions.toLocaleString('pt-BR')],
+          ['Cliques', totalClicks.toLocaleString('pt-BR')],
+          ['CPC Médio', `R$ ${avgCpc.toFixed(2).replace('.', ',')}`],
+          ['CPM Médio', `R$ ${avgCpm.toFixed(2).replace('.', ',')}`],
+          ['CTR Médio', `${avgCtr.toFixed(2).replace('.', ',')}%`]
+        ].map(([k, v]) => (
+          <div key={k} className="min-w-0">
+            <div className="text-[13px] text-nq-muted">{k}</div>
+            <div className="mt-1 text-[17px] leading-6 font-semibold text-nq-text tabular-nums truncate">{v}</div>
           </div>
-          <div className="text-base font-bold text-slate-100 font-mono">
-            R$ {totalSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
-            <Eye className="h-3 w-3 text-blue-400" /> Impressões
-          </div>
-          <div className="text-base font-bold text-slate-100 font-mono">
-            {totalImpressions.toLocaleString('pt-BR')}
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
-            <MousePointer className="h-3 w-3 text-cyan-400" /> Cliques
-          </div>
-          <div className="text-base font-bold text-slate-100 font-mono">
-            {totalClicks.toLocaleString('pt-BR')}
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase">CPC Médio</div>
-          <div className="text-base font-bold text-slate-100 font-mono">
-            R$ {avgCpc.toFixed(2)}
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase">CPM Médio</div>
-          <div className="text-base font-bold text-slate-100 font-mono">
-            R$ {avgCpm.toFixed(2)}
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase">CTR Médio</div>
-          <div className="text-base font-bold text-emerald-400 font-mono">
-            {avgCtr.toFixed(2)}%
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Sub-Tabs Navigation */}
-      <div className="flex border-b border-slate-800 gap-2">
+      <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-2 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('campaigns')}
-          className={`px-4 py-2.5 font-mono text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+          className={`shrink-0 h-10 px-4 rounded-full text-[13px] font-medium transition-colors flex items-center gap-2 ${
             activeTab === 'campaigns'
-              ? 'border-emerald-400 text-emerald-400 bg-slate-900/30'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-nq-text text-nq-bg'
+              : 'bg-nq-surface text-nq-muted hover:text-nq-text'
           }`}
         >
           <Layers className="h-4 w-4" /> Campanhas ({campaigns.length})
         </button>
         <button
           onClick={() => setActiveTab('adsets')}
-          className={`px-4 py-2.5 font-mono text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+          className={`shrink-0 h-10 px-4 rounded-full text-[13px] font-medium transition-colors flex items-center gap-2 ${
             activeTab === 'adsets'
-              ? 'border-emerald-400 text-emerald-400 bg-slate-900/30'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-nq-text text-nq-bg'
+              : 'bg-nq-surface text-nq-muted hover:text-nq-text'
           }`}
         >
           <Target className="h-4 w-4" /> Conjuntos ({adSets.length})
         </button>
         <button
           onClick={() => setActiveTab('ads')}
-          className={`px-4 py-2.5 font-mono text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+          className={`shrink-0 h-10 px-4 rounded-full text-[13px] font-medium transition-colors flex items-center gap-2 ${
             activeTab === 'ads'
-              ? 'border-emerald-400 text-emerald-400 bg-slate-900/30'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-nq-text text-nq-bg'
+              : 'bg-nq-surface text-nq-muted hover:text-nq-text'
           }`}
         >
           <Sparkles className="h-4 w-4" /> Anúncios ({ads.length})
         </button>
         <button
           onClick={() => setActiveTab('insights')}
-          className={`px-4 py-2.5 font-mono text-xs font-bold border-b-2 transition flex items-center gap-2 ${
+          className={`shrink-0 h-10 px-4 rounded-full text-[13px] font-medium transition-colors flex items-center gap-2 ${
             activeTab === 'insights'
-              ? 'border-emerald-400 text-emerald-400 bg-slate-900/30'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'bg-nq-text text-nq-bg'
+              : 'bg-nq-surface text-nq-muted hover:text-nq-text'
           }`}
         >
           <BarChart3 className="h-4 w-4" /> Insights Históricos ({insights.length})
@@ -460,21 +569,21 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
       {/* Content Area */}
       {loading ? (
-        <div className="p-12 text-center text-slate-500 font-mono text-xs">
+        <div className="p-12 text-center text-nq-subtle text-xs">
           Carregando dados da Meta Marketing API...
         </div>
       ) : (
         <div className="space-y-4">
           {(campaignFilter || adsetFilter) && activeTab !== 'campaigns' && activeTab !== 'insights' && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono" data-testid="drill-filter">
-              <span className="text-slate-500">Filtrando:</span>
+            <div className="flex flex-wrap items-center gap-2 text-[13px]" data-testid="drill-filter">
+              <span className="text-nq-subtle">Filtrando:</span>
               {campaignFilter && (
-                <button onClick={() => { setCampaignFilter(null); setAdsetFilter(null); }} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
+                <button onClick={() => { setCampaignFilter(null); setAdsetFilter(null); }} className="px-2 py-0.5 rounded bg-nq-raised text-nq-text">
                   {campaignFilter.name} ✕
                 </button>
               )}
               {adsetFilter && activeTab === 'ads' && (
-                <button onClick={() => setAdsetFilter(null)} className="px-2 py-0.5 rounded bg-slate-800 text-slate-200">
+                <button onClick={() => setAdsetFilter(null)} className="px-2 py-0.5 rounded bg-nq-raised text-nq-text">
                   {adsetFilter.name} ✕
                 </button>
               )}
@@ -482,15 +591,16 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           )}
 
           {/* TAB 1: CAMPAIGNS */}
-          {activeTab === 'campaigns' && (
-            <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/20">
+          {activeTab === 'campaigns' && isMobile && mobileCampaigns}
+          {activeTab === 'campaigns' && !isMobile && (
+            <div className="rounded-lg border border-nq-line overflow-x-auto bg-nq-surface">
               {campaigns.length === 0 ? (
-                <div className="p-12 text-center text-slate-500 font-mono text-xs">
+                <div className="p-12 text-center text-nq-subtle text-xs">
                   Nenhuma campanha sincronizada. Clique em "Sincronizar Agora" para ingerir da Meta.
                 </div>
               ) : (
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
+                  <thead className="bg-nq-surface text-nq-muted border-b border-nq-line">
                     <tr>
                       <th className="p-3">Campanha</th>
                       <th className="p-3">Status</th>
@@ -499,24 +609,24 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       {isAdmin && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850">
+                  <tbody className="divide-y divide-nq-line/60">
                     {[...campaigns]
                       .map((c) => ({ c, m: metricsFor(p => String(p.campaign_id) === String(c.meta_campaign_id)) }))
                       .sort((x, y) => y.m.spend - x.m.spend)
                       .map(({ c, m }) => (
-                      <tr key={c.id} className="hover:bg-slate-800/30 transition">
+                      <tr key={c.id} className="hover:bg-nq-raised transition">
                         <td className="p-3">
                           <button
                             onClick={() => { setCampaignFilter(c); setAdsetFilter(null); setActiveTab('adsets'); }}
-                            className="font-bold text-slate-200 hover:text-emerald-400 text-left underline-offset-2 hover:underline"
+                            className="font-bold text-nq-text hover:text-nq-positive-text text-left underline-offset-2 hover:underline"
                             title="Ver conjuntos desta campanha"
                           >
                             {c.name}
                           </button>
-                          <div className="font-mono text-slate-500 text-[10px]">{c.meta_campaign_id}</div>
+                          <div className="text-nq-subtle text-[12px]">{c.meta_campaign_id}</div>
                         </td>
                         <td className="p-3">{renderStatusBadge(c)}</td>
-                        <td className="p-3 font-mono text-slate-200 whitespace-nowrap">
+                        <td className="p-3 text-nq-text whitespace-nowrap">
                           {c.daily_budget ? `R$ ${parseFloat(c.daily_budget).toFixed(2)}` : '—'}
                         </td>
                         <MetricCells m={m} />
@@ -538,15 +648,16 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           )}
 
           {/* TAB 2: ADSETS */}
-          {activeTab === 'adsets' && (
-            <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/20">
+          {activeTab === 'adsets' && isMobile && mobileAdsets}
+          {activeTab === 'adsets' && !isMobile && (
+            <div className="rounded-lg border border-nq-line overflow-x-auto bg-nq-surface">
               {adSets.length === 0 ? (
-                <div className="p-12 text-center text-slate-500 font-mono text-xs">
+                <div className="p-12 text-center text-nq-subtle text-xs">
                   Nenhum conjunto de anúncios sincronizado.
                 </div>
               ) : (
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
+                  <thead className="bg-nq-surface text-nq-muted border-b border-nq-line">
                     <tr>
                       <th className="p-3">Conjunto</th>
                       <th className="p-3">Status</th>
@@ -555,25 +666,25 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       {isAdmin && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850">
+                  <tbody className="divide-y divide-nq-line/60">
                     {adSets
                       .filter((s) => !campaignFilter || String(s.campaign_id) === String(campaignFilter.id))
                       .map((s) => ({ s, m: metricsFor(p => String(p.adset_id) === String(s.meta_adset_id)) }))
                       .sort((x, y) => y.m.spend - x.m.spend)
                       .map(({ s, m }) => (
-                      <tr key={s.id} className="hover:bg-slate-800/30 transition">
+                      <tr key={s.id} className="hover:bg-nq-raised transition">
                         <td className="p-3">
                           <button
                             onClick={() => { setAdsetFilter(s); setActiveTab('ads'); }}
-                            className="font-bold text-slate-200 hover:text-emerald-400 text-left underline-offset-2 hover:underline"
+                            className="font-bold text-nq-text hover:text-nq-positive-text text-left underline-offset-2 hover:underline"
                             title="Ver anúncios deste conjunto"
                           >
                             {s.name}
                           </button>
-                          <div className="text-slate-500 text-[10px]">{s.campaign_name || '—'}</div>
+                          <div className="text-nq-subtle text-[12px]">{s.campaign_name || '—'}</div>
                         </td>
                         <td className="p-3">{renderStatusBadge(s)}</td>
-                        <td className="p-3 font-mono text-slate-200 whitespace-nowrap">
+                        <td className="p-3 text-nq-text whitespace-nowrap">
                           {s.daily_budget ? `R$ ${parseFloat(s.daily_budget).toFixed(2)}` : '—'}
                         </td>
                         <MetricCells m={m} />
@@ -595,15 +706,16 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           )}
 
           {/* TAB 3: ADS */}
-          {activeTab === 'ads' && (
-            <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/20">
+          {activeTab === 'ads' && isMobile && mobileAds}
+          {activeTab === 'ads' && !isMobile && (
+            <div className="rounded-lg border border-nq-line overflow-x-auto bg-nq-surface">
               {ads.length === 0 ? (
-                <div className="p-12 text-center text-slate-500 font-mono text-xs">
+                <div className="p-12 text-center text-nq-subtle text-xs">
                   Nenhum anúncio sincronizado.
                 </div>
               ) : (
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
+                  <thead className="bg-nq-surface text-nq-muted border-b border-nq-line">
                     <tr>
                       <th className="p-3">Anúncio</th>
                       <th className="p-3">Status</th>
@@ -611,7 +723,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       {isAdmin && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850">
+                  <tbody className="divide-y divide-nq-line/60">
                     {ads
                       .filter((a) => {
                         if (adsetFilter) return String(a.adset_id) === String(adsetFilter.id);
@@ -626,12 +738,12 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       .map(({ a, m }) => {
                         const alert = openAlertByAd.get(String(a.meta_ad_id));
                         return (
-                      <tr key={a.id} className={`hover:bg-slate-800/30 transition ${alert ? 'bg-red-950/20' : ''}`}>
+                      <tr key={a.id} className={`hover:bg-nq-raised transition ${alert ? 'bg-nq-critical/10' : ''}`}>
                         <td className="p-3">
-                          <div className="font-bold text-slate-200">{a.name}</div>
-                          <div className="text-slate-500 text-[10px]">{a.adset_name || '—'}</div>
+                          <div className="font-bold text-nq-text">{a.name}</div>
+                          <div className="text-nq-subtle text-[12px]">{a.adset_name || '—'}</div>
                           {alert && (
-                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px] font-bold" data-testid="ad-alert-badge">
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-nq-critical/20 text-nq-critical-text text-[12px] font-bold" data-testid="ad-alert-badge">
                               Pausar recomendado
                             </span>
                           )}
@@ -658,14 +770,14 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
 
           {/* TAB 4: INSIGHTS */}
           {activeTab === 'insights' && (
-            <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/20">
+            <div className="rounded-lg border border-nq-line overflow-hidden bg-nq-surface">
               {insights.length === 0 ? (
-                <div className="p-12 text-center text-slate-500 font-mono text-xs">
+                <div className="p-12 text-center text-nq-subtle text-xs">
                   Nenhum insight histórico gravado.
                 </div>
               ) : (
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/70 text-slate-400 font-mono border-b border-slate-800">
+                  <thead className="bg-nq-surface text-nq-muted border-b border-nq-line">
                     <tr>
                       <th className="p-3.5">Nível / Entidade</th>
                       <th className="p-3.5">Período</th>
@@ -676,29 +788,29 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3.5">CTR</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850">
+                  <tbody className="divide-y divide-nq-line/60">
                     {insights.map((ins) => (
-                      <tr key={ins.id} className="hover:bg-slate-800/30 transition">
+                      <tr key={ins.id} className="hover:bg-nq-raised transition">
                         <td className="p-3.5">
-                          <div className="font-bold text-slate-200">{ins.campaign_name || ins.entity_meta_id}</div>
-                          <div className="text-[10px] font-mono text-slate-500 uppercase">{ins.entity_level}</div>
+                          <div className="font-bold text-nq-text">{ins.campaign_name || ins.entity_meta_id}</div>
+                          <div className="text-[12px] text-nq-subtle">{ins.entity_level}</div>
                         </td>
-                        <td className="p-3.5 font-mono text-slate-400 text-[11px]">
+                        <td className="p-3.5 text-nq-muted text-[12px]">
                           {ins.date_start} → {ins.date_stop}
                         </td>
-                        <td className="p-3.5 font-mono font-bold text-emerald-400">
+                        <td className="p-3.5 font-bold text-nq-positive-text">
                           R$ {parseFloat(ins.spend).toFixed(2)}
                         </td>
-                        <td className="p-3.5 font-mono text-slate-300">
+                        <td className="p-3.5 text-nq-text">
                           {parseInt(ins.impressions, 10).toLocaleString('pt-BR')}
                         </td>
-                        <td className="p-3.5 font-mono text-slate-300">
+                        <td className="p-3.5 text-nq-text">
                           {parseInt(ins.clicks, 10).toLocaleString('pt-BR')}
                         </td>
-                        <td className="p-3.5 font-mono text-slate-300">
+                        <td className="p-3.5 text-nq-text">
                           {ins.cpc ? `R$ ${parseFloat(ins.cpc).toFixed(2)}` : '—'}
                         </td>
-                        <td className="p-3.5 font-mono text-slate-300">
+                        <td className="p-3.5 text-nq-text">
                           {ins.ctr ? `${parseFloat(ins.ctr).toFixed(2)}%` : '—'}
                         </td>
                       </tr>

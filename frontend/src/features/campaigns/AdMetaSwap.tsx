@@ -5,7 +5,7 @@ import { CTA_LABEL } from './ctaLabels';
 // o NORQVA cria uma peça nova com o mesmo vídeo e troca dentro do mesmo anúncio (status, orçamento e
 // público não mudam). O anúncio volta para a revisão da Meta, que costuma levar de minutos a algumas horas.
 
-const input = 'w-full rounded-md bg-slate-900 border border-slate-700 px-2 py-1.5 text-slate-100';
+const input = 'w-full rounded-md bg-nq-surface border border-nq-line px-2 py-1.5 text-nq-text';
 
 export function AdMetaSwap({
   campaignId,
@@ -42,7 +42,7 @@ export function AdMetaSwap({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md border border-emerald-700 px-3 py-1.5 text-emerald-300 hover:bg-emerald-900/30"
+        className="inline-flex items-center min-h-[40px] rounded-full bg-nq-raised px-4 text-[13px] font-semibold text-nq-text hover:brightness-110"
         data-testid={`ad-meta-edit-${index}`}
       >
         Editar anúncio na Meta
@@ -74,26 +74,26 @@ export function AdMetaSwap({
   const codeOk = f.confirm_code.trim().toUpperCase() === String(campaignCode || '').toUpperCase();
 
   return (
-    <div className="rounded-md border border-emerald-800 bg-emerald-950/20 p-3 space-y-2" data-testid={`ad-meta-form-${index}`}>
-      <p className="text-slate-300">
+    <div className="rounded-2xl bg-nq-raised p-4 space-y-3" data-testid={`ad-meta-form-${index}`}>
+      <p className="text-nq-text">
         A Meta cria uma peça nova com o mesmo vídeo e troca neste anúncio. Status, orçamento e público não mudam. O anúncio
         volta para a revisão da Meta. Sem preço no texto: preço só na página, no WhatsApp e no pagamento.
       </p>
       <label className="block">
-        <span className="text-slate-400">Link de destino</span>
+        <span className="text-nq-muted">Link de destino</span>
         <input aria-label={`Novo link do anúncio ${n}`} value={f.destination_url} onChange={e => setF({ ...f, destination_url: e.target.value })} className={input} />
       </label>
       <label className="block">
-        <span className="text-slate-400">Texto do anúncio</span>
+        <span className="text-nq-muted">Texto do anúncio</span>
         <textarea aria-label={`Novo texto do anúncio ${n}`} rows={4} value={f.primary_text} onChange={e => setF({ ...f, primary_text: e.target.value })} className={input} />
       </label>
       <div className="grid sm:grid-cols-2 gap-2">
         <label className="block">
-          <span className="text-slate-400">Título</span>
+          <span className="text-nq-muted">Título</span>
           <input aria-label={`Novo título do anúncio ${n}`} value={f.headline} onChange={e => setF({ ...f, headline: e.target.value })} className={input} />
         </label>
         <label className="block">
-          <span className="text-slate-400">Botão</span>
+          <span className="text-nq-muted">Botão</span>
           <select aria-label={`Novo botão do anúncio ${n}`} value={f.cta} onChange={e => setF({ ...f, cta: e.target.value })} className={input}>
             {Object.entries(CTA_LABEL).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
@@ -102,7 +102,7 @@ export function AdMetaSwap({
         </label>
       </div>
       <label className="block">
-        <span className="text-slate-400">Para confirmar, digite o código da campanha ({campaignCode})</span>
+        <span className="text-nq-muted">Para confirmar, digite o código da campanha ({campaignCode})</span>
         <input aria-label={`Código para trocar o anúncio ${n}`} value={f.confirm_code} onChange={e => setF({ ...f, confirm_code: e.target.value })} className={input} />
       </label>
       <div className="flex flex-wrap gap-2">
@@ -110,12 +110,12 @@ export function AdMetaSwap({
           type="button"
           onClick={submit}
           disabled={busy || !codeOk}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+          className="rounded-md bg-nq-positive px-3 py-1.5 font-semibold text-nq-on-positive disabled:opacity-50"
           data-testid={`ad-meta-submit-${index}`}
         >
           {busy ? 'Trocando na Meta…' : 'Trocar na Meta'}
         </button>
-        <button type="button" onClick={() => setOpen(false)} disabled={busy} className="rounded-md border border-slate-700 px-3 py-1.5 text-slate-300">
+        <button type="button" onClick={() => setOpen(false)} disabled={busy} className="rounded-md border border-nq-line px-3 py-1.5 text-nq-text">
           Cancelar
         </button>
       </div>

@@ -212,3 +212,26 @@ export function multiple(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(Number(n))) return '—';
   return `${Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`;
 }
+
+/**
+ * NORQVA-0083: true no celular (até 767 px). Serve para trocar uma tabela larga por uma lista,
+ * renderizando SÓ uma das duas (nunca as mesmas ações duas vezes na tela).
+ * Sem matchMedia (alguns testes), fica no layout de computador.
+ */
+export function useIsMobile(query = '(max-width: 767px)'): boolean {
+  const get = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? !!window.matchMedia(query)?.matches : false);
+  const [mobile, setMobile] = useState(get);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(query);
+    if (!mql) return;
+    const on = () => setMobile(!!mql.matches);
+    on();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', on);
+      return () => mql.removeEventListener('change', on);
+    }
+    return undefined;
+  }, [query]);
+  return mobile;
+}

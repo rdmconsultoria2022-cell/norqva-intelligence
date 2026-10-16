@@ -72,16 +72,16 @@ export const MetricHeaderCells: React.FC = () => (
 
 export const MetricCells: React.FC<{ m: Metrics; breakevenCpa?: number | null }> = ({ m }) => (
   <>
-    <td className="p-3 text-right font-mono text-slate-200 whitespace-nowrap">{money(m.spend)}</td>
-    <td className="p-3 text-right font-mono text-slate-400">{int(m.impressions)}</td>
-    <td className="p-3 text-right font-mono text-slate-400">{int(m.linkClicks)}</td>
-    <td className="p-3 text-right font-mono text-slate-300">{m.ctr === null ? '—' : `${m.ctr.toFixed(2)}%`}</td>
-    <td className="p-3 text-right font-mono text-slate-300 whitespace-nowrap">{money(m.cpc)}</td>
-    <td className="p-3 text-right font-mono text-slate-300">{int(m.visits)}</td>
-    <td className="p-3 text-right font-mono text-slate-300">{int(m.checkouts)}</td>
-    <td className={`p-3 text-right font-mono font-bold ${m.sales > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>{int(m.sales)}</td>
-    <td className="p-3 text-right font-mono text-slate-200 whitespace-nowrap">{money(m.cpa)}</td>
-    <td className="p-3 text-right font-mono text-slate-200">{m.roas === null ? '—' : `${m.roas.toFixed(2)}x`}</td>
+    <td className="p-3 text-right text-nq-text whitespace-nowrap">{money(m.spend)}</td>
+    <td className="p-3 text-right text-nq-muted">{int(m.impressions)}</td>
+    <td className="p-3 text-right text-nq-muted">{int(m.linkClicks)}</td>
+    <td className="p-3 text-right text-nq-text">{m.ctr === null ? '—' : `${m.ctr.toFixed(2).replace('.', ',')}%`}</td>
+    <td className="p-3 text-right text-nq-text whitespace-nowrap">{money(m.cpc)}</td>
+    <td className="p-3 text-right text-nq-text">{int(m.visits)}</td>
+    <td className="p-3 text-right text-nq-text">{int(m.checkouts)}</td>
+    <td className={`p-3 text-right font-bold ${m.sales > 0 ? 'text-nq-positive-text' : 'text-nq-subtle'}`}>{int(m.sales)}</td>
+    <td className="p-3 text-right text-nq-text whitespace-nowrap">{money(m.cpa)}</td>
+    <td className="p-3 text-right text-nq-text">{m.roas === null ? '—' : `${m.roas.toFixed(2).replace('.', ',')}x`}</td>
   </>
 );
 
@@ -91,15 +91,15 @@ export const ResultsSummary: React.FC<{ m: Metrics }> = ({ m }) => {
     { label: 'Vendas', value: int(m.sales), strong: m.sales > 0 },
     { label: 'Receita', value: money(m.revenue) },
     { label: 'CPA', value: money(m.cpa) },
-    { label: 'ROAS', value: m.roas === null ? '—' : `${m.roas.toFixed(2)}x` },
+    { label: 'ROAS', value: m.roas === null ? '—' : `${m.roas.toFixed(2).replace('.', ',')}x` },
     { label: 'Visitas → Checkout', value: `${int(m.visits)} → ${int(m.checkouts)}` }
   ];
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-3" data-testid="results-summary">
+    <div className="rounded-2xl bg-nq-surface p-4 grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-5" data-testid="results-summary">
       {cards.map((c) => (
-        <div key={c.label} className="p-3.5 rounded-lg bg-slate-900/40 border border-slate-800 space-y-1">
-          <div className="text-[10px] font-mono text-slate-400 uppercase">{c.label}</div>
-          <div className={`text-base font-bold font-mono ${c.strong ? 'text-emerald-400' : 'text-slate-100'}`}>{c.value}</div>
+        <div key={c.label} className="min-w-0">
+          <div className="text-[13px] text-nq-muted">{c.label}</div>
+          <div className={`mt-1 text-[20px] leading-7 font-semibold tabular-nums truncate ${c.strong ? 'text-nq-positive-text' : 'text-nq-text'}`}>{c.value}</div>
         </div>
       ))}
     </div>
@@ -124,37 +124,37 @@ export const AlertsPanel: React.FC<{
 }> = ({ alerts, canPause, onPause, onAck }) => {
   if (alerts.length === 0) return null;
   return (
-    <div className="p-4 rounded-lg border border-red-500/40 bg-red-950/20 space-y-3" data-testid="alerts-panel">
-      <div className="flex items-center gap-2 text-red-300 font-mono text-xs font-bold uppercase">
+    <div className="p-4 rounded-2xl bg-nq-critical/10 space-y-3" data-testid="alerts-panel">
+      <div className="flex items-center gap-2 text-nq-critical-text text-[15px] font-semibold">
         <BellRing className="h-4 w-4" /> Alertas ({alerts.length})
       </div>
       {alerts.map((a) => (
-        <div key={a.id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs border-t border-red-500/20 pt-2">
-          <div className="text-slate-200">
+        <div key={a.id} className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-[13px] border-t border-nq-critical/20 pt-3">
+          <div className="text-nq-text">
             {a.message}
-            <span className="block text-[10px] text-slate-500 font-mono mt-0.5">
+            <span className="block text-[12px] text-nq-subtle mt-0.5">
               {a.campaign_name || ''} · {new Date(a.created_at).toLocaleString('pt-BR')}
               {a.status === 'ACKNOWLEDGED' ? ' · visto' : ''}
             </span>
           </div>
-          <div className="flex gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 shrink-0">
             {canPause(a) && (
               <button
                 onClick={() => onPause(a)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-500 text-slate-950 font-bold"
+                className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full bg-nq-attention text-nq-on-positive font-semibold"
               >
                 <Pause className="h-3 w-3" /> Pausar anúncio
               </button>
             )}
             {a.status === 'OPEN' && (
-              <button onClick={() => onAck(a)} className="flex items-center gap-1 px-2.5 py-1 rounded border border-slate-600 text-slate-300">
+              <button onClick={() => onAck(a)} className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full bg-nq-raised text-nq-text">
                 <Check className="h-3 w-3" /> Marcar como visto
               </button>
             )}
           </div>
         </div>
       ))}
-      <p className="text-[10px] text-slate-500">Nada é pausado automaticamente. O alerta some sozinho se o anúncio vender ou for pausado.</p>
+      <p className="text-[12px] text-nq-subtle">Nada é pausado automaticamente. O alerta some sozinho se o anúncio vender ou for pausado.</p>
     </div>
   );
 };
