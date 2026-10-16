@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Megaphone, RefreshCw, Wand2, RotateCcw, Eraser, Rocket, Plus, Save } from 'lucide-react';
+import { RefreshCw, Wand2, RotateCcw, Eraser, Rocket, Plus, Save, ChevronLeft } from 'lucide-react';
 import { UserObj } from '../../types';
 import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
 import { ExperimentGuardCard } from '../acquisition/ExperimentGuardCard';
@@ -9,7 +9,13 @@ import { MethodView } from '../method/MethodView';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
 import { CTA_LABEL } from './ctaLabels';
+import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
+import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
 
+// NORQVA-0083 (D-0082): mesma lógica, nova apresentação (Design System NORQVA Premium):
+// cartões com o nome do produto, investido, receita, vendas e ROAS; nome e IDs da Meta nos detalhes;
+// no celular, a campanha aberta ocupa a tela (com "Campanhas" para voltar). As ações protegidas
+// (Sim/Não, criar pausada, pausar, orçamento, teto, editar anúncio) seguem nos mesmos componentes.
 // NORQVA-0027: tela Campanhas. Cada campanha é um plano de lançamento: completa com o criativo
 // aprovado, modo manual campo a campo (campo editado vira manual e o sistema não sobrescreve),
 // e "Criar na Meta (pausada)". Ativar e gastar continua só com o Sim do operador.
@@ -37,7 +43,43 @@ export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
 
 type Fields = Record<string, string>;
 
-const input = 'w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded text-xs';
+const input =
+  'w-full min-h-[44px] rounded-xl bg-nq-raised px-3 text-[15px] text-nq-text placeholder:text-nq-subtle focus:outline-none focus:ring-2 focus:ring-nq-positive/50 disabled:opacity-70 [color-scheme:dark]';
+const area = `${input} py-2.5 leading-[22px]`;
+const label = 'text-[13px] text-nq-muted';
+
+const STATUS_TONE: Record<string, Tone> = {
+  DRAFT: 'neutral',
+  CREATING: 'info',
+  CREATED_PAUSED: 'neutral',
+  AWAITING_OPERATOR: 'attention',
+  APPROVED: 'info',
+  ACTIVE: 'positive',
+  REJECTED: 'neutral',
+  FAILED: 'critical'
+};
+
+function metaTone(raw: string): Tone {
+  const r = String(raw || '').toUpperCase();
+  if (r === 'ACTIVE') return 'positive';
+  if (['DISAPPROVED', 'WITH_ISSUES'].includes(r)) return 'critical';
+  if (['PENDING_START_TIME', 'IN_PROCESS', 'PENDING_REVIEW'].includes(r)) return 'attention';
+  return 'neutral';
+}
+const sentence = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s);
+/** Situação do experimento em português (o servidor guarda códigos). */
+const EXPERIMENT_STATUS: Record<string, string> = {
+  RUNNING: 'Em andamento',
+  ATIVO: 'Em andamento',
+  PLANEJADO: 'Planejado',
+  AUTORIZADO: 'Autorizado',
+  PAUSADO: 'Pausado',
+  PAUSED: 'Pausado',
+  CONCLUIDO: 'Concluído',
+  CLOSED: 'Encerrado',
+  COMPLETED: 'Concluído'
+};
+const expStatus = (s: any) => EXPERIMENT_STATUS[String(s || '').toUpperCase()] || sentence(String(s || '—'));
 const brl = (n: number | null | undefined) =>
   n === null || n === undefined ? '—' : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -78,6 +120,8 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const [alerts, setAlerts] = useState<any[]>([]);
   const [experiments, setExperiments] = useState<any[]>([]);
   const [tab, setTab] = useState<'config' | 'results' | 'cap' | 'method' | 'experiment'>('config');
+  // NORQVA-0083 (D-0082): nome do produto de cada campanha da Meta (mesmo vínculo da Visão Geral)
+  const [productByMeta, setProductByMeta] = useState<Record<string, string>>({});
   const { globalPeriod } = useGlobalPeriod();
   const periodQs = periodQuery(globalPeriod);
 
@@ -89,9 +133,11 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   okRef.current = showSuccess;
 
   const loadList = useCallback(async () => {
+    let planList: any[] = [];
     try {
       const r = await apiRef.current('/campaigns?mode=real');
-      setCampaigns(Array.isArray(r?.campaigns) ? r.campaigns : []);
+      planList = Array.isArray(r?.campaigns) ? r.campaigns : [];
+      setCampaigns(planList);
     } catch (err: any) {
       errRef.current(err.message || 'Erro ao carregar as campanhas.');
     }
@@ -101,6 +147,18 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       apiRef.current('/alerts?mode=real').catch(() => null),
       apiRef.current('/experiments?mode=real').catch(() => null)
     ]);
+    // O nome do produto das campanhas do NORQVA vem da oferta. Só as campanhas criadas fora do NORQVA
+    // precisam do vínculo do resumo financeiro (D-0082); sem elas, essa leitura não é feita.
+    const planMetaIdSet = new Set(
+      planList.flatMap((c: any) => Object.values(c?.meta_ids?.campaign || {}).map(v => String(v)))
+    );
+    const hasExternal = (Array.isArray(mc) ? mc : []).some((m: any) => !planMetaIdSet.has(String(m.meta_campaign_id)));
+    const fin = hasExternal ? await apiRef.current(`/financial/dashboard?mode=real&${periodQs}`).catch(() => null) : null;
+    const names: Record<string, string> = {};
+    (Array.isArray(fin?.byCampaign) ? fin.byCampaign : []).forEach((c: any) => {
+      if (c?.metaCampaignId && c?.productName) names[String(c.metaCampaignId)] = String(c.productName);
+    });
+    setProductByMeta(names);
     setMetaCampaigns(Array.isArray(mc) ? mc : []);
     setPerf(Array.isArray(pr?.creatives) ? pr.creatives : []);
     setAlerts(Array.isArray(al?.alerts) ? al.alerts.filter((a: any) => a.status === 'OPEN') : []);
@@ -264,15 +322,44 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const planExperimentIds = new Set(campaigns.map(c => c.experiment_id).filter(Boolean));
   const legacyExperiments = experiments.filter(e => !planExperimentIds.has(e.id));
   const selectedMeta = selectedId?.startsWith('meta:') ? metaCampaigns.find(m => `meta:${m.meta_campaign_id}` === selectedId) : null;
-  const metricsLine = (metaId: string | null) => {
+  const offerProduct = (humanId: string | null | undefined) => {
+    const o = offers.find((x: any) => x.human_id === humanId);
+    return o?.product_name || null;
+  };
+  /** Nome que aparece no cartão: o produto (D-0082); sem produto conhecido, o nome da campanha. */
+  const productOfPlan = (c: any) => offerProduct(c.offer_human_id) || (planMetaId(c) ? productByMeta[planMetaId(c)!] : null) || null;
+
+  const cardBody = ({ title, caption, metaId, pill }: { title: string; caption: string | null; metaId: string | null; pill: React.ReactNode }) => {
     const m = metricsOf(metaId);
     const n = alertsOf(metaId);
-    if (!m) return null;
+    const losing = !!m && m.spend > 0 && m.revenue < m.spend;
     return (
-      <div className="text-[10px] font-mono text-slate-400">
-        {brl(m.spend)} · {m.sales} venda(s){m.cpa !== null ? ` · CPA ${brl(m.cpa)}` : ''}
-        {n > 0 && <span className="ml-1 px-1 rounded bg-red-500 text-white">{n} alerta(s)</span>}
-      </div>
+      <>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className={`text-[15px] leading-[22px] text-nq-text ${caption ? 'break-words' : 'break-all'}`}>{title}</div>
+            {caption && <div className="text-[12px] leading-4 text-nq-subtle break-all mt-0.5">{caption}</div>}
+          </div>
+          {m && (
+            <div className="text-right shrink-0">
+              <div className={`text-[15px] font-semibold tabular-nums ${m.roas === null ? 'text-nq-muted' : m.roas >= 1 ? 'text-nq-positive-text' : 'text-nq-critical-text'}`}>{multiple(m.roas)}</div>
+              <div className="text-[12px] text-nq-muted">ROAS</div>
+            </div>
+          )}
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+          {pill}
+          {n > 0 && <StatusPill tone="critical">{n === 1 ? '1 alerta' : `${n} alertas`}</StatusPill>}
+          {losing && <StatusPill tone="attention">Receita abaixo do investimento</StatusPill>}
+        </div>
+        {m && (
+          <div className="mt-3 grid grid-cols-3 gap-3 text-[12px] leading-4">
+            <div className="min-w-0"><div className="text-nq-muted">Investido</div><div className="mt-0.5 text-nq-text tabular-nums truncate">{brlFmt(m.spend)}</div></div>
+            <div className="min-w-0"><div className="text-nq-muted">Receita</div><div className="mt-0.5 text-nq-text tabular-nums truncate">{brlFmt(m.revenue)}</div></div>
+            <div className="min-w-0"><div className="text-nq-muted">Vendas</div><div className="mt-0.5 text-nq-text tabular-nums">{int(m.sales)}{m.cpa !== null ? <span className="text-nq-muted"> · CPA {brlFmt(m.cpa)}</span> : ''}</div></div>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -299,36 +386,64 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const manual = campaign?.manual_fields || {};
   const ManualTag = ({ path }: { path: string }) =>
     manual[path] ? (
-      <span data-testid={`manual-${path}`} className="ml-1 px-1 py-0.5 rounded border border-amber-600/50 text-amber-300 text-[9px] uppercase">
+      <span data-testid={`manual-${path}`} className="ml-1.5 inline-flex px-1.5 rounded-full bg-nq-attention/15 text-nq-attention text-[12px] leading-5">
         manual
       </span>
     ) : null;
   const filled = campaign?.spec?.ads?.every((a: any) => a.video_url && a.video_url !== 'TO_BE_FILLED');
   const editable = !!campaign?.editable && isAdmin;
+  const hasSelection = !!selectedId && (!!selectedMeta || (!!campaign && selectedId === campaign.id));
+  // no celular o quadro do Sim fica na lista: no detalhe, um aviso curto leva de volta a ele
+  const awaitingCount = campaigns.filter(c => c.status === 'AWAITING_OPERATOR' || (c.status === 'APPROVED' && !!c.last_error)).length;
+  const awaitingNotice = awaitingCount > 0 && isAdmin && (
+    <button
+      type="button"
+      onClick={() => setSelectedId(null)}
+      data-testid="awaiting-notice"
+      className="lg:hidden w-full flex items-center justify-between gap-3 min-h-[48px] px-4 rounded-2xl bg-nq-attention/10 text-left"
+    >
+      <StatusPill tone="attention">{awaitingCount === 1 ? '1 campanha aguardando seu Sim' : `${awaitingCount} campanhas aguardando seu Sim`}</StatusPill>
+      <span className="text-[13px] text-nq-muted shrink-0">Ver</span>
+    </button>
+  );
+  const back = (
+    <button
+      type="button"
+      onClick={() => setSelectedId(null)}
+      className="lg:hidden -ml-2 inline-flex items-center gap-1 h-10 px-2 rounded-full text-[15px] text-nq-muted active:bg-nq-surface"
+    >
+      <ChevronLeft aria-hidden="true" className="h-5 w-5" /> Campanhas
+    </button>
+  );
+  const btnGhost = 'inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 rounded-full bg-nq-raised text-[13px] text-nq-text disabled:opacity-50';
+  const btnPrimary = 'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-full bg-nq-positive text-nq-on-positive text-[15px] font-semibold disabled:opacity-40';
+  const btnLight = 'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-full bg-nq-text text-nq-bg text-[15px] font-semibold disabled:opacity-40';
 
   return (
-    <div className="space-y-5 pb-12 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Megaphone className="h-6 w-6 text-emerald-400" /> Campanhas
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Complete com os criativos aprovados, ajuste à mão o que quiser e crie na Meta sempre pausada. Só gasta depois do seu Sim.
-          </p>
-        </div>
-        <div className="flex gap-2 self-start">
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto text-nq-text">
+      {/* no celular, com uma campanha aberta, o topo da tela dá lugar ao botão "Campanhas" */}
+      <header className={`space-y-1 ${hasSelection ? 'hidden lg:block' : ''}`}>
+        <div className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-[28px] leading-[34px] font-semibold tracking-tight">Campanhas</h1>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={loadList} aria-label="Atualizar" className="h-11 w-11 flex items-center justify-center rounded-full bg-nq-surface text-nq-muted active:bg-nq-raised">
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          </button>
           {isAdmin && (
-            <button onClick={openNew} data-testid="new-campaign" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400">
-              <Plus className="h-4 w-4" /> Nova campanha
+            <button onClick={openNew} data-testid="new-campaign" className="inline-flex items-center gap-1.5 h-11 px-4 rounded-full bg-nq-positive text-nq-on-positive text-[14px] font-semibold">
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden min-[360px]:inline">Nova</span>
+              <span className="hidden sm:inline">campanha</span>
+              <span className="sr-only min-[360px]:hidden">Nova campanha</span>
             </button>
           )}
-          <button onClick={loadList} aria-label="Atualizar" className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white">
-            <RefreshCw className="h-4 w-4" />
-          </button>
         </div>
-      </div>
+        </div>
+        <p className="text-[13px] leading-[18px] text-nq-muted max-w-xl">Criadas sempre pausadas na Meta. Só gastam depois do seu Sim.</p>
+      </header>
 
+      {/* no celular, com uma campanha aberta, o quadro do Sim fica na lista (volta ao tocar em "Campanhas") */}
+      <div className={hasSelection ? 'hidden lg:block' : ''}>
       <LaunchPlansCard
         key={cardKey}
         apiFetch={apiFetch as any}
@@ -341,12 +456,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
           if (selectedId && !selectedId.startsWith('meta:')) loadCampaign(selectedId);
         }}
       />
+      </div>
 
       {creating && (
-        <section className="rounded-xl border border-emerald-700/40 bg-emerald-950/10 p-4 space-y-3 text-xs" data-testid="new-campaign-form">
-          <h2 className="text-sm font-bold text-slate-200">Nova campanha</h2>
-          <label className="block">
-            <span className="text-slate-400">Oferta</span>
+        <section className="rounded-2xl bg-nq-surface p-4 space-y-4" data-testid="new-campaign-form">
+          <h2 className="text-[20px] leading-[26px] font-semibold">Nova campanha</h2>
+          <label className="block space-y-1.5">
+            <span className={label}>Oferta</span>
             <select aria-label="Oferta" value={creating.offer} onChange={e => setCreating({ ...creating, offer: e.target.value, creative_ids: [] })} className={input}>
               <option value="">Selecione…</option>
               {offers.map(o => (
@@ -355,10 +471,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             </select>
           </label>
           {creating.offer && (
-            <div>
-              <div className="text-slate-400 mb-1">Criativos aprovados (vídeo)</div>
+            <div className="space-y-2">
+              <div className={label}>Criativos aprovados (vídeo)</div>
               {newOptions.length === 0 && (
-                <div className="space-y-1 text-slate-500" data-testid="new-campaign-why">
+                <div className="space-y-1 text-[13px] text-nq-muted" data-testid="new-campaign-why">
                   <p>Nenhum criativo de vídeo aprovado para esta oferta.</p>
                   {newWhy.products.length > 0 && <p>Produtos considerados: {newWhy.products.join('; ')}.</p>}
                   {newWhy.notReady.length > 0 ? (
@@ -373,9 +489,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 </div>
               )}
               {newOptions.map(c => (
-                <label key={c.id} className="flex items-center gap-2 text-slate-300">
+                <label key={c.id} className="flex items-center gap-3 min-h-[44px] text-[15px] text-nq-text">
                   <input
                     type="checkbox"
+                    className="h-5 w-5 accent-nq-positive"
                     checked={creating.creative_ids.includes(c.id)}
                     onChange={e =>
                       setCreating({
@@ -384,90 +501,142 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                       })
                     }
                   />
-                  {c.human_id}{c.hook ? ` · ${c.hook}` : ''}{c.same_product === false && c.product_name ? ` (criativo do ${c.product_name})` : ''}
+                  <span className="min-w-0">{c.human_id}{c.hook ? ` · ${c.hook}` : ''}{c.same_product === false && c.product_name ? ` (criativo do ${c.product_name})` : ''}</span>
                 </label>
               ))}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3 max-w-sm">
-            <label>
-              <span className="text-slate-400">Orçamento por dia (R$)</span>
-              <input aria-label="Orçamento por dia" value={creating.daily} onChange={e => setCreating({ ...creating, daily: e.target.value })} className={input} />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block space-y-1.5">
+              <span className={label}>Orçamento por dia (R$)</span>
+              <input inputMode="decimal" aria-label="Orçamento por dia" value={creating.daily} onChange={e => setCreating({ ...creating, daily: e.target.value })} className={input} />
             </label>
-            <label>
-              <span className="text-slate-400">Teto de gasto (R$)</span>
-              <input aria-label="Teto de gasto da nova campanha" value={creating.max} onChange={e => setCreating({ ...creating, max: e.target.value })} className={input} />
+            <label className="block space-y-1.5">
+              <span className={label}>Teto de gasto (R$)</span>
+              <input inputMode="decimal" aria-label="Teto de gasto da nova campanha" value={creating.max} onChange={e => setCreating({ ...creating, max: e.target.value })} className={input} />
             </label>
           </div>
           {newDestination && (
-            <p className="text-[11px] text-slate-300" data-testid="new-campaign-destination">Destino dos anúncios: <span className="font-mono">{newDestination}</span></p>
+            <p className="text-[13px] text-nq-muted break-all" data-testid="new-campaign-destination">Destino dos anúncios: <span className="text-nq-text">{newDestination}</span></p>
           )}
-          <p className="text-[11px] text-slate-500">Padrões: Brasil, 25–65 anos, público Advantage, pixel oficial e destino na página da oferta (no kit, a página do kit). Fica em rascunho.</p>
-          <div className="flex gap-2">
-            <button onClick={submitNew} disabled={!creating.offer || creating.creative_ids.length === 0 || busy === 'new'} className="px-3 py-1.5 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-50">
+          <p className="text-[12px] leading-4 text-nq-subtle">Padrões: Brasil, 25–65 anos, público Advantage, pixel oficial e destino na página da oferta (no kit, a página do kit). Fica em rascunho.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={submitNew} disabled={!creating.offer || creating.creative_ids.length === 0 || busy === 'new'} className={btnLight}>
               Criar rascunho
             </button>
-            <button onClick={() => setCreating(null)} className="px-3 py-1.5 rounded border border-slate-700 text-slate-300">Cancelar</button>
+            <button onClick={() => setCreating(null)} className={btnGhost}>Cancelar</button>
           </div>
         </section>
       )}
 
-      <div className="grid lg:grid-cols-[18rem_1fr] gap-4">
-        <aside className="space-y-1.5" data-testid="campaign-list">
-          {campaigns.length === 0 && <p className="text-xs text-slate-500">Nenhuma campanha ainda.</p>}
-          {campaigns.map(c => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedId(c.id)}
-              className={`w-full text-left p-2.5 rounded-lg border text-xs ${selectedId === c.id ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'}`}
-            >
-              <div className="font-mono text-slate-200 truncate">{c.spec?.campaign?.name || c.code}</div>
-              <div className="text-slate-500">{CAMPAIGN_STATUS_LABEL[c.status] || c.status} · {c.offer_human_id}</div>
-              {metricsLine(planMetaId(c))}
-            </button>
-          ))}
-          {externals.length > 0 && <div className="pt-2 text-[10px] uppercase tracking-wider text-slate-500">Criadas fora do NORQVA</div>}
-          {externals.map(m => (
-            <button
-              key={`meta:${m.meta_campaign_id}`}
-              data-testid="external-campaign"
-              onClick={() => setSelectedId(`meta:${m.meta_campaign_id}`)}
-              className={`w-full text-left p-2.5 rounded-lg border text-xs ${selectedId === `meta:${m.meta_campaign_id}` ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'}`}
-            >
-              <div className="font-mono text-slate-200 truncate">{m.name}</div>
-              <div className="text-slate-500">{m.effective_status || m.status} · criada fora do NORQVA</div>
-              {metricsLine(String(m.meta_campaign_id))}
-            </button>
-          ))}
+      <div className="grid lg:grid-cols-[22rem_minmax(0,1fr)] gap-6 items-start">
+        {/* no celular, a lista sai de cena quando uma campanha está aberta */}
+        <aside className={`space-y-3 min-w-0 ${hasSelection ? 'hidden lg:block' : ''}`} data-testid="campaign-list">
+          {campaigns.length === 0 && <p className="text-[13px] text-nq-muted">Nenhuma campanha ainda.</p>}
+          {campaigns.length > 0 && (
+            <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70">
+              {campaigns.map(c => {
+                const product = productOfPlan(c);
+                const name = c.spec?.campaign?.name || c.code;
+                const active = selectedId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedId(c.id)}
+                    aria-current={active ? 'true' : undefined}
+                    className={`w-full text-left px-4 py-4 transition-colors ${active ? 'bg-nq-raised' : 'active:bg-nq-raised'}`}
+                  >
+                    {cardBody({
+                      title: product || name,
+                      caption: product ? name : null,
+                      metaId: planMetaId(c),
+                      pill: <StatusPill tone={STATUS_TONE[c.status] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[c.status] || c.status}</StatusPill>
+                    })}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {externals.length > 0 && <div className="pt-3 px-1 text-[13px] text-nq-muted">Criadas fora do NORQVA</div>}
+          {externals.length > 0 && (
+            <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70">
+              {externals.map(m => {
+                const product = productByMeta[String(m.meta_campaign_id)] || null;
+                const raw = m.effective_status || m.status;
+                return (
+                  <button
+                    key={`meta:${m.meta_campaign_id}`}
+                    data-testid="external-campaign"
+                    onClick={() => setSelectedId(`meta:${m.meta_campaign_id}`)}
+                    className={`w-full text-left px-4 py-4 transition-colors ${selectedId === `meta:${m.meta_campaign_id}` ? 'bg-nq-raised' : 'active:bg-nq-raised'}`}
+                  >
+                    {cardBody({
+                      title: product || m.name,
+                      caption: product ? m.name : null,
+                      metaId: String(m.meta_campaign_id),
+                      pill: (
+                        <StatusPill tone={metaTone(raw)}>
+                          {sentence(getMetaDeliveryStatus(m.effective_status, m.status).label)} · criada fora do NORQVA
+                        </StatusPill>
+                      )
+                    })}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </aside>
 
         {selectedMeta && (
-          <section className="space-y-3 min-w-0" data-testid="external-detail">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400">
-              <span className="text-sm font-bold text-white">{selectedMeta.name}</span> · criada fora do NORQVA: aqui você vê o resultado e pode pausar ou mudar o orçamento.
+          <section className="space-y-4 min-w-0" data-testid="external-detail">
+            {back}
+            {awaitingNotice}
+            <div>
+              <h2 className="text-[22px] leading-7 font-semibold break-words">{productByMeta[String(selectedMeta.meta_campaign_id)] || selectedMeta.name}</h2>
+              {productByMeta[String(selectedMeta.meta_campaign_id)] && <div className="text-[12px] text-nq-subtle break-all mt-0.5">{selectedMeta.name}</div>}
+              <p className="mt-2 text-[13px] leading-[18px] text-nq-muted">Criada fora do NORQVA: aqui você vê o resultado e pode pausar ou mudar o orçamento.</p>
             </div>
             <MetaAdsView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} scopeCampaignId={String(selectedMeta.meta_campaign_id)} />
           </section>
         )}
 
         {campaign && selectedId === campaign.id && (
-          <div className="space-y-3 min-w-0">
-            <nav className="flex flex-wrap gap-1 border-b border-slate-800" role="tablist" data-testid="campaign-tabs">
+          <div className="space-y-4 min-w-0">
+            {back}
+            {awaitingNotice}
+            <div>
+              {(() => {
+                const product = productOfPlan(campaign);
+                const name = campaign.spec?.campaign?.name || campaign.code;
+                return (
+                  <>
+                    <h2 className="text-[22px] leading-7 font-semibold break-words">{product || name}</h2>
+                    {product && <div className="text-[12px] text-nq-subtle break-all mt-0.5">{name}</div>}
+                  </>
+                );
+              })()}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <StatusPill tone={STATUS_TONE[campaign.status] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[campaign.status] || campaign.status}</StatusPill>
+                <span className="text-[13px] text-nq-muted tabular-nums">{brl(campaign.daily_budget_brl)}/dia · teto {brl(campaign.max_spend_brl)}</span>
+              </div>
+            </div>
+
+            <nav className="-mx-4 px-4 lg:mx-0 lg:px-0 flex gap-2 overflow-x-auto no-scrollbar" role="tablist" data-testid="campaign-tabs">
               {([
                 ['config', 'Configuração'],
                 ['results', 'Resultado e controle'],
                 ['cap', 'Teto e vigia'],
                 ['method', 'Método'],
                 ['experiment', 'Experimento']
-              ] as const).map(([id, label]) => (
+              ] as const).map(([id, tabLabel]) => (
                 <button
                   key={id}
                   role="tab"
                   aria-selected={tab === id}
                   onClick={() => setTab(id)}
-                  className={`px-3 py-2 text-xs font-semibold border-b-2 ${tab === id ? 'border-emerald-400 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  className={`shrink-0 h-10 px-4 rounded-full text-[13px] font-medium transition-colors ${tab === id ? 'bg-nq-text text-nq-bg' : 'bg-nq-surface text-nq-muted'}`}
                 >
-                  {label}
+                  {tabLabel}
                 </button>
               ))}
             </nav>
@@ -476,13 +645,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               (planMetaId(campaign) ? (
                 <MetaAdsView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} scopeCampaignId={planMetaId(campaign)} />
               ) : (
-                <p className="text-xs text-slate-400" data-testid="results-empty">A campanha ainda não foi criada na Meta: os resultados aparecem depois.</p>
+                <p className="rounded-2xl bg-nq-surface p-4 text-[13px] text-nq-muted" data-testid="results-empty">A campanha ainda não foi criada na Meta: os resultados aparecem depois.</p>
               ))}
 
             {tab === 'cap' && (
-              <div className="space-y-2 text-xs" data-testid="cap-tab">
-                <p className="text-slate-400">
-                  Teto da campanha: {brl(campaign.max_spend_brl)}. O vigia pausa a campanha quando o gasto chega ao teto, menos quando ela está dando lucro: aí o teto sobe 50% sozinho, até o teto máximo.
+              <div className="space-y-3" data-testid="cap-tab">
+                <p className="text-[13px] leading-[18px] text-nq-muted">
+                  Teto da campanha: <span className="text-nq-text">{brl(campaign.max_spend_brl)}</span>. O vigia pausa a campanha quando o gasto chega ao teto, menos quando ela está dando lucro: aí o teto sobe 50% sozinho, até o teto máximo.
                 </p>
                 <ExperimentGuardCard
                   apiFetch={apiFetch as any}
@@ -496,7 +665,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                     loadList();
                   }}
                 />
-                {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-slate-500">O vigia começa depois do seu Sim.</p>}
+                {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-[13px] text-nq-subtle">O vigia começa depois do seu Sim.</p>}
               </div>
             )}
 
@@ -507,16 +676,17 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             {tab === 'experiment' && (() => {
               const exp = experiments.find(e => e.id === campaign.experiment_id);
               return (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs space-y-1" data-testid="experiment-tab">
+                <div className="rounded-2xl bg-nq-surface p-4 text-[13px] leading-5 space-y-1.5" data-testid="experiment-tab">
                   {!exp ? (
-                    <p className="text-slate-400">O experimento nasce quando você responde Sim; até lá não há capital reservado.</p>
+                    <p className="text-nq-muted">O experimento nasce quando você responde Sim; até lá não há capital reservado.</p>
                   ) : (
                     <>
-                      <div className="text-sm font-bold text-white">{exp.human_id} · {exp.name}</div>
-                      <div className="text-slate-400">Situação: {exp.status}</div>
-                      <div className="text-slate-400">Capital autorizado: {brl(Number(exp.capital_approved))} · usado: {brl(Number(exp.capital_used))}</div>
-                      {exp.hypothesis && <div className="text-slate-300">Hipótese: {exp.hypothesis}</div>}
-                      <div className="text-slate-500">Resposta: {campaign.answer === 'YES' ? 'Sim' : campaign.answer === 'NO' ? 'Não' : '—'}{campaign.answered_at ? ` em ${new Date(campaign.answered_at).toLocaleString('pt-BR')}` : ''}</div>
+                      <div className="text-[15px] font-semibold text-nq-text">{exp.name}</div>
+                      <div className="text-nq-subtle">{exp.human_id}</div>
+                      <div className="text-nq-muted">Situação: <span className="text-nq-text">{expStatus(exp.status)}</span></div>
+                      <div className="text-nq-muted">Capital autorizado: <span className="text-nq-text tabular-nums">{brl(Number(exp.capital_approved))}</span> · usado: <span className="text-nq-text tabular-nums">{brl(Number(exp.capital_used))}</span></div>
+                      {exp.hypothesis && <div className="text-nq-muted">Hipótese: <span className="text-nq-text">{exp.hypothesis}</span></div>}
+                      <div className="text-nq-subtle">Resposta: {campaign.answer === 'YES' ? 'Sim' : campaign.answer === 'NO' ? 'Não' : '—'}{campaign.answered_at ? ` em ${new Date(campaign.answered_at).toLocaleString('pt-BR')}` : ''}</div>
                     </>
                   )}
                 </div>
@@ -524,80 +694,78 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             })()}
 
             {tab === 'config' && (
-          <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-4 text-xs" data-testid="campaign-detail">
-            <header className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <div className="text-sm font-bold text-white">{campaign.spec?.campaign?.name}</div>
-                <div className="text-slate-500">
-                  {campaign.code} · {campaign.offer_human_id} · {CAMPAIGN_STATUS_LABEL[campaign.status] || campaign.status} · {brl(campaign.daily_budget_brl)}/dia
-                </div>
-                {campaign.last_error && <div className="text-red-300 mt-1">Último erro: {campaign.last_error}</div>}
+          <section className="space-y-4" data-testid="campaign-detail">
+            {campaign.last_error && <div className="rounded-2xl bg-nq-critical/10 p-4 text-[13px] text-nq-critical-text">Último erro: {campaign.last_error}</div>}
+            {editable && (
+              <div className="flex flex-wrap gap-2">
+                <button onClick={fill} disabled={busy === 'fill'} className={btnGhost}>
+                  <Wand2 aria-hidden="true" className="h-4 w-4" /> Preencher com os criativos aprovados
+                </button>
+                <button onClick={blank} data-testid="blank-fields" className={btnGhost}>
+                  <Eraser aria-hidden="true" className="h-4 w-4" /> Zerar
+                </button>
+                <button onClick={resetAuto} disabled={busy === 'reset'} className={btnGhost}>
+                  <RotateCcw aria-hidden="true" className="h-4 w-4" /> Voltar ao automático
+                </button>
               </div>
-              {editable && (
-                <div className="flex flex-wrap gap-1.5">
-                  <button onClick={fill} disabled={busy === 'fill'} className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 text-slate-200 disabled:opacity-50">
-                    <Wand2 className="h-3.5 w-3.5" /> Preencher com os criativos aprovados
-                  </button>
-                  <button onClick={blank} data-testid="blank-fields" className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 text-slate-200">
-                    <Eraser className="h-3.5 w-3.5" /> Zerar
-                  </button>
-                  <button onClick={resetAuto} disabled={busy === 'reset'} className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 text-slate-200 disabled:opacity-50">
-                    <RotateCcw className="h-3.5 w-3.5" /> Voltar ao automático
-                  </button>
-                </div>
-              )}
-            </header>
+            )}
 
             {!editable && (
-              <p className="text-slate-400" data-testid="campaign-readonly">
+              <p className="rounded-2xl bg-nq-surface p-4 text-[13px] leading-[18px] text-nq-muted" data-testid="campaign-readonly">
                 {isAdmin
-                  ? 'Esta campanha já existe na Meta. Pausar e orçamento ficam na aba Resultado e controle; o teto em Teto e vigia; ativar é pelo seu Sim no quadro acima. Para trocar link, texto, título ou botão de um anúncio, use "Editar anúncio na Meta" no anúncio.'
+                  ? 'Esta campanha já existe na Meta. Pausar e orçamento ficam na aba Resultado e controle; o teto em Teto e vigia; ativar é pelo seu Sim no quadro "Aguardando sua decisão", na lista de campanhas. Para trocar link, texto, título ou botão de um anúncio, use "Editar anúncio na Meta" no anúncio.'
                   : 'Só leitura: configurar, pausar e responder Sim ficam com o ADMIN.'}
               </p>
             )}
 
             {fillResults && fillResults.some(r => r.status === 'SKIPPED') && (
-              <ul className="space-y-0.5 text-amber-300" data-testid="fill-results">
+              <ul className="rounded-2xl bg-nq-attention/10 p-4 space-y-1 text-[13px] text-nq-attention" data-testid="fill-results">
                 {fillResults.filter(r => r.status === 'SKIPPED').map(r => (
                   <li key={r.index}>Anúncio {r.index + 1} ({r.ad}): {r.reason}</li>
                 ))}
               </ul>
             )}
 
-            <div className="grid sm:grid-cols-2 gap-3">
-              {(campaign.spec?.adsets || []).map((s: any, i: number) => (
-                <label key={s.name} className="block">
-                  <span className="text-slate-400">Orçamento por dia (R$) · {s.name}<ManualTag path={`adsets.${i}.daily_budget_brl`} /></span>
-                  <input
-                    aria-label={`Orçamento do conjunto ${i + 1}`}
-                    disabled={!editable}
-                    value={form[`adsets.${i}.daily_budget_brl`] ?? ''}
-                    onChange={e => setForm({ ...form, [`adsets.${i}.daily_budget_brl`]: e.target.value })}
-                    className={input}
-                  />
+            <div className="rounded-2xl bg-nq-surface p-4 space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                {(campaign.spec?.adsets || []).map((s: any, i: number) => (
+                  <label key={s.name} className="block space-y-1.5">
+                    <span className={label}>Orçamento por dia (R$)<ManualTag path={`adsets.${i}.daily_budget_brl`} /><span className="block text-[12px] text-nq-subtle break-all">{s.name}</span></span>
+                    <input
+                      inputMode="decimal"
+                      aria-label={`Orçamento do conjunto ${i + 1}`}
+                      disabled={!editable}
+                      value={form[`adsets.${i}.daily_budget_brl`] ?? ''}
+                      onChange={e => setForm({ ...form, [`adsets.${i}.daily_budget_brl`]: e.target.value })}
+                      className={input}
+                    />
+                  </label>
+                ))}
+                <label className="block space-y-1.5">
+                  <span className={label}>Teto de gasto da campanha (R$)<ManualTag path="max_spend_brl" /></span>
+                  <input inputMode="decimal" aria-label="Teto de gasto" disabled={!editable} value={form.max_spend_brl ?? ''} onChange={e => setForm({ ...form, max_spend_brl: e.target.value })} className={input} />
                 </label>
-              ))}
-              <label className="block">
-                <span className="text-slate-400">Teto de gasto da campanha (R$)<ManualTag path="max_spend_brl" /></span>
-                <input aria-label="Teto de gasto" disabled={!editable} value={form.max_spend_brl ?? ''} onChange={e => setForm({ ...form, max_spend_brl: e.target.value })} className={input} />
+              </div>
+              <label className="block space-y-1.5">
+                <span className={label}>Hipótese<ManualTag path="hypothesis" /></span>
+                <textarea aria-label="Hipótese" disabled={!editable} value={form.hypothesis ?? ''} onChange={e => setForm({ ...form, hypothesis: e.target.value })} className={area} rows={2} />
               </label>
             </div>
-            <label className="block">
-              <span className="text-slate-400">Hipótese<ManualTag path="hypothesis" /></span>
-              <textarea aria-label="Hipótese" disabled={!editable} value={form.hypothesis ?? ''} onChange={e => setForm({ ...form, hypothesis: e.target.value })} className={input} rows={2} />
-            </label>
 
             <div className="space-y-3">
               {(campaign.spec?.ads || []).map((a: any, i: number) => (
-                <article key={i} className="rounded-lg border border-slate-800 p-3 space-y-2" data-testid="campaign-ad">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-mono text-emerald-300">Anúncio {i + 1} · {a.name}</span>
-                    <span className={a.video_url && a.video_url !== 'TO_BE_FILLED' ? 'text-emerald-300' : 'text-amber-300'}>
+                <article key={i} className="rounded-2xl bg-nq-surface p-4 space-y-4" data-testid="campaign-ad">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold">Anúncio {i + 1}</div>
+                      <div className="text-[12px] text-nq-subtle break-all">{a.name}</div>
+                    </div>
+                    <StatusPill tone={a.video_url && a.video_url !== 'TO_BE_FILLED' ? 'positive' : 'attention'}>
                       {a.video_url && a.video_url !== 'TO_BE_FILLED' ? 'vídeo pronto' : 'vídeo a preencher'}
-                    </span>
+                    </StatusPill>
                   </div>
-                  <label className="block">
-                    <span className="text-slate-400">Criativo<ManualTag path={`ads.${i}.creative`} /></span>
+                  <label className="block space-y-1.5">
+                    <span className={label}>Criativo<ManualTag path={`ads.${i}.creative`} /></span>
                     <select
                       aria-label={`Criativo do anúncio ${i + 1}`}
                       disabled={!editable || busy === `pick-${i}`}
@@ -613,17 +781,17 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                       ))}
                     </select>
                   </label>
-                  <label className="block">
-                    <span className="text-slate-400">Texto do anúncio<ManualTag path={`ads.${i}.primary_text`} /></span>
-                    <textarea aria-label={`Texto do anúncio ${i + 1}`} disabled={!editable} rows={3} value={form[`ads.${i}.primary_text`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.primary_text`]: e.target.value })} className={input} />
+                  <label className="block space-y-1.5">
+                    <span className={label}>Texto do anúncio<ManualTag path={`ads.${i}.primary_text`} /></span>
+                    <textarea aria-label={`Texto do anúncio ${i + 1}`} disabled={!editable} rows={3} value={form[`ads.${i}.primary_text`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.primary_text`]: e.target.value })} className={area} />
                   </label>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    <label className="block">
-                      <span className="text-slate-400">Título<ManualTag path={`ads.${i}.headline`} /></span>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <label className="block space-y-1.5">
+                      <span className={label}>Título<ManualTag path={`ads.${i}.headline`} /></span>
                       <input aria-label={`Título do anúncio ${i + 1}`} disabled={!editable} value={form[`ads.${i}.headline`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.headline`]: e.target.value })} className={input} />
                     </label>
-                    <label className="block">
-                      <span className="text-slate-400">Botão<ManualTag path={`ads.${i}.cta`} /></span>
+                    <label className="block space-y-1.5">
+                      <span className={label}>Botão<ManualTag path={`ads.${i}.cta`} /></span>
                       <select aria-label={`Botão do anúncio ${i + 1}`} disabled={!editable} value={form[`ads.${i}.cta`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.cta`]: e.target.value })} className={input}>
                         {Object.entries(CTA_LABEL).map(([k, v]) => (
                           <option key={k} value={k}>{v}</option>
@@ -631,9 +799,9 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                       </select>
                     </label>
                   </div>
-                  <label className="block">
-                    <span className="text-slate-400">Link de destino<ManualTag path={`ads.${i}.destination_url`} /></span>
-                    <input aria-label={`Link do anúncio ${i + 1}`} disabled={!editable} value={form[`ads.${i}.destination_url`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.destination_url`]: e.target.value })} className={input} />
+                  <label className="block space-y-1.5">
+                    <span className={label}>Link de destino<ManualTag path={`ads.${i}.destination_url`} /></span>
+                    <input inputMode="url" aria-label={`Link do anúncio ${i + 1}`} disabled={!editable} value={form[`ads.${i}.destination_url`] ?? ''} onChange={e => setForm({ ...form, [`ads.${i}.destination_url`]: e.target.value })} className={input} />
                   </label>
                   {!editable && isAdmin && campaign.status !== 'CREATING' && campaign.meta_ids?.ads?.[a.name] && (
                     <AdMetaSwap
@@ -656,40 +824,56 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             </div>
 
             {editable && (
-              <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
+              <footer className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   onClick={save}
                   disabled={changed.length === 0 || busy === 'save'}
                   data-testid="save-fields"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-40"
+                  className={btnLight}
                 >
-                  <Save className="h-3.5 w-3.5" /> Salvar alterações{changed.length ? ` (${changed.length})` : ''}
+                  <Save aria-hidden="true" className="h-4 w-4" /> Salvar alterações{changed.length ? ` (${changed.length})` : ''}
                 </button>
                 <button
                   onClick={() => setConfirmCreate(true)}
                   disabled={!filled || changed.length > 0 || busy === 'meta'}
                   title={!filled ? 'Preencha o vídeo de todos os anúncios' : changed.length > 0 ? 'Salve as alterações antes' : undefined}
                   data-testid="create-on-meta"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-emerald-600 text-white font-bold disabled:opacity-40"
+                  className={btnPrimary}
                 >
-                  <Rocket className="h-3.5 w-3.5" /> Criar na Meta (pausada)
+                  <Rocket aria-hidden="true" className="h-4 w-4" /> Criar na Meta (pausada)
                 </button>
-                {busy === 'meta' && <span className="text-slate-400">Enviando os vídeos para a Meta… pode levar alguns minutos.</span>}
+                {!filled && <span className="w-full text-[12px] text-nq-subtle">Para criar na Meta, todos os anúncios precisam de vídeo.</span>}
+                {busy === 'meta' && <span className="w-full text-[13px] text-nq-muted">Enviando os vídeos para a Meta… pode levar alguns minutos.</span>}
               </footer>
             )}
 
             {confirmCreate && (
-              <div role="dialog" aria-label="Confirmar criação na Meta" className="rounded-lg border border-emerald-700/50 bg-slate-950 p-3 space-y-2" data-testid="confirm-create">
-                <p className="text-slate-200">
+              <div role="dialog" aria-label="Confirmar criação na Meta" className="rounded-2xl bg-nq-raised p-4 space-y-3" data-testid="confirm-create">
+                <p className="text-[15px] leading-[22px] text-nq-text">
                   Criar {campaign.spec?.ads?.length} anúncio(s) na Meta, <strong>tudo pausado</strong>. Nada é gasto agora: a campanha só começa a rodar
                   depois que você responder Sim, com {brl(campaign.daily_budget_brl)}/dia e teto de {brl(campaign.max_spend_brl)}.
                 </p>
-                <div className="flex gap-2">
-                  <button onClick={createOnMeta} className="px-3 py-1.5 rounded bg-emerald-600 text-white font-bold">Criar pausada</button>
-                  <button onClick={() => setConfirmCreate(false)} className="px-3 py-1.5 rounded border border-slate-700 text-slate-300">Cancelar</button>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={createOnMeta} className={btnPrimary}>Criar pausada</button>
+                  <button onClick={() => setConfirmCreate(false)} className={btnGhost}>Cancelar</button>
                 </div>
               </div>
             )}
+
+            <div className="rounded-2xl bg-nq-surface overflow-hidden">
+              <Disclosure summary="Detalhes técnicos" testId="campaign-tech">
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12px]">
+                  <dt className="text-nq-muted">Código</dt>
+                  <dd className="font-mono text-nq-text">{campaign.code}</dd>
+                  <dt className="text-nq-muted">Oferta</dt>
+                  <dd className="font-mono text-nq-text">{campaign.offer_human_id}</dd>
+                  <dt className="text-nq-muted">Campanha na Meta</dt>
+                  <dd className="font-mono text-nq-text break-all">{campaign.spec?.campaign?.name || '—'}</dd>
+                  <dt className="text-nq-muted">ID na Meta</dt>
+                  <dd className="font-mono text-nq-text break-all">{planMetaId(campaign) || 'ainda não criada'}</dd>
+                </dl>
+              </Disclosure>
+            </div>
           </section>
             )}
           </div>
@@ -697,16 +881,22 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       </div>
 
       {legacyExperiments.length > 0 && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 text-xs space-y-2" data-testid="experiment-history">
-          <h2 className="text-sm font-bold text-slate-300">Histórico de experimentos (antes das campanhas)</h2>
-          {legacyExperiments.map(e => (
-            <div key={e.id} className="flex flex-wrap gap-x-3 text-slate-400">
-              <span className="font-mono text-slate-300">{e.human_id}</span>
-              <span>{e.name}</span>
-              <span>{e.status}</span>
-              <span>capital {brl(Number(e.capital_approved))} · usado {brl(Number(e.capital_used))}</span>
-            </div>
-          ))}
+        <section className={`space-y-3 ${hasSelection ? 'hidden lg:block' : ''}`} data-testid="experiment-history">
+          <h2 className="px-1 text-[13px] text-nq-muted">Histórico de experimentos (antes das campanhas)</h2>
+          <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70">
+            {legacyExperiments.map(e => (
+              <div key={e.id} className="px-4 py-3.5 flex items-start justify-between gap-3 text-[13px]">
+                <div className="min-w-0">
+                  <div className="text-[15px] text-nq-text">{e.name}</div>
+                  <div className="text-nq-subtle">{e.human_id} · {expStatus(e.status)}</div>
+                </div>
+                <div className="text-right shrink-0 tabular-nums">
+                  <div className="text-nq-text">{brl(Number(e.capital_used))}</div>
+                  <div className="text-nq-subtle">de {brl(Number(e.capital_approved))}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
     </div>

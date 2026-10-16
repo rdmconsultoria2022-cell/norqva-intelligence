@@ -68,7 +68,7 @@ export function UserMenu({ user, onSignOut }: Props) {
         <span className="h-9 w-9 shrink-0 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold flex items-center justify-center">
           {initialsOf(user.name)}
         </span>
-        <span className="hidden min-[380px]:inline text-[15px] font-medium text-nq-text truncate max-w-[7rem] sm:max-w-[14rem]">{firstNameOf(user.name)}</span>
+        <span className="hidden sm:inline text-[15px] font-medium text-nq-text truncate max-w-[7rem] sm:max-w-[14rem]">{firstNameOf(user.name)}</span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-nq-subtle transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

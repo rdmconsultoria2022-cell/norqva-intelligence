@@ -96,9 +96,10 @@ describe('Meta Acquisition Core Frontend (Phase A - Read-Only Ingestion)', () =>
     expect(await screen.findByText('R$ 1.500,00')).toBeInTheDocument();
     expect(screen.getByText('50.000')).toBeInTheDocument();
     expect(screen.getByText('1.000')).toBeInTheDocument();
-    expect(screen.getByText('R$ 1.50')).toBeInTheDocument();
-    expect(screen.getByText('R$ 30.00')).toBeInTheDocument();
-    expect(screen.getByText('2.00%')).toBeInTheDocument();
+    // NORQVA-0083: decimais com vírgula (pt-BR)
+    expect(screen.getByText('R$ 1,50')).toBeInTheDocument();
+    expect(screen.getByText('R$ 30,00')).toBeInTheDocument();
+    expect(screen.getByText('2,00%')).toBeInTheDocument();
   });
 
   it('does NOT display attributed revenue, order CPA, or real ROAS', async () => {

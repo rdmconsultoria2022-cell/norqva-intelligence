@@ -25,14 +25,15 @@ export interface HeaderProps {
   showPeriodFilter?: boolean;
 }
 
-export function NorqvaLogo() {
+export function NorqvaLogo({ compact = false }: { compact?: boolean } = {}) {
   return (
     // NORQVA-0082: marca discreta, em sans, sem fonte técnica
     <span className="flex items-center gap-1.5 select-none">
       <svg viewBox="0 0 100 100" className="h-3.5 w-3.5" aria-hidden="true">
         <polygon points="50,15 90,85 10,85" className="fill-nq-positive" />
       </svg>
-      <span className="text-[15px] font-semibold tracking-[0.22em] text-nq-text">NORQVA</span>
+      {/* compact: em telas estreitas com o período no topo, só o símbolo (o nome não cabe) */}
+      <span className={`text-[15px] font-semibold tracking-[0.22em] text-nq-text ${compact ? 'hidden min-[420px]:inline' : ''}`}>NORQVA</span>
     </span>
   );
 }
@@ -56,10 +57,10 @@ export function Header({
         </div>
 
         <div className="justify-self-center">
-          <NorqvaLogo />
+          <NorqvaLogo compact={showPeriodFilter} />
         </div>
 
-        <div className="flex items-center gap-2 justify-self-end text-xs font-mono min-w-0">
+        <div className="flex items-center gap-2 justify-self-end text-xs min-w-0">
           {/* DEMO / REAL: só em testes ou builds locais de demonstração (NORQVA-0003) */}
           {DEMO_MODE_ENABLED && (
             <div className="hidden sm:flex items-center bg-slate-950/80 border border-slate-800 p-0.5 rounded-md text-[11px]">

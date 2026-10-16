@@ -34,7 +34,8 @@ describe('NORQVA-0006 — Meta campaign control (UI)', () => {
     renderView(apiFetch, admin, { showSuccess });
 
     expect(await screen.findByText(/Controle de campanhas ativo/)).toBeInTheDocument();
-    expect(await screen.findByText('R$ 50.00')).toBeInTheDocument();
+    // NORQVA-0083: decimais com vírgula (pt-BR)
+    expect(await screen.findByText('R$ 50,00')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Pausar/ }));
     expect(screen.getByRole('dialog')).toHaveTextContent('BB-B01 | Rodada 1');
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/meta-control/campaign'), expect.anything(), expect.anything(), expect.anything());

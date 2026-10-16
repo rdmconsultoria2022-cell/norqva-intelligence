@@ -72,18 +72,18 @@ export const MetaControlBanner: React.FC<{ status: MetaControlStatus | null; onR
   if (!status) return null;
   if (status.ready) {
     return (
-      <div data-testid="meta-control-banner" className="p-3.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-2.5">
-        <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
+      <div data-testid="meta-control-banner" className="p-4 rounded-2xl bg-nq-surface text-nq-muted text-[13px] leading-[18px] flex items-start gap-3">
+        <ShieldCheck className="h-4 w-4 shrink-0 text-nq-positive-text mt-0.5" />
         <span>
-          <strong>Controle de campanhas ativo{status.mode === 'demo' ? ' (simulação DEMO)' : ''}.</strong> Ativar, pausar e mudar orçamento diário daqui
+          <strong className="text-nq-text font-medium">Controle de campanhas ativo{status.mode === 'demo' ? ' (simulação DEMO)' : ''}.</strong> Ativar, pausar e mudar orçamento diário daqui
           altera a Meta de verdade. Orçamento permitido: {brl(status.limits.minDailyBudget)} a {brl(status.limits.maxDailyBudget)} por dia.
         </span>
       </div>
     );
   }
   return (
-    <div data-testid="meta-control-banner" className="p-3.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-start gap-2.5">
-      <ShieldAlert className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+    <div data-testid="meta-control-banner" className="p-4 rounded-2xl bg-nq-attention/10 text-nq-attention text-[13px] leading-[18px] flex items-start gap-3">
+      <ShieldAlert className="h-4 w-4 shrink-0 text-nq-attention mt-0.5" />
       <div className="space-y-1">
         {!status.enabled ? (
           <span>
@@ -95,7 +95,7 @@ export const MetaControlBanner: React.FC<{ status: MetaControlStatus | null; onR
             {status.failedChecks.map((c) => c.label).join(', ')}. O token do Render precisa da permissão <code>ads_management</code>.
           </span>
         )}
-        <button onClick={onRecheck} className="block underline text-amber-200 hover:text-amber-100">
+        <button onClick={onRecheck} className="block underline text-nq-attention hover:text-nq-text">
           Verificar de novo
         </button>
       </div>
@@ -115,16 +115,16 @@ export const MetaControlActions: React.FC<{
   const title = ready ? undefined : 'Controle de campanhas indisponível (veja o aviso acima).';
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2">
       {canToggle && (
         <button
           disabled={!ready}
           title={title}
           onClick={() => onRequest({ kind: 'status', target, next: current === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' })}
-          className={`flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-mono font-bold disabled:opacity-40 disabled:cursor-not-allowed ${
+          className={`inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full text-[13px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed ${
             current === 'ACTIVE'
-              ? 'border-amber-500/40 text-amber-300 hover:bg-amber-950/40'
-              : 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/40'
+              ? 'bg-nq-attention/15 text-nq-attention hover:bg-nq-attention/25'
+              : 'bg-nq-positive/15 text-nq-positive-text hover:bg-nq-positive/25'
           }`}
         >
           {current === 'ACTIVE' ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
@@ -136,7 +136,7 @@ export const MetaControlActions: React.FC<{
           disabled={!ready}
           title={title}
           onClick={() => onRequest({ kind: 'budget', target })}
-          className="flex items-center gap-1 px-2 py-1 rounded border border-slate-600 text-slate-300 text-[10px] font-mono font-bold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Wallet className="h-3 w-3" /> Orçamento
         </button>
@@ -203,16 +203,16 @@ export const MetaControlDialog: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm space-y-4">
-        <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 uppercase flex items-center gap-2">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="bg-nq-surface border border-nq-line rounded-lg max-w-md w-full p-6 text-sm space-y-4">
+        <h3 className="text-md font-bold text-nq-positive-text flex items-center gap-2">
           <Power className="h-4 w-4" /> Confirmar na Meta
         </h3>
 
         {action.kind === 'status' ? (
-          <p className="text-slate-200">
+          <p className="text-nq-text">
             {action.next === 'PAUSED' ? 'Pausar' : 'Ativar'} {label} <strong>{target.name}</strong>?
-            <span className="block mt-2 text-xs text-slate-400">
+            <span className="block mt-2 text-xs text-nq-muted">
               {action.next === 'ACTIVE'
                 ? 'Ao ativar, a Meta volta a gastar o orçamento configurado.'
                 : 'Ao pausar, a veiculação para em alguns minutos.'}
@@ -220,11 +220,11 @@ export const MetaControlDialog: React.FC<{
           </p>
         ) : (
           <div className="space-y-2">
-            <p className="text-slate-200">
+            <p className="text-nq-text">
               Orçamento diário de {label} <strong>{target.name}</strong>
-              {target.dailyBudget ? <span className="text-slate-400"> (atual: {brl(Number(target.dailyBudget))})</span> : null}
+              {target.dailyBudget ? <span className="text-nq-muted"> (atual: {brl(Number(target.dailyBudget))})</span> : null}
             </p>
-            <label htmlFor="meta-control-budget" className="block text-xs font-mono uppercase text-slate-400">
+            <label htmlFor="meta-control-budget" className="block text-xs text-nq-muted">
               Novo orçamento diário (R$)
             </label>
             <input
@@ -232,24 +232,24 @@ export const MetaControlDialog: React.FC<{
               inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200 font-mono"
+              className="w-full bg-nq-bg border border-nq-line rounded p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text"
             />
-            <p className={`text-xs ${budgetValid ? 'text-slate-500' : 'text-red-400'}`}>
+            <p className={`text-xs ${budgetValid ? 'text-nq-subtle' : 'text-nq-critical-text'}`}>
               Permitido: {brl(min)} a {brl(max)} por dia.
             </p>
           </div>
         )}
 
-        {isDemoView && <p className="text-xs text-blue-300 font-mono">Modo DEMO: nada é enviado à Meta.</p>}
+        {isDemoView && <p className="text-xs text-nq-info">Modo DEMO: nada é enviado à Meta.</p>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} disabled={busy} className="px-3 py-2 rounded border border-slate-700 text-slate-300 text-xs font-mono">
+          <button onClick={onClose} disabled={busy} className="px-3 py-2 rounded border border-nq-line text-nq-text text-xs">
             Cancelar
           </button>
           <button
             onClick={confirm}
             disabled={busy || !budgetValid}
-            className="px-3 py-2 rounded bg-emerald-500 text-slate-950 font-bold text-xs font-mono disabled:opacity-50"
+            className="px-3 py-2 rounded bg-nq-positive text-nq-on-positive font-bold text-xs disabled:opacity-50"
           >
             {busy ? 'Enviando...' : 'Confirmar'}
           </button>

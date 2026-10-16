@@ -187,34 +187,32 @@ export function GlobalPeriodSelector({ appliesToScreen = true }: { appliesToScre
         aria-expanded={open}
         aria-label={`Período: ${current}`}
         title="Mudar o período"
-        className={`flex items-center gap-1.5 h-9 pl-2.5 pr-2 rounded-md border text-xs font-mono font-semibold transition max-w-full sm:max-w-none ${
-          open
-            ? 'bg-slate-800 border-emerald-500/60 text-white'
-            : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+        className={`flex items-center gap-1.5 h-10 pl-3 pr-2.5 rounded-full text-[13px] font-medium transition max-w-full sm:max-w-none ${
+          open ? 'bg-nq-raised text-nq-text' : 'bg-nq-surface text-nq-text hover:bg-nq-raised'
         }`}
       >
-        <CalendarRange className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+        <CalendarRange aria-hidden="true" className="hidden sm:block h-3.5 w-3.5 text-nq-muted shrink-0" />
         <span className="truncate" data-testid="global-period-current">{current}</span>
-        <ChevronDown className={`h-3.5 w-3.5 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-3.5 w-3.5 text-nq-subtle shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div
           role="group"
           aria-label="Escolher período"
-          className="absolute right-0 top-full mt-2 w-60 max-w-[calc(100vw-1.5rem)] z-40 rounded-lg border border-slate-700 bg-slate-900 shadow-2xl p-1.5"
+          className="absolute right-0 top-full mt-2 w-60 max-w-[calc(100vw-1.5rem)] z-40 rounded-lg border border-nq-line bg-nq-surface p-1.5"
         >
-          <div className="px-2 pt-1 pb-1.5 text-[10px] font-mono uppercase tracking-wider text-slate-500">Período</div>
+          <div className="px-2 pt-1 pb-1.5 text-[12px] text-nq-subtle">Período</div>
           {GLOBAL_PERIOD_OPTIONS.map(opt => (
             <button
               key={opt.id}
               type="button"
               onClick={() => select(opt.id)}
               aria-pressed={isActive(opt.id)}
-              className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-mono text-left transition ${
+              className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs text-left transition ${
                 isActive(opt.id)
-                  ? 'bg-emerald-500/15 text-emerald-300 font-bold'
-                  : 'text-slate-300 hover:bg-slate-800'
+                  ? 'bg-nq-positive/15 text-nq-positive-text font-bold'
+                  : 'text-nq-text hover:bg-nq-raised'
               }`}
             >
               <span>{opt.label}</span>
@@ -222,44 +220,44 @@ export function GlobalPeriodSelector({ appliesToScreen = true }: { appliesToScre
             </button>
           ))}
 
-          <p className="mt-1 px-2.5 pb-1 text-[10px] font-mono text-slate-500 leading-snug" data-testid="operation-start-note">
+          <p className="mt-1 px-2.5 pb-1 text-[12px] text-nq-subtle leading-snug" data-testid="operation-start-note">
             Os números começam em {OPERATION_START_LABEL}, início das vendas. A fase de testes fica de fora.
           </p>
 
           {showCustom && (
-            <form onSubmit={applyCustom} className="mt-1.5 pt-2 border-t border-slate-800 space-y-2 px-1 text-xs font-mono">
-              <label className="flex items-center justify-between gap-2 text-slate-400">
+            <form onSubmit={applyCustom} className="mt-1.5 pt-2 border-t border-nq-line space-y-2 px-1 text-xs">
+              <label className="flex items-center justify-between gap-2 text-nq-muted">
                 De:
                 <input
                   type="date"
                   aria-label="Data inicial"
                   value={from}
                   onChange={e => setFrom(e.target.value)}
-                  className="w-[140px] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded focus:outline-none focus:border-emerald-500"
+                  className="w-[140px] bg-nq-bg border border-nq-line text-nq-text px-2 py-1 rounded focus:outline-none focus:border-nq-positive/40"
                 />
               </label>
-              <label className="flex items-center justify-between gap-2 text-slate-400">
+              <label className="flex items-center justify-between gap-2 text-nq-muted">
                 Até:
                 <input
                   type="date"
                   aria-label="Data final"
                   value={to}
                   onChange={e => setTo(e.target.value)}
-                  className="w-[140px] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded focus:outline-none focus:border-emerald-500"
+                  className="w-[140px] bg-nq-bg border border-nq-line text-nq-text px-2 py-1 rounded focus:outline-none focus:border-nq-positive/40"
                 />
               </label>
               <button
                 type="submit"
-                className="w-full px-3 py-1.5 bg-emerald-500 text-slate-950 font-bold rounded hover:bg-emerald-400 transition"
+                className="w-full px-3 py-1.5 bg-nq-positive text-nq-on-positive font-bold rounded hover:brightness-110 transition"
               >
                 Filtrar
               </button>
-              {customError && <p className="text-red-400">{customError}</p>}
+              {customError && <p className="text-nq-critical-text">{customError}</p>}
             </form>
           )}
 
           {!appliesToScreen && (
-            <p className="mt-1.5 pt-2 border-t border-slate-800 px-2 text-[10px] font-mono text-slate-500">
+            <p className="mt-1.5 pt-2 border-t border-nq-line px-2 text-[12px] text-nq-subtle">
               Esta tela não tem números por data; o período vale para as telas de resultados.
             </p>
           )}

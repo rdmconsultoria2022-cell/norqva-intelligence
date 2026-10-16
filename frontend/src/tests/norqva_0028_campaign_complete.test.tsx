@@ -69,8 +69,9 @@ describe('NORQVA-0028 — campanha completa na tela Campanhas', () => {
     const ext = await screen.findByTestId('external-campaign');
     expect(ext).toHaveTextContent('NORQVA_TRATTORIA_REVENUE_V1');
     expect(ext).toHaveTextContent('criada fora do NORQVA');
-    expect(ext).toHaveTextContent('2 venda(s)');
-    expect(ext).toHaveTextContent('1 alerta(s)');
+    // NORQVA-0083: cartão novo mostra "Vendas 2" e "1 alerta"
+    expect(ext).toHaveTextContent(/Vendas\s*2/);
+    expect(ext).toHaveTextContent('1 alerta');
     // a campanha do plano não aparece repetida como "de fora"
     expect(screen.getAllByTestId('external-campaign')).toHaveLength(1);
     expect(within(screen.getByTestId('campaign-list')).getByText('NORQVA_TR_EXP03')).toBeInTheDocument();
