@@ -37,9 +37,12 @@ export function openSecret(sealed: string): string {
   const parts = String(sealed || '').split(':');
   if (parts.length !== 4 || parts[0] !== 'v1') throw new SecretBoxError('Segredo guardado em formato desconhecido.');
   const key = masterKey();
+  const iv = Buffer.from(parts[1], 'base64');
+  const tag = Buffer.from(parts[2], 'base64');
+  if (iv.length !== 12 || tag.length !== 16) throw new SecretBoxError('Segredo guardado está corrompido. Cadastre o token de novo.');
   try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parts[1], 'base64'));
-    decipher.setAuthTag(Buffer.from(parts[2], 'base64'));
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+    decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(Buffer.from(parts[3], 'base64')), decipher.final()]).toString('utf8');
   } catch {
     throw new SecretBoxError('Não foi possível abrir o segredo guardado (a chave WHATSAPP_SECRETS_KEY mudou?). Cadastre o token de novo.');

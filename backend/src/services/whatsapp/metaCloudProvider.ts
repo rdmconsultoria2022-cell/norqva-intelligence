@@ -94,7 +94,7 @@ export interface CloudErrorInfo {
   message: string;
   retry: boolean;
   /** efeito no número/conta, aplicado por quem tem acesso ao banco */
-  effect: 'NONE' | 'TOKEN_INVALID' | 'NUMBER_BANNED' | 'NEEDS_HUMAN';
+  effect: 'NONE' | 'TOKEN_INVALID' | 'NUMBER_BANNED';
   outsideWindow: boolean;
 }
 
@@ -108,10 +108,12 @@ export function describeCloudError(code: number | null, metaMessage?: string): C
     case 131030:
       return { message: 'Este número não está na lista de destinatários de teste da Meta.', retry: false, effect: 'NONE', outsideWindow: false };
     case 130429:
-    case 131056:
       return { message: 'Limite de envio da Meta atingido. Tente de novo em instantes.', retry: true, effect: 'NONE', outsideWindow: false };
+    case 131056:
+      // limite por par (número → cliente): esperar 1 ou 2 segundos não resolve
+      return { message: 'Muitas mensagens seguidas para este cliente. Aguarde alguns minutos.', retry: false, effect: 'NONE', outsideWindow: false };
     case 131026:
-      return { message: 'A mensagem não chegou: o número do cliente não tem WhatsApp ou está inalcançável.', retry: false, effect: 'NEEDS_HUMAN', outsideWindow: false };
+      return { message: 'A mensagem não chegou: o número do cliente não tem WhatsApp ou está inalcançável.', retry: false, effect: 'NONE', outsideWindow: false };
     case 368:
       return { message: 'A Meta bloqueou o envio por política. O atendente foi parado neste número.', retry: false, effect: 'NUMBER_BANNED', outsideWindow: false };
     case 10:
@@ -215,7 +217,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
       const err = res.json?.error || {};
       const code = Number.isFinite(Number(err.code)) ? Number(err.code) : null;
       // detalhe por mensagem (ex.: 131047 vem também em errors[].code)
-      const info = describeCloudError(code, err.error_user_msg || err.message);
+      const info = describeCloudError(code, err.error_data?.details || err.error_user_msg || err.message);
       if (info.retry && attempt < 3) {
         await sleep(retryBaseMs * 2 ** (attempt - 1));
         continue;

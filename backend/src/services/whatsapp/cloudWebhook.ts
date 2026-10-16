@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
 import { loadAccountForWebhook } from './cloudAccounts';
+import { openSecret } from '../../utils/secretBox';
 import { ingestInbound, InboundMessage, NormalizedInbound } from './whatsappService';
 import { jidFromWaId, digitsOf } from './metaCloudProvider';
 
@@ -58,6 +59,9 @@ export function cloudMessageContent(msg: any): { body: string; kind: string } | 
     case 'location': return { body: '[localização]', kind: 'OTHER' };
     case 'contacts': return { body: '[contato]', kind: 'OTHER' };
     case 'reaction': return null;
+    // avisos do próprio WhatsApp (troca de número, boas-vindas): não são mensagem do cliente
+    case 'system': return null;
+    case 'request_welcome': return null;
     default: return { body: '[mensagem não suportada]', kind: 'OTHER' };
   }
 }
@@ -68,6 +72,28 @@ const STATUS_MAP: Record<string, { status: string; rank: number }> = {
   read: { status: 'READ', rank: 3 },
   failed: { status: 'FAILED', rank: 9 }
 };
+
+/**
+ * Um app da Meta tem UM endereço de webhook; se ele atende mais de uma conta (WABA), os eventos de todas chegam
+ * no endereço de uma delas. A conta certa é a do mesmo app, com a WABA do evento e a MESMA chave secreta
+ * que validou a assinatura. Sem correspondência exata, o evento é ignorado (nunca vai para a conta errada).
+ */
+async function accountForEntry(pool: Pool, base: any, wabaId: string, appSecret: string | null): Promise<any | null> {
+  if (String(base.waba_id) === wabaId) return base;
+  if (!appSecret) return null;
+  const r = await pool.query(
+    `SELECT * FROM whatsapp_cloud_accounts WHERE app_id = $1 AND waba_id = $2 AND is_deleted = FALSE AND status <> 'DISABLED'`,
+    [base.app_id, wabaId]
+  );
+  for (const a of r.rows) {
+    try {
+      if (safeEqual(openSecret(a.app_secret_enc), appSecret)) return a;
+    } catch {
+      // segredo ilegível: não serve
+    }
+  }
+  return null;
+}
 
 export interface CloudWebhookResult {
   /** mensagens novas por número (para o atendente) */
@@ -80,12 +106,13 @@ export interface CloudWebhookResult {
  * Processa um POST já com a assinatura conferida.
  * Erros de um item não derrubam os outros: o webhook sempre devolve 200 para a Meta não reenviar tudo.
  */
-export async function processCloudWebhook(pool: Pool, account: any, payload: any): Promise<CloudWebhookResult> {
+export async function processCloudWebhook(pool: Pool, baseAccount: any, payload: any, appSecret: string | null = null): Promise<CloudWebhookResult> {
   const out: CloudWebhookResult = { inbound: [], ignored: 0, statuses: 0 };
   if (payload?.object !== 'whatsapp_business_account') return out;
   const entries: any[] = Array.isArray(payload?.entry) ? payload.entry.slice(0, 20) : [];
   for (const entry of entries) {
-    if (entry?.id && String(entry.id) !== String(account.waba_id)) {
+    const account = await accountForEntry(pool, baseAccount, String(entry?.id ?? baseAccount.waba_id), appSecret);
+    if (!account) {
       out.ignored++;
       continue;
     }

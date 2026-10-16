@@ -47,6 +47,10 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
   const wabaB = `2${Date.now()}`.slice(0, 15);
   const pnA = `3${Date.now()}`.slice(0, 15);
   const pnB = `4${Date.now()}`.slice(0, 15);
+  const wabaC = `5${Date.now()}`.slice(0, 15);
+  const pnC = `6${Date.now()}`.slice(0, 15);
+  let accountC = '';
+  let numberC = '';
   let accountA = '';
   let accountB = '';
   let verifyTokenA = '';
@@ -144,7 +148,7 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     delete process.env.WHATSAPP_CLOUD_ENVIRONMENTS;
     if (!pool) return;
     const q = (sql: string, p: any[]) => pool.query(sql, p).catch(() => {});
-    const nums = [numberA, numberB].filter(Boolean);
+    const nums = [numberA, numberB, numberC].filter(Boolean);
     const orders = (await pool.query(
       `SELECT o.id FROM orders o JOIN whatsapp_conversations c ON c.id = o.whatsapp_conversation_id WHERE c.number_id = ANY($1::uuid[])`, [nums]
     ).catch(() => ({ rows: [] as any[] }))).rows.map((r: any) => r.id);
@@ -152,7 +156,7 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     await q('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [orders]);
     await q('DELETE FROM orders WHERE id = ANY($1::uuid[])', [orders]);
     await q('DELETE FROM whatsapp_numbers WHERE id = ANY($1::uuid[])', [nums]);
-    await q('DELETE FROM whatsapp_cloud_accounts WHERE id = ANY($1::uuid[])', [[accountA, accountB].filter(Boolean)]);
+    await q('DELETE FROM whatsapp_cloud_accounts WHERE id = ANY($1::uuid[])', [[accountA, accountB, accountC].filter(Boolean)]);
     const custs = (await pool.query(`SELECT id FROM customers WHERE email LIKE $1`, [`%.0079.${tag}@example.com`])).rows.map((r: any) => r.id);
     await q('DELETE FROM payment_provider_customers WHERE customer_id = ANY($1::uuid[])', [custs]);
     await q('DELETE FROM customers WHERE id = ANY($1::uuid[])', [custs]);
@@ -307,6 +311,27 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     expect(await convOf(numberA, STRANGER)).toBeUndefined();
   });
 
+  it('um app com duas contas: o evento vai para a conta da WABA certa; app diferente é ignorado', async () => {
+    const c = await request(app).post('/api/whatsapp/cloud/accounts').set(auth(admin)).send({
+      label: 'T0079 C', brand_id: brandId, environment: 'TEST', waba_id: wabaC, app_id: '1234567890', access_token: TOKEN_A, app_secret: APP_SECRET_A
+    });
+    expect(c.status).toBe(201);
+    accountC = c.body.account.id;
+    const n = await pool.query(
+      `INSERT INTO whatsapp_numbers (label, brand_id, instance_name, webhook_secret_hash, provider, cloud_account_id, phone_number_id, status)
+       VALUES ('T0079 C', $1, $2, 'x', 'META_CLOUD', $3, $4, 'CONNECTED') RETURNING id`,
+      [brandId, `cloud-t79-${tag.toLowerCase()}`, accountC, pnC]
+    );
+    numberC = n.rows[0].id;
+    // chega no endereço da conta A (mesmo app), assinado com a mesma chave secreta
+    expect((await post(accountA, messagePayload(wabaC, pnC, RECIPIENT, `wamid.C-${tag}`, 'oi C'), APP_SECRET_A)).status).toBe(200);
+    expect(await convOf(numberC, RECIPIENT)).toBeTruthy();
+    expect(await convOf(numberA, RECIPIENT).then(cv => cv?.last_message_preview)).not.toBe('oi C');
+    // conta B é de outro app: evento com a WABA dela no endereço da A é ignorado
+    expect((await post(accountA, messagePayload(wabaB, pnB, STRANGER, `wamid.B-${tag}`, 'oi B'), APP_SECRET_A)).status).toBe(200);
+    expect(await convOf(numberB, STRANGER)).toBeUndefined();
+  });
+
   it('CPF chega mascarado e "parar" é respeitado', async () => {
     await post(accountA, messagePayload(wabaA, pnA, STRANGER, `wamid.CPF-${tag}`, 'meu cpf 529.982.247-25'), APP_SECRET_A);
     const conv = await convOf(numberA, STRANGER);
@@ -393,7 +418,7 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     const nRow = (await pool.query('SELECT * FROM whatsapp_numbers WHERE id = $1', [numberA])).rows[0];
     const p = await providerForNumber(pool, nRow);
     expect(p).toBeInstanceOf(MetaCloudProvider);
-    failNext = { code: 131056, times: 2 };
+    failNext = { code: 130429, times: 2 };
     const ok = await p!.sendText('', `${RECIPIENT}@s.whatsapp.net`, 'teste de limite');
     expect(ok.id).toMatch(/^wamid\./);
     expect(calls.filter(c => c.url.endsWith('/messages'))).toHaveLength(3);

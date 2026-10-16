@@ -29,8 +29,9 @@ CREATE TABLE IF NOT EXISTS whatsapp_cloud_accounts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- uma WABA pertence a um só ambiente (teste ou produção) e a uma só conta
 CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_cloud_accounts_waba
-  ON whatsapp_cloud_accounts (environment, waba_id) WHERE is_deleted = FALSE;
+  ON whatsapp_cloud_accounts (waba_id) WHERE is_deleted = FALSE;
 
 ALTER TABLE whatsapp_numbers ADD COLUMN IF NOT EXISTS provider VARCHAR(20) NOT NULL DEFAULT 'EVOLUTION'
   CHECK (provider IN ('EVOLUTION', 'META_CLOUD'));

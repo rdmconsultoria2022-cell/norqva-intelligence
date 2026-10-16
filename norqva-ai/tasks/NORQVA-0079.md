@@ -25,12 +25,22 @@
 - `whatsappDelivery.ts`: motor por número; janela fechada ou trava = `SKIPPED` (o e-mail de acesso continua); varredura roda também com conta oficial ativa.
 - `whatsappRefs.ts`: botão das páginas só com número que responde (Evolution ligada, ou oficial PRODUCTION conferido com envio liberado). Número de teste nunca aparece.
 - `provider.ts`: Evolution só com `WHATSAPP_EVOLUTION_ENABLED=true`.
-- `controllers/api.ts`: pedido que não é `COMMERCIAL_PRODUCTION` não envia Purchase para a Meta (pedido de teste não vira compra falsa).
+- `controllers/api.ts` + `services/whatsapp/testOrders.ts`: pedido ligado a número oficial de TESTE não envia InitiateCheckout nem Purchase para a Meta (regra pela conta TEST, não pela classificação, para não mexer em outros pedidos).
 - `middleware/logging.ts`: `hub.verify_token` mascarado nos logs.
 - `index.ts`: corpo bruto só na rota do webhook oficial; rotas novas; webhook oficial fora do limitador geral.
 - Tela: `CloudAccountsPanel.tsx` na aba Números (travas, contas, verify token mostrado uma vez, conferir, usar número); número oficial sem QR Code; conversa com janela fechada não deixa digitar; status da mensagem (bloqueada, entregue, lida, não chegou).
 
 Diferença do contrato: `utils/envValidation.ts` não foi alterado — o aviso de chave ausente aparece na tela (`secrets_key_configured`) e o cadastro devolve 503 claro.
+
+## Revisão independente (aplicada)
+
+- Um app da Meta tem um só endereço de webhook: evento de outra WABA do mesmo app vai para a conta certa (mesmo app e mesma chave secreta); sem correspondência, é ignorado.
+- Conferir conta recusa token de outro app (`debug_token.app_id`).
+- Uma WABA pertence a uma só conta e a um só ambiente (índice único em `waba_id`).
+- Pedido de teste: ligação à conversa e reclassificação numa instrução só.
+- Marca do número oficial = marca da conta (troca bloqueada no número; mudar a marca da conta leva os números junto).
+- Desativar conta não apaga a marca de BLOQUEADO; chave AES com tamanho de tag conferido; nova tentativa só em 130429; erro 131047 registrado como OUTSIDE_WINDOW; avisos de sistema do WhatsApp não acionam o atendente; com a Evolution desligada, o webhook dela não grava nada.
+- Aceito: status que chega antes da mensagem ser gravada é descartado (raro; a mensagem fica como enviada).
 
 ## Rotas
 

@@ -199,6 +199,8 @@ export async function getWhatsAppServerCheck(req: AuthenticatedRequest, res: Res
 /** Webhook público: o segredo vai no endereço (só o servidor do WhatsApp conhece). Responde rápido e processa depois. */
 export async function postWhatsAppWebhook(req: Request, res: Response) {
   const pool = db(req);
+  // NORQVA-0079: com a Evolution desligada, nada que chegue por ela é gravado nem respondido
+  if (!getWhatsAppProvider()) return res.status(200).json({ ok: true, ignored: true });
   try {
     const r = await handleWebhook(pool, String(req.params.numberId), String(req.params.secret), req.body);
     res.status(200).json({ ok: true });
@@ -302,7 +304,7 @@ export async function postCloudWebhook(req: Request, res: Response) {
       return res.status(401).json({ error: 'invalid signature' });
     }
     if (loaded.account.status === 'DISABLED') return res.status(200).json({ ok: true, ignored: true });
-    const r = await processCloudWebhook(pool, loaded.account, req.body);
+    const r = await processCloudWebhook(pool, loaded.account, req.body, loaded.appSecret);
     res.status(200).json({ ok: true });
     if (inboundHandler) {
       for (const item of r.inbound) {

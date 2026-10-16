@@ -176,10 +176,10 @@ export async function createCloudAccount(pool: Pool, body: any, userId: string |
   }
   const brandId = await checkBrand(pool, body?.brand_id);
   const dupe = await pool.query(
-    'SELECT id FROM whatsapp_cloud_accounts WHERE environment = $1 AND waba_id = $2 AND is_deleted = FALSE',
-    [environment, wabaId]
+    'SELECT id FROM whatsapp_cloud_accounts WHERE waba_id = $1 AND is_deleted = FALSE',
+    [wabaId]
   );
-  if (dupe.rows.length) throw new WhatsAppError(409, 'Esta conta do WhatsApp Business já está cadastrada neste ambiente.');
+  if (dupe.rows.length) throw new WhatsAppError(409, 'Esta conta do WhatsApp Business já está cadastrada (uma WABA pertence a um só ambiente).');
   const verifyToken = crypto.randomBytes(24).toString('hex');
   const r = await pool.query(
     `INSERT INTO whatsapp_cloud_accounts
@@ -254,8 +254,20 @@ export async function updateCloudAccount(pool: Pool, id: string, body: any, user
     [label, brandId, recipients, tokenEnc, last4, secretEnc, status, verifyHash, webhookVerifiedAt, id]
   );
   if (status === 'DISABLED' && a.status !== 'DISABLED') {
-    // conta desligada: o atendente para nos números dela
-    await pool.query(`UPDATE whatsapp_numbers SET bot_enabled = FALSE, status = 'DISCONNECTED', status_reason = 'Conta Meta desativada.', updated_at = NOW() WHERE cloud_account_id = $1`, [id]);
+    // conta desligada: o atendente para nos números dela (número bloqueado pela Meta continua marcado como bloqueado)
+    await pool.query(
+      `UPDATE whatsapp_numbers SET bot_enabled = FALSE,
+              status = CASE WHEN status = 'BANNED' THEN status ELSE 'DISCONNECTED' END,
+              status_reason = CASE WHEN status = 'BANNED' THEN status_reason ELSE 'Conta Meta desativada.' END,
+              updated_at = NOW()
+       WHERE cloud_account_id = $1`,
+      [id]
+    );
+  }
+  if ((brandId || null) !== (a.brand_id || null)) {
+    // a marca da conta vale para todos os números dela
+    await pool.query('UPDATE whatsapp_numbers SET brand_id = $1, updated_at = NOW() WHERE cloud_account_id = $2', [brandId, id]);
+    changes.push('marca alterada');
   }
   if (changes.length) {
     await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_ACCOUNT_UPDATED', `Conta Meta "${label}": ${changes.join(', ')}.`, a.status, status);
@@ -316,6 +328,10 @@ export async function checkCloudAccount(pool: Pool, id: string, opts: { subscrib
     const dbg = await graphGet(a, token, `/debug_token?input_token=${encodeURIComponent(token)}`).catch(() => null);
     const scopes: string[] = Array.isArray(dbg?.data?.scopes) ? dbg.data.scopes.map(String) : [];
     if (dbg?.data && dbg.data.is_valid === false) return await fail('O token da Meta está inválido ou expirou. Gere um token novo do usuário do sistema.');
+    // token de outro app: a chave secreta cadastrada não vai bater com a assinatura dos webhooks
+    if (dbg?.data?.app_id && String(dbg.data.app_id) !== String(a.app_id)) {
+      return await fail(`O token é do app ${dbg.data.app_id}, mas a conta foi cadastrada com o app ${a.app_id}. Confira o ID do app e a chave secreta.`);
+    }
     if (scopes.length) missing = REQUIRED_SCOPES.filter(s => !scopes.includes(s));
     if (missing.length) return { ...(await fail(`Faltam permissões no token: ${missing.join(', ')}.`)), missing_scopes: missing };
     await graphGet(a, token, `/${encodeURIComponent(a.waba_id)}?fields=id,name`);
@@ -462,6 +478,7 @@ export async function providerForNumber(pool: Pool, n: CloudNumberRow): Promise<
 export function cloudErrorToWhatsApp(err: any): WhatsAppError | null {
   if (err instanceof SendBlockedError) return new WhatsAppError(409, err.message);
   if (err instanceof CloudApiError) return new WhatsAppError(err.status === 422 ? 422 : 502, err.message);
+  if (err instanceof ProviderError && err.status === 400) return new WhatsAppError(400, err.message);
   return null;
 }
 

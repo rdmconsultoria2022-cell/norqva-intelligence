@@ -350,12 +350,20 @@ async function newOrder(ctx: Ctx, offer: any, customerId: string): Promise<{ ord
     }
   });
   if (r.status >= 400 || !r.body?.checkout_token) return { error: String(r.body?.error || 'Não foi possível criar o pedido.') };
-  await ctx.pool.query('UPDATE orders SET whatsapp_conversation_id = $1 WHERE id = $2', [ctx.conv.id, r.body.id]);
-  // NORQVA-0079: pedido feito por número oficial de TESTE não é venda real (fora de Vendas, Resultados e da compra informada à Meta)
-  if (ctx.number.environment === 'TEST') {
-    await ctx.pool.query(`UPDATE orders SET data_provenance = 'STAGING_SANDBOX_QA' WHERE id = $1`, [r.body.id]);
-    await ctx.pool.query(`UPDATE order_items SET data_provenance = 'STAGING_SANDBOX_QA' WHERE order_id = $1`, [r.body.id]);
-    await writeAuditLog(ctx.pool, null, 'ORDER_RECLASSIFIED_TEST', `Pedido ${r.body.id} feito pelo número de teste do WhatsApp oficial: marcado como teste (STAGING_SANDBOX_QA).`, 'COMMERCIAL_PRODUCTION', 'STAGING_SANDBOX_QA');
+  // NORQVA-0079: pedido feito por número oficial de TESTE não é venda real (fora de Vendas e Resultados).
+  // Ligação à conversa e reclassificação numa instrução só; os eventos da Meta também olham a conta TEST (testOrders.ts).
+  const isTest = ctx.number.environment === 'TEST';
+  await ctx.pool.query(
+    `WITH o AS (
+       UPDATE orders SET whatsapp_conversation_id = $1,
+              data_provenance = CASE WHEN $3::boolean THEN 'STAGING_SANDBOX_QA' ELSE data_provenance END
+       WHERE id = $2 RETURNING id
+     )
+     UPDATE order_items SET data_provenance = 'STAGING_SANDBOX_QA' WHERE $3::boolean AND order_id IN (SELECT id FROM o)`,
+    [ctx.conv.id, r.body.id, isTest]
+  );
+  if (isTest) {
+    await writeAuditLog(ctx.pool, null, 'ORDER_RECLASSIFIED_TEST', `Pedido ${r.body.id} feito pelo número de teste do WhatsApp oficial: marcado como teste (STAGING_SANDBOX_QA).`, 'COMMERCIAL_PRODUCTION', 'STAGING_SANDBOX_QA').catch(() => {});
   }
   return { orderId: r.body.id, token: r.body.checkout_token };
 }
@@ -502,7 +510,7 @@ async function sendAll(pool: Pool, provider: WhatsAppProvider, conv: any, number
       await recordOutgoing(pool, conv.id, 'BOT', label, null, {
         kind,
         failed: true,
-        deliveryStatus: official ? 'FAILED' : null,
+        deliveryStatus: official ? (err instanceof CloudApiError && err.metaCode === 131047 ? 'OUTSIDE_WINDOW' : 'FAILED') : null,
         errorCode: err instanceof CloudApiError && err.metaCode !== null ? String(err.metaCode) : null
       });
       console.warn('[WhatsApp] envio do atendente falhou:', err?.message || err);

@@ -40,7 +40,7 @@ export { WhatsAppError };
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 function requireProvider(p: WhatsAppProvider | null): WhatsAppProvider {
-  if (!p) throw new WhatsAppError(503, 'O servidor do WhatsApp ainda não foi ligado ao NORQVA (falta configurar EVOLUTION_API_URL e EVOLUTION_API_KEY).');
+  if (!p) throw new WhatsAppError(503, 'A conexão não oficial (QR Code) está desligada (WHATSAPP_EVOLUTION_ENABLED) ou sem servidor (EVOLUTION_API_URL e EVOLUTION_API_KEY). Use o WhatsApp oficial da Meta.');
   return p;
 }
 
@@ -157,6 +157,10 @@ export async function updateNumber(pool: Pool, id: string, body: any, userId: st
   const n = await loadNumber(pool, id);
   const label = body?.label !== undefined ? cleanLabel(body.label) : n.label;
   const brandId = body?.brand_id !== undefined ? await checkBrand(pool, body.brand_id) : n.brand_id;
+  // NORQVA-0079: número oficial pertence à marca da conta Meta dele (isolamento por operação)
+  if (n.provider === 'META_CLOUD' && (brandId || null) !== (n.brand_id || null)) {
+    throw new WhatsAppError(409, 'A marca do número oficial é a da conta Meta. Para outra marca, use a conta Meta dela.');
+  }
   let bot = n.bot_enabled;
   if (body?.bot_enabled !== undefined) {
     if (typeof body.bot_enabled !== 'boolean') throw new WhatsAppError(400, 'bot_enabled deve ser verdadeiro ou falso.');
@@ -613,8 +617,9 @@ export async function sendOperatorMessage(pool: Pool, provider: WhatsAppProvider
     }
     const w = cloudErrorToWhatsApp(err);
     if (w) {
+      const metaCode = err instanceof CloudApiError ? err.metaCode : null;
       await recordOutgoing(pool, convId, 'OPERATOR', body, null, {
-        userId, failed: true, deliveryStatus: 'FAILED', errorCode: err instanceof CloudApiError && err.metaCode !== null ? String(err.metaCode) : null
+        userId, failed: true, deliveryStatus: metaCode === 131047 ? 'OUTSIDE_WINDOW' : 'FAILED', errorCode: metaCode !== null ? String(metaCode) : null
       });
       throw w;
     }
