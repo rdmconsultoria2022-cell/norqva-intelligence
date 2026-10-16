@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3 } from 'lucide-react';
 import { DashboardView } from '../dashboard/DashboardView';
 import { CreativePerformanceView } from '../intelligence/CreativePerformanceView';
 import { DemographicIntelligenceView } from '../intelligence/DemographicIntelligenceView';
@@ -38,22 +37,20 @@ export const ResultsView: React.FC<Props> = ({ currentUser, isDemoView, apiFetch
   return (
     <div className="space-y-5" data-testid="results-view">
       <div>
-        <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-white">
-          <BarChart3 className="h-6 w-6 text-emerald-400" /> Resultados
-        </h1>
-        <p className="mt-1 max-w-3xl text-xs text-slate-400">
+        <h1 className="text-[28px] leading-[34px] font-semibold tracking-tight text-nq-text">Resultados</h1>
+        <p className="mt-1 max-w-3xl text-nq-aux text-nq-muted">
           Como estamos indo: dinheiro, criativos, público, crédito da conta Meta e o registro das decisões. Financeiro, Criativos e Público seguem o período escolhido no topo.
         </p>
       </div>
 
-      <nav className="flex flex-wrap gap-1 border-b border-slate-800" role="tablist" data-testid="results-tabs">
+      <nav className="-mx-4 px-4 lg:mx-0 lg:px-0 flex gap-2 overflow-x-auto no-scrollbar" role="tablist" data-testid="results-tabs">
         {tabs.map(t => (
           <button
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`border-b-2 px-3 py-2 text-xs font-semibold ${tab === t.id ? 'border-emerald-400 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+            className={`shrink-0 h-10 px-4 rounded-full text-nq-aux font-medium transition-colors ${tab === t.id ? 'bg-nq-text text-nq-bg' : 'bg-nq-surface text-nq-muted hover:text-nq-text'}`}
           >
             {t.label}
           </button>

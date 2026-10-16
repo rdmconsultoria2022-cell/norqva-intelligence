@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useGlobalPeriod, periodQuery, periodLabel } from '../../lib/globalPeriod';
+import { useIsMobile } from '../../components/ui/premium';
 import {
   Users,
   Calendar,
@@ -95,31 +96,31 @@ export function formatConfidenceBadge(confidence: MediaSampleConfidence | string
     case 'SUFFICIENT_MEDIA_SAMPLE':
       return {
         label: 'Amostra suficiente',
-        bgClass: 'bg-emerald-950/40',
-        textClass: 'text-emerald-400',
-        borderClass: 'border-emerald-500/40'
+        bgClass: 'bg-nq-positive/10',
+        textClass: 'text-nq-positive-text',
+        borderClass: 'border-nq-positive/40'
       };
     case 'LEARNING':
       return {
         label: 'Aprendizado',
-        bgClass: 'bg-amber-950/40',
-        textClass: 'text-amber-400',
-        borderClass: 'border-amber-500/40'
+        bgClass: 'bg-nq-attention/10',
+        textClass: 'text-nq-attention',
+        borderClass: 'border-nq-attention/40'
       };
     case 'OBSERVING':
       return {
         label: 'Observando',
-        bgClass: 'bg-sky-950/40',
-        textClass: 'text-sky-400',
-        borderClass: 'border-sky-500/40'
+        bgClass: 'bg-nq-info/10',
+        textClass: 'text-nq-info',
+        borderClass: 'border-nq-info/40'
       };
     case 'NO_DATA':
     default:
       return {
         label: 'Sem dados',
-        bgClass: 'bg-slate-800/60',
-        textClass: 'text-slate-400',
-        borderClass: 'border-slate-700/60'
+        bgClass: 'bg-nq-raised',
+        textClass: 'text-nq-muted',
+        borderClass: 'border-nq-line'
       };
   }
 }
@@ -151,6 +152,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
   apiFetch,
   showError
 }) => {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<DemographicAnalyticsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -198,29 +200,15 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
   const hasData = summary && summary.total_impressions > 0;
 
   return (
-    <div className="space-y-8 pb-12 max-w-7xl mx-auto">
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
       {/* ----------------------------------------------------------------- */}
       {/* 1. Header & Controls */}
       {/* ----------------------------------------------------------------- */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-purple-950/40 text-purple-400 border border-purple-500/30">
-              Media Intelligence
-            </span>
-            {isDemoView && (
-              <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-amber-950/40 text-amber-400 border border-amber-500/30">
-                Sandbox Demo
-              </span>
-            )}
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Users className="h-6 w-6 text-purple-400" />
-            Inteligência Demográfica
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Composição de tráfego, faixas etárias e atratividade por criativo (Meta Ads)
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-nq-section font-semibold text-nq-text">Inteligência demográfica</h2>
+          <p className="mt-1 text-nq-aux text-nq-muted">Composição do tráfego, faixas etárias e quem cada criativo atrai (Meta Ads).</p>
+          {isDemoView && <p className="mt-1 text-nq-caption text-nq-attention">Dados de demonstração</p>}
         </div>
 
         {/* Controls & Period Selector */}
@@ -228,11 +216,11 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
           <button
             onClick={loadData}
             disabled={loading}
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition disabled:opacity-50"
+            className="h-11 w-11 flex items-center justify-center rounded-full bg-nq-surface text-nq-muted hover:text-nq-text active:bg-nq-raised transition disabled:opacity-50"
             title="Atualizar dados"
             aria-label="Atualizar dados"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
+            <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -242,12 +230,12 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
       {/* ----------------------------------------------------------------- */}
       {loading && (
         <div className="space-y-6 animate-pulse" data-testid="demographics-loading">
-          <div className="h-44 bg-slate-900/60 rounded-xl border border-slate-800/80 p-6" />
+          <div className="h-44 bg-nq-surface rounded-nq p-6" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="h-60 bg-slate-900/60 rounded-xl border border-slate-800/80" />
-            <div className="h-60 bg-slate-900/60 rounded-xl border border-slate-800/80" />
+            <div className="h-60 bg-nq-surface rounded-nq" />
+            <div className="h-60 bg-nq-surface rounded-nq" />
           </div>
-          <div className="h-72 bg-slate-900/60 rounded-xl border border-slate-800/80" />
+          <div className="h-72 bg-nq-surface rounded-nq" />
         </div>
       )}
 
@@ -257,14 +245,14 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
       {!loading && error && (
         <div
           data-testid="demographics-error"
-          className="rounded-xl bg-red-950/30 border border-red-500/30 p-6 text-center space-y-3"
+          className="rounded-xl bg-nq-critical/10 border border-nq-critical/40 p-6 text-center space-y-3"
         >
-          <AlertCircle className="h-8 w-8 text-red-400 mx-auto" />
-          <div className="text-sm font-bold text-red-200">Falha ao carregar inteligência demográfica</div>
-          <p className="text-xs text-red-300/80 max-w-md mx-auto">{error}</p>
+          <AlertCircle className="h-8 w-8 text-nq-critical-text mx-auto" />
+          <div className="text-sm font-bold text-nq-critical-text">Falha ao carregar inteligência demográfica</div>
+          <p className="text-xs text-nq-critical-text/80 max-w-md mx-auto">{error}</p>
           <button
             onClick={loadData}
-            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold transition"
+            className="px-4 py-2 rounded-lg bg-nq-raised hover:brightness-110 text-nq-text text-nq-aux font-semibold transition min-h-[44px]"
           >
             Tentar novamente
           </button>
@@ -277,19 +265,19 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
       {!loading && !error && !hasData && (
         <div
           data-testid="demographics-empty"
-          className="rounded-xl bg-slate-900/50 border border-slate-800/80 p-12 text-center space-y-4"
+          className="rounded-nq bg-nq-surface p-12 text-center space-y-4"
         >
-          <div className="h-12 w-12 rounded-full bg-slate-800/80 flex items-center justify-center mx-auto text-slate-400">
+          <div className="h-12 w-12 rounded-full bg-nq-raised flex items-center justify-center mx-auto text-nq-muted">
             <Users className="h-6 w-6" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-200">Nenhum dado demográfico no período</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+            <h3 className="text-base font-bold text-nq-text">Nenhum dado demográfico no período</h3>
+            <p className="text-xs text-nq-muted max-w-md mx-auto mt-1">
               Não foram registradas impressões ou cliques com segmentação etária para o filtro selecionado (
               {periodLabel(globalPeriod)}).
             </p>
           </div>
-          <div className="text-[11px] font-mono text-slate-500">
+          <div className="text-[12px] text-nq-subtle">
             Janela: {data?.time_window?.start_date || '—'} até {data?.time_window?.end_date || '—'} (America/Sao_Paulo)
           </div>
         </div>
@@ -303,13 +291,13 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
           {/* ============================================================= */}
           {/* A. Executive Hypothesis 45+ Banner */}
           {/* ============================================================= */}
-          <div className="rounded-xl bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 p-6 md:p-8 space-y-6 shadow-sm">
+          <div className="rounded-nq bg-nq-surface p-4 md:p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-purple-400 font-bold">
+                <span className="text-[12px] text-nq-muted font-bold">
                   Composição Demográfica da Mídia
                 </span>
-                <h2 className="text-lg md:text-xl font-bold text-white mt-0.5">
+                <h2 className="text-lg md:text-xl font-bold text-nq-text mt-0.5">
                   Participação 45+ nos Cliques
                 </h2>
               </div>
@@ -329,7 +317,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
 
             {/* Click Share Visual Proportional Bar */}
             <div className="space-y-2">
-              <div className="h-4 w-full bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
+              <div className="h-4 w-full bg-nq-bg rounded-full overflow-hidden flex">
                 <div
                   style={{ width: `${hypothesis?.click_share_45_plus || 0}%` }}
                   className="bg-purple-500 transition-all duration-500 hover:opacity-90"
@@ -337,7 +325,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                 />
                 <div
                   style={{ width: `${cohorts?.under_45?.click_share || 0}%` }}
-                  className="bg-sky-500 transition-all duration-500 hover:opacity-90"
+                  className="bg-nq-info transition-all duration-500 hover:opacity-90"
                   title={`<45: ${formatPercent(cohorts?.under_45?.click_share)}`}
                 />
                 <div
@@ -348,25 +336,25 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
               </div>
 
               {/* Legend with shares */}
-              <div className="grid grid-cols-3 gap-2 text-xs pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
                 <div className="flex items-center gap-2">
                   <span className="h-3 w-3 rounded-full bg-purple-500 shrink-0" />
-                  <span className="text-slate-300 font-semibold">45+ anos:</span>
-                  <span className="text-white font-bold text-sm">
+                  <span className="text-nq-text font-semibold">45+ anos:</span>
+                  <span className="text-nq-text font-bold text-sm">
                     {formatPercent(hypothesis?.click_share_45_plus)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-sky-500 shrink-0" />
-                  <span className="text-slate-300 font-semibold">&lt;45 anos:</span>
-                  <span className="text-white font-bold text-sm">
+                  <span className="h-3 w-3 rounded-full bg-nq-info shrink-0" />
+                  <span className="text-nq-text font-semibold">&lt;45 anos:</span>
+                  <span className="text-nq-text font-bold text-sm">
                     {formatPercent(cohorts?.under_45?.click_share)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="h-3 w-3 rounded-full bg-slate-600 shrink-0" />
-                  <span className="text-slate-400">Não identificado:</span>
-                  <span className="text-slate-300 font-medium">
+                  <span className="text-nq-muted">Não identificado:</span>
+                  <span className="text-nq-text font-medium">
                     {formatPercent(cohorts?.unknown?.click_share)}
                   </span>
                 </div>
@@ -374,10 +362,10 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
             </div>
 
             {/* Confidence Notice Box */}
-            <div className="rounded-lg bg-slate-950/60 border border-slate-800/80 p-3.5 flex items-start gap-3">
-              <Info className="h-4 w-4 text-purple-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-300 space-y-0.5">
-                <div className="font-semibold text-white">Status da Amostra:</div>
+            <div className="rounded-lg bg-nq-bg p-3.5 flex items-start gap-3">
+              <Info className="h-4 w-4 text-nq-muted shrink-0 mt-0.5" />
+              <div className="text-xs text-nq-text space-y-0.5">
+                <div className="font-semibold text-nq-text">Status da Amostra:</div>
                 <div>{getConfidenceNotice(hypothesis?.media_sample_confidence_45_plus)}</div>
               </div>
             </div>
@@ -385,45 +373,45 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
             {/* Dual Comparison Cards (<45 vs 45+) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               {/* Card <45 */}
-              <div className="rounded-lg bg-slate-950/40 border border-sky-500/20 p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="rounded-lg bg-nq-bg border border-nq-info/40 p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-nq-line pb-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                    <h3 className="text-sm font-bold text-sky-200 uppercase tracking-wide">
+                    <h3 className="text-sm font-bold text-nq-info">
                       Público &lt;45 anos
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400">18–44 anos</span>
+                  <span className="text-[12px] text-nq-muted">18–44 anos</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <span className="text-slate-400 block text-[11px]">Investimento</span>
-                    <span className="text-sm font-bold text-white">
+                    <span className="text-nq-muted block text-[12px]">Investimento</span>
+                    <span className="text-sm font-bold text-nq-text">
                       {formatBRL(cohorts?.under_45?.spend)}
                     </span>
-                    <span className="text-[10px] text-slate-500 block">
+                    <span className="text-[12px] text-nq-subtle block">
                       Share: {formatPercent(cohorts?.under_45?.spend_share)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[11px]">Cliques</span>
-                    <span className="text-sm font-bold text-white">
+                    <span className="text-nq-muted block text-[12px]">Cliques</span>
+                    <span className="text-sm font-bold text-nq-text">
                       {formatInteger(cohorts?.under_45?.clicks)}
                     </span>
-                    <span className="text-[10px] text-slate-500 block">
+                    <span className="text-[12px] text-nq-subtle block">
                       Share: {formatPercent(cohorts?.under_45?.click_share)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[11px]">CTR</span>
-                    <span className="text-sm font-semibold text-slate-200">
+                    <span className="text-nq-muted block text-[12px]">CTR</span>
+                    <span className="text-sm font-semibold text-nq-text">
                       {formatPercent(cohorts?.under_45?.ctr)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[11px]">CPC</span>
-                    <span className="text-sm font-semibold text-slate-200">
+                    <span className="text-nq-muted block text-[12px]">CPC</span>
+                    <span className="text-sm font-semibold text-nq-text">
                       {formatCPC(cohorts?.under_45?.cpc)}
                     </span>
                   </div>
@@ -431,45 +419,45 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
               </div>
 
               {/* Card 45+ */}
-              <div className="rounded-lg bg-slate-950/40 border border-purple-500/20 p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="rounded-lg bg-nq-bg p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-nq-line pb-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-purple-400" />
-                    <h3 className="text-sm font-bold text-purple-200 uppercase tracking-wide">
+                    <h3 className="text-sm font-bold text-nq-text">
                       Público 45+ anos
                     </h3>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400">45 a 65+ anos</span>
+                  <span className="text-[12px] text-nq-muted">45 a 65+ anos</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <span className="text-slate-400 block text-[11px]">Investimento</span>
-                    <span className="text-sm font-bold text-white">
+                    <span className="text-nq-muted block text-[12px]">Investimento</span>
+                    <span className="text-sm font-bold text-nq-text">
                       {formatBRL(cohorts?.age_45_plus?.spend)}
                     </span>
-                    <span className="text-[10px] text-slate-500 block">
+                    <span className="text-[12px] text-nq-subtle block">
                       Share: {formatPercent(hypothesis?.spend_share_45_plus)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[11px]">Cliques</span>
-                    <span className="text-sm font-bold text-white">
+                    <span className="text-nq-muted block text-[12px]">Cliques</span>
+                    <span className="text-sm font-bold text-nq-text">
                       {formatInteger(cohorts?.age_45_plus?.clicks)}
                     </span>
-                    <span className="text-[10px] text-slate-500 block">
+                    <span className="text-[12px] text-nq-subtle block">
                       Share: {formatPercent(hypothesis?.click_share_45_plus)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[11px]">CTR</span>
-                    <span className="text-sm font-semibold text-slate-200">
+                    <span className="text-nq-muted block text-[12px]">CTR</span>
+                    <span className="text-sm font-semibold text-nq-text">
                       {formatPercent(hypothesis?.ctr_45_plus)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[11px]">CPC</span>
-                    <span className="text-sm font-semibold text-slate-200">
+                    <span className="text-nq-muted block text-[12px]">CPC</span>
+                    <span className="text-sm font-semibold text-nq-text">
                       {formatCPC(hypothesis?.cpc_45_plus)}
                     </span>
                   </div>
@@ -481,27 +469,57 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
           {/* ============================================================= */}
           {/* B. By Age Breakdown (All 7 Buckets) */}
           {/* ============================================================= */}
-          <div className="rounded-xl bg-slate-900 border border-slate-800 p-6 md:p-8 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+          <div className="rounded-nq bg-nq-surface p-4 md:p-6 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-nq-line pb-4">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Layers className="h-5 w-5 text-purple-400" />
+                <h3 className="text-base font-bold text-nq-text flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-nq-muted" />
                   Distribuição por Faixa Etária
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-nq-muted mt-0.5">
                   Métricas agregadas detalhadas por bucket etário da Meta
                 </p>
               </div>
-              <div className="text-xs text-slate-400 font-mono">
+              <div className="text-xs text-nq-muted">
                 Total de Cliques: {formatInteger(summary?.total_clicks)}
               </div>
             </div>
 
-            {/* Visual Bars & Table */}
+            {/* Visual Bars & Table (NORQVA-0086: no celular vira lista) */}
+            {isMobile ? (
+              <ul className="divide-y divide-nq-line/70 -mx-1" data-testid="age-mobile-list">
+                {byAge.map(item => {
+                  const is45Plus = ['45-54', '55-64', '65+'].includes(item.age_group);
+                  const isUnknown = item.age_group === 'unknown';
+                  const badge = formatConfidenceBadge(item.media_sample_confidence);
+                  return (
+                    <li key={item.age_group} className="px-1 py-3.5 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-nq-body font-semibold text-nq-text">{formatAgeGroupLabel(item.age_group)}</span>
+                        <span className="text-nq-body font-semibold tabular-nums text-nq-text">{formatPercent(item.click_share)}</span>
+                      </div>
+                      <div className="h-1.5 bg-nq-raised rounded-full overflow-hidden">
+                        <div
+                          style={{ width: `${item.click_share || 0}%` }}
+                          className={`h-full rounded-full ${isUnknown ? 'bg-slate-500' : is45Plus ? 'bg-purple-500' : 'bg-nq-info'}`}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-nq-caption text-nq-muted tabular-nums">
+                        <span>{formatInteger(item.clicks)} cliques</span>
+                        <span>CTR {formatPercent(item.ctr)}</span>
+                        <span>CPC {formatCPC(item.cpc)}</span>
+                        <span>{formatBRL(item.spend)}</span>
+                        <span className={`${badge.textClass}`}>{badge.label}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                  <tr className="border-b border-nq-line text-nq-muted font-semibold text-[12px]">
                     <th className="py-3 px-3">Faixa Etária</th>
                     <th className="py-3 px-3">Share de Cliques</th>
                     <th className="py-3 px-3 text-right">Investimento</th>
@@ -512,15 +530,15 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                     <th className="py-3 px-3 text-center">Amostra</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-nq-line/60">
                   {byAge.map((item) => {
                     const is45Plus = ['45-54', '55-64', '65+'].includes(item.age_group);
                     const isUnknown = item.age_group === 'unknown';
                     const badge = formatConfidenceBadge(item.media_sample_confidence);
 
                     return (
-                      <tr key={item.age_group} className="hover:bg-slate-800/30 transition">
-                        <td className="py-3.5 px-3 font-semibold text-white whitespace-nowrap">
+                      <tr key={item.age_group} className="hover:bg-nq-raised transition">
+                        <td className="py-3.5 px-3 font-semibold text-nq-text whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span
                               className={`h-2 w-2 rounded-full ${
@@ -532,37 +550,37 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                         </td>
                         <td className="py-3.5 px-3 min-w-[140px]">
                           <div className="flex items-center gap-2">
-                            <div className="h-2 flex-1 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-2 flex-1 bg-nq-raised rounded-full overflow-hidden">
                               <div
                                 style={{ width: `${item.click_share || 0}%` }}
                                 className={`h-full rounded-full ${
-                                  isUnknown ? 'bg-slate-500' : is45Plus ? 'bg-purple-500' : 'bg-sky-500'
+                                  isUnknown ? 'bg-slate-500' : is45Plus ? 'bg-purple-500' : 'bg-nq-info'
                                 }`}
                               />
                             </div>
-                            <span className="text-[11px] font-mono text-slate-300 w-12 text-right">
+                            <span className="text-[12px] text-nq-text w-12 text-right">
                               {formatPercent(item.click_share)}
                             </span>
                           </div>
                         </td>
-                        <td className="py-3.5 px-3 text-right text-slate-200 font-mono">
+                        <td className="py-3.5 px-3 text-right text-nq-text">
                           {formatBRL(item.spend)}
                         </td>
-                        <td className="py-3.5 px-3 text-right text-slate-300 font-mono">
+                        <td className="py-3.5 px-3 text-right text-nq-text">
                           {formatInteger(item.impressions)}
                         </td>
-                        <td className="py-3.5 px-3 text-right font-bold text-white font-mono">
+                        <td className="py-3.5 px-3 text-right font-bold text-nq-text">
                           {formatInteger(item.clicks)}
                         </td>
-                        <td className="py-3.5 px-3 text-right text-slate-200 font-mono">
+                        <td className="py-3.5 px-3 text-right text-nq-text">
                           {formatPercent(item.ctr)}
                         </td>
-                        <td className="py-3.5 px-3 text-right text-slate-200 font-mono">
+                        <td className="py-3.5 px-3 text-right text-nq-text">
                           {formatCPC(item.cpc)}
                         </td>
                         <td className="py-3.5 px-3 text-center whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}
+                            className={`px-2 py-0.5 rounded text-[12px] font-semibold border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}
                           >
                             {badge.label}
                           </span>
@@ -573,29 +591,30 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
           {/* ============================================================= */}
           {/* C. By Creative / Ad Breakdown ("Quem cada criativo está atraindo?") */}
           {/* ============================================================= */}
-          <div className="rounded-xl bg-slate-900 border border-slate-800 p-6 md:p-8 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+          <div className="rounded-nq bg-nq-surface p-4 md:p-6 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-nq-line pb-4">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-purple-400 font-bold">
+                <span className="text-[12px] text-nq-muted font-bold">
                   Comportamento por Criativo
                 </span>
-                <h3 className="text-base font-bold text-white flex items-center gap-2 mt-0.5">
-                  <Sparkles className="h-5 w-5 text-purple-400" />
+                <h3 className="text-base font-bold text-nq-text flex items-center gap-2 mt-0.5">
+                  <Sparkles className="h-5 w-5 text-nq-muted" />
                   Quem cada criativo está atraindo?
                 </h3>
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-nq-muted">
                 {byAd.length} {byAd.length === 1 ? 'anúncio analisado' : 'anúncios analisados'}
               </div>
             </div>
 
             {byAd.length === 0 ? (
-              <div className="text-center py-8 text-xs text-slate-400">
+              <div className="text-center py-8 text-xs text-nq-muted">
                 Nenhum anúncio com dados demográficos no período selecionado.
               </div>
             ) : (
@@ -606,20 +625,20 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                   return (
                     <div
                       key={ad.ad_id || ad.meta_ad_id}
-                      className="rounded-lg bg-slate-950/60 border border-slate-800 p-5 space-y-4 hover:border-slate-700 transition"
+                      className="rounded-lg bg-nq-bg p-5 space-y-4 hover:border-nq-line transition"
                     >
                       {/* Header */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h4 className="text-sm font-bold text-white leading-tight">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-nq-text leading-tight break-all">
                             {ad.ad_name}
                           </h4>
-                          <span className="text-[10px] font-mono text-slate-500 block mt-0.5">
+                          <span className="text-[12px] text-nq-subtle block mt-0.5">
                             ID: {ad.meta_ad_id}
                           </span>
                         </div>
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}
+                          className={`px-2 py-0.5 rounded text-[12px] font-semibold border shrink-0 ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}
                         >
                           {badge.label}
                         </span>
@@ -628,12 +647,12 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                       {/* Click Share Progress */}
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-400">Share 45+:</span>
-                          <span className="text-purple-400 font-bold font-mono">
+                          <span className="text-nq-muted">Share 45+:</span>
+                          <span className="text-nq-muted font-bold">
                             {formatPercent(ad.click_share_45_plus)}
                           </span>
                         </div>
-                        <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden flex">
+                        <div className="h-2.5 w-full bg-nq-raised rounded-full overflow-hidden flex">
                           <div
                             style={{ width: `${ad.click_share_45_plus || 0}%` }}
                             className="bg-purple-500"
@@ -641,7 +660,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                           />
                           <div
                             style={{ width: `${ad.under_45?.click_share || 0}%` }}
-                            className="bg-sky-500"
+                            className="bg-nq-info"
                             title={`<45: ${formatPercent(ad.under_45?.click_share)}`}
                           />
                           <div
@@ -650,45 +669,45 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                             title={`Não identificado: ${formatPercent(ad.unknown?.click_share)}`}
                           />
                         </div>
-                        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <div className="flex justify-between text-[12px] text-nq-subtle">
                           <span>&lt;45: {formatPercent(ad.under_45?.click_share)}</span>
                           <span>Não ident: {formatPercent(ad.unknown?.click_share)}</span>
                         </div>
                       </div>
 
                       {/* Metrics Comparison Grid */}
-                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80 text-xs">
-                        <div className="rounded bg-slate-900/60 p-2.5 border border-slate-800">
-                          <span className="text-[10px] text-purple-400 font-semibold block uppercase">
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-nq-line text-xs">
+                        <div className="rounded-nq bg-nq-surface p-2.5">
+                          <span className="text-[12px] text-nq-muted font-semibold block">
                             Público 45+
                           </span>
                           <div className="mt-1 flex items-baseline justify-between">
-                            <span className="text-slate-400 text-[11px]">CPC:</span>
-                            <span className="font-mono font-bold text-white">
+                            <span className="text-nq-muted text-[12px]">CPC:</span>
+                            <span className="font-bold text-nq-text">
                               {formatCPC(ad.cpc_45_plus)}
                             </span>
                           </div>
-                          <div className="flex items-baseline justify-between text-[11px] text-slate-400">
+                          <div className="flex items-baseline justify-between text-[12px] text-nq-muted">
                             <span>CTR:</span>
-                            <span className="font-mono text-slate-300">
+                            <span className="text-nq-text">
                               {formatPercent(ad.age_45_plus?.ctr)}
                             </span>
                           </div>
                         </div>
 
-                        <div className="rounded bg-slate-900/60 p-2.5 border border-slate-800">
-                          <span className="text-[10px] text-sky-400 font-semibold block uppercase">
+                        <div className="rounded-nq bg-nq-surface p-2.5">
+                          <span className="text-[12px] text-nq-info font-semibold block">
                             Público &lt;45
                           </span>
                           <div className="mt-1 flex items-baseline justify-between">
-                            <span className="text-slate-400 text-[11px]">CPC:</span>
-                            <span className="font-mono font-bold text-white">
+                            <span className="text-nq-muted text-[12px]">CPC:</span>
+                            <span className="font-bold text-nq-text">
                               {formatCPC(ad.cpc_under_45)}
                             </span>
                           </div>
-                          <div className="flex items-baseline justify-between text-[11px] text-slate-400">
+                          <div className="flex items-baseline justify-between text-[12px] text-nq-muted">
                             <span>CTR:</span>
-                            <span className="font-mono text-slate-300">
+                            <span className="text-nq-text">
                               {formatPercent(ad.under_45?.ctr)}
                             </span>
                           </div>
@@ -696,7 +715,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                       </div>
 
                       {/* Totals Footer */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
+                      <div className="flex items-center justify-between text-[12px] text-nq-muted pt-1">
                         <span>Investimento: {formatBRL(ad.spend)}</span>
                         <span>Cliques: {formatInteger(ad.clicks)}</span>
                       </div>
@@ -710,13 +729,13 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
           {/* ============================================================= */}
           {/* D. Gender Breakdown */}
           {/* ============================================================= */}
-          <div className="rounded-xl bg-slate-900 border border-slate-800 p-6 md:p-8 space-y-6">
-            <div className="border-b border-slate-800 pb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <PieIcon className="h-5 w-5 text-purple-400" />
+          <div className="rounded-nq bg-nq-surface p-4 md:p-6 space-y-6">
+            <div className="border-b border-nq-line pb-4">
+              <h3 className="text-base font-bold text-nq-text flex items-center gap-2">
+                <PieIcon className="h-5 w-5 text-nq-muted" />
                 Distribuição por Gênero
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-nq-muted mt-0.5">
                 Métricas de entrega de mídia distribuídas por gênero
               </p>
             </div>
@@ -725,33 +744,33 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
               {byGender.map((g) => (
                 <div
                   key={g.gender}
-                  className="rounded-lg bg-slate-950/40 border border-slate-800 p-4 space-y-3"
+                  className="rounded-lg bg-nq-bg p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">
+                    <span className="text-xs font-bold text-nq-text">
                       {formatGenderLabel(g.gender)}
                     </span>
-                    <span className="text-xs font-mono font-bold text-purple-400">
+                    <span className="text-xs font-bold text-nq-muted">
                       {formatPercent(g.click_share)}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-slate-500 block text-[10px]">Investimento</span>
-                      <span className="font-mono text-slate-200">{formatBRL(g.spend)}</span>
+                      <span className="text-nq-subtle block text-[12px]">Investimento</span>
+                      <span className="text-nq-text">{formatBRL(g.spend)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">Cliques</span>
-                      <span className="font-mono text-slate-200">{formatInteger(g.clicks)}</span>
+                      <span className="text-nq-subtle block text-[12px]">Cliques</span>
+                      <span className="text-nq-text">{formatInteger(g.clicks)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">CTR</span>
-                      <span className="font-mono text-slate-200">{formatPercent(g.ctr)}</span>
+                      <span className="text-nq-subtle block text-[12px]">CTR</span>
+                      <span className="text-nq-text">{formatPercent(g.ctr)}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">CPC</span>
-                      <span className="font-mono text-slate-200">{formatCPC(g.cpc)}</span>
+                      <span className="text-nq-subtle block text-[12px]">CPC</span>
+                      <span className="text-nq-text">{formatCPC(g.cpc)}</span>
                     </div>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, Send, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { ClassBadge, ScoreBar, brl, pct, CLASS_META, IntelClass } from './CampaignBaseView';
+import { useIsMobile } from '../../components/ui/premium';
 
 // NORQVA-0021 (P1): automatic shortlist of campaigns and ads for the Time de IAs.
 // Criteria are visible and editable; sending only creates opportunities (no Claude call, no Meta change).
@@ -109,6 +110,7 @@ interface Props {
 
 export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFetch, showError, showSuccess }) => {
   // null = usar os limites dos critérios validados (servidor); objeto = ajuste feito só nesta tela
+  const isMobile = useIsMobile();
   const [applied, setCriteria] = useState<ShortlistCriteria | null>(null);
   const [draft, setDraft] = useState<ShortlistCriteria>(DEFAULT_SHORTLIST_CRITERIA);
   const [data, setData] = useState<ShortlistResponse | null>(null);
@@ -183,7 +185,7 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
 
   const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
   const numInput = (label: string, field: 'limit' | 'min_spend' | 'min_impressions' | 'min_days', step = 1) => (
-    <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+    <label className="flex flex-col gap-1 text-[12px] text-nq-muted">
       {label}
       <input
         type="number"
@@ -192,19 +194,17 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
         aria-label={label}
         value={draft[field]}
         onChange={e => editDraft({ ...draft, [field]: Number(e.target.value) })}
-        className="w-28 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+        className="h-11 w-32 rounded-nq bg-nq-surface px-3 text-nq-body text-nq-text"
       />
     </label>
   );
 
   return (
-    <section className="space-y-3 rounded border border-violet-700/40 bg-violet-950/10 p-4" data-testid="shortlist-panel">
+    <section className="space-y-3 rounded-nq bg-nq-surface p-4" data-testid="shortlist-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="flex items-center gap-2 text-base font-bold text-slate-100">
-            <ListChecks className="h-4 w-4 text-violet-300" /> Seleção automática para o Time de IAs
-          </h3>
-          <p className="mt-1 max-w-3xl text-xs text-slate-400">
+          <h3 className="text-nq-body font-semibold text-nq-text">Seleção automática para o Time de IAs</h3>
+          <p className="mt-1 max-w-3xl text-nq-aux text-nq-muted">
             Até {criteria.limit} campanhas e anúncios, ordenados pela pontuação da Base de campanhas, filtrados pelos critérios abaixo.
             Enviar cria oportunidades no Time de IAs; nada é alterado na Meta.
           </p>
@@ -212,7 +212,8 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowCriteria(!showCriteria)}
-            className="inline-flex items-center gap-1.5 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+            aria-expanded={showCriteria}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-nq-raised px-4 text-nq-aux font-medium text-nq-text hover:brightness-110"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Critérios {showCriteria ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
@@ -220,7 +221,7 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
             <button
               onClick={send}
               disabled={sending || sendable.length === 0}
-              className="inline-flex items-center gap-1.5 rounded bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full bg-nq-text px-4 h-10 text-nq-aux font-semibold text-nq-bg hover:brightness-95 disabled:opacity-50"
             >
               <Send className="h-3.5 w-3.5" /> Enviar {sendable.length} ao Time de IAs
             </button>
@@ -228,26 +229,26 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-[11px] text-slate-400" data-testid="shortlist-criteria-summary">
-        <span className="rounded border border-slate-700 px-2 py-0.5">Níveis: {criteria.levels.map(l => (l === 'campaign' ? 'campanhas' : 'anúncios')).join(' + ')}</span>
-        <span className="rounded border border-slate-700 px-2 py-0.5">Classes: {criteria.classes.map(c => CLASS_META[c].label).join(', ')}</span>
-        <span className="rounded border border-slate-700 px-2 py-0.5">Investimento ≥ {brl(criteria.min_spend)}</span>
-        <span className="rounded border border-slate-700 px-2 py-0.5">Impressões ≥ {criteria.min_impressions.toLocaleString('pt-BR')}</span>
-        <span className="rounded border border-slate-700 px-2 py-0.5">Dias no ar ≥ {criteria.min_days}</span>
-        <span className="rounded border border-slate-700 px-2 py-0.5">
+      <div className="flex flex-wrap gap-2 text-[12px] text-nq-muted" data-testid="shortlist-criteria-summary">
+        <span className="rounded-full bg-nq-raised px-2.5 py-1">Níveis: {criteria.levels.map(l => (l === 'campaign' ? 'campanhas' : 'anúncios')).join(' + ')}</span>
+        <span className="rounded-full bg-nq-raised px-2.5 py-1">Classes: {criteria.classes.map(c => CLASS_META[c].label).join(', ')}</span>
+        <span className="rounded-full bg-nq-raised px-2.5 py-1">Investimento ≥ {brl(criteria.min_spend)}</span>
+        <span className="rounded-full bg-nq-raised px-2.5 py-1">Impressões ≥ {criteria.min_impressions.toLocaleString('pt-BR')}</span>
+        <span className="rounded-full bg-nq-raised px-2.5 py-1">Dias no ar ≥ {criteria.min_days}</span>
+        <span className="rounded-full bg-nq-raised px-2.5 py-1">
           CPA ≤ {criteria.max_cpa_ratio === null ? 'sem teto' : `${criteria.max_cpa_ratio.toLocaleString('pt-BR')}× o equilíbrio`}
         </span>
-        {criteria.require_product && <span className="rounded border border-slate-700 px-2 py-0.5">Com produto identificado</span>}
+        {criteria.require_product && <span className="rounded-full bg-nq-raised px-2.5 py-1">Com produto identificado</span>}
       </div>
 
       {showCriteria && (
-        <div className="space-y-3 rounded border border-slate-800 bg-slate-950/60 p-3" data-testid="shortlist-criteria-form">
+        <div className="space-y-4 rounded-xl bg-nq-bg p-4" data-testid="shortlist-criteria-form">
           <div className="flex flex-wrap gap-4">
             {numInput('Quantidade máxima', 'limit')}
             {numInput('Investimento mínimo (R$)', 'min_spend', 5)}
             {numInput('Impressões mínimas', 'min_impressions', 100)}
             {numInput('Dias no ar (mínimo)', 'min_days')}
-            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+            <label className="flex flex-col gap-1 text-[12px] text-nq-muted">
               Teto do CPA (× equilíbrio)
               <input
                 type="number"
@@ -257,34 +258,34 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
                 value={draft.max_cpa_ratio ?? ''}
                 placeholder="sem teto"
                 onChange={e => editDraft({ ...draft, max_cpa_ratio: e.target.value === '' ? null : Number(e.target.value) })}
-                className="w-28 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+                className="h-11 w-32 rounded-nq bg-nq-surface px-3 text-nq-body text-nq-text"
               />
             </label>
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300">
-            <span className="text-[11px] text-slate-500">Níveis:</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-nq-aux text-nq-text">
+            <span className="text-[12px] text-nq-subtle">Níveis:</span>
             {(['campaign', 'ad'] as ShortLevel[]).map(l => (
-              <label key={l} className="inline-flex items-center gap-1">
+              <label key={l} className="inline-flex min-h-[40px] items-center gap-2">
                 <input type="checkbox" checked={draft.levels.includes(l)} onChange={() => editDraft({ ...draft, levels: toggleIn(draft.levels, l) })} />
                 {l === 'campaign' ? 'Campanhas' : 'Anúncios'}
               </label>
             ))}
-            <span className="ml-2 text-[11px] text-slate-500">Classes:</span>
+            <span className="w-full sm:w-auto text-[12px] text-nq-subtle">Classes:</span>
             {(Object.keys(CLASS_META) as IntelClass[]).map(c => (
-              <label key={c} className="inline-flex items-center gap-1">
+              <label key={c} className="inline-flex min-h-[40px] items-center gap-2">
                 <input type="checkbox" checked={draft.classes.includes(c)} onChange={() => editDraft({ ...draft, classes: toggleIn(draft.classes, c) })} />
                 {CLASS_META[c].label}
               </label>
             ))}
-            <label className="ml-2 inline-flex items-center gap-1">
+            <label className="inline-flex min-h-[40px] items-center gap-2">
               <input type="checkbox" checked={draft.require_product} onChange={() => editDraft({ ...draft, require_product: !draft.require_product })} />
               Só com produto identificado
             </label>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setCriteria({ ...draft, levels: draft.levels.length ? draft.levels : DEFAULT_SHORTLIST_CRITERIA.levels, classes: draft.classes.length ? draft.classes : DEFAULT_SHORTLIST_CRITERIA.classes })}
-              className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+              className="h-11 rounded-full bg-nq-positive px-4 text-nq-aux font-semibold text-nq-on-positive hover:brightness-110"
             >
               Aplicar critérios
             </button>
@@ -294,7 +295,7 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
                 if (!applied && data) setDraft(data.criteria);
                 setCriteria(null);
               }}
-              className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+              className="h-11 rounded-full bg-nq-raised px-4 text-nq-aux text-nq-text hover:brightness-110"
             >
               Voltar aos critérios validados
             </button>
@@ -303,19 +304,79 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
       )}
 
       {data?.note && (
-        <p className="rounded border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200" data-testid="shortlist-note">
+        <p className="rounded-xl bg-nq-attention/10 px-3 py-2 text-nq-aux text-nq-attention" data-testid="shortlist-note">
           {data.note}
         </p>
       )}
       {data && data.excluded.total > 0 && (
-        <p className="text-[11px] text-slate-500" data-testid="shortlist-excluded">
+        <p className="text-[12px] text-nq-subtle" data-testid="shortlist-excluded">
           Fora da lista: {Object.entries(data.excluded.by_reason).map(([k, n]) => `${n} ${EXCLUSION_LABELS[k] || k}`).join(' · ')}.
         </p>
       )}
 
-      <div className="overflow-x-auto rounded border border-slate-800">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-slate-900/80 text-[11px] uppercase tracking-wide text-slate-400">
+      {isMobile ? (
+        <div className="-mx-4 divide-y divide-nq-line/70 border-t border-nq-line/70" data-testid="shortlist-list">
+          {loading && <div className="px-4 py-6 text-center text-nq-aux text-nq-subtle">Montando a lista…</div>}
+          {!loading && candidates.length === 0 && (
+            <div className="px-4 py-6 text-center text-nq-aux text-nq-subtle" data-testid="shortlist-empty">
+              Nenhum candidato passou nos critérios.
+            </div>
+          )}
+          {!loading &&
+            candidates.map(c => {
+              const id = `${c.level}:${c.key}`;
+              const selectable = !c.opportunity && canSend;
+              return (
+                <div key={id} className="px-4 py-3.5 flex gap-3" data-testid="shortlist-row">
+                  {selectable && (
+                    <label className="-ml-2 -mt-2 h-11 w-11 shrink-0 flex items-center justify-center">
+                      <input type="checkbox" className="h-5 w-5" aria-label={`Selecionar ${c.name}`} checked={selected.has(id)} onChange={() => toggle(id)} />
+                    </label>
+                  )}
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-nq-body font-medium text-nq-text break-words">
+                          <span className="text-nq-subtle">{c.rank}. </span>
+                          {c.name}
+                        </div>
+                        <div className="text-nq-caption text-nq-subtle break-words">
+                          {[c.level === 'campaign' ? 'Campanha' : 'Anúncio', c.campaign_name, c.product_name].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-nq-body font-semibold tabular-nums text-nq-text">{brl(c.spend)}</div>
+                        <div className="text-nq-caption text-nq-muted">{c.sales} vendas</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <ClassBadge c={c.classification} />
+                      <ScoreBar score={c.score} confidence={c.confidence} />
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-nq-caption text-nq-muted tabular-nums">
+                      <span>{c.days_active} dias</span>
+                      <span>CPA {brl(c.cpa)} / {brl(c.breakeven_cpa)}</span>
+                      <span>ROAS {c.roas === null ? '—' : c.roas}</span>
+                      <span>CTR {pct(c.ctr_link)}</span>
+                    </div>
+                    <div className="text-nq-caption text-nq-muted">{c.why.join(' · ')}</div>
+                    {c.flags.length > 0 && <div className="text-nq-caption text-nq-attention">⚠ {c.flags.join(' · ')}</div>}
+                    {c.opportunity ? (
+                      <div className="text-nq-caption text-nq-info" data-testid="shortlist-sent">
+                        {c.opportunity.human_id} · {c.opportunity.status}
+                      </div>
+                    ) : (
+                      <div className="text-nq-caption text-nq-subtle">Não enviado ao Time de IAs</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      ) : (
+      <div className="overflow-x-auto rounded-xl bg-nq-bg">
+        <table className="w-full text-left text-nq-aux">
+          <thead className="border-b border-nq-line text-nq-caption text-nq-muted">
             <tr>
               <th className="px-3 py-2"></th>
               <th className="px-3 py-2">#</th>
@@ -334,12 +395,12 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">Montando a lista…</td>
+                <td colSpan={12} className="px-3 py-6 text-center text-nq-subtle">Montando a lista…</td>
               </tr>
             )}
             {!loading && candidates.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center text-slate-500" data-testid="shortlist-empty">
+                <td colSpan={12} className="px-3 py-6 text-center text-nq-subtle" data-testid="shortlist-empty">
                   Nenhum candidato passou nos critérios.
                 </td>
               </tr>
@@ -348,20 +409,20 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
               candidates.map(c => {
                 const id = `${c.level}:${c.key}`;
                 return (
-                  <tr key={id} className="border-t border-slate-800 align-top" data-testid="shortlist-row">
+                  <tr key={id} className="border-t border-nq-line/60 align-top" data-testid="shortlist-row">
                     <td className="px-3 py-2">
                       {!c.opportunity && canSend && (
                         <input type="checkbox" aria-label={`Selecionar ${c.name}`} checked={selected.has(id)} onChange={() => toggle(id)} />
                       )}
                     </td>
-                    <td className="px-3 py-2 text-slate-500">{c.rank}</td>
+                    <td className="px-3 py-2 text-nq-subtle">{c.rank}</td>
                     <td className="px-3 py-2">
-                      <div className="font-medium text-slate-100">{c.name}</div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="font-medium text-nq-text">{c.name}</div>
+                      <div className="text-[12px] text-nq-subtle">
                         {[c.level === 'campaign' ? 'Campanha' : 'Anúncio', c.campaign_name, c.product_name].filter(Boolean).join(' · ')}
                       </div>
-                      <div className="mt-1 text-[10px] text-slate-400">{c.why.join(' · ')}</div>
-                      {c.flags.length > 0 && <div className="mt-0.5 text-[10px] text-amber-300">⚠ {c.flags.join(' · ')}</div>}
+                      <div className="mt-1 text-[12px] text-nq-muted">{c.why.join(' · ')}</div>
+                      {c.flags.length > 0 && <div className="mt-0.5 text-[12px] text-nq-attention">⚠ {c.flags.join(' · ')}</div>}
                     </td>
                     <td className="px-3 py-2"><ClassBadge c={c.classification} /></td>
                     <td className="px-3 py-2"><ScoreBar score={c.score} confidence={c.confidence} /></td>
@@ -369,17 +430,17 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
                     <td className="px-3 py-2 text-right">{brl(c.spend)}</td>
                     <td className="px-3 py-2 text-right">{c.sales}</td>
                     <td className="px-3 py-2 text-right">
-                      {brl(c.cpa)} <span className="text-slate-500">/ {brl(c.breakeven_cpa)}</span>
+                      {brl(c.cpa)} <span className="text-nq-subtle">/ {brl(c.breakeven_cpa)}</span>
                     </td>
                     <td className="px-3 py-2 text-right">{c.roas === null ? '—' : c.roas}</td>
                     <td className="px-3 py-2 text-right">{pct(c.ctr_link)}</td>
                     <td className="px-3 py-2">
                       {c.opportunity ? (
-                        <span className="rounded border border-violet-600/50 px-1.5 py-0.5 text-[10px] text-violet-200" data-testid="shortlist-sent">
+                        <span className="text-nq-caption text-nq-info" data-testid="shortlist-sent">
                           {c.opportunity.human_id} · {c.opportunity.status}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-500">não enviado</span>
+                        <span className="text-[12px] text-nq-subtle">não enviado</span>
                       )}
                     </td>
                   </tr>
@@ -388,6 +449,7 @@ export const ShortlistPanel: React.FC<Props> = ({ mode, periodQs, canSend, apiFe
           </tbody>
         </table>
       </div>
+      )}
     </section>
   );
 };

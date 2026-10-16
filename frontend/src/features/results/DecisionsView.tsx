@@ -1,46 +1,37 @@
 import React from 'react';
 
 // Registro das decisões estratégicas (movido do App na NORQVA-0030; agora é a aba Decisões de Resultados).
+// NORQVA-0086: lista no padrão NORQVA Premium. Só apresentação.
 export function DecisionsView({ decisions }: { decisions: any[] }) {
   return (
-    <div className="space-y-6 text-sm">
-      <div>
-        <h2 className="text-lg font-bold tracking-tight text-slate-200 font-mono">Log de Decisões Estratégicas</h2>
-        <p className="text-xs text-slate-400">Rastreabilidade completa de todas as alterações estratégicas do CORE</p>
+    <div className="space-y-4">
+      <div className="px-1">
+        <h2 className="text-nq-section font-semibold text-nq-text">Registro de decisões</h2>
+        <p className="mt-1 text-nq-aux text-nq-muted">Todas as decisões estratégicas, com data, autor e justificativa.</p>
       </div>
 
-      <div className="space-y-4">
-        {decisions.length === 0 ? (
-          <div className="p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">
-            Nenhuma decisão registrada.
-          </div>
-        ) : (
-          decisions.map((dec: any) => (
-            <div key={dec.id} className="p-4 border border-slate-800 bg-slate-900/40 rounded flex items-start gap-4">
-              <div className="p-2 rounded bg-slate-950 border border-slate-800 text-emerald-400 mt-1 shrink-0 font-mono text-xs font-bold">
-                {dec.human_id}
+      {decisions.length === 0 ? (
+        <div className="rounded-nq bg-nq-surface p-10 text-center text-nq-aux text-nq-muted">Nenhuma decisão registrada.</div>
+      ) : (
+        <ul className="rounded-nq bg-nq-surface divide-y divide-nq-line/70 overflow-hidden">
+          {decisions.map((dec: any) => (
+            <li key={dec.id} className="px-4 py-4 space-y-2" data-testid="decision-item">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-nq-body font-semibold text-nq-text break-words">{dec.decision_text}</span>
+                <span className="text-nq-caption text-nq-subtle">{dec.human_id}</span>
               </div>
-              <div className="space-y-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-200">{dec.decision_text}</span>
-                    <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-slate-800 text-slate-400 font-bold uppercase">
-                      {dec.type}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                    Data: {new Date(dec.created_at).toLocaleString('pt-BR')} • Autor: {dec.responsible_name}
-                  </div>
-                </div>
-                <div className="text-xs text-slate-350 bg-slate-950/30 p-2.5 rounded border border-slate-850">
-                  <span className="text-[9px] font-mono text-slate-500 uppercase block">Justificativa estratégica</span>
-                  <p className="mt-0.5 italic">"{dec.justification}"</p>
-                </div>
+              <div className="text-nq-caption text-nq-muted">
+                {dec.type ? `${String(dec.type).charAt(0).toUpperCase()}${String(dec.type).slice(1).toLowerCase().replace(/_/g, ' ')} · ` : ''}
+                {new Date(dec.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                {dec.responsible_name ? ` · ${dec.responsible_name}` : ''}
               </div>
-            </div>
-          ))
-        )}
-      </div>
+              {dec.justification && (
+                <p className="text-nq-aux text-nq-text/90 border-l-2 border-nq-line pl-3">{dec.justification}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
