@@ -5759,8 +5759,10 @@ export async function getExecutiveDaily(req: AuthenticatedRequest, res: Response
     const end = metaStop || commercialDayOf(new Date());
     const days = buildDailySeries({ start: metaStart, end, paidOrders: ordersRes.rows, spendRows });
 
+    const truncated = !!metaStart && days.length > 0 && days[0].date > metaStart;
     return res.status(200).json({
       days,
+      truncated,
       period: range ? { period: range.period, start: range.metaStart, end: range.metaStop } : { period: 'all', start: null, end: null }
     });
   } catch (err: any) {

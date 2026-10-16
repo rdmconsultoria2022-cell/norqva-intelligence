@@ -67,7 +67,8 @@ describe('NORQVA-0082 — Visão Geral premium', () => {
     const chart = await screen.findByTestId('daily-chart');
     expect(within(chart).getByRole('img').getAttribute('aria-label')).toContain('14/10 a 16/10');
     fireEvent.click(within(screen.getByTestId('daily-table')).getByRole('button'));
-    expect(screen.getByTestId('daily-table').textContent).toContain('R$ 20,00');
+    // o real usa espaço não separável depois de "R$"; toHaveTextContent normaliza os espaços
+    expect(screen.getByTestId('daily-table')).toHaveTextContent('R$ 20,00');
     expect(apiFetch.mock.calls.some(c => String(c[0]).startsWith('/executive/daily?mode=real&period=7d'))).toBe(true);
   });
 

@@ -14,6 +14,8 @@ export interface DailyPoint {
   spend: number;
 }
 
+// limite de segurança: um período maior que isso mostra só os últimos MAX_DAYS dias e a resposta
+// avisa com truncated = true (a soma dos dias deixa de bater com o total nesse caso)
 export const MAX_DAYS = 400;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

@@ -15,7 +15,7 @@ export interface DailyPoint {
 const REVENUE = '#059669';
 const SPEND = '#3B82F6';
 const H = 168;
-const PAD = { top: 12, right: 8, bottom: 22, left: 8 };
+const PAD = { top: 20, right: 8, bottom: 22, left: 8 };
 
 const dm = (ymd: string) => ymd.split('-').reverse().slice(0, 2).join('/');
 
@@ -58,7 +58,10 @@ export function DailyChart({ days }: { days: DailyPoint[] }) {
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return;
-    const update = () => setWidth(Math.max(200, Math.round(el.getBoundingClientRect().width)));
+    const update = () => {
+      const w = Math.round(el.getBoundingClientRect().width);
+      if (w > 0) setWidth(w);
+    };
     update();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(update);

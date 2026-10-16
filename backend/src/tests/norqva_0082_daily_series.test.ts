@@ -53,6 +53,7 @@ describe('NORQVA-0082 GET /api/executive/daily', () => {
   let app: express.Express;
   let pool: Pool;
   const uid = crypto.randomBytes(4).toString('hex');
+  const ids: { customer?: string; order?: string; account?: string; campaign?: string } = {};
   const today = getLocalComponentsInTimezone(new Date()).dateStr;
 
   const adminAuth = (req: any, _res: any, next: any) => {
@@ -73,29 +74,46 @@ describe('NORQVA-0082 GET /api/executive/daily', () => {
       `INSERT INTO customers (name, email, phone) VALUES ('Cliente 0082', $1, '31999999999') RETURNING id`,
       [`norqva0082-${uid}@norqva.com`]
     );
-    await pool.query(
+    ids.customer = cust.rows[0].id;
+    const ord = await pool.query(
       `INSERT INTO orders (customer_id, total_amount, status, idempotency_key, is_demo, data_provenance)
-       VALUES ($1, 29.90, 'PAID', $2, false, 'COMMERCIAL_PRODUCTION')`,
+       VALUES ($1, 29.90, 'PAID', $2, false, 'COMMERCIAL_PRODUCTION') RETURNING id`,
       [cust.rows[0].id, `idemp-0082-${uid}`]
     );
+    ids.order = ord.rows[0].id;
 
-    const conn = await pool.query("INSERT INTO meta_connections (is_demo, status, token_reference) VALUES (FALSE, 'CONNECTED', 'env:TEST') RETURNING id");
+    // meta_connections tem UNIQUE (is_demo): mesmo padrão dos outros testes
+    const conn = await pool.query(
+      `INSERT INTO meta_connections (is_demo, status, token_reference) VALUES (FALSE, 'CONNECTED', 'env:TEST')
+       ON CONFLICT (is_demo) DO UPDATE SET status = 'CONNECTED' RETURNING id`
+    );
     const acc = await pool.query(
       "INSERT INTO meta_ad_accounts (meta_account_id, connection_id, name, currency, timezone_name, account_status, is_demo, data_provenance) VALUES ($1, $2, 'Conta 0082', 'BRL', 'America/Sao_Paulo', 1, FALSE, 'COMMERCIAL_PRODUCTION') RETURNING id",
       [`act_0082_${uid}`, conn.rows[0].id]
     );
+    ids.account = acc.rows[0].id;
     const cmp = await pool.query(
       "INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, status, effective_status, is_demo, data_provenance) VALUES ($1, $2, 'NQ_0082_TESTE', 'ACTIVE', 'ACTIVE', FALSE, 'COMMERCIAL_PRODUCTION') RETURNING id",
       [`cmp_0082_${uid}`, acc.rows[0].id]
     );
+    ids.campaign = cmp.rows[0].id;
     await pool.query(
       "INSERT INTO meta_insights (ad_account_id, campaign_id, entity_level, entity_meta_id, date_start, date_stop, spend, impressions, clicks, is_demo, data_provenance) VALUES ($1, $2, 'CAMPAIGN', $3, $4, $4, 11.11, 100, 5, FALSE, 'COMMERCIAL_PRODUCTION')",
       [acc.rows[0].id, cmp.rows[0].id, `cmp_0082_${uid}`, today]
     );
   });
 
+  // apaga só o que este teste criou (outros arquivos contam linhas reais da Meta)
   afterAll(async () => {
-    await pool.end();
+    try {
+      if (ids.account) await pool.query('DELETE FROM meta_insights WHERE ad_account_id = $1', [ids.account]);
+      if (ids.campaign) await pool.query('DELETE FROM meta_campaigns WHERE id = $1', [ids.campaign]);
+      if (ids.account) await pool.query('DELETE FROM meta_ad_accounts WHERE id = $1', [ids.account]);
+      if (ids.order) await pool.query('DELETE FROM orders WHERE id = $1', [ids.order]);
+      if (ids.customer) await pool.query('DELETE FROM customers WHERE id = $1', [ids.customer]);
+    } finally {
+      await pool.end();
+    }
   });
 
   it('devolve um ponto por dia do período (7 dias)', async () => {
