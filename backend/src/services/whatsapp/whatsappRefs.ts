@@ -3,6 +3,8 @@
 // escreve, a conversa fica ligada à origem (campanha, anúncio, clique) e o pedido herda tudo.
 import crypto from 'crypto';
 import { Pool } from 'pg';
+import { getWhatsAppProvider } from './provider';
+import { cloudSendEnabled, allowedCloudEnvironments } from './metaCloudProvider';
 
 // sem letras/números que se confundem (O/0, I/1, L)
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -19,15 +21,26 @@ export function newRefCode(): string {
   return out;
 }
 
-/** Número do WhatsApp que atende esta oferta agora (conectado e com o atendente ligado), ou null. */
+/**
+ * Número do WhatsApp que atende esta oferta agora (conectado e com o atendente ligado), ou null.
+ * NORQVA-0079: só aparece número que consegue responder — Evolution só se estiver ligada; oficial só de conta
+ * PRODUCTION conferida, com o envio liberado. Número de teste nunca aparece para cliente.
+ */
 export async function whatsappNumberForOffer(pool: Pool, offerId: string): Promise<{ id: string; phone: string } | null> {
+  const evolutionOn = !!getWhatsAppProvider();
+  const officialOn = cloudSendEnabled() && allowedCloudEnvironments().has('PRODUCTION');
+  if (!evolutionOn && !officialOn) return null;
   const r = await pool.query(
     `WITH o AS (
        SELECT o.id, p.brand_id FROM offers o JOIN products p ON p.id = o.product_id
        WHERE o.id = $1 AND o.status = 'ATIVA' AND o.is_demo = FALSE AND o.is_deleted = FALSE AND p.is_deleted = FALSE
      )
-     SELECT n.id, n.phone FROM whatsapp_numbers n, o
+     SELECT n.id, n.phone FROM whatsapp_numbers n
+     LEFT JOIN whatsapp_cloud_accounts a ON a.id = n.cloud_account_id
+     CROSS JOIN o
      WHERE n.is_deleted = FALSE AND n.status = 'CONNECTED' AND n.bot_enabled = TRUE
+       AND ((COALESCE(n.provider, 'EVOLUTION') = 'EVOLUTION' AND $2::boolean)
+            OR (n.provider = 'META_CLOUD' AND $3::boolean AND a.environment = 'PRODUCTION' AND a.status = 'VERIFIED' AND a.is_deleted = FALSE))
        AND n.phone IS NOT NULL AND n.phone <> ''
        AND (n.brand_id IS NULL OR n.brand_id = o.brand_id)
        -- a oferta precisa estar no catálogo que o atendente desse número enxerga (loadCatalog: 20 mais antigas)
@@ -41,7 +54,7 @@ export async function whatsappNumberForOffer(pool: Pool, offerId: string): Promi
               (SELECT COUNT(*) FROM whatsapp_conversations c WHERE c.number_id = n.id AND c.last_message_at > NOW() - INTERVAL '1 day') ASC,
               n.created_at ASC
      LIMIT 1`,
-    [offerId]
+    [offerId, evolutionOn, officialOn]
   );
   const row = r.rows[0];
   if (!row) return null;

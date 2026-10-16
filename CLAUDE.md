@@ -79,11 +79,12 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - NORQVA-0057 (D-0057): Produtos com todos os campos editáveis (descrição, custo, observações, upsell, cross-sell) e Lixeira: "Excluir"/"Restaurar" com o código digitado (`services/catalog/catalogTrashService.ts`); nada é apagado do banco.
 - NORQVA-0058 (D-0058): tela Criativos com Claims recolhíveis, filtro pelo nome da campanha, edição de todo o conteúdo (inclui mecanismo) e lixeira de criativos (`services/creative/creativeTrashService.ts`).
 - NORQVA-0062: tela Produtos com filtros (À venda, Em teste, Fora do ar), "Exibir arquivados", busca por nome e marca e modos de exibição (lista, grade, ícones com capa), como na tela Criativos.
+- NORQVA-0079 (D-0079): WhatsApp oficial (Cloud API da Meta), etapa 1: contas Meta por marca e ambiente (aba Números → "WhatsApp oficial (Meta)"), `services/whatsapp/metaCloudProvider.ts`, `cloudAccounts.ts` (`providerForNumber`), `cloudWebhook.ts` (`/api/whatsapp/cloud/webhook/:accountId`). Travas: `WHATSAPP_CLOUD_SEND_ENABLED` (padrão bloqueado), `WHATSAPP_CLOUD_ENVIRONMENTS` (padrão TEST), `WHATSAPP_EVOLUTION_ENABLED` (padrão desligada), chave `WHATSAPP_SECRETS_KEY`. Testes simulam a Graph API com `setGraphFetchForTests`.
 - NORQVA-0041: comprador escolhe as parcelas (D-0041): até 4x sem juros, acima com 2,99% a.m.; tela de pagamento com `look="light"` (creme/terracota) nos livros de cozinha.
 
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
 
-- WhatsApp (NORQVA-0046): conferir servidor Evolution no Render, `OPENAI_API_KEY`, primeiro QR Code e teste com o número do Ricardo antes de ligar o atendente para clientes.
+- WhatsApp (NORQVA-0079): etapa 2 = conta TEST da Meta (app dedicado no portfólio Norqva, marca Trattoria) + `WHATSAPP_SECRETS_KEY` e `OPENAI_API_KEY` no Render; etapa 3 = homologação com o "sim" do Ricardo; etapa 4 = templates. A Evolution (NORQVA-0046) fica desligada.
 
 - Reavaliar a OPP-0010 quando o anúncio TR_V1_EMO chegar perto de R$ 150 de gasto.
 - Conferir no banco que a migration 048 reclassificou o pedido de teste (evento `ORDER_RECLASSIFIED_TEST` em `audit_logs`).

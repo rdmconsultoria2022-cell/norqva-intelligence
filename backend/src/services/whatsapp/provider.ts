@@ -1,6 +1,6 @@
 // NORQVA-0046: camada própria entre o NORQVA e o WhatsApp.
-// Hoje o motor é a Evolution API (não oficial, decisão do Ricardo em 10/10/2026 19h31).
-// Trocar pela API oficial da Meta = escrever outra classe com esta mesma interface.
+// Motor 1: Evolution API (não oficial, D-0046), desligada por padrão desde a NORQVA-0079.
+// Motor 2: Cloud API oficial da Meta (metaCloudProvider.ts, D-0079), escolhido por número em cloudAccounts.providerForNumber.
 
 export type ProviderState = 'open' | 'connecting' | 'close' | 'unknown';
 
@@ -254,10 +254,19 @@ export function setWhatsAppProviderForTests(p: WhatsAppProvider | null) {
   testProvider = p;
 }
 
-/** Motor configurado, ou null quando o servidor do WhatsApp ainda não foi ligado (EVOLUTION_API_URL / EVOLUTION_API_KEY). */
+/** NORQVA-0079 (D-0079): a Evolution (não oficial) só funciona com WHATSAPP_EVOLUTION_ENABLED=true. Padrão: desligada. */
+export function evolutionEnabled(): boolean {
+  return String(process.env.WHATSAPP_EVOLUTION_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
+/**
+ * Motor da Evolution, ou null quando está desligada (WHATSAPP_EVOLUTION_ENABLED) ou sem servidor
+ * (EVOLUTION_API_URL / EVOLUTION_API_KEY). Números oficiais usam providerForNumber (cloudAccounts).
+ */
 export function getWhatsAppProvider(): WhatsAppProvider | null {
   if (testProvider) return testProvider;
   if (process.env.NODE_ENV === 'test') return null;
+  if (!evolutionEnabled()) return null;
   const url = (process.env.EVOLUTION_API_URL || '').trim();
   const key = (process.env.EVOLUTION_API_KEY || '').trim();
   if (!url || !key) return null;

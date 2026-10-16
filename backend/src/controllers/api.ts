@@ -3789,7 +3789,7 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
       `SELECT p.id as payment_id, p.order_id, p.amount, p.confirmed_at as paid_at, p.updated_at,
               c.email as customer_email, c.phone as customer_phone,
               o.visitor_id, o.session_id, o.fbclid, o.utm_source, o.utm_medium, o.utm_campaign, o.utm_content,
-              o.fbc, o.fbp, o.client_ip_address, o.client_user_agent, o.event_source_url, o.is_demo
+              o.fbc, o.fbp, o.client_ip_address, o.client_user_agent, o.event_source_url, o.is_demo, o.data_provenance
        FROM payments p
        JOIN orders o ON o.id = p.order_id
        JOIN customers c ON c.id = o.customer_id
@@ -3850,7 +3850,10 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
       }
 
       // Meta Conversions API (CAPI): Purchase event (Deduplicated with event_id = 'purchase_' + orderId)
-      try {
+      // NORQVA-0079: pedido marcado como teste (ex.: número de teste do WhatsApp oficial) não vira compra na Meta
+      if (pRow.data_provenance && pRow.data_provenance !== 'COMMERCIAL_PRODUCTION') {
+        console.log(JSON.stringify({ event: 'CAPI_PURCHASE_SKIPPED_TEST_ORDER', order_id: pRow.order_id, provenance: pRow.data_provenance }));
+      } else try {
         const eventTime = Math.floor(new Date(pRow.paid_at || pRow.updated_at || Date.now()).getTime() / 1000);
         MetaCapiService.sendEvent(pool, {
           orderId: pRow.order_id,

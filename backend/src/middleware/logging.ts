@@ -76,7 +76,9 @@ export function maskPath(p: string): string {
   return String(p || '')
     .replace(/(\/api\/whatsapp\/webhook\/[^/]+\/)[^/?]+/, '$1***')
     .replace(/(\/api\/delivery\/)[^/?]+/, '$1***')
-    .replace(/(\/api\/checkout\/recovery\/)(?!request)[^/?]+/, '$1***');
+    .replace(/(\/api\/checkout\/recovery\/)(?!request)[^/?]+/, '$1***')
+    // NORQVA-0079: verify token da Meta vai na URL da verificação do webhook oficial
+    .replace(/([?&]hub\.verify_token=)[^&]*/g, '$1***');
 }
 
 export function structuredLogger() {
