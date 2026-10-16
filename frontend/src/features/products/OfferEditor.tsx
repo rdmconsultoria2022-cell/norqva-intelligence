@@ -116,81 +116,81 @@ export const OfferEditor: React.FC<{
     }
   };
 
-  const input = 'rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100';
+  const input = 'rounded border border-nq-line bg-nq-bg px-2 py-1 text-nq-text';
   return (
-    <div className="space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2 text-xs" data-testid="offer-editor">
-      <div className="font-semibold text-slate-200">Editar oferta {off.human_id}</div>
+    <div className="space-y-2 rounded bg-nq-bg p-2 text-xs" data-testid="offer-editor">
+      <div className="font-semibold text-nq-text">Editar oferta {off.human_id}</div>
       <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-400">Nome (aparece para o cliente)</span>
+        <span className="text-[12px] text-nq-muted">Nome (aparece para o cliente)</span>
         <input aria-label="Nome da oferta" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={input} />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-400">Preço (R$)</span>
-          <input aria-label="Preço da oferta" inputMode="decimal" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className={`${input} font-mono`} />
-          <span className="text-[10px] text-slate-400" data-testid="offer-price-read">{price > 0 ? `= ${brl(price)}` : ''}</span>
+          <span className="text-[12px] text-nq-muted">Preço (R$)</span>
+          <input aria-label="Preço da oferta" inputMode="decimal" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className={`${input}`} />
+          <span className="text-[12px] text-nq-muted" data-testid="offer-price-read">{price > 0 ? `= ${brl(price)}` : ''}</span>
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-400">Promocional (R$, opcional)</span>
-          <input aria-label="Preço promocional" inputMode="decimal" value={form.promotional_price} onChange={e => setForm({ ...form, promotional_price: e.target.value })} className={`${input} font-mono`} />
+          <span className="text-[12px] text-nq-muted">Promocional (R$, opcional)</span>
+          <input aria-label="Preço promocional" inputMode="decimal" value={form.promotional_price} onChange={e => setForm({ ...form, promotional_price: e.target.value })} className={`${input}`} />
         </label>
       </div>
       <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-400">Descrição</span>
+        <span className="text-[12px] text-nq-muted">Descrição</span>
         <textarea aria-label="Descrição da oferta" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={input} />
       </label>
       <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-400">Bônus (opcional)</span>
+        <span className="text-[12px] text-nq-muted">Bônus (opcional)</span>
         <input aria-label="Bônus da oferta" value={form.bonus} onChange={e => setForm({ ...form, bonus: e.target.value })} className={input} />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-0.5">
-          <span className="text-slate-400">Upsell (oferta depois da compra)</span>
+          <span className="text-nq-muted">Upsell (oferta depois da compra)</span>
           <input aria-label="Upsell da oferta" value={form.upsell} onChange={e => setForm({ ...form, upsell: e.target.value })} className={input} />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-slate-400">Cross-sell (produto relacionado)</span>
+          <span className="text-nq-muted">Cross-sell (produto relacionado)</span>
           <input aria-label="Cross-sell da oferta" value={form.cross_sell} onChange={e => setForm({ ...form, cross_sell: e.target.value })} className={input} />
         </label>
       </div>
-      <div className="space-y-1 rounded border border-slate-800 p-2" data-testid="offer-card">
+      <div className="space-y-1 rounded border border-nq-line p-2" data-testid="offer-card">
         <label className="flex items-center gap-2">
           <input type="checkbox" aria-label="Aceita cartão de crédito" checked={form.card_enabled} onChange={e => setForm({ ...form, card_enabled: e.target.checked })} />
-          <span className="text-slate-200">Aceita cartão de crédito (pagamento na página segura do Asaas)</span>
+          <span className="text-nq-text">Aceita cartão de crédito (pagamento na página segura do Asaas)</span>
         </label>
         {form.card_enabled && (
           <>
             <div className="grid grid-cols-3 gap-2">
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400">Máximo de parcelas (1 a 12)</span>
-                <input aria-label="Parcelas no cartão" inputMode="numeric" value={form.card_max_installments} onChange={e => setForm({ ...form, card_max_installments: e.target.value })} className={`${input} font-mono`} />
+                <span className="text-[12px] text-nq-muted">Máximo de parcelas (1 a 12)</span>
+                <input aria-label="Parcelas no cartão" inputMode="numeric" value={form.card_max_installments} onChange={e => setForm({ ...form, card_max_installments: e.target.value })} className={`${input}`} />
               </label>
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400">Sem juros até (você paga)</span>
-                <input aria-label="Parcelas sem juros" inputMode="numeric" value={form.card_free_installments} onChange={e => setForm({ ...form, card_free_installments: e.target.value })} className={`${input} font-mono`} />
+                <span className="text-[12px] text-nq-muted">Sem juros até (você paga)</span>
+                <input aria-label="Parcelas sem juros" inputMode="numeric" value={form.card_free_installments} onChange={e => setForm({ ...form, card_free_installments: e.target.value })} className={`${input}`} />
               </label>
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400">Juros ao mês acima disso (%)</span>
-                <input aria-label="Juros ao mês" inputMode="decimal" placeholder="2,99" value={form.card_interest_monthly} onChange={e => setForm({ ...form, card_interest_monthly: e.target.value })} className={`${input} font-mono`} />
+                <span className="text-[12px] text-nq-muted">Juros ao mês acima disso (%)</span>
+                <input aria-label="Juros ao mês" inputMode="decimal" placeholder="2,99" value={form.card_interest_monthly} onChange={e => setForm({ ...form, card_interest_monthly: e.target.value })} className={`${input}`} />
               </label>
             </div>
             <div className="grid grid-cols-1 gap-2">
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-slate-400">Total no cartão (R$, vazio = preço do Pix)</span>
-                <input aria-label="Total no cartão" inputMode="decimal" value={form.card_total_price} onChange={e => setForm({ ...form, card_total_price: e.target.value })} className={`${input} font-mono`} />
+                <span className="text-[12px] text-nq-muted">Total no cartão (R$, vazio = preço do Pix)</span>
+                <input aria-label="Total no cartão" inputMode="decimal" value={form.card_total_price} onChange={e => setForm({ ...form, card_total_price: e.target.value })} className={`${input}`} />
               </label>
             </div>
             {!cardProblem && pixPrice > 0 && (
-              <div className="text-[11px] text-slate-400" data-testid="offer-card-read">
+              <div className="text-[12px] text-nq-muted" data-testid="offer-card-read">
                 <p>O comprador escolhe ({brl(pixPrice)} no Pix):</p>
-                <ul className="font-mono">
+                <ul className="">
                   {cardOpts.map(o => (
                     <li key={o.n}>
                       {o.n}x {o.valueCents !== null ? `de ${brlCents(o.valueCents)}` : ''} {o.interest ? `com juros (${rateLabel(rate)}), total ${brlCents(o.totalCents)}` : `sem juros, total ${brlCents(o.totalCents)}`}
                     </li>
                   ))}
                 </ul>
-                {cardOpts.length < installments && <p className="text-amber-300">Opções com parcela abaixo de R$ 5,00 não aparecem para o comprador.</p>}
+                {cardOpts.length < installments && <p className="text-nq-attention">Opções com parcela abaixo de R$ 5,00 não aparecem para o comprador.</p>}
                 <p>A taxa do cartão no Asaas é maior que a do Pix.</p>
               </div>
             )}
@@ -198,16 +198,16 @@ export const OfferEditor: React.FC<{
         )}
       </div>
       {priceChanged && live && !problem && (
-        <p className="text-[11px] text-amber-300" data-testid="offer-price-warning">
+        <p className="text-[12px] text-nq-attention" data-testid="offer-price-warning">
           A oferta está {off.status}: o preço novo ({brl(promo ?? price)} cobrado) vale para os próximos pedidos. Pedidos já feitos não mudam. O preço do adicional no Pix continua o configurado em "Adicional no Pix".
         </p>
       )}
-      {problem && <p className="text-[11px] text-red-300">{problem}</p>}
+      {problem && <p className="text-[12px] text-nq-critical-text">{problem}</p>}
       <div className="flex gap-2">
-        <button disabled={busy || !!problem} onClick={save} data-testid="offer-editor-save" className="flex-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] font-mono text-emerald-300 disabled:opacity-40">
+        <button disabled={busy || !!problem} onClick={save} data-testid="offer-editor-save" className="flex-1 rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">
           {busy ? 'Salvando…' : 'Salvar'}
         </button>
-        <button disabled={busy} onClick={onClose} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+        <button disabled={busy} onClick={onClose} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">
           Cancelar
         </button>
       </div>

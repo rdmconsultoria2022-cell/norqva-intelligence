@@ -24,8 +24,8 @@ export interface NewCreativeInput {
 
 const EMPTY: NewCreativeInput = { product_id: '', offer_id: '', hook: '', concept: '', copy: '', cta: '', format: 'VIDEO', file_url: '' };
 
-const input = 'w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200';
-const label = 'block text-xs font-mono uppercase text-slate-400 mb-1';
+const input = 'w-full bg-nq-bg border border-nq-line rounded p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text';
+const label = 'block text-xs text-nq-muted mb-1';
 
 export function NewCreativeForm({ products, offers, busy, onSubmit, onCancel }: NewCreativeFormProps) {
   const [form, setForm] = useState<NewCreativeInput>(EMPTY);
@@ -33,9 +33,9 @@ export function NewCreativeForm({ products, offers, busy, onSubmit, onCancel }: 
   const fileOk = form.file_url.trim() === '' || /^https?:\/\/\S+$/i.test(form.file_url.trim());
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4" data-testid="new-creative-form">
-      <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm max-h-[90vh] overflow-y-auto">
-        <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Novo criativo</h3>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" data-testid="new-creative-form">
+      <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm max-h-[90vh] overflow-y-auto">
+        <h3 className="text-md font-bold text-nq-positive-text mb-4">Novo criativo</h3>
         <form
           onSubmit={e => {
             e.preventDefault();
@@ -93,13 +93,13 @@ export function NewCreativeForm({ products, offers, busy, onSubmit, onCancel }: 
           <div>
             <label className={label} htmlFor="nc-file">Link do vídeo ou imagem (opcional)</label>
             <input id="nc-file" type="text" placeholder="https://... (pode anexar depois)" value={form.file_url} onChange={e => set('file_url', e.target.value)} className={input} />
-            {!fileOk && <p className="text-[11px] text-red-300 mt-1">O link precisa começar com http:// ou https://.</p>}
+            {!fileOk && <p className="text-[12px] text-nq-critical-text mt-1">O link precisa começar com http:// ou https://.</p>}
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onCancel} className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold">
+            <button type="button" onClick={onCancel} className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]">
               Cancelar
             </button>
-            <button type="submit" disabled={busy || !fileOk} className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 disabled:opacity-50">
+            <button type="submit" disabled={busy || !fileOk} className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 disabled:opacity-50 min-h-[44px]">
               Cadastrar
             </button>
           </div>

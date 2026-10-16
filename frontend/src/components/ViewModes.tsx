@@ -38,7 +38,7 @@ export function useViewMode(storageKey: string, fallback: ViewMode = 'list'): [V
 }
 
 export const ViewModeSelector: React.FC<{ value: ViewMode; onChange: (m: ViewMode) => void }> = ({ value, onChange }) => (
-  <div role="radiogroup" aria-label="Modo de exibição" className="inline-flex rounded-lg border border-slate-700 overflow-hidden">
+  <div role="radiogroup" aria-label="Modo de exibição" className="inline-flex rounded-full bg-nq-surface p-0.5">
     {VIEW_MODES.map((m) => {
       const Icon = m.icon;
       const active = value === m.id;
@@ -51,7 +51,7 @@ export const ViewModeSelector: React.FC<{ value: ViewMode; onChange: (m: ViewMod
           aria-label={m.label}
           title={m.label}
           onClick={() => onChange(m.id)}
-          className={`p-1.5 ${active ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+          className={`h-10 w-10 flex items-center justify-center rounded-full transition-colors ${active ? 'bg-nq-text text-nq-bg' : 'text-nq-muted hover:text-nq-text'}`}
         >
           <Icon className="h-4 w-4" />
         </button>
@@ -96,7 +96,7 @@ export const IconTile: React.FC<{
       onClick={onOpen}
       data-testid="icon-tile"
       title={subtitle ? `${title} — ${subtitle}` : title}
-      className="text-left rounded-lg border border-slate-800 bg-slate-900/60 hover:border-emerald-500/50 overflow-hidden"
+      className="text-left rounded-nq bg-nq-surface hover:ring-1 hover:ring-nq-positive/40 overflow-hidden"
     >
       <div className="aspect-[4/5] bg-black flex items-center justify-center">
         {kind === 'video' ? (
@@ -104,12 +104,12 @@ export const IconTile: React.FC<{
         ) : kind === 'image' ? (
           <img src={url as string} alt={title} loading="lazy" className="w-full h-full object-contain" />
         ) : (
-          <span className="text-[10px] text-slate-600 px-1 text-center">sem arquivo</span>
+          <span className="text-[12px] text-nq-subtle px-1 text-center">sem arquivo</span>
         )}
       </div>
       <div className={small ? 'p-1' : 'p-2 space-y-0.5'}>
-        <div className={`font-mono text-emerald-300 truncate ${small ? 'text-[9px]' : 'text-[11px]'}`}>{title}</div>
-        {!small && subtitle && <div className="text-[10px] text-slate-500 truncate">{subtitle}</div>}
+        <div className={` text-nq-positive-text truncate text-[12px]`}>{title}</div>
+        {!small && subtitle && <div className="text-[12px] text-nq-subtle truncate">{subtitle}</div>}
         {!small && badge}
       </div>
     </button>
