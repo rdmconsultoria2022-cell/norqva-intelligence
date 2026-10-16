@@ -42,16 +42,28 @@ const TONE: Record<string, Tone> = { ok: 'positive', info: 'info', warn: 'attent
 const sentence = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t);
 
 const TZ = 'America/Sao_Paulo';
-const dayKey = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+const dayKey = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'sem-data';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+};
 function dayLabel(key: string, now = new Date()): string {
   const today = dayKey(now.toISOString());
   const y = new Date(now.getTime() - 86_400_000);
+  if (key === 'sem-data') return 'Sem data';
   if (key === today) return 'Hoje';
   if (key === dayKey(y.toISOString())) return 'Ontem';
   const [yy, mm, dd] = key.split('-').map(Number);
-  return new Date(Date.UTC(yy, mm - 1, dd, 12)).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const sameYear = yy === Number(today.slice(0, 4));
+  const label = new Date(Date.UTC(yy, mm - 1, dd, 12)).toLocaleDateString('pt-BR', {
+    weekday: 'long', day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }), timeZone: 'UTC'
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
-const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
+const timeOf = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
+};
 
 const brl = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -136,11 +148,13 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
 
   // agrupa por dia (fuso de São Paulo), na ordem que o servidor manda (mais recentes primeiro)
   const groups: { key: string; items: any[]; total: number }[] = [];
+  const byKey = new Map<string, { key: string; items: any[]; total: number }>();
   for (const o of orders) {
     const k = dayKey(o.created_at);
-    let g = groups[groups.length - 1];
-    if (!g || g.key !== k) {
+    let g = byKey.get(k);
+    if (!g) {
       g = { key: k, items: [], total: 0 };
+      byKey.set(k, g);
       groups.push(g);
     }
     g.items.push(o);
@@ -205,7 +219,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
         {groups.map(g => (
           <section key={g.key} aria-label={dayLabel(g.key)} className="space-y-2">
             <div className="flex items-baseline justify-between gap-3 px-1">
-              <h2 className="text-[13px] font-medium text-nq-muted first-letter:uppercase">{dayLabel(g.key)}</h2>
+              <h2 className="text-[13px] font-medium text-nq-muted">{dayLabel(g.key)}</h2>
               {g.total > 0 && <span className="text-[13px] text-nq-subtle tabular-nums">{brl(g.total)} pagos</span>}
             </div>
             <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70">
@@ -223,28 +237,29 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                       type="button"
                       onClick={() => setOpen(isOpen ? null : o.id)}
                       aria-expanded={isOpen}
+                      aria-controls={`sale-detail-${o.id}`}
                       className="w-full flex items-start gap-3 px-4 py-3.5 min-h-[60px] text-left active:bg-nq-raised"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[15px] leading-[22px] text-nq-text break-words">{o.customer?.name}</div>
-                        <div className="text-[13px] leading-[18px] text-nq-muted break-words">
+                      <span className="block min-w-0 flex-1">
+                        <span className="block text-[15px] leading-[22px] text-nq-text break-words">{o.customer?.name}</span>
+                        <span className="block text-[13px] leading-[18px] text-nq-muted break-words">
                           {timeOf(o.created_at)} · {o.offer_name || '—'}
                           {bumps.length > 0 ? ` + ${bumps.length === 1 ? bumps[0].name : `${bumps.length} adicionais`}` : ''}
                           {o.is_test ? ' · teste' : ''}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className={`text-[15px] leading-[22px] font-semibold tabular-nums ${paid ? 'text-nq-text' : 'text-nq-muted'}`}>{brl(o.total_amount)}</div>
-                        <div className="mt-0.5 flex flex-col items-end gap-0.5">
+                        </span>
+                      </span>
+                      <span className="block text-right shrink-0">
+                        <span className={`block text-[15px] leading-[22px] font-semibold tabular-nums ${paid ? 'text-nq-text' : 'text-nq-muted'}`}>{brl(o.total_amount)}</span>
+                        <span className="mt-0.5 flex flex-col items-end gap-0.5">
                           <span data-testid="sales-payment"><StatusPill tone={pay.tone}>{pay.text}</StatusPill></span>
                           {o.problem && <StatusPill tone="attention">Com problema</StatusPill>}
-                        </div>
-                      </div>
+                        </span>
+                      </span>
                       <ChevronDown aria-hidden="true" className={`h-4 w-4 mt-1 shrink-0 text-nq-subtle transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {isOpen && (
-                      <div className="px-4 pb-4 space-y-3 text-[13px] leading-[18px]">
+                      <div id={`sale-detail-${o.id}`} className="px-4 pb-4 space-y-3 text-[13px] leading-[18px]">
                         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
                           {contact.length > 0 && (<><dt className="text-nq-muted">Contato</dt><dd className="text-nq-text">{contact.map((c: string) => <div key={c} className="break-all">{c}</div>)}</dd></>)}
                           <dt className="text-nq-muted">Produto</dt>
@@ -258,7 +273,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                           {paid && (<><dt className="text-nq-muted">Entrega</dt><dd><span data-testid="sales-delivery"><StatusPill tone={TONE[dl.tone]}>{sentence(dl.text)}</StatusPill></span></dd></>)}
                           {em && (<><dt className="text-nq-muted">E-mail de acesso</dt><dd><StatusPill tone={TONE[em.tone]}>{sentence(em.text)}</StatusPill></dd></>)}
                           <dt className="text-nq-muted">Data</dt>
-                          <dd className="text-nq-text">{new Date(o.created_at).toLocaleString('pt-BR')}</dd>
+                          <dd className="text-nq-text">{Number.isNaN(new Date(o.created_at).getTime()) ? '—' : new Date(o.created_at).toLocaleString('pt-BR', { timeZone: TZ })}</dd>
                           <dt className="text-nq-muted">Pedido</dt>
                           <dd className="font-mono text-[12px] text-nq-subtle break-all">{o.id}</dd>
                         </dl>
