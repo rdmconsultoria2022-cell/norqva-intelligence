@@ -462,9 +462,13 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
     }
   }, [api, filter, numberId, search, showError]);
 
+  // NORQVA-0088: resposta que chega depois de trocar ou fechar a conversa é descartada
+  const openRef = useRef<string | null>(null);
+  openRef.current = openId;
   const loadThread = useCallback(async (id: string) => {
     try {
       const r = await api.current(`/whatsapp/conversations/${id}/messages`);
+      if (openRef.current !== id) return;
       setThread(r);
     } catch (e: any) {
       showError(e?.message || 'Falha ao abrir a conversa.');
@@ -580,7 +584,7 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-nq-line/70 p-3">
-              <button type="button" onClick={() => { setOpenId(null); setThread(null); }} className="lg:hidden -ml-1 inline-flex min-h-[44px] items-center gap-1 rounded-full px-2 text-nq-aux text-nq-muted" aria-label="Voltar para a lista de conversas">
+              <button type="button" onClick={() => { openRef.current = null; setOpenId(null); setThread(null); }} className="lg:hidden -ml-1 inline-flex min-h-[44px] items-center gap-1 rounded-full px-2 text-nq-aux text-nq-muted" aria-label="Voltar para a lista de conversas">
                 <ChevronLeft aria-hidden="true" className="h-5 w-5" /> Voltar
               </button>
               <div className="min-w-0">
@@ -717,7 +721,7 @@ function ConditionsPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: bo
         Preço, parcelas, entrega só com pagamento confirmado e o "parar" do cliente são regras fixas: o texto não muda isso.
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <select aria-label="Condições de" value={target} onChange={e => setTarget(e.target.value)} className="rounded-xl bg-nq-bg px-2 py-2 text-nq-body text-nq-text min-h-[44px]">
+        <select aria-label="Condições de" value={target} onChange={e => setTarget(e.target.value)} className="rounded-xl bg-nq-surface px-3 py-2 text-nq-body text-nq-text min-h-[44px]">
           <option value="">Geral (todos os números)</option>
           {(data?.numbers || []).map(n => <option key={n.id} value={n.id}>Só o número: {n.label}</option>)}
         </select>
@@ -737,7 +741,7 @@ function ConditionsPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: bo
         readOnly={!isAdmin}
         rows={16}
         maxLength={8000}
-        className="w-full rounded-xl bg-nq-bg p-2 text-sm text-nq-text min-h-[44px]"
+        className="w-full rounded-xl bg-nq-surface p-3 text-nq-body text-nq-text min-h-[44px]"
         placeholder="Ex.: Atenda com simpatia. Ofereça primeiro o kit. Se perguntarem sobre versão impressa, explique que é PDF e pode ser impresso."
       />
       <div className="flex items-center justify-between text-[12px] text-nq-subtle">

@@ -237,7 +237,7 @@ export function CloudAccountsPanel({
             <button
               onClick={create}
               disabled={busy === 'create-account' || !form.label.trim() || !form.waba_id.trim() || !form.app_id.trim() || !form.access_token.trim() || !form.app_secret.trim()}
-              className="rounded-full bg-nq-info/15 bg-nq-info/10 px-3 py-1.5 text-nq-aux font-semibold text-nq-info disabled:opacity-40 min-h-[44px]"
+              className="rounded-full bg-nq-info/15 px-3 py-1.5 text-nq-aux font-semibold text-nq-info disabled:opacity-40 min-h-[44px]"
             >
               Salvar conta Meta
             </button>
