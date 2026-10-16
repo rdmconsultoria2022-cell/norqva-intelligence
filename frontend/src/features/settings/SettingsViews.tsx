@@ -28,7 +28,12 @@ export function TeamView({ users }: any) {
                 <div className="text-nq-body font-medium text-nq-text break-words">{user.name}</div>
                 <div className="text-nq-caption text-nq-muted break-all">{user.email}</div>
               </div>
-              <span className="shrink-0 text-nq-caption font-medium text-nq-muted">{ROLE[user.role] || user.role}</span>
+              <span className="shrink-0 text-right">
+                <span className="block text-nq-caption font-medium text-nq-muted">{ROLE[user.role] || user.role}</span>
+                {user.status && user.status !== 'ACTIVE' && (
+                  <span className="block text-nq-caption text-nq-attention">{user.status === 'INACTIVE' ? 'Inativo' : String(user.status).toLowerCase()}</span>
+                )}
+              </span>
             </li>
           ))}
         </ul>
