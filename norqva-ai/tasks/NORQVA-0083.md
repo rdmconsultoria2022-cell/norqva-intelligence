@@ -11,10 +11,15 @@
 - Tokens `nq-*` em `LaunchPlansCard`, `MetaControl`, `MetaResults`, `AdMetaSwap`, `ExperimentGuardCard`, `MethodView` e no seletor de período (troca só de classes; script de conferência no harness).
 - Topo: nome do perfil só a partir de 640 px; com o período no topo, abaixo de 420 px fica só o símbolo da marca.
 
+## Leituras
+
+- Campanhas do NORQVA: nome do produto pela oferta (dado já carregado). Campanhas criadas fora do NORQVA: o nome vem do `/financial/dashboard` (vínculo da D-0082), lido **só quando existe campanha de fora**.
+- No celular, com uma campanha aberta, o quadro "Aguardando sua decisão" fica na lista; o detalhe mostra o aviso "N campanha(s) aguardando seu Sim", que volta para ele.
+
 ## Regras respeitadas
 
 Nenhuma regra, rota, fórmula ou permissão mudou. Sim/Não, criar pausada, pausar/ativar, orçamento, teto, editar anúncio e auditoria continuam nos mesmos componentes e handlers; no celular a lista usa o mesmo `MetaControlActions` com o mesmo alvo e o mesmo diálogo de confirmação.
 
 ## Testes
 
-Atualizados: `norqva_0028_campaign_complete` (cartão novo: "Vendas 2", "1 alerta") e `meta_phase_a` (decimais com vírgula).
+Atualizados: `norqva_0028_campaign_complete` (cartão novo: "Vendas 2", "1 alerta"), `meta_phase_a` e `norqva_0006_meta_control` (decimais com vírgula).
