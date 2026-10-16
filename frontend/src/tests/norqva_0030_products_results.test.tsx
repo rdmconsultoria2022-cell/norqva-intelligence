@@ -6,7 +6,7 @@ import { ProductsView } from '../features/products/ProductsView';
 import { ResultsView } from '../features/results/ResultsView';
 import { DashboardView } from '../features/dashboard/DashboardView';
 import { CreditSummary } from '../features/dashboard/CreditSummary';
-import { navigationItems, navigationGroups } from '../components/layout/Sidebar';
+import { navigationItems, navigationGroups } from '../components/layout/navigation';
 
 const user = (role: string) => ({ id: `u-${role}`, name: role, role, email: `${role}@x.test` }) as any;
 

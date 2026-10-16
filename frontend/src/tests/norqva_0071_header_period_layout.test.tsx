@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { GlobalPeriodProvider, useGlobalPeriod, periodQuery } from '../lib/globalPeriod';
 import { Header } from '../components/layout/Header';
+import { visibleGroups } from '../components/layout/navigation';
 import { DashboardView } from '../features/dashboard/DashboardView';
 
 function PeriodProbe() {
@@ -14,11 +15,12 @@ function PeriodProbe() {
 
 const headerProps = {
   activeTab: 'dashboard',
+  setActiveTab: vi.fn(),
+  currentUser: { id: 'u', name: 'Ricardo Lucas', role: 'ADMIN', email: 'r@x.test' } as any,
+  handleSignOut: vi.fn(),
+  groups: visibleGroups('ADMIN'),
   isDemoView: false,
-  setIsDemoView: vi.fn(),
-  authMode: 'SUPABASE',
-  loadData: vi.fn(async () => {}),
-  onToggleMobileMenu: vi.fn()
+  setIsDemoView: vi.fn()
 };
 
 describe('NORQVA-0071: período compacto no menu do topo', () => {
@@ -31,7 +33,7 @@ describe('NORQVA-0071: período compacto no menu do topo', () => {
     const trigger = screen.getByRole('button', { name: 'Período: Hoje' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('button', { name: '7 dias' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Toggle navigation menu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Perfil: Ricardo Lucas' })).toBeInTheDocument();
   });
 
   it('abre, escolhe e fecha; o período vale para a tela', () => {
@@ -90,7 +92,7 @@ describe('NORQVA-0071: período compacto no menu do topo', () => {
       </GlobalPeriodProvider>
     );
     expect(screen.queryByTestId('global-period-selector')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Toggle navigation menu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Perfil: Ricardo Lucas' })).toBeInTheDocument();
   });
 });
 

@@ -179,7 +179,7 @@ export function GlobalPeriodSelector({ appliesToScreen = true }: { appliesToScre
   const current = periodLabel(globalPeriod);
 
   return (
-    <div ref={boxRef} data-testid="global-period-selector" className="relative">
+    <div ref={boxRef} data-testid="global-period-selector" className="relative min-w-0 max-w-full">
       <button
         type="button"
         onClick={toggle}
@@ -187,7 +187,7 @@ export function GlobalPeriodSelector({ appliesToScreen = true }: { appliesToScre
         aria-expanded={open}
         aria-label={`Período: ${current}`}
         title="Mudar o período"
-        className={`flex items-center gap-1.5 h-9 pl-2.5 pr-2 rounded-md border text-xs font-mono font-semibold transition max-w-[150px] sm:max-w-none ${
+        className={`flex items-center gap-1.5 h-9 pl-2.5 pr-2 rounded-md border text-xs font-mono font-semibold transition max-w-full sm:max-w-none ${
           open
             ? 'bg-slate-800 border-emerald-500/60 text-white'
             : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'

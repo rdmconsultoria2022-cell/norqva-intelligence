@@ -2,7 +2,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
-import { Sidebar, navigationGroups, navigationItems } from '../components/layout/Sidebar';
+import { navigationGroups, navigationItems, visibleGroups } from '../components/layout/navigation';
+import { ScreenTabs, AreaTabBar, AreaSubTabs } from '../components/layout/AppNavigation';
 
 const admin = { id: 'u', name: 'A', role: 'ADMIN', email: 'a@x.test' } as any;
 
@@ -31,24 +32,39 @@ describe('NORQVA-0024 — menu em áreas', () => {
     expect(navigationItems.find(i => i.id === 'research')?.label).toBe('Pesquisa');
   });
 
-  it('mostra os títulos, navega e recolhe a área', () => {
+  // NORQVA-0081: sem menu lateral; telas numa faixa no topo (computador) e áreas embaixo (celular)
+  it('a faixa do topo mostra as telas por área e navega', () => {
     const setActiveTab = vi.fn();
-    render(<Sidebar currentUser={admin} activeTab="dashboard" setActiveTab={setActiveTab} handleSignOut={vi.fn()} />);
+    render(<ScreenTabs groups={visibleGroups('ADMIN')} activeTab="dashboard" setActiveTab={setActiveTab} />);
     const operation = screen.getByTestId('nav-group-operation');
     fireEvent.click(within(operation).getByText('Criativos'));
     expect(setActiveTab).toHaveBeenCalledWith('creative-factory');
-
-    fireEvent.click(within(operation).getByText('Operação'));
-    expect(within(operation).queryByText('Criativos')).not.toBeInTheDocument();
-    fireEvent.click(within(operation).getByText('Operação'));
-    expect(within(operation).getByText('Criativos')).toBeInTheDocument();
+    expect(within(screen.getByTestId('screen-tabs')).getByText('Visão Geral').closest('button')).toHaveAttribute('aria-current', 'page');
   });
 
-  it('a área da tela aberta não recolhe', () => {
-    render(<Sidebar currentUser={admin} activeTab="campaigns" setActiveTab={vi.fn()} handleSignOut={vi.fn()} badges={{ campaigns: 3 }} />);
-    const operation = screen.getByTestId('nav-group-operation');
-    fireEvent.click(within(operation).getByText('Operação'));
-    expect(within(operation).getByText('Campanhas')).toBeInTheDocument();
-    expect(screen.getByTestId('badge-campaigns')).toHaveTextContent('3');
+  it('a barra de baixo tem as 5 áreas; tocar numa área abre a primeira tela dela', () => {
+    const setActiveTab = vi.fn();
+    render(<AreaTabBar groups={visibleGroups('ADMIN')} activeTab="dashboard" setActiveTab={setActiveTab} badges={{ campaigns: 3 }} />);
+    const bar = screen.getByTestId('area-tabbar');
+    expect(within(bar).getAllByRole('button').map(b => b.textContent?.replace(/\d+/g, ''))).toEqual(['Visão Geral', 'Inteligência', 'Operação', 'Vendas', 'Configurações']);
+    fireEvent.click(screen.getByTestId('area-operation'));
+    expect(setActiveTab).toHaveBeenCalledWith('products');
+    expect(screen.getByTestId('area-operation').textContent).toContain('3');
+  });
+
+  it('no celular, as telas da área aberta aparecem embaixo do topo', () => {
+    const setActiveTab = vi.fn();
+    render(<AreaSubTabs groups={visibleGroups('ADMIN')} activeTab="campaigns" setActiveTab={setActiveTab} badges={{ campaigns: 3 }} />);
+    const sub = screen.getByTestId('area-subtabs');
+    expect(within(sub).getAllByRole('button').map(b => b.textContent?.replace(/\d+/g, ''))).toEqual(['Produtos', 'Criativos', 'Campanhas']);
+    fireEvent.click(within(sub).getByText('Criativos'));
+    expect(setActiveTab).toHaveBeenCalledWith('creative-factory');
+    expect(screen.getByTestId('badge-sub-campaigns')).toHaveTextContent('3');
+  });
+
+  it('área com uma tela só não mostra a faixa; perfis sem acesso não veem Vendas', () => {
+    const { container } = render(<AreaSubTabs groups={visibleGroups('ADMIN')} activeTab="dashboard" setActiveTab={vi.fn()} />);
+    expect(container.innerHTML).toBe('');
+    expect(visibleGroups('CREATIVE').map(g => g.id)).toEqual(['overview', 'intelligence', 'operation', 'settings']);
   });
 });

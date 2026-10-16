@@ -37,7 +37,7 @@ export const Login: React.FC<LoginProps> = ({
                   : 'border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
             >
-              AUTH_MODE=demo
+              Demonstração
             </button>
             <button
               onClick={() => setAuthMode('real')}
@@ -47,7 +47,7 @@ export const Login: React.FC<LoginProps> = ({
                   : 'border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
             >
-              AUTH_MODE=real
+              Conta real
             </button>
           </div>
         </div>

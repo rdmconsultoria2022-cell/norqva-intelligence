@@ -5,7 +5,7 @@ import React from 'react';
 import { CampaignsView } from '../features/campaigns/CampaignsView';
 import { MethodView } from '../features/method/MethodView';
 import { MetaControlDialog } from '../features/acquisition/MetaControl';
-import { navigationItems } from '../components/layout/Sidebar';
+import { navigationItems } from '../components/layout/navigation';
 
 const admin = { id: 'u1', name: 'Admin', email: 'a@norqva.test', role: 'ADMIN' } as any;
 const viewer = { id: 'u2', name: 'Perf', email: 'p@norqva.test', role: 'PERFORMANCE' } as any;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { CheckoutView } from '../features/checkout/CheckoutView';
@@ -655,7 +655,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       );
 
       // NORQVA-0030: as ofertas ficam dentro de Produtos
-      const offersTab = await screen.findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
+      // NORQVA-0081: a faixa de telas do topo (no celular a área também mostra Produtos)
+      const offersTab = await within(await screen.findByTestId('screen-tabs', {}, { timeout: 8000 })).findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
       // P01: Promotional price rendered as main highlighted price (17,90), full price struck through (19,90)
@@ -725,7 +726,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       );
 
       // NORQVA-0030: as ofertas ficam dentro de Produtos
-      const offersTab = await screen.findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
+      // NORQVA-0081: a faixa de telas do topo (no celular a área também mostra Produtos)
+      const offersTab = await within(await screen.findByTestId('screen-tabs', {}, { timeout: 8000 })).findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
       // P03: Draft offer shows Checkout indisponível (RASCUNHO) and no checkout button for it
@@ -775,7 +777,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       );
 
       // NORQVA-0030: as ofertas ficam dentro de Produtos
-      const offersTab = await screen.findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
+      // NORQVA-0081: a faixa de telas do topo (no celular a área também mostra Produtos)
+      const offersTab = await within(await screen.findByTestId('screen-tabs', {}, { timeout: 8000 })).findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
       // Transition button present
