@@ -27,6 +27,8 @@ export interface ComboMath {
 export function comboMath(offer: Pick<CheckoutOffer, 'price' | 'promotional_price' | 'bump' | 'card'>): ComboMath | null {
   const bump = offer.bump;
   if (!bump || !(Number(bump.price) > 0) || !(Number(bump.regular_price) > 0)) return null;
+  // a oferta é "livro + Dolci": em outras páginas (ex.: a do próprio Dolci, que oferece o Trattoria) não aparece
+  if (!/dolci/i.test(bump.name || '')) return null;
   const own = offer.promotional_price !== null && offer.promotional_price !== undefined ? offer.promotional_price : offer.price;
   const bookCents = toCents(own);
   const extraCents = toCents(bump.price);

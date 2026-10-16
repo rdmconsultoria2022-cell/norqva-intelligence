@@ -56,6 +56,10 @@ describe('NORQVA-0080 — contas da oferta dos dois livros', () => {
     expect(comboMath(bookOffer({ bump: { ...BUMP, regular_price: 5 } }) as any)).toBeNull();
   });
 
+  it('só aparece quando o adicional é o Dolci (a página do Dolci oferece o Trattoria e fica sem a seção)', () => {
+    expect(comboMath(bookOffer({ bump: { ...BUMP, offer_human_id: 'OFF-000001', name: 'TRATTORIA EM CASA', price: 14.9, regular_price: 19.9 } }) as any)).toBeNull();
+  });
+
   it('sem cartão, a oferta fica só no Pix', () => {
     expect(comboMath(bookOffer({ card: null }) as any)!.maxCard).toBeNull();
   });
