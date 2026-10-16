@@ -40,8 +40,11 @@ describe('NORQVA-0026 — tela Vendas', () => {
     expect(apiFetch.mock.calls[0][0]).toContain('/sales/orders?mode=real');
     expect(apiFetch.mock.calls[0][0]).toContain('filter=ALL');
     expect(screen.getAllByTestId('sales-row')).toHaveLength(2);
-    expect(screen.getByTestId('sales-delivery')).toHaveTextContent('VENCIDA');
-    expect(screen.getByText('E-MAIL FALHOU')).toBeInTheDocument();
+    // NORQVA-0085: lista tipo extrato; o detalhe (entrega, e-mail, ações) abre ao tocar no pedido
+    expect(screen.queryByTestId('sales-delivery')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Maria/ }));
+    expect(screen.getByTestId('sales-delivery')).toHaveTextContent('Vencida');
+    expect(screen.getByText('E-mail falhou')).toBeInTheDocument();
     expect(screen.getByTestId('sales-summary')).toHaveTextContent('Com problema');
   });
 
@@ -55,13 +58,14 @@ describe('NORQVA-0026 — tela Vendas', () => {
   it('pedido pago: reenviar acesso e copiar link; pedido pendente: conferir pagamento', async () => {
     const apiFetch = setup();
     await screen.findByText('Maria');
+    fireEvent.click(screen.getByRole('button', { name: /Maria/ }));
     expect(screen.getAllByRole('button', { name: /Reenviar acesso/ })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: /Conferir pagamento/ })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Copiar link/ }));
     expect(await screen.findByTestId('sales-link')).toHaveTextContent('https://app.test/acesso/abc');
     expect(apiFetch).toHaveBeenCalledWith('/sales/orders/o1/access-link?mode=real', expect.objectContaining({ method: 'POST' }));
 
+    fireEvent.click(screen.getByRole('button', { name: /João/ }));
     fireEvent.click(screen.getByRole('button', { name: /Conferir pagamento/ }));
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith('/sales/orders/o2/check-payment?mode=real', expect.objectContaining({ method: 'POST' }))
@@ -71,6 +75,8 @@ describe('NORQVA-0026 — tela Vendas', () => {
   it('perfil sem ADMIN não vê botões de ação', async () => {
     setup(viewer);
     await screen.findByText('Maria');
+    fireEvent.click(screen.getByRole('button', { name: /Maria/ }));
+    fireEvent.click(screen.getByRole('button', { name: /João/ }));
     expect(screen.queryByRole('button', { name: /Reenviar acesso/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Copiar link/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Conferir pagamento/ })).not.toBeInTheDocument();
