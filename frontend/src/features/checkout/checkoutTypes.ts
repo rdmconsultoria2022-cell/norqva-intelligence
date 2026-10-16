@@ -12,7 +12,7 @@ export interface CheckoutOffer {
   bonus?: string;
   is_demo?: boolean;
   /** NORQVA-0032: adicional na hora do Pix (o preço cobrado é sempre o do servidor) */
-  bump?: { offer_human_id: string; name: string; headline: string | null; price: number } | null;
+  bump?: { offer_human_id: string; name: string; headline: string | null; price: number; regular_price?: number | null } | null;
   /** NORQVA-0038: cartão de crédito (null = só Pix). Valores exatos vêm do servidor. */
   card?: {
     max_installments: number;
@@ -91,6 +91,8 @@ export interface CheckoutViewProps {
   collectionBooks?: CollectionSaleBook[];
   /** NORQVA-0076: livro (chave) já marcado como avulso ao abrir, vindo do botão "somente esse exemplar". */
   initialBook?: string | null;
+  /** NORQVA-0080: abre o pagamento com o adicional já marcado (botão "Quero os dois" da página do livro). */
+  initialWithBump?: boolean;
   /** NORQVA-0075: resumo do produto quando o nome da oferta não diz quais livros são (oferta depois da compra). */
   summary?: { covers: string[]; label: string; subtitle: string } | null;
 }

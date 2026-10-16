@@ -161,7 +161,7 @@ describe.sequential('NORQVA-0032 — adicional no Pix e promessas', () => {
     expect(on.status).toBe(200);
     expect(on.body.sellable).toBe(true);
     const pub = await request(app).get(`/api/public/offers/OFF-M${tag}`);
-    expect(pub.body.bump).toEqual({ offer_human_id: `OFF-B${tag}`, name: 'Molhos da Nonna 0032', headline: 'Molhos para as receitas', price: BUMP });
+    expect(pub.body.bump).toEqual({ offer_human_id: `OFF-B${tag}`, name: 'Molhos da Nonna 0032', headline: 'Molhos para as receitas', price: BUMP, regular_price: 29.9 });
   });
 
   it('sem marcar, o pedido é igual ao de hoje', async () => {

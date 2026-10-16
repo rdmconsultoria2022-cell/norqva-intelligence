@@ -272,6 +272,10 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
   const savings = from !== null ? from - pix : 0;
   // NORQVA-0041: maior número de parcelas com juros (repassados ao comprador), se houver
   const maxWithInterest = card?.options?.filter(o => o.interest).reduce((m, o) => Math.max(m, o.n), 0) || 0;
+  // NORQVA-0080: maior parcelamento com acréscimo (valor e total vêm do servidor)
+  // o cartão continua no pagamento mesmo com só 1x sem acréscimo
+  const cardOn = !!(offer.card && Number(offer.card.total) > 0);
+  const lastInterest = offer.card?.options?.filter(o => o.interest && o.installment_value !== null).slice(-1)[0] || null;
   // NORQVA-0063: oferta com os 5 PDFs = kit completo da coleção (textos e capas dos 5 livros)
   const full = isFullKit(offer);
   // NORQVA-0076: todos os livros à venda, do mais barato ao mais caro (empate: ordem da coleção)
@@ -357,7 +361,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               <a className="link" href="#pratos">Conhecer os pratos</a>
             </div>
             <ul className="trust up" style={{ listStyle: 'none', margin: '10px 0 0', padding: 0, display: 'flex', gap: '10px 26px', flexWrap: 'wrap', fontSize: 13, color: '#5a5249', ['--d' as any]: '360ms' }}>
-              {['Entrega imediata no e-mail', card ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'].map(t => (
+              {['Entrega imediata no e-mail', cardOn ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'].map(t => (
                 <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a3a26" strokeWidth="2"><path d="M4 12.5l5 5L20 6.5" /></svg>
                   {t}
@@ -431,7 +435,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           <span>Celular, tablet e computador</span>
           <span>Medidas em gramas e xícaras</span>
           <span>Tempo e nível em cada receita</span>
-          <span>{card ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'}</span>
+          <span>{cardOn ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'}</span>
         </div>
       </div>
 
@@ -643,7 +647,15 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                   {bookList.length > 0 && Math.abs(strikeFrom - booksTotal) < 0.005 && <span style={{ display: 'block', fontSize: 13, marginTop: 4 }}>soma dos {bookList.length} livros comprados separadamente</span>}
                 </div>
               )}
-              {card ? (
+              {!card && lastInterest ? (
+                // NORQVA-0080: só 1x sem acréscimo no cartão. O Pix fica em destaque e o parcelamento real vem embaixo.
+                <>
+                  <div className="serif price" style={{ fontSize: 80, fontWeight: 600, lineHeight: 0.9, color: '#8a3a26' }} data-testid="kit-pix">{brl(pix)}</div>
+                  <div style={{ fontSize: 14, color: '#5a5249' }} data-testid="kit-card-line">
+                    à vista no Pix ou no cartão · ou em até {lastInterest.n}x de {brl(Number(lastInterest.installment_value))} com acréscimo de {rateLabel(Number(offer.card?.interest_monthly) || 0)}, total {brl(Number(lastInterest.total))}
+                  </div>
+                </>
+              ) : card ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 26, fontWeight: 600, color: '#8a3a26' }}>{card.max_installments}x</span>
@@ -676,7 +688,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
                   Quero o kit
                 </button>
               </BuyChoice>
-              <div style={{ textAlign: 'center', fontSize: 13, color: '#6b6358' }}>{card ? 'Pix ou cartão de crédito em ambiente seguro' : 'Pagamento via Pix em ambiente seguro'}</div>
+              <div style={{ textAlign: 'center', fontSize: 13, color: '#6b6358' }}>{cardOn ? 'Pix ou cartão de crédito em ambiente seguro' : 'Pagamento via Pix em ambiente seguro'}</div>
             </div>
           </div>
         </div>

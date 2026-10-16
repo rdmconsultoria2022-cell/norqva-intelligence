@@ -64,7 +64,18 @@ export class OfferBumpService {
     try {
       const b = await this.active(pool, mainOffer);
       if (!b) return null;
-      return { offer_human_id: b.bump_offer.human_id, name: b.bump_offer.name, headline: b.headline, price: b.price };
+      // NORQVA-0080: preço do adicional comprado sozinho, para a página mostrar o "de/por" com a soma real
+      const own = b.bump_offer.promotional_price !== null && b.bump_offer.promotional_price !== undefined
+        ? b.bump_offer.promotional_price
+        : b.bump_offer.price;
+      const regular = Math.round(parseFloat(own) * 100) / 100;
+      return {
+        offer_human_id: b.bump_offer.human_id,
+        name: b.bump_offer.name,
+        headline: b.headline,
+        price: b.price,
+        regular_price: Number.isFinite(regular) && regular > 0 ? regular : null
+      };
     } catch {
       return null; // o checkout nunca quebra por causa do adicional
     }
