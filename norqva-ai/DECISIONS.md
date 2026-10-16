@@ -200,3 +200,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Nome do produto:** `byCampaign` ganhou `productId` e `productName`, pelo mesmo vínculo comprovado da NORQVA-0008 (`resolveCampaignProducts`). Sem vínculo único, a tela mostra o nome da Meta. Nada no banco mudou.
 - **Comparação:** a Visão Geral compara com o período anterior de mesmo tamanho; não compara "Hoje", "Tudo" nem período anterior que cairia antes de 25/09/2026 (D-0073).
 - **Produção:** merge só com o "sim" explícito do Ricardo (briefing do redesign); as outras telas seguem uma por PR.
+
+## D-0089 — NORQVA Premium concluído nas telas internas (2026-10-16)
+
+- **Decisão (Ricardo, 16/10/2026, "sim" para o merge de cada etapa):** Visão Geral (0082), Campanhas (0083), Teto (0084), Vendas (0085), Resultados e Pesquisa (0086), Produtos e Criativos (0087), Marcas, Equipe, Configurações e WhatsApp (0088) seguem o Design System `nq-*`. Só apresentação: nenhuma chamada, fórmula, permissão ou ação protegida mudou.
+- **Certificação (NORQVA-0089):** 17 telas medidas em 320, 360, 390, 430 e 1280 px (85 medições): nenhum texto abaixo de 12 px, nenhum botão ou campo abaixo de 40 px, nada cortado nem arrastando para o lado, nenhum erro de tela. Capturas com dados simulados.
+- **Correções de exibição feitas no caminho:** textos fixos que não vinham do servidor foram removidos (nome de campanha em Criativos, "Conciliado 100%", situação "ACTIVE" inventada, "Status: ACTIVE" na Equipe, "NODE_ENV"/"PostgreSQL" em Configurações, selo "Commerce: Pré-produção").
+- **Fora do escopo:** página pública de venda, pagamento e entrega ao comprador (fluxos protegidos), tela de login, janela "Arquivos de entrega" e janelas antigas de experimentos.
+- **Próxima etapa (combinada com o Ricardo em 16/10/2026 19h59):** gestão da Equipe (criar com convite por e-mail, editar nome e perfil, desativar em vez de excluir, travas para nunca ficar sem administrador). Mexe em controle de acesso: precisa do "Aprovado" antes de começar.
+
