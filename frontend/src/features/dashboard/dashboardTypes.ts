@@ -12,6 +12,8 @@ export interface DashboardProps {
   refreshTrigger: number;
   /** NORQVA-0026: atalho para a tela Vendas */
   onViewSales?: () => void;
+  /** NORQVA-0082: atalhos da Visão Geral para outras telas (ex.: 'campaigns') */
+  onOpenTab?: (tab: string) => void;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
   /**

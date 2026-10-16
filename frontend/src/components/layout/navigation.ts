@@ -31,6 +31,8 @@ export interface NavigationItem {
 export interface NavigationGroup {
   id: string;
   label: string;
+  /** NORQVA-0082: nome curto na barra de baixo do celular (cabe em 320 px sem cortar) */
+  shortLabel?: string;
   items: NavigationItem[];
 }
 
@@ -38,6 +40,7 @@ export const navigationGroups: NavigationGroup[] = [
   {
     id: 'overview',
     label: 'Visão Geral',
+    shortLabel: 'Início',
     items: [
       // NORQVA-0030: Créditos Meta virou aba de Resultados (o resumo fica na própria Visão Geral)
       { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard }
@@ -81,6 +84,7 @@ export const navigationGroups: NavigationGroup[] = [
   {
     id: 'settings',
     label: 'Configurações',
+    shortLabel: 'Ajustes',
     items: [
       { id: 'brands', label: 'Marcas', icon: Store },
       { id: 'team', label: 'Equipe', icon: Users },

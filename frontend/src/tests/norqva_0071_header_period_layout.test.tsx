@@ -2,7 +2,7 @@
 // resultados, funil e tráfego Meta Ads (nessa ordem) antes do resto.
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { GlobalPeriodProvider, useGlobalPeriod, periodQuery } from '../lib/globalPeriod';
 import { Header } from '../components/layout/Header';
 import { visibleGroups } from '../components/layout/navigation';
@@ -96,19 +96,27 @@ describe('NORQVA-0071: período compacto no menu do topo', () => {
   });
 });
 
-describe('NORQVA-0071: ordem da Visão Geral', () => {
-  it('resultados, depois funil, depois tráfego Meta Ads; crédito e avisos vêm depois', async () => {
-    const apiFetch = vi.fn(async (url: string) =>
-      url.includes('/executive/dashboard')
-        ? {
-            meta: { spend: 772.65, impressions: 10005, reach: 8000, clicks: 402, ctr: 4.02, cpc: 1.92, cpm: 77.2, campaigns: [] },
-            commerce: { totalOrders: 20, pendingOrders: 6, paidOrders: 14, cancelledOrders: 0, grossRevenue: 380.16, aov: 26.94 },
-            finance: { totalPixCreated: 20, totalPixConfirmed: 14, approvalRate: 70, confirmedRevenue: 380.16, reconciledTransactions: 14 },
-            delivery: { totalEntitlements: 22, totalDownloads: 12, completedDownloads: 12, pendingDownloads: 10 },
-            recentOrders: []
-          }
-        : {}
-    );
+describe('NORQVA-0071/0082: ordem da Visão Geral', () => {
+  // NORQVA-0082 (D-0082): resultado do período primeiro (receita em destaque e os quatro números),
+  // depois o que precisa do operador, desempenho, campanhas e operação (com o crédito Meta).
+  it('resultado, precisa de você, desempenho, campanhas e operação, nessa ordem', async () => {
+    const apiFetch = vi.fn(async (url: string) => {
+      if (url.includes('/executive/dashboard'))
+        return {
+          meta: { spend: 772.65, impressions: 10005, reach: 8000, clicks: 402, ctr: 4.02, cpc: 1.92, cpm: 77.2, campaigns: [], lastSync: '2026-10-16T16:52:00Z' },
+          commerce: { totalOrders: 20, pendingOrders: 6, paidOrders: 14, cancelledOrders: 0, grossRevenue: 380.16, aov: 26.94 },
+          finance: { totalPixCreated: 20, totalPixConfirmed: 14, approvalRate: 70, confirmedRevenue: 380.16, reconciledTransactions: 14 },
+          delivery: { totalEntitlements: 22, totalDownloads: 12, completedDownloads: 12, pendingDownloads: 10 },
+          recentOrders: []
+        };
+      if (url.includes('/financial/dashboard'))
+        return {
+          costCoverage: 'PARTIAL',
+          summary: { totalSpend: 772.65, grossRevenue: 380.16, netProfit: -410.1, paidOrdersCount: 14, roas: 0.49, costCoverage: 'PARTIAL' },
+          byCampaign: []
+        };
+      return {};
+    });
     render(
       <DashboardView
         section="overview"
@@ -125,13 +133,23 @@ describe('NORQVA-0071: ordem da Visão Geral', () => {
         metaCreditSlot={<div data-testid="credit-slot">Crédito Meta</div>}
       />
     );
-    await waitFor(() => expect(screen.getByTestId('overview-results').textContent).toContain('772,65'));
-    const order = ['overview-results', 'overview-funnel', 'overview-meta-traffic', 'credit-slot', 'dashboard-section-title'].map(id =>
+    await waitFor(() => expect(screen.getByTestId('overview-revenue').textContent).toContain('380,16'));
+    expect(screen.getByTestId('overview-spend').textContent).toContain('772,65');
+    // resultado negativo e custos parciais ficam claros
+    expect(screen.getByTestId('overview-net').textContent).toContain('custos parciais');
+    expect(screen.getByTestId('overview-net-note').textContent).toContain('Não é lucro contábil');
+
+    const order = ['overview-hero', 'overview-needs-you', 'overview-performance', 'overview-campaigns', 'overview-operation'].map(id =>
       screen.getByTestId(id)
     );
     for (let i = 0; i < order.length - 1; i++) {
       expect(order[i].compareDocumentPosition(order[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
-    expect(screen.getByTestId('overview-meta-traffic').textContent).toContain('10.005');
+    expect(screen.getByTestId('overview-operation').contains(screen.getByTestId('credit-slot'))).toBe(true);
+
+    // tráfego da Meta fica recolhido; ao abrir, mostra os números
+    const traffic = screen.getByTestId('overview-meta-traffic');
+    fireEvent.click(within(traffic).getByRole('button'));
+    expect(traffic.textContent).toContain('10.005');
   });
 });

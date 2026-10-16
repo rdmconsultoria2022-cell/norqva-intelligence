@@ -123,7 +123,9 @@ describe('NORQVA-0030 — tela Resultados', () => {
 });
 
 describe('NORQVA-0030 — Visão Geral', () => {
-  it('mostra só a visão executiva, sem a aba de experimentos, e não carrega o financeiro', async () => {
+  // NORQVA-0082: a Visão Geral nova (ExecutiveOverview) lê também o resumo financeiro do período,
+  // para receita, investimento, ROAS e resultado baterem com a tela Resultados.
+  it('mostra só a visão executiva, sem a aba de experimentos', async () => {
     const apiFetch = vi.fn(async (url: string) =>
       url.includes('/executive/dashboard')
         ? {
@@ -150,10 +152,11 @@ describe('NORQVA-0030 — Visão Geral', () => {
         showSuccess={vi.fn()}
       />
     );
-    expect(await screen.findByTestId('dashboard-section-title')).toBeInTheDocument();
+    expect(await screen.findByTestId('executive-overview')).toBeInTheDocument();
     expect(screen.queryByText(/Experimentos \(/)).not.toBeInTheDocument();
     expect(screen.queryByText('Inteligência Financeira V1')).not.toBeInTheDocument();
-    expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/financial/dashboard'))).toBe(false);
+    await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/executive/dashboard'))).toBe(true));
+    expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/financial/dashboard'))).toBe(true);
   });
 
   it('resumo do crédito só para ADMIN, com atalho para o detalhe', async () => {
@@ -163,7 +166,8 @@ describe('NORQVA-0030 — Visão Geral', () => {
     const box = await screen.findByTestId('credit-summary');
     expect(box).toHaveTextContent('R$');
     expect(box).toHaveTextContent('7 dias');
-    fireEvent.click(within(box).getByText('ver detalhes'));
+    // NORQVA-0082: a linha inteira do crédito abre o detalhe
+    fireEvent.click(screen.getByRole('button', { name: 'Crédito Meta: ver detalhes' }));
     expect(onOpen).toHaveBeenCalled();
     unmount();
     const other = vi.fn();

@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { resolveCampaignProducts, allocateSpendToProducts } from '../services/finance/productMediaAllocation';
+import { buildDailySeries, commercialDayOf } from '../services/finance/dailySeries';
 import { campaignsForCreatives } from '../services/creative/creativeCampaigns';
 import https from 'https';
 import http from 'http';
@@ -5708,6 +5709,68 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
   }
 }
 
+// NORQVA-0082 (D-0082): números por dia para o gráfico da Visão Geral. Só leitura, sem efeito colateral.
+// Mesmas regras do /financial/dashboard (pedidos PAID por created_at; gasto em linhas diárias da Meta,
+// ACCOUNT com volta para CAMPAIGN), separadas por dia do fuso comercial. A soma dos dias = total do período.
+export async function getExecutiveDaily(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  try {
+    const isDemo = req.query.mode === 'demo';
+    const range = resolvePeriodFilter(req.query.period as string, req.query.startDate as string, req.query.endDate as string);
+    const startIso = range?.startIso ?? null;
+    const endIso = range?.endIso ?? null;
+    const metaStart = range?.metaStart ?? null;
+    const metaStop = range?.metaStop ?? null;
+
+    const orderProvenanceClause = isDemo
+      ? `(o.data_provenance != 'COMMERCIAL_PRODUCTION' OR o.is_demo = TRUE)`
+      : `(o.data_provenance = 'COMMERCIAL_PRODUCTION')`;
+    const ordersRes = await pool.query(
+      `SELECT o.created_at, o.total_amount
+       FROM orders o
+       WHERE ${orderProvenanceClause}
+         AND o.status = 'PAID'
+         AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+         AND ($2::timestamptz IS NULL OR o.created_at <= $2)`,
+      [startIso, endIso]
+    );
+
+    const provenance = getMediaSpendProvenanceClause(isDemo);
+    const spendByDay = (level: 'ACCOUNT' | 'CAMPAIGN') =>
+      pool.query(
+        `SELECT to_char(mi.date_start, 'YYYY-MM-DD') AS day, COALESCE(SUM(mi.spend), 0)::numeric AS spend
+         FROM meta_insights mi
+         JOIN meta_ad_accounts mac ON mac.id = mi.ad_account_id
+         LEFT JOIN meta_connections mconn ON mconn.id = mac.connection_id
+         WHERE ${provenance}
+           AND mi.entity_level = $1
+           AND ($2::date IS NULL OR mi.date_start >= $2::date)
+           AND ($3::date IS NULL OR mi.date_stop <= $3::date)
+           AND mi.date_start = mi.date_stop
+         GROUP BY mi.date_start
+         ORDER BY mi.date_start`,
+        [level, metaStart, metaStop]
+      );
+    // mesmo critério do resumo: ACCOUNT só quando o total do período em ACCOUNT é maior que zero
+    let spendRows = (await spendByDay('ACCOUNT')).rows;
+    const accountTotal = spendRows.reduce((a: number, r: any) => a + (parseFloat(r.spend) || 0), 0);
+    if (accountTotal === 0) spendRows = (await spendByDay('CAMPAIGN')).rows;
+
+    const end = metaStop || commercialDayOf(new Date());
+    const days = buildDailySeries({ start: metaStart, end, paidOrders: ordersRes.rows, spendRows });
+
+    const truncated = !!metaStart && days.length > 0 && days[0].date > metaStart;
+    return res.status(200).json({
+      days,
+      truncated,
+      period: range ? { period: range.period, start: range.metaStart, end: range.metaStop } : { period: 'all', start: null, end: null }
+    });
+  } catch (err: any) {
+    console.error('Failed to retrieve daily series:', err);
+    return res.status(500).json({ error: 'Falha ao carregar os números por dia.' });
+  }
+}
+
 export async function migrateDestinationUrl(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const role = req.user?.role;
@@ -6541,8 +6604,11 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     // NORQVA-0008: media per product — campaign spend goes to its product when there is
     // deterministic evidence; the rest is split by revenue share (previous behavior).
     let productMediaAllocation: { mappedSpend: number; unmappedSpend: number } = { mappedSpend: 0, unmappedSpend: totalSpend };
+    // NORQVA-0082: o mesmo vínculo campanha → produto também dá o nome do produto à campanha na tela
+    let campaignProductMap = new Map<string, string | null>();
     try {
       const campaignProduct = await resolveCampaignProducts(pool, isDemo);
+      campaignProductMap = campaignProduct;
       const alloc = allocateSpendToProducts({
         products: byProduct.map(p => ({ productId: String(p.productId), grossRevenue: p.grossRevenue })),
         campaigns: campaignsRes.rows.map(c => ({
@@ -6683,6 +6749,18 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       }
     });
 
+    // NORQVA-0082: nome do produto de cada campanha (só quando o vínculo é único e comprovado)
+    const productNameById = new Map<string, string>();
+    try {
+      const linkedIds = [...new Set([...campaignProductMap.values()].filter((v): v is string => !!v))];
+      if (linkedIds.length > 0) {
+        const namesRes = await pool.query(`SELECT id, name FROM products WHERE id = ANY($1::uuid[])`, [linkedIds]);
+        for (const r of namesRes.rows) productNameById.set(String(r.id), String(r.name));
+      }
+    } catch (nameErr) {
+      console.error('[FINANCIAL] product names for campaigns failed; showing Meta names only', nameErr);
+    }
+
     const byCampaign = campaignsRes.rows.map(c => {
       const cSpend = Math.round(parseFloat(c.spend || '0') * 100) / 100;
       const cImpressions = parseInt(c.impressions || '0', 10);
@@ -6698,10 +6776,13 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       const cCtr = cImpressions > 0 ? Math.round(((cClicks / cImpressions) * 100) * 100) / 100 : null;
       const cCpc = cClicks > 0 ? Math.round((cSpend / cClicks) * 100) / 100 : null;
 
+      const linkedProductId = campaignProductMap.get(String(c.campaign_id)) || null;
       return {
         campaignId: c.campaign_id,
         metaCampaignId: c.meta_campaign_id,
         campaignName: c.campaign_name,
+        productId: linkedProductId,
+        productName: linkedProductId ? productNameById.get(linkedProductId) || null : null,
         status: c.status,
         effectiveStatus: c.effective_status,
         spend: cSpend,

@@ -46,7 +46,7 @@ export function AppShell({
   }, [nav.activeTab]);
 
   return (
-    <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-slate-950 text-slate-100 flex flex-col font-sans w-full overflow-hidden">
+    <div className="h-screen supports-[height:100dvh]:h-[100dvh] bg-nq-bg text-nq-text flex flex-col font-sans w-full overflow-hidden">
       {globalError && (
         <div className="fixed top-4 right-4 z-50 bg-red-950 border border-red-500 text-red-200 px-4 py-3 rounded-md shadow-lg flex items-center gap-2 max-w-md animate-bounce">
           <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" />
@@ -81,7 +81,7 @@ export function AppShell({
 
       <AreaSubTabs groups={groups} activeTab={nav.activeTab} setActiveTab={nav.setActiveTab} badges={nav.badges} />
 
-      <main ref={contentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6 md:p-8 custom-scrollbar">
+      <main ref={contentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-5 pb-8 sm:p-6 md:p-8 custom-scrollbar">
         <div className="max-w-[1400px] mx-auto w-full">{children}</div>
       </main>
 

@@ -46,7 +46,8 @@ describe('NORQVA-0024 — menu em áreas', () => {
     const setActiveTab = vi.fn();
     render(<AreaTabBar groups={visibleGroups('ADMIN')} activeTab="dashboard" setActiveTab={setActiveTab} badges={{ campaigns: 3 }} />);
     const bar = screen.getByTestId('area-tabbar');
-    expect(within(bar).getAllByRole('button').map(b => b.textContent?.replace(/\d+/g, ''))).toEqual(['Visão Geral', 'Inteligência', 'Operação', 'Vendas', 'Configurações']);
+    // NORQVA-0082 (D-0082): nomes curtos na barra do celular; no computador continuam os nomes completos
+    expect(within(bar).getAllByRole('button').map(b => b.textContent?.replace(/\d+/g, ''))).toEqual(['Início', 'Inteligência', 'Operação', 'Vendas', 'Ajustes']);
     fireEvent.click(screen.getByTestId('area-operation'));
     expect(setActiveTab).toHaveBeenCalledWith('products');
     expect(screen.getByTestId('area-operation').textContent).toContain('3');

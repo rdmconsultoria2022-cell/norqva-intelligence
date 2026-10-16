@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, AlertTriangle } from 'lucide-react';
+import { Wallet, AlertTriangle, ChevronRight } from 'lucide-react';
 
 // NORQVA-0030: resumo do crédito Meta na Visão Geral (só ADMIN; o detalhe fica em Resultados → Crédito Meta).
 
@@ -32,31 +32,47 @@ export const CreditSummary: React.FC<Props> = ({ currentUser, isDemoView, apiFet
   const alerts: any[] = Array.isArray(data?.alerts) ? data.alerts.filter((a: any) => a.level !== 'INFO') : [];
   const days = data?.forecast?.days_at_budgets ?? data?.forecast?.days_at_avg ?? null;
 
+  // NORQVA-0082: mesma informação, no estilo de linha da Visão Geral
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-xs" data-testid="credit-summary">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-300">
-        <span className="inline-flex items-center gap-1.5 font-semibold text-slate-200">
-          <Wallet className="h-4 w-4 text-emerald-400" /> Crédito Meta
-        </span>
+    <div
+      className={`rounded-2xl bg-nq-surface px-4 py-3.5 flex items-center gap-3 ${onOpenDetails ? 'cursor-pointer active:bg-nq-raised' : ''}`}
+      data-testid="credit-summary"
+      role={onOpenDetails ? 'button' : undefined}
+      tabIndex={onOpenDetails ? 0 : undefined}
+      aria-label={onOpenDetails ? 'Crédito Meta: ver detalhes' : undefined}
+      onClick={onOpenDetails}
+      onKeyDown={e => {
+        if (onOpenDetails && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onOpenDetails();
+        }
+      }}
+    >
+      <Wallet aria-hidden="true" className="h-5 w-5 text-nq-muted shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] leading-[22px] text-nq-text">Crédito Meta</div>
         {failed ? (
-          <span className="text-slate-500">não foi possível ler agora</span>
+          <div className="text-[13px] leading-[18px] text-nq-muted">não foi possível ler agora</div>
         ) : (
           <>
-            <span>disponível {data.limit === null ? 'sem limite' : brl(data.available)}</span>
-            {days !== null && <span>dura cerca de {days} dia{days === 1 ? '' : 's'}</span>}
+            <div className="text-[13px] leading-[18px] text-nq-muted">
+              {days !== null ? `dura cerca de ${days} dia${days === 1 ? '' : 's'}` : 'previsão indisponível'}
+            </div>
             {alerts.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-amber-300">
-                <AlertTriangle className="h-3.5 w-3.5" /> {alerts[0].message}
-              </span>
+              <div className="mt-1 inline-flex items-center gap-1 text-[13px] leading-[18px] text-nq-attention">
+                <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> {alerts[0].message}
+              </div>
             )}
           </>
         )}
       </div>
-      {onOpenDetails && (
-        <button onClick={onOpenDetails} className="text-emerald-300 hover:underline">
-          ver detalhes
-        </button>
+      {!failed && (
+        <div className="text-right shrink-0">
+          <div className="text-[15px] leading-[22px] font-semibold text-nq-text tabular-nums">{data.limit === null ? 'sem limite' : brl(data.available)}</div>
+          <div className="text-[12px] leading-4 text-nq-muted">disponível</div>
+        </div>
       )}
+      {onOpenDetails && <ChevronRight aria-hidden="true" className="h-4 w-4 text-nq-subtle shrink-0" />}
     </div>
   );
 };

@@ -191,3 +191,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Cartão:** 1x sem acréscimo e 2,99% ao mês acima, com parcela mínima de R$ 5,00. Por isso não existe 10x nesses valores: 4x no livro, 5x no livro + Dolci, 6x no kit. A página mostra só o parcelamento real, com taxa e total.
 - **Coerência:** ofertas de saída do kit pausadas; +4 livros depois do Trattoria a R$ 9,90; Kit Cozinha Italiana (OFF-000006) a R$ 24,90. O "de" é sempre a soma real dos preços avulsos.
 
+
+## D-0082 — NORQVA Premium: nova Visão Geral, gráfico diário e nome do produto nas campanhas (2026-10-16)
+
+- **Decisão (Ricardo, 16/10/2026 16h24, respostas 1 a 5 ao relatório da NORQVA-0082):** visual aprovado; "Início" e "Ajustes" na barra do celular; gráfico diário aprovado; campanhas mostram o **nome do produto** (sugestão dele); envio da branch autorizado.
+- **Design System:** tokens `nq-*` no Tailwind (fundo #101010, superfícies #1D1D1D/#252525, texto #F5F5F5/#A3A3A3, verde #10B981 só para resultado positivo e ação principal; vermelho de texto #F87171; botão verde com texto escuro). Texto mínimo de 12 px. Peças compartilhadas em `components/ui/premium.tsx`; nenhuma tela cria estilo próprio.
+- **Gráfico diário:** `GET /api/executive/daily` (só leitura, mesmos perfis do painel) separa por dia as mesmas regras do `/financial/dashboard`: pedidos PAID pelo dia do `created_at` em São Paulo e gasto em linhas diárias da Meta (ACCOUNT, senão CAMPAIGN). A soma dos dias bate com o total (teste `norqva_0082_daily_series`).
+- **Nome do produto:** `byCampaign` ganhou `productId` e `productName`, pelo mesmo vínculo comprovado da NORQVA-0008 (`resolveCampaignProducts`). Sem vínculo único, a tela mostra o nome da Meta. Nada no banco mudou.
+- **Comparação:** a Visão Geral compara com o período anterior de mesmo tamanho; não compara "Hoje", "Tudo" nem período anterior que cairia antes de 25/09/2026 (D-0073).
+- **Produção:** merge só com o "sim" explícito do Ricardo (briefing do redesign); as outras telas seguem uma por PR.
