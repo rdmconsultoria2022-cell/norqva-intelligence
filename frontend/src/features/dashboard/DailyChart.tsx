@@ -108,7 +108,7 @@ export function DailyChart({ days }: { days: DailyPoint[] }) {
         <div className="text-nq-aux text-nq-muted" aria-live="polite">
           {sel === null ? 'Último dia' : 'Dia'} <span className="text-nq-text">{dm(cur.date)}</span>
         </div>
-        <div className="flex gap-4 text-nq-aux tabular-nums">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-nq-aux tabular-nums">
           <span className="inline-flex items-center gap-1.5">
             <svg width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" stroke={REVENUE} strokeWidth="2" strokeLinecap="round" /></svg>
             <span className="text-nq-muted">Receita</span> <span className="text-nq-text">{brl(cur.revenue)}</span>

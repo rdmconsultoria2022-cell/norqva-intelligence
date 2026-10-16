@@ -84,7 +84,11 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - NORQVA-0080 (D-0080): livro + Dolci por R$ 24,90 (adicional de R$ 5,00 nos 4 livros, seção `BookComboOffer` na página de cada livro), kit de 5 a R$ 29,90, saídas pausadas, +4 livros a R$ 9,90, cartão com 1x sem acréscimo e 2,99% a.m. acima (migration 068).
 - NORQVA-0041: comprador escolhe as parcelas (D-0041): até 4x sem juros, acima com 2,99% a.m.; tela de pagamento com `look="light"` (creme/terracota) nos livros de cozinha.
 
+- NORQVA-0082 a 0089 (D-0082, D-0089): redesign NORQVA Premium das telas internas, só apresentação. Tokens `nq-*` no `tailwind.config.js`, peças em `components/ui/premium.tsx` (Section, Surface, Row, StatusPill, Stat, Disclosure, `useIsMobile`). Tabela larga vira lista só no celular (renderiza uma das duas). Financeiro em `dashboard/FinancialResults.tsx`; Equipe e Configurações em `features/settings/SettingsViews.tsx`. Capturas e medições usam o harness local `frontend/harness/` (fora do git).
+
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
+
+- Gestão da Equipe (criar com convite, editar, desativar): próxima etapa, precisa do "Aprovado" (D-0089).
 
 - WhatsApp (NORQVA-0079): etapa 2 = conta TEST da Meta (app dedicado no portfólio Norqva, marca Trattoria) + `WHATSAPP_SECRETS_KEY` e `OPENAI_API_KEY` no Render; etapa 3 = homologação com o "sim" do Ricardo; etapa 4 = templates. A Evolution (NORQVA-0046) fica desligada.
 
