@@ -650,8 +650,9 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
             {tab === 'cap' && (
               <div className="space-y-3" data-testid="cap-tab">
+                {/* NORQVA-0084: as regras ficam em "Regras do vigia", dentro do cartão */}
                 <p className="text-[13px] leading-[18px] text-nq-muted">
-                  Teto da campanha: <span className="text-nq-text">{brl(campaign.max_spend_brl)}</span>. O vigia pausa a campanha quando o gasto chega ao teto, menos quando ela está dando lucro: aí o teto sobe 50% sozinho, até o teto máximo.
+                  O teto da campanha é <span className="text-nq-text">{brl(campaign.max_spend_brl)}</span>.
                 </p>
                 <ExperimentGuardCard
                   apiFetch={apiFetch as any}

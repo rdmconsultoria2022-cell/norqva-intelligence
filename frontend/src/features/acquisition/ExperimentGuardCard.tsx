@@ -165,16 +165,25 @@ export const ExperimentGuardCard: React.FC<{
     }
   };
 
+  // NORQVA-0084 (D-0082): mesma lógica e mesmas regras; apresentação nova. Para cada experimento:
+  // consumo em destaque, barra, saldo, última leitura, o teto do NORQVA separado do limite aplicado
+  // na Meta, e as regras do vigia numa área que abre ao tocar.
+  const field =
+    'w-full min-h-[44px] rounded-xl bg-nq-raised px-3 text-[15px] text-nq-text placeholder:text-nq-subtle focus:outline-none focus:ring-2 focus:ring-nq-positive/50';
+  const when = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
+
   return (
-    <div data-testid="experiment-guard-card" className="space-y-3 rounded-lg border border-nq-info/40 bg-nq-info/10 p-4">
+    <section data-testid="experiment-guard-card" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-sm font-bold text-nq-info">
-          <ShieldCheck className="h-4 w-4" /> Teto dos experimentos
+        <h3 className="flex items-center gap-2 text-[20px] leading-[26px] font-semibold text-nq-text">
+          <ShieldCheck aria-hidden="true" className="h-5 w-5 text-nq-muted" /> Teto dos experimentos
         </h3>
-        <button onClick={runNow} disabled={busy} className="inline-flex items-center gap-1 rounded border border-nq-line px-2.5 py-1 text-xs text-nq-text hover:bg-nq-raised disabled:opacity-50">
-          <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /> Conferir gasto agora
+        <button onClick={runNow} disabled={busy} className="inline-flex items-center gap-1.5 min-h-[40px] rounded-full bg-nq-surface px-3.5 text-[13px] text-nq-text hover:bg-nq-raised disabled:opacity-50">
+          <RefreshCw aria-hidden="true" className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Conferir gasto agora
         </button>
       </div>
+      <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70">
       {plans.map(p => {
         const cap = num(p.max_spend_brl) ?? 0;
         const spent = num(p.spent_brl_last);
@@ -184,93 +193,148 @@ export const ExperimentGuardCard: React.FC<{
         const ceil = ceilingOfPlan(p);
         const d = detail[p.id];
         const raising = editing === p.id && isRaise(p) && answered(p);
+        const stopped = p.guard_state === 'CAPPED' || p.guard_state === 'PAUSE_FAILED';
+        const barCls = stopped || (pct !== null && pct >= 90) ? 'bg-nq-critical' : pct !== null && pct >= 80 ? 'bg-nq-attention' : 'bg-nq-positive';
+        const stateTone = p.guard_state === 'WATCHING' ? 'text-nq-positive-text' : stopped ? 'text-nq-critical-text' : 'text-nq-muted';
+        const dot = p.guard_state === 'WATCHING' ? 'bg-nq-positive' : stopped ? 'bg-nq-critical' : 'bg-nq-subtle';
+        const left = spent !== null ? Math.max(0, Math.round((cap - spent) * 100) / 100) : null;
         return (
-          <div key={p.id} data-testid={`guard-plan-${p.code}`} className="space-y-2 rounded border border-nq-line bg-nq-surface p-3 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold text-nq-text">
-                {p.code} <span className="font-normal text-nq-subtle">· {p.spec?.campaign?.name}</span>
-              </span>
-              <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${st.cls}`} data-testid="guard-state">{st.label}</span>
-            </div>
-            <div className="text-nq-text">
-              Gasto na Meta: <strong>{brl(spent)}</strong> de <strong>{brl(cap)}</strong> {pct !== null ? `(${pct.toFixed(1).replace('.', ',')}%)` : ''}
-              {p.spent_checked_at ? <span className="text-nq-subtle"> · lido em {new Date(p.spent_checked_at).toLocaleString('pt-BR')}</span> : null}
-            </div>
-            {pct !== null && (
-              <div className="h-2 rounded bg-nq-raised">
-                <div className={`h-2 rounded ${pct >= 90 ? 'bg-nq-critical' : pct >= 80 ? 'bg-nq-attention' : 'bg-nq-positive'}`} style={{ width: `${pct}%` }} />
+          <div key={p.id} data-testid={`guard-plan-${p.code}`} className={`p-4 space-y-4 text-[13px] leading-[18px] ${p.guard_state === 'PAUSE_FAILED' ? 'bg-nq-critical/10' : ''}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[15px] leading-[22px] text-nq-text break-all">{p.spec?.campaign?.name || p.code}</div>
+                <div className="text-[12px] text-nq-subtle">{p.code}</div>
               </div>
-            )}
-            <div className="text-nq-muted" data-testid="guard-profit-rule">
-              {p.profit_extend_enabled === false ? (
-                <>Se estiver dando lucro: <span className="text-nq-attention">desligado</span> (pausa no teto mesmo com lucro).</>
-              ) : (
-                <>
-                  Se estiver dando lucro, o NORQVA <strong>não pausa</strong>: sobe o teto em 50% até o teto máximo de <strong>{brl(ceil)}</strong>
-                  {num(p.max_spend_ceiling_brl) ? '' : ' (3x o teto inicial)'}.
-                  {Number(p.cap_extensions) > 0 ? ` Já subiu ${p.cap_extensions} vez(es) por lucro.` : ''}
-                </>
-              )}
+              <span className={`inline-flex items-center gap-1.5 text-[12px] font-medium shrink-0 ${stateTone}`} data-testid="guard-state">
+                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                {st.label}
+              </span>
             </div>
+
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="tabular-nums">
+                  <span className="text-[22px] leading-7 font-semibold text-nq-text">{brl(spent)}</span>
+                  <span className="text-nq-muted whitespace-nowrap"> de {brl(cap)}</span>
+                </div>
+                {pct !== null && <span className="text-[15px] font-semibold tabular-nums text-nq-text">{`${pct.toFixed(1).replace('.', ',')}%`}</span>}
+              </div>
+              <div
+                className="mt-2 h-2 rounded-full bg-nq-raised overflow-hidden"
+                role="progressbar"
+                aria-label={`Teto usado de ${p.code}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct === null ? undefined : Math.round(pct)}
+                aria-valuetext={pct === null ? 'ainda não lido' : undefined}
+              >
+                {pct !== null && <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-3 text-[12px] leading-4">
+                <div><div className="text-nq-muted">Saldo até o teto</div><div className="mt-0.5 text-nq-text tabular-nums">{brl(left)}</div></div>
+                <div className="text-right"><div className="text-nq-muted">Gasto lido na Meta</div><div className="mt-0.5 text-nq-text">{when(p.spent_checked_at) || 'ainda não lido'}</div></div>
+              </div>
+            </div>
+
+            <dl className="rounded-xl bg-nq-raised/60 p-3 space-y-2" data-testid="guard-spend-cap">
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-nq-muted">Teto do NORQVA <span className="block text-[12px] text-nq-subtle">o vigia pausa aqui</span></dt>
+                <dd className="text-nq-text tabular-nums text-right">{brl(cap)}</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-nq-muted">Limite aplicado na Meta <span className="block text-[12px] text-nq-subtle">trava extra, na própria Meta</span></dt>
+                <dd className="text-right max-w-[60%]">
+                  {p.spend_cap_status === 'APPLIED' ? (
+                    <span className="text-nq-text">{brl(applied)} aplicado</span>
+                  ) : p.spend_cap_status === 'BACKSTOP' ? (
+                    <span className="text-nq-text">{brl(applied)} aplicado como trava de segurança (mínimo da Meta); o NORQVA pausa em {brl(cap)}</span>
+                  ) : p.spend_cap_status === 'FAILED' ? (
+                    <span className="text-nq-attention">não aplicado ({p.spend_cap_error})</span>
+                  ) : (
+                    <span className="text-nq-muted">ainda não aplicado</span>
+                  )}
+                </dd>
+              </div>
+            </dl>
+
             {d?.profit && (
               <div className="text-nq-muted" data-testid="guard-profit-now">
-                Vendas pagas desta campanha: <strong>{d.profit.sales}</strong> · líquido (sem taxas) <strong>{brl(num(d.profit.net_brl))}</strong>
+                Vendas pagas desta campanha: <span className="text-nq-text">{d.profit.sales}</span> · líquido (sem taxas) <span className="text-nq-text">{brl(num(d.profit.net_brl))}</span>
                 {d.profit.spent_brl !== null && d.profit.spent_brl !== undefined ? <> · gasto {brl(num(d.profit.spent_brl))}</> : null}
                 {' → '}
                 {d.profit.profitable_lifetime ? <span className="text-nq-positive-text">dando lucro</span> : <span className="text-nq-text">ainda sem lucro comprovado (mínimo {d.profit.min_sales} vendas)</span>}
               </div>
             )}
-            <div className="text-nq-muted" data-testid="guard-spend-cap">
-              Limite de gastos da campanha na Meta:{' '}
-              {p.spend_cap_status === 'APPLIED' ? <span className="text-nq-positive-text">{brl(applied)} aplicado</span> : p.spend_cap_status === 'BACKSTOP' ? <span className="text-nq-positive-text">{brl(applied)} aplicado como trava de segurança (mínimo da Meta); o NORQVA pausa em {brl(cap)}</span> : p.spend_cap_status === 'FAILED' ? <span className="text-nq-attention">não aplicado ({p.spend_cap_error})</span> : <span>ainda não aplicado</span>}
-            </div>
-            {p.guard_note && <div className="text-nq-subtle">{p.guard_note}</div>}
+
+            <details className="group rounded-xl bg-nq-raised/60">
+              <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer min-h-[44px] px-3 flex items-center justify-between gap-3 text-nq-muted">
+                Regras do vigia
+                <span aria-hidden="true" className="text-nq-subtle group-open:rotate-180 transition-transform">⌄</span>
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                <div className="text-nq-muted" data-testid="guard-profit-rule">
+                  {p.profit_extend_enabled === false ? (
+                    <>Se estiver dando lucro: <span className="text-nq-attention">desligado</span> (pausa no teto mesmo com lucro).</>
+                  ) : (
+                    <>
+                      Se estiver dando lucro, o NORQVA <strong className="text-nq-text">não pausa</strong>: sobe o teto em 50% até o teto máximo de <strong className="text-nq-text">{brl(ceil)}</strong>
+                      {num(p.max_spend_ceiling_brl) ? '' : ' (3x o teto inicial)'}.
+                      {Number(p.cap_extensions) > 0 ? ` Já subiu ${p.cap_extensions} vez(es) por lucro.` : ''}
+                    </>
+                  )}
+                </div>
+                <div className="text-nq-subtle">Baixar o teto salva na hora. Subir depois do Sim pede o código da campanha e um motivo.</div>
+                {p.guard_note && <div className="text-nq-subtle">{p.guard_note}</div>}
+              </div>
+            </details>
+
             {editing === p.id ? (
-              <div className="space-y-2 rounded border border-nq-info/40 bg-nq-bg p-2" data-testid="guard-edit">
-                <div className="flex flex-wrap items-end gap-3">
-                  <label className="flex flex-col gap-1">
+              <div className="space-y-3 rounded-xl bg-nq-raised/60 p-3" data-testid="guard-edit">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3 items-end">
+                  <label className="flex flex-col gap-1.5">
                     <span className="text-nq-muted">Teto de gasto (R$)</span>
-                    <input aria-label={`Novo teto de ${p.code}`} value={value} onChange={e => {
+                    <input inputMode="decimal" aria-label={`Novo teto de ${p.code}`} value={value} onChange={e => {
                         setValue(e.target.value);
                         // teto máximo padrão (3x) acompanha o teto digitado, como o servidor calcula
                         if (!ceilingTouched) setCeiling(String(ceilingOfPlan({ ...p, max_spend_brl: parse(e.target.value) || p.max_spend_brl })));
-                      }} className="w-28 rounded border border-nq-line bg-nq-bg px-2 py-1 text-nq-text" />
+                      }} className={field} />
                   </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-nq-muted">Teto máximo com lucro (R$)</span>
-                    <input aria-label={`Teto máximo de ${p.code}`} value={ceiling} onChange={e => { setCeiling(e.target.value); setCeilingTouched(true); }} className="w-28 rounded border border-nq-line bg-nq-bg px-2 py-1 text-nq-text" />
-                  </label>
-                  <label className="flex items-center gap-1.5 pb-1 text-nq-text">
-                    <input type="checkbox" aria-label="Não pausar se estiver dando lucro" checked={profitOn} onChange={e => setProfitOn(e.target.checked)} />
-                    Não pausar se estiver dando lucro
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-nq-muted">Teto máximo se der lucro (R$)</span>
+                    <input inputMode="decimal" aria-label={`Teto máximo de ${p.code}`} value={ceiling} onChange={e => { setCeiling(e.target.value); setCeilingTouched(true); }} className={field} />
                   </label>
                 </div>
+                <label className="flex items-center gap-3 min-h-[44px] text-[15px] text-nq-text">
+                  <input type="checkbox" className="h-5 w-5 accent-nq-positive" aria-label="Não pausar se estiver dando lucro" checked={profitOn} onChange={e => setProfitOn(e.target.checked)} />
+                  Não pausar se estiver dando lucro
+                </label>
                 {raising ? (
-                  <div className="flex w-full flex-wrap items-center gap-2" data-testid="guard-raise-confirm">
-                    <span className="text-nq-attention">Aumentar autoriza gastar mais. Digite o código da campanha e o motivo.</span>
-                    <input aria-label="Código da campanha" value={confirmCode} onChange={e => setConfirmCode(e.target.value)} placeholder={p.code} autoComplete="off" onPaste={e => e.preventDefault()} className="w-40 rounded border border-nq-line bg-nq-bg px-2 py-1 text-nq-text" />
-                    <input aria-label="Motivo" value={justification} onChange={e => setJustification(e.target.value)} placeholder="Por que aumentar? (mín. 10 letras)" className="min-w-[220px] flex-1 rounded border border-nq-line bg-nq-bg px-2 py-1 text-nq-text" />
+                  <div className="space-y-2" data-testid="guard-raise-confirm">
+                    <p className="text-nq-attention">Aumentar autoriza gastar mais. Digite o código da campanha e o motivo.</p>
+                    <input aria-label="Código da campanha" value={confirmCode} onChange={e => setConfirmCode(e.target.value)} placeholder={p.code} autoComplete="off" onPaste={e => e.preventDefault()} className={field} />
+                    <input aria-label="Motivo" value={justification} onChange={e => setJustification(e.target.value)} placeholder="Por que aumentar? (mín. 10 letras)" className={field} />
                   </div>
                 ) : (
-                  <div className="text-nq-subtle">Baixar o teto salva na hora.{p.guard_state === 'CAPPED' ? ' Para voltar a rodar, suba o teto acima do gasto e depois reative a campanha.' : ''}</div>
+                  <p className="text-nq-subtle">Baixar o teto salva na hora.{p.guard_state === 'CAPPED' ? ' Para voltar a rodar, suba o teto acima do gasto e depois reative a campanha.' : ''}</p>
                 )}
-                <div className="flex gap-2">
-                  <button onClick={() => saveCap(p)} disabled={busy} className="rounded bg-nq-text px-2.5 py-1 font-semibold text-nq-bg hover:brightness-110 disabled:opacity-50">
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => saveCap(p)} disabled={busy} className="min-h-[44px] rounded-full bg-nq-text px-5 text-[15px] font-semibold text-nq-bg hover:brightness-110 disabled:opacity-50">
                     Salvar
                   </button>
-                  <button onClick={() => setEditing(null)} className="rounded border border-nq-line px-2.5 py-1 text-nq-text">
+                  <button onClick={() => setEditing(null)} className="min-h-[44px] rounded-full bg-nq-raised px-5 text-[15px] text-nq-text">
                     Cancelar
                   </button>
                 </div>
               </div>
             ) : (
-              <button onClick={() => startEdit(p)} className="rounded border border-nq-info/40 px-2.5 py-1 text-nq-info hover:bg-nq-info/10">
+              <button onClick={() => startEdit(p)} className="min-h-[40px] rounded-full bg-nq-raised px-4 text-[13px] font-semibold text-nq-text hover:brightness-110">
                 Editar teto
               </button>
             )}
           </div>
         );
       })}
-    </div>
+      </div>
+    </section>
   );
 };

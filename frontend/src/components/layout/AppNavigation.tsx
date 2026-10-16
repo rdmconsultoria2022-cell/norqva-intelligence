@@ -71,7 +71,7 @@ export function AreaSubTabs({ groups, activeTab, setActiveTab, badges }: NavProp
             type="button"
             onClick={() => setActiveTab(item.id)}
             aria-current={active ? 'page' : undefined}
-            className={`flex items-center gap-1.5 h-9 px-4 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${
+            className={`flex items-center gap-1.5 h-10 px-4 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors ${
               active ? 'bg-nq-text text-nq-bg' : 'bg-nq-surface text-nq-muted'
             }`}
           >

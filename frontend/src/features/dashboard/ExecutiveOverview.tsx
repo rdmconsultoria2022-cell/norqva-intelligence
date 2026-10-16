@@ -503,41 +503,17 @@ export function ExecutiveOverview({
     </Section>
   );
 
+  // NORQVA-0084: o Teto dos experimentos é o próprio cartão (consumo, saldo, teto NORQVA × limite na
+  // Meta, regras e edição), o mesmo da tela Campanhas; aqui, para todos os experimentos em andamento.
   const guardSection = guarded.length > 0 && (
-    <Section title="Teto dos experimentos" testId="overview-guard" action={onOpenTab && (
-      <button type="button" onClick={() => onOpenTab('campaigns')} className="h-10 text-nq-aux text-nq-muted">Ver tudo</button>
-    )}>
-      <RowGroup>
-        {guarded.map(p => {
-          const spent = Number(p.spent_brl_last) || 0;
-          const cap = Number(p.max_spend_brl) || 0;
-          const used = cap > 0 ? (spent / cap) * 100 : 0;
-          const tone: Tone = p.guard_state === 'CAPPED' || p.guard_state === 'PAUSE_FAILED' ? 'critical' : used >= 90 ? 'attention' : 'positive';
-          const metaCap = p.spend_cap_applied_brl !== null && p.spend_cap_applied_brl !== undefined ? Number(p.spend_cap_applied_brl) : null;
-          return (
-            <div key={p.id} className="px-4 py-4 space-y-2.5" data-testid="guard-row">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-nq-body text-nq-text break-all min-w-0">{p.spec?.campaign?.name || p.code}</span>
-                <span className={`text-nq-aux font-medium tabular-nums shrink-0 ${toneText(tone)}`}>{pct(used, 0)}</span>
-              </div>
-              <ProgressBar value={spent} max={cap} tone={tone} label={`Teto usado: ${pct(used, 0)}`} />
-              <div className="flex justify-between gap-3 text-nq-caption text-nq-muted tabular-nums">
-                <span>{brl(spent)} de {brl(cap)}</span>
-                <span>sobra {brl(Math.max(0, cap - spent))}</span>
-              </div>
-              <div className="flex justify-between gap-3 text-nq-caption text-nq-subtle">
-                <span>Limite na Meta: {metaCap !== null ? brl(metaCap) : 'não aplicado'}</span>
-                <span>lido {when(p.spent_checked_at)}</span>
-              </div>
-            </div>
-          );
-        })}
-        <Disclosure summary="Editar teto e ver as regras" testId="guard-details">
-          {/* componente original: edição do teto, código de confirmação e regras sem mudança */}
-          <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} onChanged={() => setReload(n => n + 1)} />
-        </Disclosure>
-      </RowGroup>
-    </Section>
+    <div data-testid="overview-guard" className="space-y-2">
+      <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} onChanged={() => setReload(n => n + 1)} />
+      {onOpenTab && (
+        <button type="button" onClick={() => onOpenTab('campaigns')} className="h-10 px-1 text-nq-aux text-nq-muted">
+          Ver campanhas
+        </button>
+      )}
+    </div>
   );
 
   const operation = (
