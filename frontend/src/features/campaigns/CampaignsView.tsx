@@ -133,19 +133,27 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   okRef.current = showSuccess;
 
   const loadList = useCallback(async () => {
+    let planList: any[] = [];
     try {
       const r = await apiRef.current('/campaigns?mode=real');
-      setCampaigns(Array.isArray(r?.campaigns) ? r.campaigns : []);
+      planList = Array.isArray(r?.campaigns) ? r.campaigns : [];
+      setCampaigns(planList);
     } catch (err: any) {
       errRef.current(err.message || 'Erro ao carregar as campanhas.');
     }
-    const [mc, pr, al, ex, fin] = await Promise.all([
+    const [mc, pr, al, ex] = await Promise.all([
       apiRef.current('/meta/campaigns?mode=real').catch(() => []),
       apiRef.current(`/intelligence/creative-performance?mode=real&${periodQs}`).catch(() => null),
       apiRef.current('/alerts?mode=real').catch(() => null),
-      apiRef.current('/experiments?mode=real').catch(() => null),
-      apiRef.current(`/financial/dashboard?mode=real&${periodQs}`).catch(() => null)
+      apiRef.current('/experiments?mode=real').catch(() => null)
     ]);
+    // O nome do produto das campanhas do NORQVA vem da oferta. Só as campanhas criadas fora do NORQVA
+    // precisam do vínculo do resumo financeiro (D-0082); sem elas, essa leitura não é feita.
+    const planMetaIdSet = new Set(
+      planList.flatMap((c: any) => Object.values(c?.meta_ids?.campaign || {}).map(v => String(v)))
+    );
+    const hasExternal = (Array.isArray(mc) ? mc : []).some((m: any) => !planMetaIdSet.has(String(m.meta_campaign_id)));
+    const fin = hasExternal ? await apiRef.current(`/financial/dashboard?mode=real&${periodQs}`).catch(() => null) : null;
     const names: Record<string, string> = {};
     (Array.isArray(fin?.byCampaign) ? fin.byCampaign : []).forEach((c: any) => {
       if (c?.metaCampaignId && c?.productName) names[String(c.metaCampaignId)] = String(c.productName);
@@ -385,6 +393,19 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const filled = campaign?.spec?.ads?.every((a: any) => a.video_url && a.video_url !== 'TO_BE_FILLED');
   const editable = !!campaign?.editable && isAdmin;
   const hasSelection = !!selectedId && (!!selectedMeta || (!!campaign && selectedId === campaign.id));
+  // no celular o quadro do Sim fica na lista: no detalhe, um aviso curto leva de volta a ele
+  const awaitingCount = campaigns.filter(c => c.status === 'AWAITING_OPERATOR' || (c.status === 'APPROVED' && !!c.last_error)).length;
+  const awaitingNotice = awaitingCount > 0 && isAdmin && (
+    <button
+      type="button"
+      onClick={() => setSelectedId(null)}
+      data-testid="awaiting-notice"
+      className="lg:hidden w-full flex items-center justify-between gap-3 min-h-[48px] px-4 rounded-2xl bg-nq-attention/10 text-left"
+    >
+      <StatusPill tone="attention">{awaitingCount === 1 ? '1 campanha aguardando seu Sim' : `${awaitingCount} campanhas aguardando seu Sim`}</StatusPill>
+      <span className="text-[13px] text-nq-muted shrink-0">Ver</span>
+    </button>
+  );
   const back = (
     <button
       type="button"
@@ -471,7 +492,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 <label key={c.id} className="flex items-center gap-3 min-h-[44px] text-[15px] text-nq-text">
                   <input
                     type="checkbox"
-                    className="h-5 w-5 accent-[#10B981]"
+                    className="h-5 w-5 accent-nq-positive"
                     checked={creating.creative_ids.includes(c.id)}
                     onChange={e =>
                       setCreating({
@@ -569,6 +590,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         {selectedMeta && (
           <section className="space-y-4 min-w-0" data-testid="external-detail">
             {back}
+            {awaitingNotice}
             <div>
               <h2 className="text-[22px] leading-7 font-semibold break-words">{productByMeta[String(selectedMeta.meta_campaign_id)] || selectedMeta.name}</h2>
               {productByMeta[String(selectedMeta.meta_campaign_id)] && <div className="text-[12px] text-nq-subtle break-all mt-0.5">{selectedMeta.name}</div>}
@@ -581,6 +603,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         {campaign && selectedId === campaign.id && (
           <div className="space-y-4 min-w-0">
             {back}
+            {awaitingNotice}
             <div>
               {(() => {
                 const product = productOfPlan(campaign);

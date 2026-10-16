@@ -23,9 +23,6 @@ import {
   TrendingUp, 
   Layers, 
   Target, 
-  Eye, 
-  MousePointer, 
-  DollarSign, 
   AlertTriangle, 
   RefreshCw, 
   CheckCircle2, 
@@ -343,7 +340,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
     return true;
   };
   const money2 = (v: any) => (v ? `R$ ${parseFloat(v).toFixed(2).replace('.', ',')}` : null);
-  const mobileCampaigns = mobileList(
+  const mobileCampaigns = !isMobile ? null : mobileList(
     [...campaigns]
       .map(c => ({ c, m: metricsFor(p => String(p.campaign_id) === String(c.meta_campaign_id)) }))
       .sort((x, y) => y.m.spend - x.m.spend)
@@ -369,7 +366,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
       ),
     'Nenhuma campanha sincronizada.'
   );
-  const mobileAdsets = mobileList(
+  const mobileAdsets = !isMobile ? null : mobileList(
     adSets
       .filter(s => !campaignFilter || String(s.campaign_id) === String(campaignFilter.id))
       .map(s => ({ s, m: metricsFor(p => String(p.adset_id) === String(s.meta_adset_id)) }))
@@ -397,7 +394,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
       ),
     'Nenhum conjunto de anúncios sincronizado.'
   );
-  const mobileAds = mobileList(
+  const mobileAds = !isMobile ? null : mobileList(
     ads
       .filter(adsOfFilter)
       .map(a => ({ a, m: metricsFor(p => String(p.ad_id) === String(a.meta_ad_id)) }))
@@ -627,7 +624,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         </td>
                         <td className="p-3">{renderStatusBadge(c)}</td>
                         <td className="p-3 text-nq-text whitespace-nowrap">
-                          {c.daily_budget ? `R$ ${parseFloat(c.daily_budget).toFixed(2)}` : '—'}
+                          {c.daily_budget ? `R$ ${parseFloat(c.daily_budget).toFixed(2).replace('.', ',')}` : '—'}
                         </td>
                         <MetricCells m={m} />
                         {isAdmin && (
@@ -685,7 +682,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         </td>
                         <td className="p-3">{renderStatusBadge(s)}</td>
                         <td className="p-3 text-nq-text whitespace-nowrap">
-                          {s.daily_budget ? `R$ ${parseFloat(s.daily_budget).toFixed(2)}` : '—'}
+                          {s.daily_budget ? `R$ ${parseFloat(s.daily_budget).toFixed(2).replace('.', ',')}` : '—'}
                         </td>
                         <MetricCells m={m} />
                         {isAdmin && (
@@ -799,7 +796,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                           {ins.date_start} → {ins.date_stop}
                         </td>
                         <td className="p-3.5 font-bold text-nq-positive-text">
-                          R$ {parseFloat(ins.spend).toFixed(2)}
+                          R$ {parseFloat(ins.spend).toFixed(2).replace('.', ',')}
                         </td>
                         <td className="p-3.5 text-nq-text">
                           {parseInt(ins.impressions, 10).toLocaleString('pt-BR')}
@@ -808,10 +805,10 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                           {parseInt(ins.clicks, 10).toLocaleString('pt-BR')}
                         </td>
                         <td className="p-3.5 text-nq-text">
-                          {ins.cpc ? `R$ ${parseFloat(ins.cpc).toFixed(2)}` : '—'}
+                          {ins.cpc ? `R$ ${parseFloat(ins.cpc).toFixed(2).replace('.', ',')}` : '—'}
                         </td>
                         <td className="p-3.5 text-nq-text">
-                          {ins.ctr ? `${parseFloat(ins.ctr).toFixed(2)}%` : '—'}
+                          {ins.ctr ? `${parseFloat(ins.ctr).toFixed(2).replace('.', ',')}%` : '—'}
                         </td>
                       </tr>
                     ))}
