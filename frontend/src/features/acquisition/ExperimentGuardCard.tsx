@@ -226,6 +226,7 @@ export const ExperimentGuardCard: React.FC<{
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={pct === null ? undefined : Math.round(pct)}
+                aria-valuetext={pct === null ? 'ainda não lido' : undefined}
               >
                 {pct !== null && <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />}
               </div>
@@ -266,7 +267,7 @@ export const ExperimentGuardCard: React.FC<{
             )}
 
             <details className="group rounded-xl bg-nq-raised/60">
-              <summary className="list-none cursor-pointer min-h-[44px] px-3 flex items-center justify-between gap-3 text-nq-muted">
+              <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer min-h-[44px] px-3 flex items-center justify-between gap-3 text-nq-muted">
                 Regras do vigia
                 <span aria-hidden="true" className="text-nq-subtle group-open:rotate-180 transition-transform">⌄</span>
               </summary>
@@ -289,7 +290,7 @@ export const ExperimentGuardCard: React.FC<{
 
             {editing === p.id ? (
               <div className="space-y-3 rounded-xl bg-nq-raised/60 p-3" data-testid="guard-edit">
-                <div className="grid grid-cols-2 gap-3 items-end">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3 items-end">
                   <label className="flex flex-col gap-1.5">
                     <span className="text-nq-muted">Teto de gasto (R$)</span>
                     <input inputMode="decimal" aria-label={`Novo teto de ${p.code}`} value={value} onChange={e => {

@@ -506,8 +506,13 @@ export function ExecutiveOverview({
   // NORQVA-0084: o Teto dos experimentos é o próprio cartão (consumo, saldo, teto NORQVA × limite na
   // Meta, regras e edição), o mesmo da tela Campanhas; aqui, para todos os experimentos em andamento.
   const guardSection = guarded.length > 0 && (
-    <div data-testid="overview-guard">
+    <div data-testid="overview-guard" className="space-y-2">
       <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} onChanged={() => setReload(n => n + 1)} />
+      {onOpenTab && (
+        <button type="button" onClick={() => onOpenTab('campaigns')} className="h-10 px-1 text-nq-aux text-nq-muted">
+          Ver campanhas
+        </button>
+      )}
     </div>
   );
 
