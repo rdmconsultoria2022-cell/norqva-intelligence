@@ -44,7 +44,7 @@ describe('NORQVA-0081 — menu do topo', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByTestId('user-menu-panel')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Perfil: Ricardo Andrade Lucas' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Sair/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Sair/ }));
     expect(nav.handleSignOut).toHaveBeenCalledTimes(1);
   });
 

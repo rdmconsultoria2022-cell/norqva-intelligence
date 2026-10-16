@@ -9,7 +9,7 @@ import { NavigationGroup } from './navigation';
 // NORQVA-0081: menu fixo no topo.
 // - Linha 1: perfil (só o nome) à esquerda, logo NORQVA e, à direita, o período (nas telas em que ele filtra).
 // - Linha 2 (só no computador): as telas, numa faixa discreta.
-// Saíram o "AUTH_MODE", o botão "Sincronizar" e o nome da tela no topo.
+// Saíram o selo do modo de autenticação, o botão de recarregar e o nome da tela no topo.
 
 export interface HeaderProps {
   activeTab: string;
@@ -26,11 +26,11 @@ export interface HeaderProps {
 
 export function NorqvaLogo() {
   return (
-    <span className="flex items-center gap-2 select-none" aria-label="NORQVA">
-      <svg viewBox="0 0 100 100" className="h-5 w-5" aria-hidden="true">
+    <span className="flex items-center gap-1.5 sm:gap-2 select-none">
+      <svg viewBox="0 0 100 100" className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true">
         <polygon points="50,15 90,85 10,85" className="fill-emerald-500" />
       </svg>
-      <span className="text-base sm:text-lg font-black tracking-[0.25em] text-slate-100 font-mono">NORQVA</span>
+      <span className="text-sm sm:text-lg font-black tracking-[0.18em] sm:tracking-[0.25em] text-slate-100 font-mono">NORQVA</span>
     </span>
   );
 }
@@ -48,7 +48,7 @@ export function Header({
 }: HeaderProps) {
   return (
     <header data-testid="app-header" className="shrink-0 z-30 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md">
-      <div className="h-14 px-3 sm:px-4 md:px-8 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <div className="h-14 px-3 sm:px-4 md:px-8 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
         <div className="min-w-0 justify-self-start">
           <UserMenu user={currentUser} onSignOut={handleSignOut} />
         </div>
@@ -83,7 +83,7 @@ export function Header({
         </div>
       </div>
 
-      <div className="hidden md:block px-4 md:px-6 border-t border-slate-900">
+      <div className="hidden md:block md:px-6 border-t border-slate-900">
         <ScreenTabs groups={groups} activeTab={activeTab} setActiveTab={setActiveTab} badges={badges} />
       </div>
     </header>

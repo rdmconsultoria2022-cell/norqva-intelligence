@@ -62,7 +62,6 @@ export function UserMenu({ user, onSignOut }: Props) {
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        aria-haspopup="menu"
         aria-label={`Perfil: ${user.name}`}
         className="flex items-center gap-2 min-w-0 max-w-full rounded-full pr-2 hover:bg-slate-800/60 transition"
       >
@@ -75,7 +74,6 @@ export function UserMenu({ user, onSignOut }: Props) {
 
       {open && (
         <div
-          role="menu"
           data-testid="user-menu-panel"
           className="absolute left-0 top-full mt-2 w-64 rounded-xl border border-slate-800 bg-slate-900 shadow-2xl z-50 overflow-hidden"
         >
@@ -91,7 +89,6 @@ export function UserMenu({ user, onSignOut }: Props) {
           </div>
           <button
             type="button"
-            role="menuitem"
             onClick={() => {
               setOpen(false);
               onSignOut();

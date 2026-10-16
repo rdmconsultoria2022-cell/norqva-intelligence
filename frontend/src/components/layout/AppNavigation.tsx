@@ -31,7 +31,7 @@ export function ScreenTabs({ groups, activeTab, setActiveTab, badges }: NavProps
   return (
     <nav aria-label="Telas" data-testid="screen-tabs" className="flex items-center gap-1 overflow-x-auto no-scrollbar">
       {groups.map((g, gi) => (
-        <div key={g.id} data-testid={`nav-group-${g.id}`} title={g.label} className="flex items-center gap-1 shrink-0">
+        <div key={g.id} data-testid={`nav-group-${g.id}`} className="flex items-center gap-1 shrink-0">
           {gi > 0 && <span aria-hidden="true" className="mx-2 h-4 w-px bg-slate-800" />}
           {g.items.map(item => {
             const active = item.id === activeTab;
@@ -107,6 +107,7 @@ export function AreaTabBar({ groups, activeTab, setActiveTab, badges }: NavProps
                 if (!active) setActiveTab(g.items[0].id);
               }}
               aria-current={active ? 'page' : undefined}
+              aria-label={count > 0 ? `${g.label}, ${count} alerta(s)` : g.label}
               className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-1 h-16 transition ${
                 active ? 'text-white' : 'text-slate-500'
               }`}
@@ -114,7 +115,7 @@ export function AreaTabBar({ groups, activeTab, setActiveTab, badges }: NavProps
               <span className="relative">
                 <Icon className="h-6 w-6" strokeWidth={active ? 2.2 : 1.6} />
                 {count > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-4 text-center">
+                  <span aria-hidden="true" className="absolute -top-1.5 -right-2.5 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-4 text-center">
                     {count}
                   </span>
                 )}
