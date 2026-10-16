@@ -192,7 +192,7 @@ export const CriteriaPanel: React.FC<Props> = ({ currentUser, apiFetch, showErro
                       inputMode="decimal"
                       value={form[d.key] ?? ''}
                       onChange={e => setForm({ ...form, [d.key]: e.target.value })}
-                      className={`w-full min-h-[44px] rounded-xl border bg-nq-bg px-3 py-2 text-nq-body text-nq-text ${isChanged ? 'border-nq-info/40' : draftDiff ? 'border-nq-info/40' : 'border-nq-line'}`}
+                      className={`w-full min-h-[44px] rounded-xl border bg-nq-bg px-3 py-2 text-nq-body text-nq-text ${isChanged ? 'border-nq-info' : draftDiff ? 'border-nq-info/40' : 'border-nq-line'}`}
                     />
                   ) : (
                     <span className="text-nq-subtle">{draftDiff ? `rascunho: ${fmt(draft!.numbers[d.key])}` : ''}</span>

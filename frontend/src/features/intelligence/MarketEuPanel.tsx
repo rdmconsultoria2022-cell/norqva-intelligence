@@ -157,7 +157,7 @@ export const MarketEuPanel: React.FC<Props> = ({ isAdmin, apiFetch, showError, s
                         showError(e?.message || 'Não foi possível criar a oportunidade.');
                       }
                     }}
-                    className="mt-2 rounded-full bg-nq-raised px-4 min-h-[40px] text-nq-aux font-semibold text-nq-text hover:brightness-110 min-h-[44px]"
+                    className="mt-2 rounded-full bg-nq-raised px-4 min-h-[44px] text-nq-aux font-semibold text-nq-text hover:brightness-110"
                   >
                     Criar oportunidade para o time de IAs
                   </button>

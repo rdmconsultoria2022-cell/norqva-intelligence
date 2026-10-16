@@ -318,7 +318,7 @@ const ActionBtn: React.FC<{ onClick: () => void; icon: React.ElementType; label:
     onClick={onClick}
     disabled={disabled}
     title={title}
-    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-nq-aux disabled:opacity-40 ${primary ? 'bg-nq-positive font-semibold text-nq-on-positive hover:brightness-110' : ' text-nq-on-positive hover:bg-nq-raised'} min-h-[44px]`}
+    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-nq-aux disabled:opacity-40 ${primary ? 'bg-nq-positive font-semibold text-nq-on-positive hover:brightness-110' : ' bg-nq-raised text-nq-text hover:brightness-110'} min-h-[44px]`}
   >
     <Icon className="h-3.5 w-3.5" /> {label}
   </button>

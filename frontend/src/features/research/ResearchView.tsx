@@ -66,7 +66,7 @@ export const ResearchView: React.FC<Props> = ({ currentUser, isDemoView, apiFetc
           >
             {t.label}
             {t.id === 'criteria' && criteria && !criteria.validated && (
-              <span className="ml-1.5 text-nq-caption text-nq-attention" data-testid="criteria-pending">· a validar</span>
+              <span className="ml-1.5 text-nq-caption text-nq-attention" data-testid="criteria-pending">a validar</span>
             )}
           </button>
         ))}

@@ -373,7 +373,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
             {/* Dual Comparison Cards (<45 vs 45+) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               {/* Card <45 */}
-              <div className="rounded-lg bg-nq-bg border border-nq-info/40 p-5 space-y-4">
+              <div className="rounded-lg bg-nq-bg border border-nq-line p-5 space-y-4">
                 <div className="flex items-center justify-between border-b border-nq-line pb-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
@@ -625,7 +625,7 @@ export const DemographicIntelligenceView: React.FC<DemographicIntelligenceViewPr
                   return (
                     <div
                       key={ad.ad_id || ad.meta_ad_id}
-                      className="rounded-lg bg-nq-bg p-5 space-y-4 hover:border-nq-line transition"
+                      className="rounded-lg bg-nq-bg p-5 space-y-4"
                     >
                       {/* Header */}
                       <div className="flex flex-wrap items-start justify-between gap-2">

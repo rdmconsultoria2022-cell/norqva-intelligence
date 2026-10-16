@@ -361,10 +361,10 @@ export function OpportunitiesView({
                 className="absolute -translate-x-1/2 translate-y-1/2 cursor-pointer group z-10"
                 style={{ left: `${left}%`, bottom: `${bottom}%` }}
               >
-                <div className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center text-[12px] font-bold transition transform hover:scale-125 ${
+                <div className={`h-6 min-w-6 px-1 rounded-full border flex items-center justify-center text-[12px] font-bold transition transform hover:scale-125 ${
                   isHighPriority ? 'bg-nq-positive text-nq-on-positive border-nq-positive/40' :
                   isResearch ? 'bg-nq-attention text-nq-on-positive border-nq-attention/40' :
-                  isScale ? 'bg-nq-info text-nq-on-positive border-nq-info/40' : 'bg-nq-line text-nq-on-positive border-nq-line'
+                  isScale ? 'bg-nq-info text-nq-on-positive border-nq-info/40' : 'bg-nq-line text-nq-text border-nq-line'
                 }`}>
                   {o.human_id.replace('OPP-', '')}
                 </div>

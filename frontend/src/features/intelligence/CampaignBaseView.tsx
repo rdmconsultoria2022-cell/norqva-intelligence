@@ -454,7 +454,7 @@ export const RowDetail: React.FC<{ r: IntelRow; onCreateOpportunity?: () => void
       <div className="space-y-1 text-xs text-nq-text md:col-span-2">
         <p className="text-sm text-nq-text">{r.reason}</p>
         {onCreateOpportunity && (
-          <button onClick={onCreateOpportunity} className="mt-1 rounded-full bg-nq-raised px-4 min-h-[40px] text-nq-aux font-semibold text-nq-text hover:brightness-110 min-h-[44px]">
+          <button onClick={onCreateOpportunity} className="mt-1 rounded-full bg-nq-raised px-4 min-h-[44px] text-nq-aux font-semibold text-nq-text hover:brightness-110">
             Criar oportunidade para o time de IAs
           </button>
         )}
