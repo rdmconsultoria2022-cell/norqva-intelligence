@@ -102,6 +102,14 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Troca para a API oficial:** nova classe em `services/whatsapp/provider.ts`, sem refazer o atendente.
 - **Retenção:** mensagens apagadas após 180 dias.
 
+## D-0079 — WhatsApp oficial (Cloud API da Meta) como motor do atendimento (2026-10-15)
+
+- **Decisão:** o NORQVA ganha o motor oficial da Meta ao lado da Evolution, que fica **desligada** (`WHATSAPP_EVOLUTION_ENABLED`). Conversas, atendente, cobrança, entrega e origem são os mesmos; só o motor e a entrada mudam. **Aprovado pelo operador** em 15/10/2026 23h27 (contrato NORQVA-0079).
+- **Multioperação:** uma conta Meta por marca e ambiente; token e App Secret criptografados (`WHATSAPP_SECRETS_KEY`), nunca devolvidos à tela. O webhook só aceita mensagem de número daquela conta.
+- **Teste x produção:** contas TEST e PRODUCTION separadas; ir para produção = conta e número novos, sem editar IDs. Pedido de número TEST é `STAGING_SANDBOX_QA` e não envia Purchase à Meta. Número TEST nunca aparece nas páginas.
+- **Travas:** envio real só com `WHATSAPP_CLOUD_SEND_ENABLED=true` e ambiente listado em `WHATSAPP_CLOUD_ENVIRONMENTS` (padrão TEST); conta TEST só envia para os destinatários de teste. Com envio barrado, o atendente não gera cobrança.
+- **Janela de 24h:** texto livre só até 24h da última mensagem do cliente. Fora dela, resposta manual é recusada e a entrega fica para o e-mail (template de entrega na etapa 4).
+
 ## D-0052 — Teto editável e campanha lucrativa não pausada pelo teto (2026-10-11)
 
 - **Decisão:** o teto de gasto é editável na tela Campanhas em qualquer situação. Baixar salva na hora; subir (teto, teto máximo ou religar a regra de lucro) depois do Sim pede o código da campanha e um motivo. Substitui a trava H3 (subir só até o capital aprovado na ativação). **Aprovado pelo operador** em 11/10/2026 21h14 (contrato NORQVA-0052).

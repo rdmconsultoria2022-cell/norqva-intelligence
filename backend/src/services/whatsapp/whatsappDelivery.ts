@@ -4,6 +4,9 @@
 // nunca lança exceção para quem chama (falha no WhatsApp não afeta o pagamento).
 import { Pool } from 'pg';
 import { WhatsAppProvider, getWhatsAppProvider } from './provider';
+import { providerForNumber } from './cloudAccounts';
+import { isCloudProvider, SendBlockedError, CloudApiError } from './metaCloudProvider';
+import { isServiceWindowOpen } from './serviceWindow';
 import { accessUrlBase, issueAccessToken } from '../purchaseAccessService';
 import { recordOutgoing } from './whatsappService';
 
@@ -25,7 +28,7 @@ export function deliveryMessage(firstName: string | null, offerName: string, url
 }
 
 export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, providerArg?: WhatsAppProvider | null): Promise<WhatsAppDeliveryOutcome> {
-  const provider = providerArg === undefined ? getWhatsAppProvider() : providerArg;
+  let provider: WhatsAppProvider | null = providerArg === undefined ? null : providerArg;
   try {
     const r = await pool.query(
       `SELECT o.id, o.status, o.whatsapp_conversation_id AS conv_id, c.name AS customer_name,
@@ -33,7 +36,8 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
                  FROM order_items oi WHERE oi.order_id = o.id) AS offer_name,
               EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE') AS has_active_delivery,
               EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED') AS confirmed,
-              wc.mode AS conv_mode, wc.contact_jid, n.instance_name, n.status AS number_status, n.is_deleted AS number_deleted
+              wc.mode AS conv_mode, wc.contact_jid, n.instance_name, n.status AS number_status, n.is_deleted AS number_deleted,
+              n.id AS number_id, n.provider AS number_provider, n.cloud_account_id, n.phone_number_id
        FROM orders o
        LEFT JOIN customers c ON c.id = o.customer_id
        LEFT JOIN whatsapp_conversations wc ON wc.id = o.whatsapp_conversation_id
@@ -56,8 +60,20 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
     };
     if (!o.has_active_delivery) return await skipForGood('NO_ACTIVE_DELIVERY');
     if (o.conv_mode === 'OPTED_OUT') return await skipForGood('OPTED_OUT');
+    // NORQVA-0079: motor do número (oficial pela conta dele; Evolution só se estiver ligada)
+    if (providerArg === undefined && o.number_id) {
+      provider = await providerForNumber(pool, { id: o.number_id, provider: o.number_provider, cloud_account_id: o.cloud_account_id, phone_number_id: o.phone_number_id });
+    }
     if (!provider) return { status: 'SKIPPED', reason: 'SERVER_NOT_CONFIGURED' };
     if (o.number_deleted || o.number_status !== 'CONNECTED') return { status: 'SKIPPED', reason: 'NUMBER_NOT_CONNECTED' };
+    const official = isCloudProvider(provider);
+    if (isCloudProvider(provider)) {
+      // trava do NORQVA: o e-mail de acesso já foi; não insiste pelo WhatsApp
+      const blocked = provider.blockReason(o.contact_jid);
+      if (blocked) return await skipForGood(`SEND_BLOCKED:${blocked}`);
+      // janela de 24h fechada: a Meta recusaria texto livre (template de entrega vem na etapa 4)
+      if (!(await isServiceWindowOpen(pool, o.conv_id))) return await skipForGood('OUTSIDE_WINDOW');
+    }
 
     const claim = await pool.query(
       `INSERT INTO whatsapp_order_deliveries (order_id, conversation_id, status, attempts)
@@ -94,10 +110,18 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
       sentId = (await provider.sendText(o.instance_name, o.contact_jid, text)).id;
     } catch (err: any) {
       await pool.query(`UPDATE order_recovery_tokens SET status = 'REVOKED', revoked_at = NOW() WHERE id = $1 AND status = 'ACTIVE'`, [token.tokenId]);
+      if (err instanceof SendBlockedError) {
+        await pool.query(`UPDATE whatsapp_order_deliveries SET status = 'SKIPPED', error_code = $2, updated_at = NOW() WHERE order_id = $1`, [orderId, `SEND_BLOCKED:${err.code}`]);
+        return { status: 'SKIPPED', reason: `SEND_BLOCKED:${err.code}` };
+      }
+      if (err instanceof CloudApiError && err.metaCode === 131047) {
+        await pool.query(`UPDATE whatsapp_order_deliveries SET status = 'SKIPPED', error_code = 'OUTSIDE_WINDOW', updated_at = NOW() WHERE order_id = $1`, [orderId]);
+        return { status: 'SKIPPED', reason: 'OUTSIDE_WINDOW' };
+      }
       return await fail(String(err?.message || 'SEND_FAILED'));
     }
     // o link fica no histórico da conversa só como texto sem o código (o código do link é uma credencial)
-    await recordOutgoing(pool, o.conv_id, 'SYSTEM', text.replace(token.rawToken, '••••••'), sentId);
+    await recordOutgoing(pool, o.conv_id, 'SYSTEM', text.replace(token.rawToken, '••••••'), sentId, { deliveryStatus: official ? 'SENT' : null });
     await pool.query(`UPDATE whatsapp_order_deliveries SET status = 'SENT', sent_at = NOW(), error_code = NULL, updated_at = NOW() WHERE order_id = $1`, [orderId]);
     console.log(JSON.stringify({ event: 'WHATSAPP_DELIVERY_SENT', order_id: orderId, timestamp: new Date().toISOString() }));
     return { status: 'SENT' };
@@ -113,7 +137,11 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
 
 /** Varredura: pedidos pagos pela conversa nos últimos 7 dias que ainda não receberam o acesso no WhatsApp. */
 export async function sweepWhatsAppDeliveries(pool: Pool): Promise<number> {
-  if (!getWhatsAppProvider()) return 0;
+  // NORQVA-0079: roda com a Evolution ligada ou com alguma conta Meta oficial ativa
+  if (!getWhatsAppProvider()) {
+    const cloud = await pool.query(`SELECT 1 FROM whatsapp_cloud_accounts WHERE is_deleted = FALSE AND status <> 'DISABLED' LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+    if (!cloud.rows.length) return 0;
+  }
   const r = await pool.query(
     `SELECT o.id FROM orders o
      JOIN payments p ON p.order_id = o.id AND p.status = 'CONFIRMED'

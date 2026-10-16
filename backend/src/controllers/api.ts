@@ -53,6 +53,7 @@ import { MetaCapiService } from '../services/meta/metaCapiService';
 import { resolveBrandPixelId } from '../services/brands/brandService';
 import { sendPaidOrderAccessEmail, getAccessEmailStatus } from '../services/purchaseAccessService';
 import { sendPaidOrderWhatsApp } from '../services/whatsapp/whatsappDelivery';
+import { isWhatsAppTestOrder } from '../services/whatsapp/testOrders';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
 import { shouldCheckProvider, withTimeout } from '../services/paymentCheckThrottle';
 import { OfferBumpService, OfferBumpError } from '../services/commerce/offerBumpService';
@@ -3447,7 +3448,10 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
     }
 
     // Meta Conversions API (CAPI): InitiateCheckout (Safe Non-blocking)
-    try {
+    // NORQVA-0079: pedido do número de TESTE do WhatsApp oficial não gera evento de funil na Meta
+    if (await isWhatsAppTestOrder(pool, order.id)) {
+      console.log(JSON.stringify({ event: 'CAPI_CHECKOUT_SKIPPED_WHATSAPP_TEST', order_id: order.id }));
+    } else try {
       MetaCapiService.sendEvent(pool, {
         orderId: order.id,
         eventName: 'InitiateCheckout',
@@ -3850,7 +3854,10 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
       }
 
       // Meta Conversions API (CAPI): Purchase event (Deduplicated with event_id = 'purchase_' + orderId)
-      try {
+      // NORQVA-0079: pedido do número de TESTE do WhatsApp oficial não vira compra na Meta
+      if (await isWhatsAppTestOrder(pool, pRow.order_id)) {
+        console.log(JSON.stringify({ event: 'CAPI_PURCHASE_SKIPPED_WHATSAPP_TEST', order_id: pRow.order_id }));
+      } else try {
         const eventTime = Math.floor(new Date(pRow.paid_at || pRow.updated_at || Date.now()).getTime() / 1000);
         MetaCapiService.sendEvent(pool, {
           orderId: pRow.order_id,

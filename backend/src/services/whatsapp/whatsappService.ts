@@ -5,6 +5,10 @@ import crypto from 'crypto';
 import { writeAuditLog } from '../../db/audit';
 import { WhatsAppProvider, ProviderError, phoneFromJid } from './provider';
 import { validateCpf } from '../../utils/validation';
+import { WhatsAppError } from './errors';
+import { providerForNumber, cloudErrorToWhatsApp, checkCloudNumber, createCloudNumber } from './cloudAccounts';
+import { isCloudProvider, SendBlockedError, CloudApiError } from './metaCloudProvider';
+import { isServiceWindowOpen } from './serviceWindow';
 
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
@@ -31,16 +35,12 @@ export function maskCpfInText(text: string): string {
   });
 }
 
-export class WhatsAppError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+export { WhatsAppError };
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 function requireProvider(p: WhatsAppProvider | null): WhatsAppProvider {
-  if (!p) throw new WhatsAppError(503, 'O servidor do WhatsApp ainda não foi ligado ao NORQVA (falta configurar EVOLUTION_API_URL e EVOLUTION_API_KEY).');
+  if (!p) throw new WhatsAppError(503, 'A conexão não oficial (QR Code) está desligada (WHATSAPP_EVOLUTION_ENABLED) ou sem servidor (EVOLUTION_API_URL e EVOLUTION_API_KEY). Use o WhatsApp oficial da Meta.');
   return p;
 }
 
@@ -78,17 +78,26 @@ function publicNumber(n: any) {
     connected_at: n.connected_at,
     created_at: n.created_at,
     conversations: n.conversations !== undefined ? Number(n.conversations) : undefined,
-    needs_human: n.needs_human !== undefined ? Number(n.needs_human) : undefined
+    needs_human: n.needs_human !== undefined ? Number(n.needs_human) : undefined,
+    // NORQVA-0079: motor do número e dados do número oficial
+    provider: n.provider || 'EVOLUTION',
+    cloud_account_id: n.cloud_account_id ?? null,
+    cloud_environment: n.cloud_environment ?? null,
+    phone_number_id: n.phone_number_id ?? null,
+    display_phone_number: n.display_phone_number ?? null,
+    quality_rating: n.quality_rating ?? null,
+    messaging_limit: n.messaging_limit ?? null
   };
 }
 
 export async function listNumbers(pool: Pool) {
   const r = await pool.query(
-    `SELECT n.*, b.name AS brand_name,
+    `SELECT n.*, b.name AS brand_name, a.environment AS cloud_environment,
             (SELECT COUNT(*) FROM whatsapp_conversations c WHERE c.number_id = n.id) AS conversations,
             (SELECT COUNT(*) FROM whatsapp_conversations c WHERE c.number_id = n.id AND c.needs_human = TRUE) AS needs_human
      FROM whatsapp_numbers n
      LEFT JOIN brands b ON b.id = n.brand_id
+     LEFT JOIN whatsapp_cloud_accounts a ON a.id = n.cloud_account_id
      WHERE n.is_deleted = FALSE
      ORDER BY n.created_at ASC`
   );
@@ -139,10 +148,19 @@ export async function createNumber(pool: Pool, body: any, userId: string | null)
   }
 }
 
+/** NORQVA-0079: cadastro de número oficial (Cloud API), a partir de uma conta Meta conferida. */
+export async function createOfficialNumber(pool: Pool, body: any, userId: string | null) {
+  return publicNumber(await createCloudNumber(pool, body, userId));
+}
+
 export async function updateNumber(pool: Pool, id: string, body: any, userId: string | null) {
   const n = await loadNumber(pool, id);
   const label = body?.label !== undefined ? cleanLabel(body.label) : n.label;
   const brandId = body?.brand_id !== undefined ? await checkBrand(pool, body.brand_id) : n.brand_id;
+  // NORQVA-0079: número oficial pertence à marca da conta Meta dele (isolamento por operação)
+  if (n.provider === 'META_CLOUD' && (brandId || null) !== (n.brand_id || null)) {
+    throw new WhatsAppError(409, 'A marca do número oficial é a da conta Meta. Para outra marca, use a conta Meta dela.');
+  }
   let bot = n.bot_enabled;
   if (body?.bot_enabled !== undefined) {
     if (typeof body.bot_enabled !== 'boolean') throw new WhatsAppError(400, 'bot_enabled deve ser verdadeiro ou falso.');
@@ -180,9 +198,18 @@ async function applyInfo(pool: Pool, id: string, info: { state: string; phone: s
   }
 }
 
+/** NORQVA-0079: número oficial não usa QR Code; "conectar" = conferir o número na Meta. */
+async function checkCloud(pool: Pool, n: any, userId: string | null) {
+  await checkCloudNumber(pool, n);
+  const fresh = await loadNumber(pool, n.id);
+  await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_CHECKED', `Número oficial "${n.label}" conferido na Meta: ${fresh.status}${fresh.status_reason ? ` (${fresh.status_reason})` : ''}.`);
+  return { number: publicNumber(fresh), qr_base64: null };
+}
+
 export async function connectNumber(pool: Pool, provider: WhatsAppProvider | null, id: string, baseUrl: string, userId: string | null) {
-  const p = requireProvider(provider);
   const n = await loadNumber(pool, id);
+  if (n.provider === 'META_CLOUD') return checkCloud(pool, n, userId);
+  const p = requireProvider(provider);
   const url = await rotateWebhook(pool, id, baseUrl);
   // se o servidor do WhatsApp falhar, volta o segredo antigo (o servidor continua usando o endereço antigo)
   const restoreSecret = () => pool.query('UPDATE whatsapp_numbers SET webhook_secret_hash = $1 WHERE id = $2', [n.webhook_secret_hash, id]).catch(() => {});
@@ -228,8 +255,9 @@ export async function connectNumber(pool: Pool, provider: WhatsAppProvider | nul
 }
 
 export async function refreshNumber(pool: Pool, provider: WhatsAppProvider | null, id: string) {
-  const p = requireProvider(provider);
   const n = await loadNumber(pool, id);
+  if (n.provider === 'META_CLOUD') return { number: publicNumber(n), qr_base64: null };
+  const p = requireProvider(provider);
   try {
     const info = await p.info(n.instance_name);
     await applyInfo(pool, id, info);
@@ -246,8 +274,11 @@ export async function refreshNumber(pool: Pool, provider: WhatsAppProvider | nul
 
 /** Trocar número: desconecta o aparelho atual e mostra QR Code novo. Marca, condições e conversas continuam. */
 export async function swapNumber(pool: Pool, provider: WhatsAppProvider | null, id: string, baseUrl: string, userId: string | null) {
-  const p = requireProvider(provider);
   const n = await loadNumber(pool, id);
+  if (n.provider === 'META_CLOUD') {
+    throw new WhatsAppError(409, 'Número oficial não é trocado: cadastre o número novo na conta Meta e exclua este (D-0079).');
+  }
+  const p = requireProvider(provider);
   try {
     await p.logout(n.instance_name);
   } catch (err) {
@@ -263,7 +294,8 @@ export async function swapNumber(pool: Pool, provider: WhatsAppProvider | null, 
 
 export async function deleteNumber(pool: Pool, provider: WhatsAppProvider | null, id: string, userId: string | null) {
   const n = await loadNumber(pool, id);
-  if (provider) {
+  // número oficial: nada a desconectar no servidor (a Meta continua com o número, o NORQVA só deixa de usá-lo)
+  if (provider && n.provider !== 'META_CLOUD') {
     try {
       await provider.logout(n.instance_name);
       await provider.deleteInstance(n.instance_name);
@@ -362,22 +394,55 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
   if (event !== 'messages.upsert') return { inbound: [], numberId: n.id };
 
   const items: any[] = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : data ? [data] : [];
-  const inbound: InboundMessage[] = [];
+  const normalized: NormalizedInbound[] = [];
   for (const m of items.slice(0, 50)) {
     const jid = String(m?.key?.remoteJid || '');
     if (!jid || !isPrivateChat(jid)) continue;
     const content = extractText(m?.message);
     if (!content) continue;
     const fromMe = m?.key?.fromMe === true;
-    const providerId = m?.key?.id ? String(m.key.id).slice(0, 120) : null;
-    const phone = phoneFromJid(jid) || phoneFromJid(m?.key?.remoteJidAlt || m?.key?.senderPn || null);
-    const name = !fromMe && m?.pushName ? String(m.pushName).slice(0, 120) : null;
+    const ts = Number(m?.messageTimestamp);
+    normalized.push({
+      jid,
+      fromMe,
+      providerId: m?.key?.id ? String(m.key.id).slice(0, 120) : null,
+      phone: phoneFromJid(jid) || phoneFromJid(m?.key?.remoteJidAlt || m?.key?.senderPn || null),
+      name: !fromMe && m?.pushName ? String(m.pushName).slice(0, 120) : null,
+      body: content.body,
+      kind: content.kind,
+      at: Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date()
+    });
+  }
+  return { inbound: await ingestInbound(pool, n.id, normalized), numberId: n.id };
+}
+
+/** Mensagem recebida já no formato interno (o mesmo para os dois motores). */
+export interface NormalizedInbound {
+  jid: string;
+  fromMe: boolean;
+  providerId: string | null;
+  phone: string | null;
+  name: string | null;
+  body: string;
+  kind: string;
+  at: Date;
+}
+
+/**
+ * NORQVA-0079: gravação das mensagens recebidas, comum à Evolution e à Cloud API oficial.
+ * Extraída de handleWebhook sem mudar o comportamento: CPF mascarado, repetidas descartadas,
+ * código de origem, "parar" respeitado. Devolve só as novas, para o atendente responder.
+ */
+export async function ingestInbound(pool: Pool, numberId: string, items: NormalizedInbound[]): Promise<InboundMessage[]> {
+  const inbound: InboundMessage[] = [];
+  for (const m of items.slice(0, 50)) {
+    const { jid, fromMe, providerId, phone, name, at } = m;
+    const content = { body: m.body, kind: m.kind };
     const body = content.body.slice(0, 4000);
     // CPF nunca fica guardado em texto aberto (regra de segurança): no banco vai mascarado
     const stored = maskCpfInText(body);
     const preview = stored.slice(0, 160);
-    const ts = Number(m?.messageTimestamp);
-    const at = Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date();
+    const n = { id: numberId };
 
     const conv = await pool.query(
       `INSERT INTO whatsapp_conversations (number_id, contact_jid, contact_phone, contact_name, last_message_at, last_message_preview, unread_count)
@@ -419,7 +484,7 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
     }
     inbound.push({ conversationId: convId, messageId: ins.rows[0].id, body, kind: content.kind });
   }
-  return { inbound, numberId: n.id };
+  return inbound;
 }
 
 // ---------- Conversas ----------
@@ -459,7 +524,8 @@ export async function listConversations(pool: Pool, q: { number_id?: any; filter
 async function loadConversation(pool: Pool, id: string) {
   checkId(id, 'Conversa');
   const r = await pool.query(
-    `SELECT c.*, n.instance_name, n.status AS number_status, n.label AS number_label, n.is_deleted AS number_deleted
+    `SELECT c.*, n.instance_name, n.status AS number_status, n.label AS number_label, n.is_deleted AS number_deleted,
+            n.provider AS number_provider, n.cloud_account_id, n.phone_number_id
      FROM whatsapp_conversations c JOIN whatsapp_numbers n ON n.id = c.number_id WHERE c.id = $1`,
     [id]
   );
@@ -470,7 +536,7 @@ async function loadConversation(pool: Pool, id: string) {
 export async function getConversationMessages(pool: Pool, id: string) {
   const c = await loadConversation(pool, id);
   const r = await pool.query(
-    `SELECT id, direction, author, body, kind, send_status, created_at FROM (
+    `SELECT id, direction, author, body, kind, send_status, delivery_status, error_code, created_at FROM (
        SELECT * FROM whatsapp_messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 300
      ) m ORDER BY created_at ASC`,
     [id]
@@ -482,6 +548,9 @@ export async function getConversationMessages(pool: Pool, id: string) {
       number_id: c.number_id,
       number_label: c.number_label,
       number_status: c.number_status,
+      number_provider: c.number_provider || 'EVOLUTION',
+      // NORQVA-0079: com a janela de 24h fechada, número oficial só responde com template
+      window_open: c.number_provider === 'META_CLOUD' ? await isServiceWindowOpen(pool, c.id) : null,
       contact_phone: c.contact_phone,
       contact_name: c.contact_name,
       mode: c.mode,
@@ -492,13 +561,23 @@ export async function getConversationMessages(pool: Pool, id: string) {
 }
 
 /** Grava uma mensagem enviada por nós (atendente, operador ou sistema). Se o eco do servidor chegou antes, fica a nossa autoria. */
-export async function recordOutgoing(pool: Pool, convId: string, author: 'BOT' | 'OPERATOR' | 'SYSTEM', body: string, providerId: string | null, opts: { kind?: string; failed?: boolean; userId?: string | null } = {}) {
+export async function recordOutgoing(
+  pool: Pool,
+  convId: string,
+  author: 'BOT' | 'OPERATOR' | 'SYSTEM',
+  body: string,
+  providerId: string | null,
+  opts: { kind?: string; failed?: boolean; userId?: string | null; deliveryStatus?: string | null; errorCode?: string | null } = {}
+) {
   await pool.query(
-    `INSERT INTO whatsapp_messages (conversation_id, direction, author, body, kind, provider_message_id, send_status, sent_by)
-     VALUES ($1, 'OUT', $2, $3, $4, $5, $6, $7)
+    `INSERT INTO whatsapp_messages (conversation_id, direction, author, body, kind, provider_message_id, send_status, sent_by, delivery_status, error_code)
+     VALUES ($1, 'OUT', $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (conversation_id, provider_message_id) WHERE provider_message_id IS NOT NULL
      DO UPDATE SET author = EXCLUDED.author, body = EXCLUDED.body, kind = EXCLUDED.kind, sent_by = EXCLUDED.sent_by`,
-    [convId, author, maskCpfInText(body).slice(0, 4000), opts.kind || 'TEXT', providerId, opts.failed ? 'FAILED' : 'OK', opts.userId || null]
+    [
+      convId, author, maskCpfInText(body).slice(0, 4000), opts.kind || 'TEXT', providerId, opts.failed ? 'FAILED' : 'OK', opts.userId || null,
+      opts.deliveryStatus || null, opts.errorCode ? String(opts.errorCode).slice(0, 40) : null
+    ]
   );
   await pool.query(
     `UPDATE whatsapp_conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
@@ -510,17 +589,43 @@ export async function sendOperatorMessage(pool: Pool, provider: WhatsAppProvider
   const body = String(text ?? '').trim();
   if (!body) throw new WhatsAppError(400, 'Escreva a mensagem.');
   if (body.length > 4000) throw new WhatsAppError(400, 'Mensagem muito longa (até 4.000 letras).');
-  const p = requireProvider(provider);
   const c = await loadConversation(pool, convId);
+  const official = c.number_provider === 'META_CLOUD';
+  const p = official ? null : requireProvider(provider);
   if (c.mode === 'OPTED_OUT') throw new WhatsAppError(409, 'O cliente pediu para não receber mais mensagens. Só responda se ele voltar a escrever.');
   if (c.number_status !== 'CONNECTED') throw new WhatsAppError(409, 'Este número não está conectado. Conecte o número antes de responder.');
+  let sender: WhatsAppProvider;
+  if (official) {
+    // NORQVA-0079: número oficial — motor da conta dele e janela de 24h da Meta
+    const cp = await providerForNumber(pool, { id: c.number_id, provider: 'META_CLOUD', cloud_account_id: c.cloud_account_id, phone_number_id: c.phone_number_id });
+    if (!cp) throw new WhatsAppError(503, 'A conta Meta deste número está desativada ou o token não pôde ser lido. Confira a conta Meta.');
+    if (!(await isServiceWindowOpen(pool, convId))) {
+      throw new WhatsAppError(409, 'Passaram mais de 24 horas desde a última mensagem do cliente. A Meta só permite responder com um modelo aprovado (template), que chega na próxima etapa.');
+    }
+    sender = cp;
+  } else {
+    sender = p!;
+  }
   let id: string | null = null;
   try {
-    id = (await p.sendText(c.instance_name, c.contact_jid, body)).id;
+    id = (await sender.sendText(c.instance_name, c.contact_jid, body)).id;
   } catch (err) {
+    if (err instanceof SendBlockedError) {
+      // trava do NORQVA: a mensagem fica registrada como bloqueada, nada saiu
+      await recordOutgoing(pool, convId, 'OPERATOR', body, null, { userId, failed: true, deliveryStatus: 'BLOCKED', errorCode: err.code });
+      throw new WhatsAppError(409, err.message);
+    }
+    const w = cloudErrorToWhatsApp(err);
+    if (w) {
+      const metaCode = err instanceof CloudApiError ? err.metaCode : null;
+      await recordOutgoing(pool, convId, 'OPERATOR', body, null, {
+        userId, failed: true, deliveryStatus: metaCode === 131047 ? 'OUTSIDE_WINDOW' : 'FAILED', errorCode: metaCode !== null ? String(metaCode) : null
+      });
+      throw w;
+    }
     providerFail(err);
   }
-  await recordOutgoing(pool, convId, 'OPERATOR', body, id, { userId });
+  await recordOutgoing(pool, convId, 'OPERATOR', body, id, { userId, deliveryStatus: isCloudProvider(sender) ? 'SENT' : null });
   // quem respondeu à mão assume a conversa (o atendente automático para nela)
   await pool.query(`UPDATE whatsapp_conversations SET mode = 'HUMAN', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [convId]);
   return { ok: true };

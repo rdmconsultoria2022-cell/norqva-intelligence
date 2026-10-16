@@ -170,7 +170,8 @@ import {
   getWhatsAppNumbers, postWhatsAppNumber, patchWhatsAppNumber, postWhatsAppConnect, getWhatsAppNumberStatus, postWhatsAppSwap,
   deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook,
   getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler, getWhatsAppResults, getWhatsAppServerCheck,
-  postPublicWhatsAppRef
+  postPublicWhatsAppRef, getCloudAccounts, postCloudAccount, patchCloudAccount, deleteCloudAccountRoute, postCloudAccountCheck, postCloudNumber,
+  getCloudWebhook, postCloudWebhook
 } from './controllers/whatsappController';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
 
@@ -211,7 +212,13 @@ app.use(securityHeaders());
 app.use(configureCors());
 app.use(requestIdMiddleware());
 app.use(structuredLogger());
-app.use(express.json({ limit: '1mb' }));
+// NORQVA-0079: o webhook oficial da Meta confere a assinatura sobre o corpo ORIGINAL; guarda só nessa rota
+app.use(express.json({
+  limit: '1mb',
+  verify: (req: any, _res, buf) => {
+    if (String(req.originalUrl || req.url || '').startsWith('/api/whatsapp/cloud/webhook/')) req.rawBody = Buffer.from(buf);
+  }
+}));
 
 // Initialize DB Pool
 const pool = db.initializeDB();
@@ -234,7 +241,7 @@ app.get('/ready', async (_req, res) => {
 
 // 3. Apply Tiered Rate Limiters to API routes
 // NORQVA-0046: o webhook do WhatsApp tem limite próprio (muitas mensagens vêm do mesmo servidor)
-app.use('/api/', (req, res, next) => (req.path.startsWith('/whatsapp/webhook/') ? next() : generalRateLimiter(req, res, next)));
+app.use('/api/', (req, res, next) => (req.path.startsWith('/whatsapp/webhook/') || req.path.startsWith('/whatsapp/cloud/webhook/') ? next() : generalRateLimiter(req, res, next)));
 
 // 4. Auth REST Endpoints (Supabase Auth emulation - DEMO/TEST ONLY)
 app.post('/api/auth/login', authRateLimiter, async (req, res) => {
@@ -403,6 +410,15 @@ app.put('/api/whatsapp/conditions', requireRole(['ADMIN']), putWhatsAppCondition
 app.get('/api/whatsapp/conditions/history', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConditionHistory);
 app.get('/api/whatsapp/results', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppResults);
 app.get('/api/whatsapp/server-check', requireRole(['ADMIN']), getWhatsAppServerCheck);
+// NORQVA-0079 (contrato aprovado 15/10/2026 23h27): WhatsApp oficial. Contas e números: ADMIN. Ver contas: ADMIN e OPERATIONS.
+app.get('/api/whatsapp/cloud/webhook/:accountId', whatsappWebhookRateLimiter, getCloudWebhook);
+app.post('/api/whatsapp/cloud/webhook/:accountId', whatsappWebhookRateLimiter, postCloudWebhook);
+app.get('/api/whatsapp/cloud/accounts', requireRole(['ADMIN', 'OPERATIONS']), getCloudAccounts);
+app.post('/api/whatsapp/cloud/accounts', requireRole(['ADMIN']), postCloudAccount);
+app.patch('/api/whatsapp/cloud/accounts/:id', requireRole(['ADMIN']), patchCloudAccount);
+app.delete('/api/whatsapp/cloud/accounts/:id', requireRole(['ADMIN']), deleteCloudAccountRoute);
+app.post('/api/whatsapp/cloud/accounts/:id/check', requireRole(['ADMIN']), postCloudAccountCheck);
+app.post('/api/whatsapp/cloud/numbers', requireRole(['ADMIN']), postCloudNumber);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
 

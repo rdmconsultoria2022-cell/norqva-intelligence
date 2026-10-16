@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageCircle, QrCode, RefreshCw, Trash2, Repeat, Send, X, UserCheck, Bot, Search, History } from 'lucide-react';
 import { UserObj } from '../../types';
+import { CloudAccountsPanel } from './CloudAccountsPanel';
 
 // NORQVA-0046: área WhatsApp — números (até 100), conexão por QR Code, troca de número e conversas.
 // Tudo operado aqui dentro; o servidor do WhatsApp fica escondido atrás do NORQVA.
@@ -25,6 +26,11 @@ interface WaNumber {
   bot_enabled: boolean;
   conversations?: number;
   needs_human?: number;
+  // NORQVA-0079: motor do número
+  provider?: 'EVOLUTION' | 'META_CLOUD';
+  cloud_environment?: 'TEST' | 'PRODUCTION' | null;
+  display_phone_number?: string | null;
+  quality_rating?: string | null;
 }
 
 interface WaConversation {
@@ -47,8 +53,19 @@ interface WaMessage {
   author: 'CUSTOMER' | 'BOT' | 'OPERATOR' | 'PHONE' | 'SYSTEM';
   body: string;
   send_status: 'OK' | 'FAILED';
+  delivery_status?: 'BLOCKED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'OUTSIDE_WINDOW' | null;
   created_at: string;
 }
+
+// NORQVA-0079: situação da mensagem enviada pelo WhatsApp oficial
+const DELIVERY: Record<string, string> = {
+  BLOCKED: ' · bloqueada (envio real ainda desligado)',
+  SENT: ' · enviada',
+  DELIVERED: ' · entregue',
+  READ: ' · lida',
+  FAILED: ' · não chegou',
+  OUTSIDE_WINDOW: ' · fora da janela de 24h'
+};
 
 const STATUS: Record<string, { text: string; cls: string }> = {
   NEW: { text: 'NÃO CONECTADO', cls: 'bg-slate-800 text-slate-300' },
@@ -220,6 +237,14 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
     await load();
   });
 
+  // NORQVA-0079: número oficial não tem QR Code; "conferir" atualiza nome, qualidade e situação na Meta
+  const checkOfficial = (n: WaNumber) => run(`connect-${n.id}`, async () => {
+    const r = await api.current(`/whatsapp/numbers/${n.id}/connect`, { method: 'POST' });
+    if (r?.number?.status === 'CONNECTED') showSuccess('Número oficial conferido na Meta.');
+    else showError(r?.number?.status_reason || 'A Meta não confirmou o número. Veja o aviso no cartão.');
+    await load();
+  });
+
   const refresh = (n: WaNumber) => run(`refresh-${n.id}`, async () => {
     await api.current(`/whatsapp/numbers/${n.id}/status`);
     await load();
@@ -235,7 +260,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
     <div className="space-y-4">
       {!configured && (
         <div className="rounded border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="wa-not-configured">
-          O servidor do WhatsApp ainda não está ligado ao NORQVA. Você já pode cadastrar os números; para conectar, falta configurar o servidor.
+          A conexão não oficial (QR Code) está desligada. Use o WhatsApp oficial da Meta, logo abaixo.
         </div>
       )}
 
@@ -245,7 +270,9 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
         </div>
       )}
 
-      {isAdmin && (
+      <CloudAccountsPanel isAdmin={isAdmin} api={api} brands={brands} showError={showError} showSuccess={showSuccess} onNumbersChanged={() => void load()} />
+
+      {isAdmin && configured && (
         <div className="flex flex-wrap items-start gap-2">
           <button onClick={testServer} disabled={busy === 'check'} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
             <RefreshCw className={`h-3.5 w-3.5 ${busy === 'check' ? 'animate-spin' : ''}`} /> Testar servidor
@@ -258,7 +285,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
         </div>
       )}
 
-      {isAdmin && (
+      {isAdmin && configured && (
         <div className="rounded border border-slate-800 bg-slate-900/60 p-3 space-y-2" data-testid="wa-new-number">
           <div className="text-xs font-semibold text-slate-200">Cadastrar número ({numbers.length} de {max})</div>
           <div className="flex flex-col sm:flex-row gap-2">
@@ -296,6 +323,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
         <div className="grid gap-3 md:grid-cols-2" data-testid="wa-numbers">
           {numbers.map(n => {
             const st = STATUS[n.status] || STATUS.NEW;
+            const official = n.provider === 'META_CLOUD';
             return (
               <div key={n.id} className="rounded border border-slate-800 bg-slate-900/60 p-3 space-y-2" data-testid="wa-number">
                 {editing?.id === n.id ? (
@@ -315,6 +343,11 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                     <div>
                       <div className="text-sm font-semibold text-slate-100">{n.label}</div>
                       <div className="text-[11px] text-slate-400">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
+                      {official && (
+                        <div className="mt-0.5 text-[10px] text-sky-300" data-testid="wa-number-official">
+                          Oficial (Meta) · {n.cloud_environment === 'PRODUCTION' ? 'produção' : 'teste'}{n.quality_rating ? ` · qualidade ${n.quality_rating}` : ''}
+                        </div>
+                      )}
                     </div>
                     <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-mono font-bold ${st.cls}`} data-testid="wa-number-status">{st.text}</span>
                   </div>
@@ -335,17 +368,25 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                 </div>
                 {isAdmin && editing?.id !== n.id && (
                   <div className="flex flex-wrap gap-1.5">
-                    {n.status !== 'CONNECTED' && (
-                      <button onClick={() => connect(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40">
-                        <QrCode className="h-3.5 w-3.5" /> Conectar
+                    {official ? (
+                      <button onClick={() => checkOfficial(n)} disabled={!!busy} className="inline-flex items-center gap-1 rounded border border-sky-500/30 px-2 py-1 text-[11px] text-sky-300 disabled:opacity-40">
+                        <RefreshCw className="h-3.5 w-3.5" /> Conferir na Meta
                       </button>
+                    ) : (
+                      <>
+                        {n.status !== 'CONNECTED' && (
+                          <button onClick={() => connect(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40">
+                            <QrCode className="h-3.5 w-3.5" /> Conectar
+                          </button>
+                        )}
+                        <button onClick={() => refresh(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+                          <RefreshCw className="h-3.5 w-3.5" /> Atualizar
+                        </button>
+                        <button onClick={() => setConfirm({ id: n.id, kind: 'swap' })} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+                          <Repeat className="h-3.5 w-3.5" /> Trocar número
+                        </button>
+                      </>
                     )}
-                    <button onClick={() => refresh(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
-                      <RefreshCw className="h-3.5 w-3.5" /> Atualizar
-                    </button>
-                    <button onClick={() => setConfirm({ id: n.id, kind: 'swap' })} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
-                      <Repeat className="h-3.5 w-3.5" /> Trocar número
-                    </button>
                     <button onClick={() => setEditing({ id: n.id, label: n.label, brand_id: n.brand_id || '' })} disabled={!!busy} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
                       Editar
                     </button>
@@ -359,7 +400,9 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                     <p>
                       {confirm.kind === 'swap'
                         ? 'O celular atual será desconectado e aparece um QR Code para o número novo. Marca, condições de atendimento e conversas continuam.'
-                        : 'O número sai do NORQVA e é desconectado. As conversas ficam guardadas até completar 180 dias.'}
+                        : n.provider === 'META_CLOUD'
+                          ? 'O número sai do NORQVA (continua na Meta). As conversas ficam guardadas até completar 180 dias.'
+                          : 'O número sai do NORQVA e é desconectado. As conversas ficam guardadas até completar 180 dias.'}
                     </p>
                     <div className="flex gap-2">
                       <button onClick={() => (confirm.kind === 'swap' ? swap(n) : remove(n))} className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">
@@ -463,6 +506,8 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
       void loadList();
     } catch (e: any) {
       showError(e?.message || 'Falha ao enviar.');
+      // NORQVA-0079: mensagem barrada pela trava fica registrada na conversa
+      void loadThread(openId).catch(() => {});
     } finally {
       setSending(false);
     }
@@ -559,7 +604,7 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
                   <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${m.direction === 'OUT' ? 'bg-emerald-900/50 text-emerald-50' : 'bg-slate-800 text-slate-100'}`}>
                     {m.body}
                     <div className="mt-1 text-[10px] opacity-60">
-                      {AUTHOR[m.author]} · {fmtTime(m.created_at)}{m.send_status === 'FAILED' ? ' · não enviada' : ''}
+                      {AUTHOR[m.author]} · {fmtTime(m.created_at)}{m.delivery_status ? DELIVERY[m.delivery_status] || '' : m.send_status === 'FAILED' ? ' · não enviada' : ''}
                     </div>
                   </div>
                 </div>
@@ -568,6 +613,10 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
             </div>
             {conv.mode === 'OPTED_OUT' ? (
               <div className="border-t border-slate-800 p-3 text-[11px] text-slate-400">O cliente pediu para não receber mais mensagens. Se ele voltar a escrever, a conversa reabre para você.</div>
+            ) : conv.window_open === false ? (
+              <div className="border-t border-slate-800 p-3 text-[11px] text-amber-300" data-testid="wa-window-closed">
+                Passaram mais de 24 horas desde a última mensagem do cliente. Pelo WhatsApp oficial, só dá para responder com um modelo aprovado pela Meta (em breve). Se o cliente escrever de novo, a conversa reabre.
+              </div>
             ) : (
               <div className="flex gap-2 border-t border-slate-800 p-3">
                 <textarea

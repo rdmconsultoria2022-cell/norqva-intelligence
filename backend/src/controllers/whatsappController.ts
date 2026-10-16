@@ -25,6 +25,19 @@ import {
 } from '../services/whatsapp/whatsappService';
 import { aiConfigured } from '../services/whatsapp/attendant';
 import { createWhatsAppRef, WhatsAppRefError } from '../services/whatsapp/whatsappRefs';
+import { createOfficialNumber } from '../services/whatsapp/whatsappService';
+import {
+  listCloudAccounts,
+  createCloudAccount,
+  updateCloudAccount,
+  deleteCloudAccount,
+  checkCloudAccount,
+  loadAccountForWebhook
+} from '../services/whatsapp/cloudAccounts';
+import { verifyCloudWebhook, signatureValid, processCloudWebhook } from '../services/whatsapp/cloudWebhook';
+import { cloudSendEnabled, allowedCloudEnvironments } from '../services/whatsapp/metaCloudProvider';
+import { evolutionEnabled } from '../services/whatsapp/provider';
+import { secretsKeyConfigured } from '../utils/secretBox';
 
 function handle(res: Response, err: any, fallback: string) {
   if (err instanceof WhatsAppError) return res.status(err.status).json({ error: err.message });
@@ -52,7 +65,7 @@ const uid = (req: AuthenticatedRequest) => req.user?.id || null;
 export async function getWhatsAppNumbers(req: AuthenticatedRequest, res: Response) {
   try {
     const r = await listNumbers(db(req));
-    return res.status(200).json({ ...r, server_configured: !!getWhatsAppProvider(), ai_configured: aiConfigured() });
+    return res.status(200).json({ ...r, server_configured: !!getWhatsAppProvider(), ai_configured: aiConfigured(), cloud: cloudLocks() });
   } catch (err) {
     return handle(res, err, 'Falha ao carregar os números.');
   }
@@ -186,6 +199,8 @@ export async function getWhatsAppServerCheck(req: AuthenticatedRequest, res: Res
 /** Webhook público: o segredo vai no endereço (só o servidor do WhatsApp conhece). Responde rápido e processa depois. */
 export async function postWhatsAppWebhook(req: Request, res: Response) {
   const pool = db(req);
+  // NORQVA-0079: com a Evolution desligada, nada que chegue por ela é gravado nem respondido
+  if (!getWhatsAppProvider()) return res.status(200).json({ ok: true, ignored: true });
   try {
     const r = await handleWebhook(pool, String(req.params.numberId), String(req.params.secret), req.body);
     res.status(200).json({ ok: true });
@@ -199,6 +214,109 @@ export async function postWhatsAppWebhook(req: Request, res: Response) {
   } catch (err) {
     if (err instanceof WhatsAppError && err.status === 404) return res.status(404).json({ error: 'not found' });
     console.error('[WhatsApp] webhook falhou:', (err as any)?.message || err);
+    return res.status(500).json({ error: 'webhook error' });
+  }
+}
+
+// ---------- NORQVA-0079: WhatsApp oficial (Cloud API da Meta) ----------
+
+/** Estado das travas, para a tela mostrar o que está liberado. */
+function cloudLocks() {
+  return {
+    send_enabled: cloudSendEnabled(),
+    environments: [...allowedCloudEnvironments()],
+    evolution_enabled: evolutionEnabled(),
+    secrets_key_configured: secretsKeyConfigured()
+  };
+}
+
+export async function getCloudAccounts(req: AuthenticatedRequest, res: Response) {
+  try {
+    const r = await listCloudAccounts(db(req));
+    // endereço completo para colar no painel da Meta (Webhooks → URL de callback)
+    const base = baseUrl(req).replace(/\/+$/, '');
+    return res.status(200).json({ ...r, accounts: r.accounts.map(a => ({ ...a, webhook_url: `${base}${a.webhook_path}` })), locks: cloudLocks() });
+  } catch (err) {
+    return handle(res, err, 'Falha ao carregar as contas Meta.');
+  }
+}
+
+export async function postCloudAccount(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(201).json(await createCloudAccount(db(req), req.body, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao cadastrar a conta Meta.');
+  }
+}
+
+export async function patchCloudAccount(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await updateCloudAccount(db(req), String(req.params.id), req.body, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao salvar a conta Meta.');
+  }
+}
+
+export async function deleteCloudAccountRoute(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await deleteCloudAccount(db(req), String(req.params.id), uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao excluir a conta Meta.');
+  }
+}
+
+export async function postCloudAccountCheck(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await checkCloudAccount(db(req), String(req.params.id), { subscribe: req.body?.subscribe === true }, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao conferir a conta Meta.');
+  }
+}
+
+export async function postCloudNumber(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(201).json(await createOfficialNumber(db(req), req.body, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao cadastrar o número oficial.');
+  }
+}
+
+/** GET público: a Meta confere o verify token e espera o hub.challenge em texto. */
+export async function getCloudWebhook(req: Request, res: Response) {
+  try {
+    const r = await verifyCloudWebhook(db(req), String(req.params.accountId), req.query);
+    return res.status(r.status).type('text/plain').send(r.body);
+  } catch (err: any) {
+    console.error('[WhatsApp oficial] verificação falhou:', err?.message || err);
+    return res.status(500).type('text/plain').send('error');
+  }
+}
+
+/** POST público: assinatura conferida com o corpo bruto antes de qualquer gravação. */
+export async function postCloudWebhook(req: Request, res: Response) {
+  const pool = db(req);
+  try {
+    const loaded = await loadAccountForWebhook(pool, String(req.params.accountId));
+    if (!loaded) return res.status(404).json({ error: 'not found' });
+    const raw: Buffer | undefined = (req as any).rawBody;
+    if (!signatureValid(raw, req.get('x-hub-signature-256') || undefined, loaded.appSecret)) {
+      console.warn('[WhatsApp oficial] assinatura inválida recusada (conta', loaded.account.id, ')');
+      return res.status(401).json({ error: 'invalid signature' });
+    }
+    if (loaded.account.status === 'DISABLED') return res.status(200).json({ ok: true, ignored: true });
+    const r = await processCloudWebhook(pool, loaded.account, req.body, loaded.appSecret);
+    res.status(200).json({ ok: true });
+    if (inboundHandler) {
+      for (const item of r.inbound) {
+        const handler = inboundHandler;
+        setImmediate(() => {
+          handler(pool, item.numberId, item.messages).catch(e => console.error('[WhatsApp oficial] atendente falhou:', e?.message || e));
+        });
+      }
+    }
+    return;
+  } catch (err) {
+    console.error('[WhatsApp oficial] webhook falhou:', (err as any)?.message || err);
     return res.status(500).json({ error: 'webhook error' });
   }
 }

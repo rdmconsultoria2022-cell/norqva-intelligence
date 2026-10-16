@@ -9,7 +9,9 @@
 import { Pool } from 'pg';
 import { refForConversation } from './whatsappRefs';
 import crypto from 'crypto';
-import { getWhatsAppProvider, WhatsAppProvider } from './provider';
+import { WhatsAppProvider } from './provider';
+import { providerForNumber } from './cloudAccounts';
+import { SendBlockedError, CloudApiError, isCloudProvider } from './metaCloudProvider';
 import { InboundMessage, recordOutgoing, findCpfs } from './whatsappService';
 import { writeAuditLog } from '../../db/audit';
 import { createCustomer, createOrder, checkoutPix, checkoutCard, publicCardTerms, reconcileAndFinalizePayment } from '../../controllers/api';
@@ -278,6 +280,8 @@ interface Ctx {
   queue: Outgoing[];
   /** no máximo uma cobrança por resposta (evita várias cobranças de uma vez) */
   charged: boolean;
+  /** NORQVA-0079: envio barrado por trava (homologação): não gera cobrança que o cliente não receberia */
+  sendBlocked?: boolean;
 }
 
 async function ensureCustomer(ctx: Ctx, args: any): Promise<{ id?: string; error?: string }> {
@@ -346,7 +350,21 @@ async function newOrder(ctx: Ctx, offer: any, customerId: string): Promise<{ ord
     }
   });
   if (r.status >= 400 || !r.body?.checkout_token) return { error: String(r.body?.error || 'Não foi possível criar o pedido.') };
-  await ctx.pool.query('UPDATE orders SET whatsapp_conversation_id = $1 WHERE id = $2', [ctx.conv.id, r.body.id]);
+  // NORQVA-0079: pedido feito por número oficial de TESTE não é venda real (fora de Vendas e Resultados).
+  // Ligação à conversa e reclassificação numa instrução só; os eventos da Meta também olham a conta TEST (testOrders.ts).
+  const isTest = ctx.number.environment === 'TEST';
+  await ctx.pool.query(
+    `WITH o AS (
+       UPDATE orders SET whatsapp_conversation_id = $1,
+              data_provenance = CASE WHEN $3::boolean THEN 'STAGING_SANDBOX_QA' ELSE data_provenance END
+       WHERE id = $2 RETURNING id
+     )
+     UPDATE order_items SET data_provenance = 'STAGING_SANDBOX_QA' WHERE $3::boolean AND order_id IN (SELECT id FROM o)`,
+    [ctx.conv.id, r.body.id, isTest]
+  );
+  if (isTest) {
+    await writeAuditLog(ctx.pool, null, 'ORDER_RECLASSIFIED_TEST', `Pedido ${r.body.id} feito pelo número de teste do WhatsApp oficial: marcado como teste (STAGING_SANDBOX_QA).`, 'COMMERCIAL_PRODUCTION', 'STAGING_SANDBOX_QA').catch(() => {});
+  }
   return { orderId: r.body.id, token: r.body.checkout_token };
 }
 
@@ -446,6 +464,7 @@ async function runTool(ctx: Ctx, name: string, rawArgs: string) {
   let args: any = {};
   try { args = JSON.parse(rawArgs || '{}'); } catch { args = {}; }
   if ((name === 'create_pix_payment' || name === 'create_card_payment')) {
+    if (ctx.sendBlocked) return { ok: false, error: 'Cobrança desativada: o envio de mensagens está bloqueado neste número (homologação). Peça para uma pessoa da equipe continuar.' };
     if (ctx.charged) return { ok: false, error: 'Já foi gerada uma cobrança nesta resposta. Gere só uma por vez.' };
     ctx.charged = true;
   }
@@ -468,19 +487,32 @@ function splitReply(text: string): string[] {
 
 async function sendAll(pool: Pool, provider: WhatsAppProvider, conv: any, number: any, texts: string[], queue: Outgoing[]) {
   const items: Outgoing[] = [...texts.map(t => ({ kind: 'text' as const, text: t })), ...queue];
+  const official = isCloudProvider(provider);
   for (const it of items) {
+    const label = it.kind === 'text' ? it.text : `[imagem] ${it.caption}`;
+    const kind = it.kind === 'text' ? 'TEXT' : 'IMAGE';
     try {
       if (it.kind === 'text') {
         // pausa de "digitando" proporcional ao tamanho, como uma pessoa
         const delayMs = Math.min(1200 + it.text.length * 20, 6000);
         const r = await provider.sendText(number.instance_name, conv.contact_jid, it.text, { delayMs });
-        await recordOutgoing(pool, conv.id, 'BOT', it.text, r.id);
+        await recordOutgoing(pool, conv.id, 'BOT', it.text, r.id, { deliveryStatus: official ? 'SENT' : null });
       } else {
         const r = await provider.sendImage(number.instance_name, conv.contact_jid, it.base64, it.caption);
-        await recordOutgoing(pool, conv.id, 'BOT', `[imagem] ${it.caption}`, r.id, { kind: 'IMAGE' });
+        await recordOutgoing(pool, conv.id, 'BOT', label, r.id, { kind: 'IMAGE', deliveryStatus: official ? 'SENT' : null });
       }
     } catch (err: any) {
-      await recordOutgoing(pool, conv.id, 'BOT', it.kind === 'text' ? it.text : `[imagem] ${it.caption}`, null, { failed: true });
+      if (err instanceof SendBlockedError) {
+        // NORQVA-0079: trava do NORQVA (homologação). Registra a resposta inteira como bloqueada, nada sai.
+        await recordOutgoing(pool, conv.id, 'BOT', label, null, { kind, failed: true, deliveryStatus: 'BLOCKED', errorCode: err.code });
+        continue;
+      }
+      await recordOutgoing(pool, conv.id, 'BOT', label, null, {
+        kind,
+        failed: true,
+        deliveryStatus: official ? (err instanceof CloudApiError && err.metaCode === 131047 ? 'OUTSIDE_WINDOW' : 'FAILED') : null,
+        errorCode: err instanceof CloudApiError && err.metaCode !== null ? String(err.metaCode) : null
+      });
       console.warn('[WhatsApp] envio do atendente falhou:', err?.message || err);
       break;
     }
@@ -490,18 +522,23 @@ async function sendAll(pool: Pool, provider: WhatsAppProvider, conv: any, number
 // ---------- fluxo principal ----------
 
 export async function processConversation(pool: Pool, convId: string, rawTexts: string[]): Promise<{ replied: boolean; reason?: string }> {
-  const provider = getWhatsAppProvider();
-  if (!provider) return { replied: false, reason: 'SERVER_NOT_CONFIGURED' };
   const r = await pool.query(
     `SELECT c.*, n.id AS n_id, n.label AS n_label, n.instance_name, n.status AS n_status, n.bot_enabled, n.is_deleted AS n_deleted,
-            n.conditions AS n_conditions, n.brand_id, b.name AS brand_name
+            n.conditions AS n_conditions, n.brand_id, b.name AS brand_name,
+            n.provider AS n_provider, n.cloud_account_id AS n_cloud_account_id, n.phone_number_id AS n_phone_number_id, a.environment AS n_environment
      FROM whatsapp_conversations c
      JOIN whatsapp_numbers n ON n.id = c.number_id
      LEFT JOIN brands b ON b.id = n.brand_id
+     LEFT JOIN whatsapp_cloud_accounts a ON a.id = n.cloud_account_id
      WHERE c.id = $1`,
     [convId]
   );
   const conv = r.rows[0];
+  // NORQVA-0079: motor do número (oficial pela conta dele; Evolution só se estiver ligada)
+  const provider = conv
+    ? await providerForNumber(pool, { id: conv.n_id, provider: conv.n_provider, cloud_account_id: conv.n_cloud_account_id, phone_number_id: conv.n_phone_number_id })
+    : null;
+  if (!provider) return { replied: false, reason: 'SERVER_NOT_CONFIGURED' };
   if (!conv) return { replied: false, reason: 'NOT_FOUND' };
   if (conv.n_deleted || !conv.bot_enabled) return { replied: false, reason: 'BOT_OFF' };
   if (conv.n_status !== 'CONNECTED') return { replied: false, reason: 'NOT_CONNECTED' };
@@ -555,7 +592,8 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
     else messages.push({ role: 'assistant', content: m.author === 'OPERATOR' || m.author === 'PHONE' ? `(equipe) ${m.body}` : m.body });
   }
 
-  const ctx: Ctx = { pool, conv: { ...conv, id: conv.id }, number: { label: conv.n_label, instance_name: conv.instance_name }, catalog, queue: [], charged: false };
+  const ctx: Ctx = { pool, conv: { ...conv, id: conv.id }, number: { label: conv.n_label, instance_name: conv.instance_name, environment: conv.n_environment || null }, catalog, queue: [], charged: false,
+    sendBlocked: isCloudProvider(provider) && provider.blockReason(conv.contact_jid) !== null };
   let finalText: string | null = null;
   try {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
