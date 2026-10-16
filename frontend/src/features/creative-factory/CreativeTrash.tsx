@@ -29,17 +29,17 @@ export const CreativeTrash: React.FC<{
   if (items.length === 0) return null;
   const when = (d: string) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 text-xs" data-testid="creative-trash">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1.5 font-semibold text-slate-300" data-testid="toggle-creative-trash">
-        <Trash2 className="h-4 w-4 text-slate-400" /> Lixeira de criativos ({items.length})
+    <section className="rounded-nq bg-nq-surface p-3 text-xs" data-testid="creative-trash">
+      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1.5 font-semibold text-nq-text min-h-[44px]" data-testid="toggle-creative-trash">
+        <Trash2 className="h-4 w-4 text-nq-muted" /> Lixeira de criativos ({items.length})
       </button>
       {open && (
         <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {items.map(c => (
-            <div key={c.id} className="rounded border border-slate-800 p-2 space-y-1.5" data-testid="trash-creative">
-              <div className="font-mono text-emerald-400 font-bold">{c.human_id}</div>
-              <div className="text-slate-200 line-clamp-2">“{c.hook}”</div>
-              <div className="text-[10px] text-slate-500">
+            <div key={c.id} className="rounded border border-nq-line p-2 space-y-1.5" data-testid="trash-creative">
+              <div className="text-nq-positive-text font-bold">{c.human_id}</div>
+              <div className="text-nq-text line-clamp-2">“{c.hook}”</div>
+              <div className="text-[12px] text-nq-subtle">
                 {c.product_name ? `${c.product_name} · ` : ''}excluído em {when(c.deleted_at)}{c.deleted_by_name ? ` por ${c.deleted_by_name}` : ''}
               </div>
               <TrashAction

@@ -42,7 +42,7 @@ const LINK_TTL_MS = 4.5 * 60 * 1000;
 
 const FilePicker: React.FC<{ id: string; label: string; file: File | null; reset: number; onPick: (f: File | null) => void }> = ({ id, label, file, reset, onPick }) => (
   <label className="flex flex-col gap-0.5">
-    <span className="text-[10px] text-slate-400">{label}</span>
+    <span className="text-[12px] text-nq-muted">{label}</span>
     <input
       key={reset}
       id={id}
@@ -50,10 +50,10 @@ const FilePicker: React.FC<{ id: string; label: string; file: File | null; reset
       type="file"
       accept="application/pdf,.pdf"
       onChange={e => onPick(e.target.files?.[0] || null)}
-      className="text-[11px] text-slate-300 file:mr-2 file:rounded file:border file:border-slate-700 file:bg-slate-900 file:px-2 file:py-0.5 file:text-slate-200"
+      className="text-[12px] text-nq-text file:mr-2 file:rounded-nq file:border file:border-nq-line file:bg-nq-surface file:px-2 file:py-0.5 file:text-nq-text"
     />
     {file && (
-      <span className="text-[10px] text-slate-400" data-testid="picked-file">
+      <span className="text-[12px] text-nq-muted" data-testid="picked-file">
         {file.name} · {fmtSize(file.size)}
       </span>
     )}
@@ -125,8 +125,8 @@ export const DeliveryFiles: React.FC<{
     }
   };
 
-  if (failed) return <p className="text-[11px] text-red-300" data-testid="delivery-files-error">Não foi possível ler o arquivo de entrega agora. Nada foi alterado; tente de novo.</p>;
-  if (!state) return <p className="text-[11px] text-slate-500">Carregando arquivo de entrega…</p>;
+  if (failed) return <p className="text-[12px] text-nq-critical-text" data-testid="delivery-files-error">Não foi possível ler o arquivo de entrega agora. Nada foi alterado; tente de novo.</p>;
+  if (!state) return <p className="text-[12px] text-nq-subtle">Carregando arquivo de entrega…</p>;
 
   const assets: any[] = state.assets || [];
   const linkedIds = new Set(assets.map(a => a.id));
@@ -138,13 +138,13 @@ export const DeliveryFiles: React.FC<{
       showError(friendlyError(e, 'Não foi possível listar os PDFs.'));
     }
   };
-  const busyNote = busy ? <p className="text-[11px] text-slate-400">Enviando… arquivos grandes podem levar 1 a 2 minutos. Não feche a página.</p> : null;
+  const busyNote = busy ? <p className="text-[12px] text-nq-muted">Enviando… arquivos grandes podem levar 1 a 2 minutos. Não feche a página.</p> : null;
   const currentLabel = (a: any) => a.file_original_name || a.name;
 
   return (
-    <div className="space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2 text-xs" data-testid="delivery-files">
-      <div className="inline-flex items-center gap-1 font-semibold text-slate-200">
-        <FileText className="h-3.5 w-3.5 text-emerald-400" /> PDF entregue ao comprador
+    <div className="space-y-2 rounded bg-nq-bg p-2 text-xs" data-testid="delivery-files">
+      <div className="inline-flex items-center gap-1 font-semibold text-nq-text">
+        <FileText className="h-3.5 w-3.5 text-nq-positive-text" /> PDF entregue ao comprador
       </div>
 
       {assets.length === 0 && (() => {
@@ -152,15 +152,15 @@ export const DeliveryFiles: React.FC<{
         const problem = pickProblem(f);
         return (
           <div className="space-y-2" data-testid="delivery-new">
-            <p className="text-[11px] text-amber-300">Esta oferta ainda não entrega nenhum arquivo. Sem arquivo, ela não pode ser adicional no Pix.</p>
+            <p className="text-[12px] text-nq-attention">Esta oferta ainda não entrega nenhum arquivo. Sem arquivo, ela não pode ser adicional no Pix.</p>
             <FilePicker id={`new-${off.id}`} label="PDF desta oferta" file={f} reset={reset} onPick={x => pick(NEW_KEY, x)} />
-            {f && problem && <p className="text-[11px] text-red-300">{problem}</p>}
-            {!f && <p className="text-[11px] text-slate-500">Escolha o PDF acima.</p>}
+            {f && problem && <p className="text-[12px] text-nq-critical-text">{problem}</p>}
+            {!f && <p className="text-[12px] text-nq-subtle">Escolha o PDF acima.</p>}
             <button
               disabled={busy || !!problem}
               onClick={() => f && run(() => sendPdf(apiFetch, `/offers/${off.id}/delivery-files`, 'POST', f), 'Arquivo enviado e ligado à oferta.')}
               data-testid="delivery-create"
-              className="w-full rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] font-mono text-emerald-300 disabled:opacity-40"
+              className="w-full rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]"
             >
               <Upload className="mr-1 inline h-3.5 w-3.5" /> {busy ? 'Enviando…' : 'Enviar arquivo'}
             </button>
@@ -173,64 +173,64 @@ export const DeliveryFiles: React.FC<{
         const f = files[a.id] || null;
         const problem = pickProblem(f);
         return (
-          <div key={a.id} className="space-y-2 rounded border border-slate-800 p-2" data-testid="delivery-asset">
-            <div className="text-slate-200">{currentLabel(a)}</div>
-            <div className="text-[11px] text-slate-400">
+          <div key={a.id} className="space-y-2 rounded border border-nq-line p-2" data-testid="delivery-asset">
+            <div className="text-nq-text">{currentLabel(a)}</div>
+            <div className="text-[12px] text-nq-muted">
               {a.file_size_bytes ? `${fmtSize(a.file_size_bytes)} · enviado em ${fmtDate(a.file_updated_at)}` : 'Enviado antes desta tela (tamanho não registrado). Confira baixando.'}
             </div>
-            <details className="text-[10px] text-slate-500">
+            <details className="text-[12px] text-nq-subtle">
               <summary className="cursor-pointer">Onde está guardado</summary>
-              <span className="font-mono break-all">
+              <span className="break-all">
                 {a.storage_bucket}/{a.storage_path}
               </span>
             </details>
             {a.also_used_by?.length > 0 && (
-              <p className="text-[11px] text-amber-300" data-testid="delivery-shared">
+              <p className="text-[12px] text-nq-attention" data-testid="delivery-shared">
                 Este mesmo arquivo também é entregue por {a.also_used_by.join(', ')}. Trocar aqui muda lá também.
               </p>
             )}
             <div className="flex items-center gap-2">
-              <button onClick={() => openCheck(a.id)} data-testid="delivery-check" className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-300">
+              <button onClick={() => openCheck(a.id)} data-testid="delivery-check" className="rounded-nq bg-nq-surface px-2 py-0.5 text-[12px] text-nq-text min-h-[44px]">
                 Baixar para conferir
               </button>
               {checkLink[a.id] && (
-                <a href={checkLink[a.id]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-emerald-300 underline" data-testid="delivery-check-link">
+                <a href={checkLink[a.id]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-nq-positive-text underline" data-testid="delivery-check-link">
                   Abrir o PDF (vale 5 min) <ExternalLink className="h-3 w-3" />
                 </a>
               )}
             </div>
 
             <FilePicker id={`swap-${a.id}`} label="Novo PDF para trocar" file={f} reset={reset} onPick={x => pick(a.id, x)} />
-            {f && problem && <p className="text-[11px] text-red-300">{problem}</p>}
+            {f && problem && <p className="text-[12px] text-nq-critical-text">{problem}</p>}
             {confirming !== a.id ? (
               <>
                 <button
                   disabled={busy || !!problem}
                   onClick={() => setConfirming(a.id)}
                   data-testid="delivery-replace"
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200 disabled:opacity-40"
+                  className="w-full rounded-nq bg-nq-surface px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]"
                 >
                   Trocar arquivo
                 </button>
-                {!f && <p className="text-[11px] text-slate-500">Para trocar, escolha o novo PDF acima.</p>}
+                {!f && <p className="text-[12px] text-nq-subtle">Para trocar, escolha o novo PDF acima.</p>}
               </>
             ) : (
-              <div className="space-y-1 rounded border border-amber-500/30 bg-amber-950/20 p-2" data-testid="delivery-confirm">
-                <p className="text-[11px] text-slate-200">
+              <div className="space-y-1 rounded border border-nq-attention/40 bg-nq-attention/10 p-2" data-testid="delivery-confirm">
+                <p className="text-[12px] text-nq-text">
                   Sai: {currentLabel(a)}
                   {a.file_size_bytes ? ` (${fmtSize(a.file_size_bytes)})` : ''} → Entra: {f?.name} ({fmtSize(f?.size)})
                 </p>
-                <p className="text-[11px] text-amber-200">Quem já comprou passa a receber esta versão. O arquivo atual fica guardado no histórico e pode voltar a qualquer momento.</p>
+                <p className="text-[12px] text-nq-attention">Quem já comprou passa a receber esta versão. O arquivo atual fica guardado no histórico e pode voltar a qualquer momento.</p>
                 <div className="flex gap-2">
                   <button
                     disabled={busy}
                     onClick={() => f && run(() => sendPdf(apiFetch, `/digital-assets/${a.id}/file`, 'PUT', f), 'Arquivo trocado. O anterior ficou guardado no histórico.')}
                     data-testid="delivery-confirm-replace"
-                    className="flex-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] font-mono text-emerald-300"
+                    className="flex-1 rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text min-h-[44px]"
                   >
                     {busy ? 'Trocando…' : 'Confirmar troca'}
                   </button>
-                  <button disabled={busy} onClick={() => setConfirming(null)} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+                  <button disabled={busy} onClick={() => setConfirming(null)} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">
                     Cancelar
                   </button>
                 </div>
@@ -239,38 +239,38 @@ export const DeliveryFiles: React.FC<{
             )}
 
             {a.versions?.length > 0 && (
-              <div className="space-y-1 border-t border-slate-800 pt-2" data-testid="delivery-history">
-                <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-400">
+              <div className="space-y-1 border-t border-nq-line pt-2" data-testid="delivery-history">
+                <div className="inline-flex items-center gap-1 text-[12px] text-nq-muted">
                   <History className="h-3 w-3" /> Versões guardadas
                 </div>
                 {a.versions.map((v: any) => (
-                  <div key={v.id} className="space-y-1 text-[11px] text-slate-400" data-testid="delivery-version">
+                  <div key={v.id} className="space-y-1 text-[12px] text-nq-muted" data-testid="delivery-version">
                     <div className="flex items-center justify-between gap-2">
                       <span>
                         {v.original_name || 'arquivo anterior'} · {fmtSize(v.size_bytes)} · saiu em {fmtDate(v.replaced_at)}
                         {v.replaced_by_email ? ` (${v.replaced_by_email})` : ''}
                       </span>
                       {restoring !== v.id && (
-                        <button disabled={busy} onClick={() => setRestoring(v.id)} className="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-slate-300" data-testid="delivery-restore">
+                        <button disabled={busy} onClick={() => setRestoring(v.id)} className="shrink-0 rounded-full border border-nq-line px-2 py-0.5 text-nq-text min-h-[44px]" data-testid="delivery-restore">
                           Voltar para esta versão
                         </button>
                       )}
                     </div>
                     {restoring === v.id && (
-                      <div className="space-y-1 rounded border border-amber-500/30 bg-amber-950/20 p-2" data-testid="delivery-restore-box">
-                        <p className="text-slate-200">
+                      <div className="space-y-1 rounded border border-nq-attention/40 bg-nq-attention/10 p-2" data-testid="delivery-restore-box">
+                        <p className="text-nq-text">
                           Sai: {currentLabel(a)} → Entra: {v.original_name || 'arquivo anterior'}. Quem já comprou passa a receber esta versão.
                         </p>
                         <div className="flex gap-2">
                           <button
                             disabled={busy}
                             onClick={() => run(() => apiFetch(`/digital-assets/${a.id}/versions/${v.id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), 'Versão restaurada. A que saiu ficou guardada.')}
-                            className="flex-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 font-mono text-emerald-300"
+                            className="flex-1 rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-nq-positive-text min-h-[44px]"
                             data-testid="delivery-restore-confirm"
                           >
                             Confirmar volta
                           </button>
-                          <button disabled={busy} onClick={() => setRestoring(null)} className="rounded border border-slate-700 px-2 py-1 text-slate-300">
+                          <button disabled={busy} onClick={() => setRestoring(null)} className="rounded-full border border-nq-line px-2 py-1 text-nq-text min-h-[44px]">
                             Cancelar
                           </button>
                         </div>
@@ -284,9 +284,9 @@ export const DeliveryFiles: React.FC<{
         );
       })}
 
-      <div className="space-y-1 border-t border-slate-800 pt-2" data-testid="delivery-link-existing">
+      <div className="space-y-1 border-t border-nq-line pt-2" data-testid="delivery-link-existing">
         {library === null ? (
-          <button onClick={openLibrary} className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-300" data-testid="delivery-link-open">
+          <button onClick={openLibrary} className="rounded-nq bg-nq-surface px-2 py-0.5 text-[12px] text-nq-text min-h-[44px]" data-testid="delivery-link-open">
             Usar um PDF que já existe
           </button>
         ) : (
@@ -296,12 +296,12 @@ export const DeliveryFiles: React.FC<{
             return (
               <div className="space-y-1">
                 <label className="flex flex-col gap-0.5">
-                  <span className="text-[10px] text-slate-400">PDF já enviado em outra oferta (para kits)</span>
+                  <span className="text-[12px] text-nq-muted">PDF já enviado em outra oferta (para kits)</span>
                   <select
                     aria-label="PDF já enviado em outra oferta"
                     value={chosen}
                     onChange={e => { setChosen(e.target.value); setLinking(false); }}
-                    className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-200"
+                    className="rounded-nq bg-nq-surface px-2 py-2 text-[12px] text-nq-text min-h-[44px]"
                   >
                     <option value="">Escolha o PDF…</option>
                     {options.map(x => (
@@ -309,15 +309,15 @@ export const DeliveryFiles: React.FC<{
                     ))}
                   </select>
                 </label>
-                {options.length === 0 && <p className="text-[11px] text-slate-500">Não há outro PDF para ligar.</p>}
+                {options.length === 0 && <p className="text-[12px] text-nq-subtle">Não há outro PDF para ligar.</p>}
                 {picked && !linking && (
-                  <button onClick={() => setLinking(true)} className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200" data-testid="delivery-link-ask">
+                  <button onClick={() => setLinking(true)} className="w-full rounded-nq bg-nq-surface px-2 py-1 text-[12px] text-nq-text min-h-[44px]" data-testid="delivery-link-ask">
                     Ligar a esta oferta
                   </button>
                 )}
                 {picked && linking && (
-                  <div className="space-y-1 rounded border border-amber-500/30 bg-amber-950/20 p-2" data-testid="delivery-link-confirm">
-                    <p className="text-[11px] text-slate-200">Quem comprar esta oferta passa a receber também: {picked.name}. O arquivo é o mesmo; trocar em um lugar muda nos dois.</p>
+                  <div className="space-y-1 rounded border border-nq-attention/40 bg-nq-attention/10 p-2" data-testid="delivery-link-confirm">
+                    <p className="text-[12px] text-nq-text">Quem comprar esta oferta passa a receber também: {picked.name}. O arquivo é o mesmo; trocar em um lugar muda nos dois.</p>
                     <div className="flex gap-2">
                       <button
                         disabled={busy}
@@ -327,12 +327,12 @@ export const DeliveryFiles: React.FC<{
                             'PDF ligado à oferta.'
                           ).then(() => { setChosen(''); setLinking(false); setLibrary(null); })
                         }
-                        className="flex-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] font-mono text-emerald-300"
+                        className="flex-1 rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text min-h-[44px]"
                         data-testid="delivery-link-do"
                       >
                         Confirmar
                       </button>
-                      <button disabled={busy} onClick={() => setLinking(false)} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+                      <button disabled={busy} onClick={() => setLinking(false)} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">
                         Cancelar
                       </button>
                     </div>

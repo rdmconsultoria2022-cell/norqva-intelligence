@@ -37,28 +37,28 @@ export interface CreativeFactoryViewProps {
 
 // NORQVA-0025: de onde veio o criativo
 const ORIGIN_LABEL: Record<string, { label: string; cls: string }> = {
-  BATCH: { label: 'Lote', cls: 'border-slate-700 text-slate-300' },
-  AI_TEAM: { label: 'Time de IAs', cls: 'border-sky-700/60 text-sky-300' },
-  MANUAL: { label: 'Manual', cls: 'border-emerald-700/60 text-emerald-300' },
+  BATCH: { label: 'Lote', cls: 'border-nq-line text-nq-text' },
+  AI_TEAM: { label: 'Time de IAs', cls: 'border-nq-info/40 text-nq-info' },
+  MANUAL: { label: 'Manual', cls: 'border-nq-positive/40 text-nq-positive-text' },
   META: { label: 'Meta', cls: 'border-indigo-700/60 text-indigo-300' }
 };
 
 const APPROVAL_LABEL: Record<string, { label: string; cls: string }> = {
-  DRAFT: { label: 'Aguardando revisão', cls: 'bg-slate-800 text-slate-300 border-slate-700' },
-  APPROVED: { label: 'Aprovado', cls: 'bg-emerald-950/60 text-emerald-300 border-emerald-600/40' },
-  REJECTED: { label: 'Rejeitado', cls: 'bg-red-950/50 text-red-300 border-red-600/40' },
-  REVISION_REQUESTED: { label: 'Ajuste pedido', cls: 'bg-amber-950/50 text-amber-300 border-amber-600/40' },
-  SUPERSEDED: { label: 'Substituído', cls: 'bg-slate-900 text-slate-500 border-slate-800' }
+  DRAFT: { label: 'Aguardando revisão', cls: 'bg-nq-raised text-nq-text border-nq-line' },
+  APPROVED: { label: 'Aprovado', cls: 'bg-nq-positive/10 text-nq-positive-text border-nq-positive/40' },
+  REJECTED: { label: 'Rejeitado', cls: 'bg-nq-critical/10 text-nq-critical-text border-nq-critical/40' },
+  REVISION_REQUESTED: { label: 'Ajuste pedido', cls: 'bg-nq-attention/10 text-nq-attention border-nq-attention/40' },
+  SUPERSEDED: { label: 'Substituído', cls: 'bg-nq-surface text-nq-subtle border-nq-line' }
 };
 
 const RECOMMENDATION_LABEL: Record<string, { label: string; cls: string }> = {
-  NOT_PUBLISHED: { label: 'Não publicado', cls: 'text-slate-500' },
-  INSUFFICIENT_DATA: { label: 'Dados insuficientes', cls: 'text-slate-400' },
-  OBSERVING: { label: 'Observando', cls: 'text-sky-300' },
-  PAUSE_RECOMMENDED: { label: 'Pausar', cls: 'text-red-300' },
-  UNDERPERFORMING: { label: 'Abaixo do equilíbrio', cls: 'text-amber-300' },
-  PROMISING: { label: 'Promissor', cls: 'text-emerald-300' },
-  WINNER_CANDIDATE: { label: 'Candidato a vencedor', cls: 'text-emerald-200 font-bold' }
+  NOT_PUBLISHED: { label: 'Não publicado', cls: 'text-nq-subtle' },
+  INSUFFICIENT_DATA: { label: 'Dados insuficientes', cls: 'text-nq-muted' },
+  OBSERVING: { label: 'Observando', cls: 'text-nq-info' },
+  PAUSE_RECOMMENDED: { label: 'Pausar', cls: 'text-nq-critical-text' },
+  UNDERPERFORMING: { label: 'Abaixo do equilíbrio', cls: 'text-nq-attention' },
+  PROMISING: { label: 'Promissor', cls: 'text-nq-positive-text' },
+  WINNER_CANDIDATE: { label: 'Candidato a vencedor', cls: 'text-nq-positive-text font-bold' }
 };
 
 const REASON_LABEL: Record<string, string> = {
@@ -79,13 +79,13 @@ const brl = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const ADJ_STATUS: Record<string, { label: string; cls: string }> = {
-  QUEUED: { label: 'Na fila', cls: 'bg-slate-800 text-slate-300' },
-  NOT_CONFIGURED: { label: 'Automação não configurada', cls: 'bg-slate-800 text-amber-300' },
-  DISPATCHED: { label: 'Enviado ao Claude', cls: 'bg-blue-950 text-blue-300' },
-  IN_PROGRESS: { label: 'Claude trabalhando', cls: 'bg-blue-950 text-blue-300' },
-  DONE: { label: 'Nova versão pronta', cls: 'bg-emerald-950 text-emerald-300' },
-  NEEDS_INPUT: { label: 'Precisa de você', cls: 'bg-amber-900 text-amber-200' },
-  FAILED: { label: 'Falhou', cls: 'bg-red-950 text-red-300' }
+  QUEUED: { label: 'Na fila', cls: 'bg-nq-raised text-nq-text' },
+  NOT_CONFIGURED: { label: 'Automação não configurada', cls: 'bg-nq-raised text-nq-attention' },
+  DISPATCHED: { label: 'Enviado ao Claude', cls: 'bg-nq-info/10 text-nq-info' },
+  IN_PROGRESS: { label: 'Claude trabalhando', cls: 'bg-nq-info/10 text-nq-info' },
+  DONE: { label: 'Nova versão pronta', cls: 'bg-nq-positive/10 text-nq-positive-text' },
+  NEEDS_INPUT: { label: 'Precisa de você', cls: 'bg-nq-attention/10 text-nq-attention' },
+  FAILED: { label: 'Falhou', cls: 'bg-nq-critical/10 text-nq-critical-text' }
 };
 
 export function CreativeFactoryView({
@@ -440,21 +440,21 @@ export function CreativeFactoryView({
         key={`ad-${a.meta_ad_id}`}
         id={`factory-ad-${a.meta_ad_id}`}
         data-testid="meta-ad-card"
-        className={`rounded-xl border border-slate-800 bg-slate-900/40 p-4 flex gap-4 ${focusId === `ad-${a.meta_ad_id}` ? 'ring-2 ring-emerald-500' : ''}`}
+        className={`rounded-nq bg-nq-surface p-4 flex gap-4 ${focusId === `ad-${a.meta_ad_id}` ? 'ring-2 ring-nq-positive' : ''}`}
       >
-        <MetaImage url={thumb} alt={a.name} className="w-24 h-24 rounded border border-slate-800 shrink-0" />
+        <MetaImage url={thumb} alt={a.name} className="w-24 h-24 rounded border border-nq-line shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5 text-xs">
           <header className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-emerald-300">{a.name}</span>
+            <span className="text-nq-positive-text">{a.name}</span>
             <span data-testid="meta-ad-status"><DeliveryBadge d={d} /></span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-700 text-slate-400" title="Anúncio da campanha que não tem criativo cadastrado no NORQVA">
+            <span className="px-1.5 py-0.5 rounded text-[12px] border border-nq-line text-nq-muted" title="Anúncio da campanha que não tem criativo cadastrado no NORQVA">
               sem criativo no NORQVA
             </span>
           </header>
-          {a.adset_name && <div className="text-[11px] text-slate-500">Conjunto: {a.adset_name}</div>}
-          {a.creative_title && <div className="text-slate-200 font-semibold">{a.creative_title}</div>}
-          {a.creative_body && <p className="text-slate-400 line-clamp-2">{a.creative_body}</p>}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+          {a.adset_name && <div className="text-[12px] text-nq-subtle">Conjunto: {a.adset_name}</div>}
+          {a.creative_title && <div className="text-nq-text font-semibold">{a.creative_title}</div>}
+          {a.creative_body && <p className="text-nq-muted line-clamp-2">{a.creative_body}</p>}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-nq-muted">
             {a.creative_cta && <span>CTA: {a.creative_cta}</span>}
             <span>Investido: {brl(a.metrics?.spend ?? null)}</span>
             <span>Impressões: {a.metrics ? a.metrics.impressions.toLocaleString('pt-BR') : '—'}</span>
@@ -484,28 +484,28 @@ export function CreativeFactoryView({
               key={c.id}
               id={`factory-card-${c.id}`}
               data-testid="factory-card"
-              className={`rounded-xl border border-slate-800 bg-slate-900/60 p-4 ${viewMode === 'list' ? 'flex flex-col-reverse md:flex-row gap-4' : 'space-y-3'} ${focusId === c.id ? 'ring-2 ring-emerald-500' : ''}`}
+              className={`rounded-nq bg-nq-surface p-4 ${viewMode === 'list' ? 'flex flex-col-reverse md:flex-row gap-4' : 'space-y-3'} ${focusId === c.id ? 'ring-2 ring-nq-positive' : ''}`}
             >
               {viewMode === 'grid' && hasFile(c) && <CreativePreview url={c.file_url} format={c.format} title={c.human_id} />}
               {viewMode === 'grid' && !hasFile(c) && metaImageOf(c) && (
-                <MetaImage url={metaImageOf(c)} alt={c.human_id} className="w-full aspect-[4/5] max-h-72 rounded border border-slate-800" />
+                <MetaImage url={metaImageOf(c)} alt={c.human_id} className="w-full aspect-[4/5] max-h-72 rounded border border-nq-line" />
               )}
               <div className={viewMode === 'list' ? 'flex-1 min-w-0 space-y-3' : 'space-y-3'}>
               <header className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-mono text-xs text-emerald-300 flex items-center gap-1.5">
+                  <div className="text-nq-body font-semibold text-nq-text flex flex-wrap items-center gap-1.5">
                     {c.human_id}
                     {ORIGIN_LABEL[c.origin] && (
-                      <span data-testid="creative-origin" className={`px-1.5 py-0.5 rounded border text-[9px] font-sans ${ORIGIN_LABEL[c.origin].cls}`}>
+                      <span data-testid="creative-origin" className={`px-1.5 py-0.5 rounded border text-[12px] font-sans ${ORIGIN_LABEL[c.origin].cls}`}>
                         {ORIGIN_LABEL[c.origin].label}
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[12px] text-nq-subtle">
                     {[c.hook_family, c.format, c.duration_seconds ? `${c.duration_seconds}s` : null, `v${c.version}`].filter(Boolean).join(' · ')}
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold ${st.cls}`}>{st.label}</span>
+                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[12px] font-semibold ${st.cls}`}>{st.label}</span>
               </header>
 
               {linkedAdsOf(c).length > 0 && (
@@ -513,7 +513,7 @@ export function CreativeFactoryView({
                   {linkedAdsOf(c).map((a: any) => (
                     <div key={a.meta_ad_id} className="space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-mono text-[11px] text-slate-400">Anúncio {a.name}</span>
+                        <span className="text-[12px] text-nq-muted">Anúncio {a.name}</span>
                         <DeliveryBadge d={adDelivery(a)} />
                       </div>
                       {!isDemoView && <AdPreviewButton metaAdId={String(a.meta_ad_id)} apiFetch={apiFetch} />}
@@ -524,22 +524,22 @@ export function CreativeFactoryView({
 
               <div className="text-xs space-y-1" data-testid="creative-campaign">
                 <div>
-                  <span className="text-slate-500">Campanha:</span>{' '}
+                  <span className="text-nq-subtle">Campanha:</span>{' '}
                   {(c.campaigns || []).length > 0
                     ? c.campaigns.map((cp: any) => `${cp.name}${cp.status && cp.status !== 'ACTIVE' ? ` (${cp.status === 'PAUSED' ? 'pausada' : cp.status})` : ''}`).join(' · ')
-                    : <span className="text-slate-500">não publicado</span>}
+                    : <span className="text-nq-subtle">não publicado</span>}
                 </div>
-                {c.batch_code && c.origin !== 'META' && <div><span className="text-slate-500">Lote:</span> {c.batch_code}</div>}
-                {c.product_name && <div><span className="text-slate-500">Produto:</span> {c.product_name}{c.offer_name ? ` · ${c.offer_name}` : ''}</div>}
+                {c.batch_code && c.origin !== 'META' && <div><span className="text-nq-subtle">Lote:</span> {c.batch_code}</div>}
+                {c.product_name && <div><span className="text-nq-subtle">Produto:</span> {c.product_name}{c.offer_name ? ` · ${c.offer_name}` : ''}</div>}
               </div>
 
-              <p className="text-sm text-white font-semibold">“{c.hook}”</p>
-              <div className="text-xs text-slate-300 space-y-1">
-                {(c.mechanism || c.concept) && <div><span className="text-slate-500">{c.mechanism ? 'Mecanismo' : 'Conceito'}:</span> {c.mechanism || c.concept}</div>}
-                {c.headline && <div><span className="text-slate-500">Título:</span> {c.headline}</div>}
-                <div className="text-slate-400">{c.primary_text || c.copy}</div>
-                <div><span className="text-slate-500">CTA:</span> {c.cta}</div>
-                {!hasFile(c) && <div className="text-amber-300/80">Arquivo ainda não produzido</div>}
+              <p className="text-nq-body text-nq-text font-semibold">“{c.hook}”</p>
+              <div className="text-xs text-nq-text space-y-1">
+                {(c.mechanism || c.concept) && <div><span className="text-nq-subtle">{c.mechanism ? 'Mecanismo' : 'Conceito'}:</span> {c.mechanism || c.concept}</div>}
+                {c.headline && <div><span className="text-nq-subtle">Título:</span> {c.headline}</div>}
+                <div className="text-nq-muted">{c.primary_text || c.copy}</div>
+                <div><span className="text-nq-subtle">CTA:</span> {c.cta}</div>
+                {!hasFile(c) && <div className="text-nq-attention/80">Arquivo ainda não produzido</div>}
               </div>
 
               <div className="flex flex-wrap gap-1">
@@ -547,15 +547,15 @@ export function CreativeFactoryView({
                   <span
                     key={cl.id}
                     title={cl.text}
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                      cl.status === 'VERIFIED' ? 'border-emerald-700/50 text-emerald-300' : 'border-amber-700/50 text-amber-300'
+                    className={`px-1.5 py-0.5 rounded text-[12px] border ${
+                      cl.status === 'VERIFIED' ? 'border-nq-positive/40 text-nq-positive-text' : 'border-nq-attention/40 text-nq-attention'
                     }`}
                   >
                     {cl.human_id}
                   </span>
                 ))}
                 {!c.claims_all_verified && (
-                  <span className="text-[10px] text-amber-300 flex items-center gap-1">
+                  <span className="text-[12px] text-nq-attention flex items-center gap-1">
                     <ShieldAlert className="h-3 w-3" /> {(c.claims || []).length === 0 ? 'sem promessas registradas' : 'claims pendentes'}
                   </span>
                 )}
@@ -563,7 +563,7 @@ export function CreativeFactoryView({
                   <button
                     data-testid="add-claim"
                     onClick={() => setClaiming({ id: c.id, product_id: c.product_id, claim_id: '', claim_text: '', claim_type: 'FEATURE' })}
-                    className="px-1.5 py-0.5 rounded text-[10px] border border-slate-700 text-slate-300 hover:text-white"
+                    className="px-3 rounded-full text-nq-aux bg-nq-raised text-nq-text min-h-[44px]"
                   >
                     + Promessa
                   </button>
@@ -571,8 +571,8 @@ export function CreativeFactoryView({
               </div>
 
               {claiming && claiming.id === c.id && (
-                <div className="space-y-2 border-t border-slate-800 pt-2 text-xs" data-testid="claim-form">
-                  <p className="text-[11px] text-slate-500">
+                <div className="space-y-2 border-t border-nq-line pt-2 text-xs" data-testid="claim-form">
+                  <p className="text-[12px] text-nq-subtle">
                     O que este anúncio promete? Ex.: "28 receitas italianas". A promessa entra como não verificada; um ADMIN verifica antes de aprovar.
                   </p>
                   {claims.filter(cl => cl.product_id === c.product_id && !(c.claims || []).some((x: any) => x.id === cl.id)).length > 0 && (
@@ -580,7 +580,7 @@ export function CreativeFactoryView({
                       aria-label="Promessa já registrada"
                       value={claiming.claim_id}
                       onChange={e => { const v = e.target.value; setClaiming(prev => (prev ? { ...prev, claim_id: v } : prev)); }}
-                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                     >
                       <option value="">Nova promessa…</option>
                       {claims
@@ -599,13 +599,13 @@ export function CreativeFactoryView({
                         value={claiming.claim_text}
                         maxLength={500}
                         onChange={e => { const v = e.target.value; setClaiming(prev => (prev ? { ...prev, claim_text: v } : prev)); }}
-                        className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                        className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                       />
                       <select
                         aria-label="Tipo da promessa"
                         value={claiming.claim_type}
                         onChange={e => { const v = e.target.value; setClaiming(prev => (prev ? { ...prev, claim_type: v } : prev)); }}
-                        className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                        className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                       >
                         {Object.entries(CLAIM_TYPE_LABEL).map(([k, v]) => (
                           <option key={k} value={k}>{v}</option>
@@ -617,35 +617,35 @@ export function CreativeFactoryView({
                     <button
                       onClick={submitClaim}
                       disabled={(!claiming.claim_id && !claiming.claim_text.trim()) || busy === `claim-add-${c.id}`}
-                      className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-50"
+                      className="px-4 rounded-full bg-nq-text text-nq-bg font-bold disabled:opacity-50 min-h-[44px]"
                     >
                       Registrar
                     </button>
-                    <button onClick={() => setClaiming(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
+                    <button onClick={() => setClaiming(null)} className="px-4 rounded-full bg-nq-raised text-nq-text min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
                 </div>
               )}
 
-              <div className="rounded-lg bg-slate-950/70 border border-slate-800 p-2.5 text-[11px] font-mono grid grid-cols-3 gap-2">
-                <div><div className="text-slate-500">Investido</div>{brl(c.metrics?.spend ?? null)}</div>
-                <div><div className="text-slate-500">CTR link</div>{c.link_ctr !== null && c.link_ctr !== undefined ? `${c.link_ctr.toFixed(2)}%` : '—'}</div>
-                <div><div className="text-slate-500">Visitas</div>{c.metrics?.offer_views ?? '—'}</div>
-                <div><div className="text-slate-500">Checkout</div>{c.metrics ? `${c.metrics.checkout_modal_opened}/${c.metrics.checkout_started}` : '—'}</div>
-                <div><div className="text-slate-500">Vendas</div>{c.metrics?.paid_orders ?? '—'}</div>
-                <div><div className="text-slate-500">CPA</div>{brl(c.cpa)}</div>
-                <div className="col-span-3 pt-1 border-t border-slate-800">
+              <div className="rounded-xl bg-nq-bg p-3 text-nq-aux tabular-nums grid grid-cols-3 gap-x-2 gap-y-2.5">
+                <div><div className="text-nq-subtle">Investido</div>{brl(c.metrics?.spend ?? null)}</div>
+                <div><div className="text-nq-subtle">CTR link</div>{c.link_ctr !== null && c.link_ctr !== undefined ? `${c.link_ctr.toFixed(2).replace(".", ",")}%` : '—'}</div>
+                <div><div className="text-nq-subtle">Visitas</div>{c.metrics?.offer_views ?? '—'}</div>
+                <div><div className="text-nq-subtle">Checkout</div>{c.metrics ? `${c.metrics.checkout_modal_opened}/${c.metrics.checkout_started}` : '—'}</div>
+                <div><div className="text-nq-subtle">Vendas</div>{c.metrics?.paid_orders ?? '—'}</div>
+                <div><div className="text-nq-subtle">CPA</div>{brl(c.cpa)}</div>
+                <div className="col-span-3 pt-1 border-t border-nq-line">
                   <span className={rec.cls}>{rec.label}</span>
-                  <span className="text-slate-500"> · {c.recommendation_reason}</span>
+                  <span className="text-nq-subtle"> · {c.recommendation_reason}</span>
                   {c.breakeven_cpa !== null && (
-                    <span className="text-slate-600"> (equilíbrio {brl(c.breakeven_cpa)})</span>
+                    <span className="text-nq-subtle"> (equilíbrio {brl(c.breakeven_cpa)})</span>
                   )}
                 </div>
               </div>
 
               {last && (
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[12px] text-nq-subtle">
                   Última revisão: {APPROVAL_LABEL[last.decision]?.label || last.decision}
                   {last.reason_code ? ` · ${REASON_LABEL[last.reason_code] || last.reason_code}` : ''}
                   {last.notes ? ` · ${last.notes}` : ''}
@@ -655,22 +655,22 @@ export function CreativeFactoryView({
 
               {/* NORQVA-0027: arquivo trocado depois da aprovação não vai para anúncio sem nova aprovação */}
               {staleApproval(c) && (
-                <div className="text-[11px] text-amber-300" data-testid="stale-approval">
+                <div className="text-[12px] text-nq-attention" data-testid="stale-approval">
                   O arquivo mudou depois da aprovação: aprove de novo para ele poder ir para um anúncio.
                 </div>
               )}
 
               {confirmNoPrice === c.id && (
-                <div className="rounded border border-amber-600/50 bg-amber-950/30 p-2 text-[11px] text-amber-100 space-y-1.5" data-testid="confirm-no-price">
+                <div className="rounded-xl bg-nq-attention/10 p-3 text-nq-aux text-nq-attention space-y-1.5" data-testid="confirm-no-price">
                   <div>Anúncio sem preço: o vídeo ou a imagem deste criativo não mostra nem fala preço?</div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setConfirmNoPrice(null); approve(c.id); }}
-                      className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold"
+                      className="px-4 rounded-full bg-nq-positive text-nq-on-positive text-nq-aux font-bold min-h-[44px]"
                     >
                       Confirmo, sem preço
                     </button>
-                    <button onClick={() => setConfirmNoPrice(null)} className="px-2.5 py-1 rounded border border-slate-600 text-slate-200 text-xs">
+                    <button onClick={() => setConfirmNoPrice(null)} className="px-4 rounded-full bg-nq-raised text-nq-text text-nq-aux min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
@@ -683,7 +683,7 @@ export function CreativeFactoryView({
                     <button
                       onClick={() => askApprove(c)}
                       disabled={busy === `review-${c.id}` || !c.claims_all_verified}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-4 rounded-full bg-nq-positive text-nq-on-positive text-nq-aux font-bold disabled:opacity-40 min-h-[44px]"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar de novo
                     </button>
@@ -693,7 +693,7 @@ export function CreativeFactoryView({
                       onClick={() => askApprove(c)}
                       disabled={busy === `review-${c.id}` || !c.claims_all_verified}
                       title={!c.claims_all_verified ? 'Verifique as claims antes de aprovar' : undefined}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-4 rounded-full bg-nq-positive text-nq-on-positive text-nq-aux font-bold disabled:opacity-40 min-h-[44px]"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
                     </button>
@@ -702,13 +702,13 @@ export function CreativeFactoryView({
                     <>
                       <button
                         onClick={() => { setRejecting({ id: c.id, decision: 'REVISION_REQUESTED' }); setReason('BAD_COPY'); }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-600/80 text-white text-xs font-bold"
+                        className="inline-flex items-center gap-1 px-4 rounded-full bg-nq-attention/15 text-nq-attention text-nq-aux font-bold min-h-[44px]"
                       >
                         <PencilLine className="h-3.5 w-3.5" /> Pedir ajuste
                       </button>
                       <button
                         onClick={() => { setRejecting({ id: c.id, decision: 'REJECTED' }); setReason('WEAK_HOOK'); }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-red-700/80 text-white text-xs font-bold"
+                        className="inline-flex items-center gap-1 px-4 rounded-full bg-nq-critical/15 text-nq-critical-text text-nq-aux font-bold min-h-[44px]"
                       >
                         <XCircle className="h-3.5 w-3.5" /> Rejeitar
                       </button>
@@ -719,7 +719,7 @@ export function CreativeFactoryView({
                       onClick={() => run(`metavideo-${c.id}`, () => post(`/creative-factory/creatives/${c.id}/meta-video?mode=real`), 'Vídeo trazido da Meta. Confira e aprove o criativo.')}
                       disabled={busy === `metavideo-${c.id}`}
                       data-testid="fetch-meta-video"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-emerald-600/50 text-emerald-300 text-xs disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-4 rounded-full bg-nq-positive/15 text-nq-positive-text text-nq-aux disabled:opacity-50 min-h-[44px]"
                     >
                       <Download className="h-3.5 w-3.5" /> {busy === `metavideo-${c.id}` ? 'Trazendo…' : hasFile(c) ? 'Renovar vídeo da Meta' : 'Trazer vídeo da Meta'}
                     </button>
@@ -727,7 +727,7 @@ export function CreativeFactoryView({
                   {canRevise && (
                     <button
                       onClick={() => setAttaching({ id: c.id, file_url: hasFile(c) ? c.file_url : '' })}
-                      className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs"
+                      className="px-4 rounded-full bg-nq-raised text-nq-text text-nq-aux min-h-[44px]"
                     >
                       {hasFile(c) ? 'Trocar arquivo' : 'Anexar arquivo'}
                     </button>
@@ -746,7 +746,7 @@ export function CreativeFactoryView({
                           file_url: c.file_url || ''
                         })
                       }
-                      className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs"
+                      className="px-4 rounded-full bg-nq-raised text-nq-text text-nq-aux min-h-[44px]"
                     >
                       Editar
                     </button>
@@ -754,7 +754,7 @@ export function CreativeFactoryView({
                   {isAdmin && (
                     <button
                       onClick={() => setLinking({ id: c.id, meta_ad_id: '' })}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs"
+                      className="inline-flex items-center gap-1 px-4 rounded-full bg-nq-raised text-nq-text text-nq-aux min-h-[44px]"
                     >
                       <Link2 className="h-3.5 w-3.5" /> Ligar anúncio
                     </button>
@@ -779,12 +779,12 @@ export function CreativeFactoryView({
               )}
 
               {rejecting?.id === c.id && (
-                <div className="space-y-2 border-t border-slate-800 pt-2">
+                <div className="space-y-2 border-t border-nq-line pt-2">
                   <select
                     aria-label="Motivo"
                     value={reason}
                     onChange={e => setReason(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded text-xs"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl text-nq-body min-h-[44px]"
                   >
                     {(data?.rejectionReasons || Object.keys(REASON_LABEL)).map((r: string) => (
                       <option key={r} value={r}>
@@ -797,13 +797,13 @@ export function CreativeFactoryView({
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
                     placeholder="O que precisa mudar?"
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded text-xs"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl text-nq-body min-h-[44px]"
                   />
                   <div className="flex gap-2">
-                    <button onClick={submitReview} className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 text-xs font-bold">
+                    <button onClick={submitReview} className="px-4 rounded-full bg-nq-text text-nq-bg text-nq-aux font-bold min-h-[44px]">
                       Confirmar {rejecting?.decision === 'REJECTED' ? 'rejeição' : 'pedido de ajuste'}
                     </button>
-                    <button onClick={() => setRejecting(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300 text-xs">
+                    <button onClick={() => setRejecting(null)} className="px-4 rounded-full bg-nq-raised text-nq-text text-nq-aux min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
@@ -811,76 +811,76 @@ export function CreativeFactoryView({
               )}
 
               {editing?.id === c.id && (
-                <div className="space-y-2 border-t border-slate-800 pt-2 text-xs">
-                  <p className="text-[11px] text-slate-500">
+                <div className="space-y-2 border-t border-nq-line pt-2 text-xs">
+                  <p className="text-[12px] text-nq-subtle">
                     Se este criativo já foi revisado, mudar o conteúdo cria uma nova versão (para aprovar de novo) e a atual vira "Substituído". Para só anexar o arquivo, use "Anexar arquivo". Sem preço no texto.
                   </p>
                   <label className="block space-y-0.5">
-                    <span className="text-slate-500">Gancho (primeira frase)</span>
+                    <span className="text-nq-subtle">Gancho (primeira frase)</span>
                     <input
                       aria-label="Gancho"
                       value={editing?.hook || ''}
                       onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, hook: v } : prev)); }}
-                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                     />
                   </label>
                   <label className="block space-y-0.5">
-                    <span className="text-slate-500">Mecanismo</span>
+                    <span className="text-nq-subtle">Mecanismo</span>
                     <input
                       aria-label="Mecanismo"
                       value={editing?.mechanism || ''}
                       onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, mechanism: v } : prev)); }}
-                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                     />
                   </label>
-                  <span className="block text-slate-500">Título</span>
+                  <span className="block text-nq-subtle">Título</span>
                   <input
                     aria-label="Título"
                     value={editing?.headline || ''}
                     onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, headline: v } : prev)); }}
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                   />
-                  <span className="block text-slate-500">Texto principal</span>
+                  <span className="block text-nq-subtle">Texto principal</span>
                   <textarea
                     aria-label="Texto principal"
                     value={editing?.primary_text || ''}
                     onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, primary_text: v } : prev)); }}
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded h-20"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl h-20 min-h-[44px]"
                   />
                   <label className="block space-y-0.5">
-                    <span className="text-slate-500">CTA (chamada)</span>
+                    <span className="text-nq-subtle">CTA (chamada)</span>
                     <input
                       aria-label="CTA"
                       value={editing?.cta || ''}
                       onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, cta: v } : prev)); }}
-                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                      className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                     />
                   </label>
                   <label className="block space-y-0.5">
-                    <span className="text-slate-500">Roteiro</span>
+                    <span className="text-nq-subtle">Roteiro</span>
                     <textarea
                       aria-label="Roteiro"
                       value={editing?.script || ''}
                       onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, script: v } : prev)); }}
-                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded h-24"
+                      className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl h-24 min-h-[44px]"
                     />
                   </label>
-                  <span className="block text-slate-500">Link do arquivo</span>
+                  <span className="block text-nq-subtle">Link do arquivo</span>
                   <input
                     aria-label="Link do arquivo"
                     placeholder="Link do vídeo/imagem produzido"
                     value={editing?.file_url || ''}
                     onChange={e => { const v = e.target.value; setEditing(prev => (prev ? { ...prev, file_url: v } : prev)); }}
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                   />
-                  <div className="space-y-1 border-t border-slate-800 pt-2" data-testid="creative-offer-change">
-                    <span className="block text-slate-500">Oferta deste criativo (muda também o produto; as promessas acompanham)</span>
+                  <div className="space-y-1 border-t border-nq-line pt-2" data-testid="creative-offer-change">
+                    <span className="block text-nq-subtle">Oferta deste criativo (muda também o produto; as promessas acompanham)</span>
                     <div className="flex gap-2">
                       <select
                         aria-label="Oferta do criativo"
                         value={offerPick[c.id] ?? String(c.offer_id || '')}
                         onChange={e => { const v = e.target.value; setOfferPick(prev => ({ ...prev, [c.id]: v })); }}
-                        className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                        className="flex-1 min-w-0 bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                       >
                         {!c.offer_id && <option value="">Sem oferta</option>}
                         {offers.map((o: any) => (
@@ -892,17 +892,17 @@ export function CreativeFactoryView({
                       <button
                         onClick={() => submitOffer(c)}
                         disabled={!offerPick[c.id] || offerPick[c.id] === String(c.offer_id || '') || busy === `offer-${c.id}`}
-                        className="px-2.5 py-1 rounded border border-emerald-700 text-emerald-300 disabled:opacity-40"
+                        className="px-4 rounded-full bg-nq-positive/15 text-nq-positive-text disabled:opacity-40 min-h-[44px]"
                       >
                         Trocar oferta
                       </button>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={submitEdit} className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold">
+                    <button onClick={submitEdit} className="px-4 rounded-full bg-nq-text text-nq-bg font-bold min-h-[44px]">
                       Salvar
                     </button>
-                    <button onClick={() => setEditing(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
+                    <button onClick={() => setEditing(null)} className="px-4 rounded-full bg-nq-raised text-nq-text min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
@@ -910,8 +910,8 @@ export function CreativeFactoryView({
               )}
 
               {attaching?.id === c.id && (
-                <div className="space-y-2 border-t border-slate-800 pt-2 text-xs">
-                  <p className="text-[11px] text-slate-500">
+                <div className="space-y-2 border-t border-nq-line pt-2 text-xs">
+                  <p className="text-[12px] text-nq-subtle">
                     Link público do vídeo ou imagem (http/https). Mantém esta versão, a aprovação e o vínculo com o anúncio.
                   </p>
                   <input
@@ -919,17 +919,17 @@ export function CreativeFactoryView({
                     placeholder="https://..."
                     value={attaching?.file_url || ''}
                     onChange={e => { const v = e.target.value; setAttaching(prev => (prev ? { ...prev, file_url: v } : prev)); }}
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={submitAttach}
                       disabled={!/^https?:\/\/\S+$/i.test((attaching?.file_url || '').trim()) || busy === `file-${c.id}`}
-                      className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold disabled:opacity-50"
+                      className="px-4 rounded-full bg-nq-text text-nq-bg font-bold disabled:opacity-50 min-h-[44px]"
                     >
                       Anexar
                     </button>
-                    <button onClick={() => setAttaching(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
+                    <button onClick={() => setAttaching(null)} className="px-4 rounded-full bg-nq-raised text-nq-text min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
@@ -937,8 +937,8 @@ export function CreativeFactoryView({
               )}
 
               {linking?.id === c.id && (
-                <div className="space-y-2 border-t border-slate-800 pt-2 text-xs">
-                  <p className="text-[11px] text-slate-500">
+                <div className="space-y-2 border-t border-nq-line pt-2 text-xs">
+                  <p className="text-[12px] text-nq-subtle">
                     Só é preciso se o nome do anúncio na Meta for diferente de {c.utm_content_key}.
                   </p>
                   <input
@@ -946,13 +946,13 @@ export function CreativeFactoryView({
                     placeholder="ID do anúncio na Meta"
                     value={linking?.meta_ad_id || ''}
                     onChange={e => { const v = e.target.value; setLinking(prev => (prev ? { ...prev, meta_ad_id: v } : prev)); }}
-                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                    className="w-full bg-nq-bg text-nq-text px-2 py-2 rounded-xl min-h-[44px]"
                   />
                   <div className="flex gap-2">
-                    <button onClick={submitLink} className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 font-bold">
+                    <button onClick={submitLink} className="px-4 rounded-full bg-nq-text text-nq-bg font-bold min-h-[44px]">
                       Ligar
                     </button>
-                    <button onClick={() => setLinking(null)} className="px-2.5 py-1 rounded border border-slate-700 text-slate-300">
+                    <button onClick={() => setLinking(null)} className="px-4 rounded-full bg-nq-raised text-nq-text min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
@@ -965,11 +965,11 @@ export function CreativeFactoryView({
                     <CreativePreview url={c.file_url} format={c.format} title={c.human_id} fill className="flex-1" />
                   ) : metaImageOf(c) ? (
                     <div className="flex-1 flex flex-col gap-1">
-                      <MetaImage url={metaImageOf(c)} alt={c.human_id} className="flex-1 min-h-[16rem] w-full rounded border border-slate-800" />
-                      <span className="text-[10px] text-slate-500">Imagem do anúncio na Meta</span>
+                      <MetaImage url={metaImageOf(c)} alt={c.human_id} className="flex-1 min-h-[16rem] w-full rounded border border-nq-line" />
+                      <span className="text-[12px] text-nq-subtle">Imagem do anúncio na Meta</span>
                     </div>
                   ) : (
-                    <div className="flex-1 min-h-[16rem] rounded border border-dashed border-slate-700 flex items-center justify-center text-[11px] text-slate-500">
+                    <div className="flex-1 min-h-[16rem] rounded border border-dashed border-nq-line flex items-center justify-center text-[12px] text-nq-subtle">
                       sem arquivo
                     </div>
                   )}
@@ -981,13 +981,10 @@ export function CreativeFactoryView({
 
   return (
     <div className="space-y-6 pb-12 max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Factory className="h-6 w-6 text-emerald-400" />
-            Criativos
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[28px] leading-[34px] font-semibold tracking-tight text-nq-text">Criativos</h1>
+          <p className="text-nq-aux text-nq-muted mt-1">
             Todos os criativos num lugar só: criar, anexar o vídeo ou a imagem, registrar promessas, aprovar e ver o resultado. Nada é publicado na Meta por aqui.
           </p>
         </div>
@@ -996,7 +993,7 @@ export function CreativeFactoryView({
           <button
             onClick={() => setCreating(true)}
             data-testid="new-creative"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400"
+            className="inline-flex items-center gap-1.5 px-4 rounded-full bg-nq-positive text-nq-on-positive text-nq-aux font-semibold hover:brightness-110 min-h-[44px]"
           >
             <Plus className="h-4 w-4" /> Novo criativo
           </button>
@@ -1005,7 +1002,7 @@ export function CreativeFactoryView({
           onClick={load}
           disabled={loading}
           aria-label="Atualizar"
-          className="self-start p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+          className="h-11 w-11 flex items-center justify-center rounded-full bg-nq-surface text-nq-muted hover:text-nq-text disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -1023,8 +1020,8 @@ export function CreativeFactoryView({
       )}
 
       {isAdmin && notImported.length > 0 && (
-        <div className="p-4 rounded-xl border border-emerald-700/40 bg-emerald-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="text-sm text-slate-200">
+        <div className="p-4 rounded-nq bg-nq-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-nq-aux text-nq-text">
             Lote pronto para importar: <strong>{notImported.join(', ')}</strong>. Os criativos entram como rascunho e as claims como não verificadas.
           </div>
           {notImported.map(code => (
@@ -1032,7 +1029,7 @@ export function CreativeFactoryView({
               key={code}
               onClick={() => importBatch(code)}
               disabled={busy === `import-${code}`}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-500 text-slate-950 text-xs font-bold hover:bg-emerald-400 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-nq-positive text-nq-on-positive text-nq-aux font-bold hover:brightness-110 disabled:opacity-50 min-h-[44px]"
             >
               <Download className="h-3.5 w-3.5" /> Importar {code}
             </button>
@@ -1043,9 +1040,9 @@ export function CreativeFactoryView({
       {isAdmin && pendingAssets.length > 0 && (
         <div
           data-testid="pending-assets"
-          className="p-4 rounded-xl border border-blue-700/40 bg-blue-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          className="p-4 rounded-nq bg-nq-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3"
         >
-          <div className="text-sm text-slate-200">
+          <div className="text-nq-aux text-nq-text">
             Já existem arquivos produzidos para{' '}
             <strong>{pendingAssets.map(p => `${p.count} criativo(s) do ${p.code}`).join(', ')}</strong>. Anexe para abrir pelo
             Creative Lab. Não cria versão nova nem muda a aprovação.
@@ -1055,7 +1052,7 @@ export function CreativeFactoryView({
               key={p.code}
               onClick={() => attachBatchAssets(p.code)}
               disabled={busy === `assets-${p.code}`}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-blue-500 text-slate-950 text-xs font-bold hover:bg-blue-400 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-nq-info text-nq-on-positive text-nq-aux font-bold hover:brightness-110 disabled:opacity-50 min-h-[44px]"
             >
               <Download className="h-3.5 w-3.5" /> Anexar arquivos produzidos
             </button>
@@ -1065,29 +1062,29 @@ export function CreativeFactoryView({
 
       {/* NORQVA-0011/0013: adjustment requests and what Claude is doing with them */}
       {queueItems.length > 0 && (
-        <section className="p-4 rounded-xl border border-amber-700/40 bg-amber-950/20 space-y-2" data-testid="revision-queue">
-          <h2 className="text-sm font-bold text-amber-200">Ajustes pedidos ({queueItems.length})</h2>
-          <p className="text-[11px] text-slate-400">
+        <section className="p-4 rounded-nq bg-nq-attention/10 space-y-2" data-testid="revision-queue">
+          <h2 className="text-sm font-bold text-nq-attention">Ajustes pedidos ({queueItems.length})</h2>
+          <p className="text-[12px] text-nq-muted">
             Cada pedido é enviado ao Claude, que produz uma nova versão (rascunho) para você aprovar. O anúncio que já está na Meta continua no ar até a nova versão ser aprovada e publicada.
           </p>
           <ul className="space-y-2 text-xs">
             {queueItems.map((q: any) => {
               const st = ADJ_STATUS[q.status] || ADJ_STATUS.QUEUED;
               return (
-                <li key={q.key} className="border-t border-amber-800/30 pt-2 space-y-1" data-testid="adjustment-item">
+                <li key={q.key} className="border-t border-nq-attention/40 pt-2 space-y-1" data-testid="adjustment-item">
                   <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => openInList(q.creative_id)} className="font-mono text-emerald-300 hover:underline">{q.creative_human_id}</button>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${st.cls}`} data-testid="adjustment-status">{st.label}</span>
-                    <span className="text-[10px] text-slate-500">{q.created_at ? new Date(q.created_at).toLocaleString('pt-BR') : ''}</span>
+                    <button onClick={() => openInList(q.creative_id)} className="text-nq-positive-text hover:underline min-h-[44px]">{q.creative_human_id}</button>
+                    <span className={`px-1.5 py-0.5 rounded text-[12px] font-bold ${st.cls}`} data-testid="adjustment-status">{st.label}</span>
+                    <span className="text-[12px] text-nq-subtle">{q.created_at ? new Date(q.created_at).toLocaleString('pt-BR') : ''}</span>
                   </div>
-                  <div className="text-slate-200">“{q.request_text}”</div>
-                  {q.response && <div className="text-slate-400">Claude: {q.response}</div>}
-                  <div className="flex flex-wrap gap-3 text-[11px]">
+                  <div className="text-nq-text">“{q.request_text}”</div>
+                  {q.response && <div className="text-nq-muted">Claude: {q.response}</div>}
+                  <div className="flex flex-wrap gap-3 text-[12px]">
                     {q.session_url && /^https:\/\/claude\.ai\//.test(q.session_url) && (
-                      <a href={q.session_url} target="_blank" rel="noreferrer" className="text-emerald-300 underline">Ver o Claude trabalhando</a>
+                      <a href={q.session_url} target="_blank" rel="noreferrer" className="text-nq-positive-text underline">Ver o Claude trabalhando</a>
                     )}
                     {q.result_creative_id && (
-                      <button onClick={() => openInList(q.result_creative_id)} className="text-emerald-300 underline">
+                      <button onClick={() => openInList(q.result_creative_id)} className="text-nq-positive-text underline min-h-[44px]">
                         Revisar nova versão {q.result_human_id || ''}
                       </button>
                     )}
@@ -1095,7 +1092,7 @@ export function CreativeFactoryView({
                       <button
                         onClick={() => run(`adj-${q.key}`, () => post(`/creative-factory/creatives/${q.creative_id}/adjustments?mode=${mode}`), 'Pedido enviado ao Claude.')}
                         disabled={busy === `adj-${q.key}`}
-                        className="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold disabled:opacity-50"
+                        className="px-2 py-0.5 rounded-full bg-nq-positive text-nq-on-positive font-bold disabled:opacity-50 min-h-[44px]"
                       >
                         Enviar ao Claude
                       </button>
@@ -1104,7 +1101,7 @@ export function CreativeFactoryView({
                       <button
                         onClick={() => run(`adj-${q.key}`, () => post(`/creative-factory/adjustments/${q.id}/retry?mode=${mode}`), 'Pedido reenviado ao Claude.')}
                         disabled={busy === `adj-${q.key}`}
-                        className="px-2 py-0.5 rounded bg-slate-700 text-white font-bold disabled:opacity-50"
+                        className="px-2 py-0.5 rounded-full bg-nq-line text-nq-text font-bold disabled:opacity-50 min-h-[44px]"
                       >
                         {q.status === 'DISPATCHED' ? 'Reenviar' : 'Tentar de novo'}
                       </button>
@@ -1118,44 +1115,44 @@ export function CreativeFactoryView({
       )}
 
       {/* Claims */}
-      <section className={`rounded-xl border border-slate-800 bg-slate-900/50 ${showClaims ? 'p-4 space-y-3' : 'px-4 py-2.5'}`} data-testid="claims-section">
+      <section className={`rounded-nq bg-nq-surface ${showClaims ? 'p-4 space-y-3' : 'px-4 py-2.5'}`} data-testid="claims-section">
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => setShowClaims(!showClaims)}
             aria-expanded={showClaims}
             data-testid="toggle-factory-claims"
-            className="text-sm font-bold text-slate-200 flex items-center gap-2"
+            className="text-sm font-bold text-nq-text flex items-center gap-2 min-h-[44px]"
           >
-            {showClaims ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-            <ShieldCheck className="h-4 w-4 text-emerald-400" /> Claims ({claims.length})
-            <span className="text-[11px] font-normal text-slate-500">{showClaims ? 'ocultar' : 'mostrar'}</span>
+            {showClaims ? <ChevronDown className="h-4 w-4 text-nq-muted" /> : <ChevronRight className="h-4 w-4 text-nq-muted" />}
+            <ShieldCheck className="h-4 w-4 text-nq-positive-text" /> Claims ({claims.length})
+            <span className="text-[12px] font-normal text-nq-subtle">{showClaims ? 'ocultar' : 'mostrar'}</span>
           </button>
           {pendingClaims.length > 0 && (
-            <span className="text-[11px] font-mono text-amber-300">
+            <span className="text-[12px] text-nq-attention">
               {pendingClaims.length} aguardando verificação: sem elas nenhum criativo pode ser aprovado
             </span>
           )}
         </div>
         {!showClaims ? null : claims.length === 0 ? (
-          <p className="text-xs text-slate-500">Nenhuma claim registrada.</p>
+          <p className="text-xs text-nq-subtle">Nenhuma claim registrada.</p>
         ) : (
-          <ul className="divide-y divide-slate-800">
+          <ul className="divide-y divide-nq-line/60">
             {claims.map(cl => (
               <li key={cl.id} className="py-2 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
-                <div className="text-xs text-slate-300">
-                  <span className="font-mono text-slate-500 mr-2">{cl.human_id}</span>
+                <div className="text-xs text-nq-text">
+                  <span className="text-nq-subtle mr-2">{cl.human_id}</span>
                   {cl.claim_text}
-                  {cl.status_note && <span className="block text-[11px] text-slate-500">{cl.status_note}</span>}
+                  {cl.status_note && <span className="block text-[12px] text-nq-subtle">{cl.status_note}</span>}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                    className={`px-2 py-0.5 rounded text-[12px] font-bold border ${
                       cl.status === 'VERIFIED'
-                        ? 'border-emerald-600/40 text-emerald-300'
+                        ? 'border-nq-positive/40 text-nq-positive-text'
                         : cl.status === 'REJECTED'
-                        ? 'border-red-600/40 text-red-300'
-                        : 'border-amber-600/40 text-amber-300'
+                        ? 'border-nq-critical/40 text-nq-critical-text'
+                        : 'border-nq-attention/40 text-nq-attention'
                     }`}
                   >
                     {cl.status === 'VERIFIED' ? 'Verificada' : cl.status === 'REJECTED' ? 'Rejeitada' : cl.status === 'EXPIRED' ? 'Expirada' : 'Não verificada'}
@@ -1164,7 +1161,7 @@ export function CreativeFactoryView({
                     <button
                       onClick={() => setClaim(cl.id, 'VERIFIED')}
                       disabled={busy === `claim-${cl.id}`}
-                      className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-bold disabled:opacity-50"
+                      className="px-2 py-0.5 rounded-full bg-nq-positive text-nq-on-positive text-[12px] font-bold disabled:opacity-50 min-h-[44px]"
                     >
                       Verificar
                     </button>
@@ -1173,7 +1170,7 @@ export function CreativeFactoryView({
                     <button
                       onClick={() => setClaim(cl.id, 'REJECTED', 'Revogada na tela Criativos')}
                       disabled={busy === `claim-${cl.id}`}
-                      className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] disabled:opacity-50"
+                      className="px-2 py-0.5 rounded-full bg-nq-raised text-nq-text text-[12px] disabled:opacity-50 min-h-[44px]"
                     >
                       Revogar
                     </button>
@@ -1189,7 +1186,8 @@ export function CreativeFactoryView({
 
       {/* Organização por campanha */}
       {allCampaigns && (
-        <div className="flex flex-wrap items-center gap-2 text-xs font-mono" data-testid="campaign-filters">
+        <div className="space-y-2 text-nq-aux" data-testid="campaign-filters">
+          <div className="-mx-4 px-4 lg:mx-0 lg:px-0 flex items-center gap-2 overflow-x-auto no-scrollbar">
           {([
             ['ALL', `Todas as campanhas (${allCampaigns.length})`],
             ['ACTIVE', `Ativas (${campaignCounts.ACTIVE})`],
@@ -1199,16 +1197,18 @@ export function CreativeFactoryView({
               key={k}
               onClick={() => setCampaignFilter(k)}
               aria-pressed={campaignFilter === k}
-              className={`px-2.5 py-1 rounded border ${campaignFilter === k ? 'bg-sky-500 text-slate-950 border-sky-500' : 'border-slate-700 text-slate-300'}`}
+              className={`shrink-0 px-4 rounded-full border text-nq-aux font-medium ${campaignFilter === k ? 'bg-nq-text text-nq-bg border-nq-text' : 'bg-nq-surface border-transparent text-nq-muted'} min-h-[44px]`}
             >
               {label}
             </button>
           ))}
-          <label className="flex items-center gap-1.5 ml-2 text-slate-300 cursor-pointer">
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <label className="flex min-h-[40px] items-center gap-2 text-nq-muted cursor-pointer">
             <input type="checkbox" checked={onlyRunning} onChange={e => setOnlyRunning(e.target.checked)} aria-label="Só o que está rodando" data-testid="only-running" />
             Só o que está rodando
           </label>
-          <label className="flex items-center gap-1.5 ml-2 text-slate-300 cursor-pointer">
+          <label className="flex min-h-[40px] items-center gap-2 text-nq-muted cursor-pointer">
             <input
               type="checkbox"
               checked={showUnpublished}
@@ -1222,7 +1222,7 @@ export function CreativeFactoryView({
             data-testid="campaign-name-filter"
             value={campaignName}
             onChange={e => setCampaignName(e.target.value)}
-            className="ml-2 max-w-[18rem] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded font-sans"
+            className="w-full sm:w-auto sm:max-w-[18rem] bg-nq-surface text-nq-text px-3 py-2 rounded-xl min-h-[44px]"
           >
             <option value="ALL">Procurar pelo nome da campanha</option>
             {[...allCampaigns]
@@ -1235,25 +1235,29 @@ export function CreativeFactoryView({
               ))}
             <option value="__none__">Criativos não publicados</option>
           </select>
+          </div>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+      <div className="space-y-2 text-nq-aux">
+      <div className="-mx-4 px-4 lg:mx-0 lg:px-0 flex items-center gap-2 overflow-x-auto no-scrollbar">
         {['ALL', 'DRAFT', 'APPROVED', 'REVISION_REQUESTED', 'REJECTED', 'SUPERSEDED'].map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`px-2.5 py-1 rounded border ${statusFilter === s ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'border-slate-700 text-slate-300'}`}
+            className={`shrink-0 px-4 rounded-full border text-nq-aux font-medium ${statusFilter === s ? 'bg-nq-text text-nq-bg border-nq-text' : 'bg-nq-surface border-transparent text-nq-muted'} min-h-[44px]`}
           >
             {s === 'ALL' ? `Todos (${creatives.filter(c => c.approval_status !== 'SUPERSEDED').length})` : `${APPROVAL_LABEL[s].label} (${counts[s] || 0})`}
           </button>
         ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label="Filtrar por hook"
           value={hookFilter}
           onChange={e => setHookFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+          className="bg-nq-surface text-nq-text px-3 py-2 rounded-xl min-h-[44px]"
         >
           <option value="ALL">Todos os hooks</option>
           {hooks.map(h => (
@@ -1266,30 +1270,31 @@ export function CreativeFactoryView({
           <ViewModeSelector value={viewMode} onChange={setViewMode} />
         </div>
       </div>
+      </div>
 
-      {loading && !data && <p className="text-sm text-slate-400">Carregando…</p>}
+      {loading && !data && <p className="text-nq-aux text-nq-muted">Carregando…</p>}
       {!loading && creatives.length === 0 && !(allCampaigns && allCampaigns.length > 0) && (
-        <p className="text-sm text-slate-400" data-testid="factory-empty">
+        <p className="text-nq-aux text-nq-muted" data-testid="factory-empty">
           Nenhum criativo na fábrica ainda.
         </p>
       )}
 
       {groups.map(g => (
         <section key={g.key} className="space-y-3" data-testid="campaign-group">
-          <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-1.5">
-            {g.name}
+          <h2 className="px-1 pt-2 text-nq-body font-semibold text-nq-text flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="break-all">{g.name}</span>
             {g.status && (
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${g.status === 'ACTIVE' ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+              <span className={`text-nq-caption font-medium ${g.status === 'ACTIVE' ? 'text-nq-positive-text' : 'text-nq-muted'}`}>
                 {g.status === 'ACTIVE' ? 'ativa' : g.status === 'PAUSED' ? 'pausada' : String(g.status).toLowerCase()}
               </span>
             )}
-            <span className="text-[11px] font-normal text-slate-500">
+            <span className="text-[12px] font-normal text-nq-subtle">
               {g.items.length} criativo(s)
               {g.externalAds.length > 0 ? ` · ${g.externalAds.length} anúncio(s) sem criativo no NORQVA` : ''}
             </span>
           </h2>
           {g.items.length === 0 && g.externalAds.length === 0 && (
-            <p className="text-xs text-slate-500" data-testid="campaign-empty">Nenhum anúncio nesta campanha.</p>
+            <p className="text-xs text-nq-subtle" data-testid="campaign-empty">Nenhum anúncio nesta campanha.</p>
           )}
           <div className={containerClass(viewMode)}>
             {g.items.map((c: any) =>
@@ -1326,7 +1331,7 @@ export function CreativeFactoryView({
         </section>
       ))}
       {allCampaigns && groups.length === 0 && (
-        <p className="text-sm text-slate-400" data-testid="campaigns-none">Nenhuma campanha com esse filtro.</p>
+        <p className="text-nq-aux text-nq-muted" data-testid="campaigns-none">Nenhuma campanha com esse filtro.</p>
       )}
     </div>
   );

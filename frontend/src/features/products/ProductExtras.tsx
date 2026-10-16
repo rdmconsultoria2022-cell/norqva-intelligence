@@ -79,30 +79,30 @@ export const OfferBumpConfig: React.FC<{
     }
   };
 
-  if (!loaded) return <p className="text-[11px] text-slate-500">Carregando adicional…</p>;
-  if (failed) return <p className="text-[11px] text-red-300" data-testid="bump-error">Não foi possível ler o adicional agora. Nada foi alterado; tente de novo.</p>;
+  if (!loaded) return <p className="text-[12px] text-nq-subtle">Carregando adicional…</p>;
+  if (failed) return <p className="text-[12px] text-nq-critical-text" data-testid="bump-error">Não foi possível ler o adicional agora. Nada foi alterado; tente de novo.</p>;
 
   const priceNum = Number(String(form.bump_price).replace(',', '.'));
   const valid = !!form.bump_offer_id && Number.isFinite(priceNum) && priceNum >= 1;
 
   return (
-    <div className="space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2 text-xs" data-testid="offer-bump-config">
+    <div className="space-y-2 rounded bg-nq-bg p-2 text-xs" data-testid="offer-bump-config">
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 font-semibold text-slate-200">
-          <Gift className="h-3.5 w-3.5 text-emerald-400" /> Adicional no Pix
+        <span className="inline-flex items-center gap-1 font-semibold text-nq-text">
+          <Gift className="h-3.5 w-3.5 text-nq-positive-text" /> Adicional no Pix
         </span>
-        <span className={state?.sellable ? 'text-emerald-300' : 'text-slate-500'} data-testid="bump-status">
+        <span className={state?.sellable ? 'text-nq-positive-text' : 'text-nq-subtle'} data-testid="bump-status">
           {state?.sellable ? 'ligado no checkout' : state?.bump?.is_active ? 'ligado, mas indisponível' : 'desligado'}
         </span>
       </div>
-      {state?.blocker && <p className="text-amber-300 text-[11px]">{state.blocker}</p>}
+      {state?.blocker && <p className="text-nq-attention text-[12px]">{state.blocker}</p>}
       <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-400">Oferta do adicional (precisa ter arquivo próprio)</span>
+        <span className="text-[12px] text-nq-muted">Oferta do adicional (precisa ter arquivo próprio)</span>
         <select
           aria-label="Oferta do adicional"
           value={form.bump_offer_id}
           onChange={e => setForm({ ...form, bump_offer_id: e.target.value })}
-          className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100"
+          className="rounded-xl bg-nq-bg px-2 py-2 text-nq-text min-h-[44px]"
         >
           <option value="">Escolha…</option>
           {candidates.map(o => (
@@ -114,23 +114,23 @@ export const OfferBumpConfig: React.FC<{
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-400">Preço no checkout (R$)</span>
-          <input aria-label="Preço do adicional" inputMode="decimal" value={form.bump_price} onChange={e => setForm({ ...form, bump_price: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-slate-100" />
+          <span className="text-[12px] text-nq-muted">Preço no checkout (R$)</span>
+          <input aria-label="Preço do adicional" inputMode="decimal" value={form.bump_price} onChange={e => setForm({ ...form, bump_price: e.target.value })} className="rounded-xl bg-nq-bg px-2 py-2 text-nq-text min-h-[44px]" />
         </label>
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-slate-400">Frase para o comprador</span>
-          <input aria-label="Frase do adicional" maxLength={200} value={form.headline} onChange={e => setForm({ ...form, headline: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100" />
+          <span className="text-[12px] text-nq-muted">Frase para o comprador</span>
+          <input aria-label="Frase do adicional" maxLength={200} value={form.headline} onChange={e => setForm({ ...form, headline: e.target.value })} className="rounded-xl bg-nq-bg px-2 py-2 text-nq-text min-h-[44px]" />
         </label>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
-        <button onClick={() => save(false)} disabled={busy || !valid} className="rounded border border-slate-700 px-2.5 py-1 text-slate-200 disabled:opacity-40" data-testid="bump-save-off">
+        <button onClick={() => save(false)} disabled={busy || !valid} className="rounded-full border border-nq-line px-2.5 py-1 text-nq-text disabled:opacity-40 min-h-[44px]" data-testid="bump-save-off">
           {state?.bump?.is_active ? 'Desligar' : 'Salvar desligado'}
         </button>
-        <button onClick={() => save(true)} disabled={busy || !valid} className="rounded bg-emerald-600 px-2.5 py-1 font-semibold text-white disabled:opacity-40" data-testid="bump-save-on">
+        <button onClick={() => save(true)} disabled={busy || !valid} className="rounded-full bg-nq-positive px-2.5 py-1 font-semibold text-nq-on-positive disabled:opacity-40 min-h-[44px]" data-testid="bump-save-on">
           Salvar e ligar
         </button>
       </div>
-      {valid && <p className="text-[10px] text-slate-500">No checkout: “Sim, quero levar também … + {money(priceNum)} no mesmo Pix”, caixinha desmarcada.</p>}
+      {valid && <p className="text-[12px] text-nq-subtle">No checkout: “Sim, quero levar também … + {money(priceNum)} no mesmo Pix”, caixinha desmarcada.</p>}
     </div>
   );
 };
@@ -140,10 +140,10 @@ export const OfferBumpConfig: React.FC<{
 // ---------------------------------------------------------------------------------------------
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  VERIFIED: { label: 'verificada', cls: 'text-emerald-300 border-emerald-600/40' },
-  UNVERIFIED: { label: 'a verificar', cls: 'text-amber-300 border-amber-600/40' },
-  EXPIRED: { label: 'vencida', cls: 'text-slate-400 border-slate-600' },
-  REJECTED: { label: 'recusada', cls: 'text-rose-300 border-rose-600/40' }
+  VERIFIED: { label: 'verificada', cls: 'text-nq-positive-text border-nq-positive/40' },
+  UNVERIFIED: { label: 'a verificar', cls: 'text-nq-attention border-nq-attention/40' },
+  EXPIRED: { label: 'vencida', cls: 'text-nq-muted border-nq-line' },
+  REJECTED: { label: 'recusada', cls: 'text-nq-critical-text border-nq-critical/40' }
 };
 
 /** Sugestões a partir da oferta ativa do produto (o ADMIN só confirma as que forem verdade). */
@@ -225,29 +225,29 @@ export const ProductClaims: React.FC<{
     }
   };
 
-  if (claims === null) return <p className="text-[11px] text-slate-500 px-4 pb-3">Carregando promessas…</p>;
+  if (claims === null) return <p className="text-[12px] text-nq-subtle px-4 pb-3">Carregando promessas…</p>;
   const existing = new Set(claims.filter(c => ['VERIFIED', 'UNVERIFIED'].includes(c.status)).map(c => String(c.claim_text).toLowerCase()));
   const missing = suggestedClaims(product, offers).filter(s => !existing.has(s.claim_text.toLowerCase()));
 
   return (
     <div className="space-y-2 px-4 pb-4 text-xs" data-testid="product-claims">
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[12px] text-nq-subtle">
         O que pode ser dito sobre este produto nos anúncios. Só as verificadas valem para os criativos e para o Time de IAs.
       </p>
-      {claims.length === 0 && <p className="text-slate-500">Nenhuma promessa cadastrada.</p>}
+      {claims.length === 0 && <p className="text-nq-subtle">Nenhuma promessa cadastrada.</p>}
       {claims.map(c => {
         const st = c.is_expired ? STATUS.EXPIRED : STATUS[c.status] || STATUS.UNVERIFIED;
         return (
-          <div key={c.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-800 p-2" data-testid="product-claim">
-            <span className={`rounded border px-1.5 py-0.5 text-[10px] ${st.cls}`}>{st.label}</span>
-            <span className="flex-1 text-slate-200">{c.claim_text}</span>
-            {c.valid_until && <span className="text-[10px] text-slate-500">até {new Date(c.valid_until).toLocaleDateString('pt-BR')}</span>}
+          <div key={c.id} className="flex flex-wrap items-center gap-2 rounded border border-nq-line p-2" data-testid="product-claim">
+            <span className={`rounded border px-1.5 py-0.5 text-[12px] ${st.cls}`}>{st.label}</span>
+            <span className="flex-1 text-nq-text">{c.claim_text}</span>
+            {c.valid_until && <span className="text-[12px] text-nq-subtle">até {new Date(c.valid_until).toLocaleDateString('pt-BR')}</span>}
             {isAdmin && c.status === 'UNVERIFIED' && (
               <>
-                <button onClick={() => setStatus(c, 'VERIFIED')} disabled={busy} className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-0.5 font-semibold text-white disabled:opacity-40" data-testid="verify-claim">
+                <button onClick={() => setStatus(c, 'VERIFIED')} disabled={busy} className="inline-flex items-center gap-1 rounded-full bg-nq-positive px-2 py-0.5 font-semibold text-nq-on-positive disabled:opacity-40 min-h-[44px]" data-testid="verify-claim">
                   <CheckCircle2 className="h-3 w-3" /> É verdade
                 </button>
-                <button onClick={() => setStatus(c, 'REJECTED')} disabled={busy} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-0.5 text-slate-300 disabled:opacity-40">
+                <button onClick={() => setStatus(c, 'REJECTED')} disabled={busy} className="inline-flex items-center gap-1 rounded-full border border-nq-line px-2 py-0.5 text-nq-text disabled:opacity-40 min-h-[44px]">
                   <XCircle className="h-3 w-3" /> Não é
                 </button>
               </>
@@ -256,14 +256,14 @@ export const ProductClaims: React.FC<{
         );
       })}
       {canAdd && missing.length > 0 && (
-        <div className="rounded border border-dashed border-sky-700/50 p-2 space-y-1" data-testid="claim-suggestions">
-          <div className="text-[11px] text-sky-200">Sugestões a partir da oferta (entram como “a verificar”):</div>
-          <ul className="list-disc pl-5 text-slate-300">
+        <div className="rounded border border-dashed border-nq-info/40 p-2 space-y-1" data-testid="claim-suggestions">
+          <div className="text-[12px] text-nq-info">Sugestões a partir da oferta (entram como “a verificar”):</div>
+          <ul className="list-disc pl-5 text-nq-text">
             {missing.map(m => (
               <li key={m.claim_text}>{m.claim_text}</li>
             ))}
           </ul>
-          <button onClick={() => add(missing)} disabled={busy} className="inline-flex items-center gap-1 rounded bg-sky-700 px-2.5 py-1 font-semibold text-white disabled:opacity-40" data-testid="add-suggestions">
+          <button onClick={() => add(missing)} disabled={busy} className="inline-flex items-center gap-1 rounded-full bg-sky-700 px-2.5 py-1 font-semibold text-nq-text disabled:opacity-40 min-h-[44px]" data-testid="add-suggestions">
             <ShieldCheck className="h-3.5 w-3.5" /> Adicionar as {missing.length} sugestões
           </button>
         </div>
@@ -276,9 +276,9 @@ export const ProductClaims: React.FC<{
             maxLength={500}
             onChange={e => setText(e.target.value)}
             placeholder="Ex.: 28 receitas com fotos passo a passo"
-            className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100"
+            className="flex-1 rounded-xl bg-nq-bg px-2 py-2 text-nq-text min-h-[44px]"
           />
-          <button onClick={() => add([{ claim_text: text.trim(), claim_type: 'FEATURE' }])} disabled={busy || text.trim().length < 3} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2.5 py-1 text-slate-200 disabled:opacity-40">
+          <button onClick={() => add([{ claim_text: text.trim(), claim_type: 'FEATURE' }])} disabled={busy || text.trim().length < 3} className="inline-flex items-center gap-1 rounded-full border border-nq-line px-2.5 py-1 text-nq-text disabled:opacity-40 min-h-[44px]">
             <Plus className="h-3.5 w-3.5" /> Cadastrar
           </button>
         </div>

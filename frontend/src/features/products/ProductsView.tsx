@@ -8,6 +8,7 @@ import { OfferEditor } from './OfferEditor';
 import { CatalogTrash, TrashAction } from './CatalogTrash';
 import { ViewModeSelector, useViewMode, containerClass, isIconMode, IconTile } from '../../components/ViewModes';
 import { COLLECTION_COVERS, READY_BOOKS } from '../public/bookPages';
+import { StatusPill, Tone } from '../../components/ui/premium';
 
 // NORQVA-0062: opções de exibição da tela Produtos, como na tela Criativos
 type Situation = 'ALL' | 'SELLING' | 'TESTING' | 'OFF';
@@ -62,10 +63,12 @@ interface Props {
 
 const money = (v: any) => `R$${parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const STATUS_CLS: Record<string, string> = {
-  ATIVA: 'bg-emerald-950/60 border border-emerald-500/30 text-emerald-400',
-  TESTE: 'bg-cyan-950/60 border border-cyan-500/30 text-cyan-400',
-  PAUSADA: 'bg-amber-950/60 border border-amber-500/30 text-amber-400'
+const OFFER_STATUS: Record<string, { label: string; tone: Tone }> = {
+  ATIVA: { label: 'Ativa', tone: 'positive' },
+  TESTE: { label: 'Em teste', tone: 'info' },
+  PAUSADA: { label: 'Pausada', tone: 'attention' },
+  RASCUNHO: { label: 'Rascunho', tone: 'neutral' },
+  ARQUIVADA: { label: 'Arquivada', tone: 'neutral' }
 };
 
 
@@ -130,18 +133,18 @@ export const OfferCosts: React.FC<{
     }
   };
 
-  if (!loaded) return <p className="text-[11px] text-slate-500">Carregando custos…</p>;
-  if (loadFailed) return <p className="text-[11px] text-red-300" data-testid="offer-costs-error">Não foi possível ler os custos desta oferta agora. Nada foi alterado; tente de novo.</p>;
+  if (!loaded) return <p className="text-[12px] text-nq-subtle">Carregando custos…</p>;
+  if (loadFailed) return <p className="text-[12px] text-nq-critical-text" data-testid="offer-costs-error">Não foi possível ler os custos desta oferta agora. Nada foi alterado; tente de novo.</p>;
   const field = (label: string, key: keyof typeof form, hint: string) => (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] text-slate-400">{label}</span>
-      <input aria-label={label} inputMode="decimal" value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-slate-100" />
-      <span className="text-[10px] text-slate-500">{hint}</span>
+      <span className="text-[12px] text-nq-muted">{label}</span>
+      <input aria-label={label} inputMode="decimal" value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} className="rounded-xl bg-nq-bg px-3 py-2 text-nq-body text-nq-text min-h-[44px]" />
+      <span className="text-[12px] text-nq-subtle">{hint}</span>
     </label>
   );
   return (
-    <div className="space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2 text-xs" data-testid="offer-costs">
-      {!configured && <p className="text-amber-300 text-[11px]">Custos ainda não cadastrados: o sistema não sabe o equilíbrio desta oferta.</p>}
+    <div className="space-y-3 rounded-xl bg-nq-surface p-3 text-nq-aux" data-testid="offer-costs">
+      {!configured && <p className="text-nq-attention text-[12px]">Custos ainda não cadastrados: o sistema não sabe o equilíbrio desta oferta.</p>}
       <div className="grid grid-cols-2 gap-2">
         {field('Imposto (%)', 'tax', 'sobre o preço')}
         {field('Tarifa fixa do gateway (R$)', 'fixed', 'Asaas Pix: 1,99')}
@@ -150,7 +153,7 @@ export const OfferCosts: React.FC<{
         {field('Margem desejada (%)', 'margin', 'só referência')}
       </div>
       {bumpStats && (
-        <p className="text-[11px] text-slate-400" data-testid="offer-bump-stats">
+        <p className="text-[12px] text-nq-muted" data-testid="offer-bump-stats">
           Adicional: R$ {bumpStats.avg_bump.toFixed(2).replace('.', ',')} por pedido em {bumpStats.orders} pedido(s) pagos.{' '}
           {bumpStats.orders >= bumpStats.min_orders
             ? 'Já entra no equilíbrio do produto.'
@@ -158,14 +161,14 @@ export const OfferCosts: React.FC<{
         </p>
       )}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-slate-300" data-testid="offer-breakeven">
+        <span className="text-nq-text" data-testid="offer-breakeven">
           {breakeven === null
             ? 'Preencha os campos com números.'
             : breakeven <= 0
               ? `Os custos (R$ ${costPerSale!.toFixed(2).replace('.', ',')}) já passam do preço: cada venda dá prejuízo antes do anúncio.`
               : `Equilíbrio: R$ ${breakeven.toFixed(2).replace('.', ',')} por venda (custos R$ ${costPerSale!.toFixed(2).replace('.', ',')})`}
         </span>
-        <button onClick={save} disabled={busy || !valid || breakeven === null} className="rounded bg-emerald-600 px-2.5 py-1 font-semibold text-white disabled:opacity-40" data-testid="save-offer-costs">
+        <button onClick={save} disabled={busy || !valid || breakeven === null} className="shrink-0 rounded-full bg-nq-positive px-4 font-semibold text-nq-on-positive disabled:opacity-40 min-h-[44px]" data-testid="save-offer-costs">
           Salvar custos
         </button>
       </div>
@@ -195,100 +198,105 @@ export const OfferCard: React.FC<{
   const hasPromo = off.promotional_price !== null && off.promotional_price !== undefined && String(off.promotional_price).trim() !== '' && parseFloat(off.promotional_price) > 0;
   const isCheckoutEligible = off.status === 'TESTE' || off.status === 'ATIVA';
   const statusBtn = (label: string, next: string, cls: string) => (
-    <button onClick={() => onUpdateOfferStatus(off.id, next)} className={`flex-1 py-1 px-2 rounded text-[11px] font-mono font-semibold transition text-center ${cls}`}>
+    <button onClick={() => onUpdateOfferStatus(off.id, next)} className={`flex-1 px-3 rounded-full text-nq-aux font-semibold transition text-center ${cls} min-h-[44px]`}>
       {label}
     </button>
   );
   return (
-    <div className="p-3 border border-slate-800 bg-slate-950/40 rounded space-y-3" data-testid="offer-card">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-emerald-400 font-bold text-xs">{off.human_id}</span>
-        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${STATUS_CLS[off.status] || 'bg-slate-800 text-slate-400'}`}>{off.status}</span>
+    <div className="p-3 bg-nq-bg rounded-xl space-y-3" data-testid="offer-card">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-nq-caption text-nq-subtle">{off.human_id}</span>
+        <StatusPill tone={OFFER_STATUS[off.status]?.tone || 'neutral'}>{OFFER_STATUS[off.status]?.label || off.status}</StatusPill>
       </div>
       <div>
-        <div className="font-bold text-slate-200">{off.name}</div>
+        <div className="text-nq-body font-semibold text-nq-text">{off.name}</div>
         <div className="mt-1 flex items-baseline gap-2">
           {hasPromo ? (
             <>
-              <span className="text-lg font-bold font-mono text-emerald-400">{money(off.promotional_price)}</span>
-              <span className="text-xs line-through text-slate-500 font-mono">{money(off.price)}</span>
+              <span className="text-[20px] leading-7 font-semibold tabular-nums text-nq-text">{money(off.promotional_price)}</span>
+              <span className="text-nq-aux line-through text-nq-subtle">{money(off.price)}</span>
             </>
           ) : (
-            <span className="text-lg font-bold font-mono text-emerald-400">{money(off.price)}</span>
+            <span className="text-[20px] leading-7 font-semibold tabular-nums text-nq-text">{money(off.price)}</span>
           )}
         </div>
-        {off.description && <p className="text-xs text-slate-300 mt-1 line-clamp-2">{off.description}</p>}
-        <div className="text-[11px] text-slate-400 font-mono mt-1">
+        {off.description && <p className="text-nq-aux text-nq-muted mt-1 line-clamp-2">{off.description}</p>}
+        <div className="text-[12px] text-nq-muted mt-1">
           Bônus: {off.bonus || 'Nenhum'}
           {off.upsell ? ` · Upsell: ${off.upsell}` : ''}
           {off.cross_sell ? ` · Cross: ${off.cross_sell}` : ''}
         </div>
       </div>
 
-      {canEdit && editor && !editing && off.status !== 'ARQUIVADA' && (
-        <button
-          onClick={() => setEditing(true)}
-          data-testid="edit-offer"
-          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
-        >
-          Editar oferta
-        </button>
-      )}
+      <div className="grid grid-cols-2 gap-2">
+        {canEdit && editor && !editing && off.status !== 'ARQUIVADA' && (
+          <button
+            onClick={() => setEditing(true)}
+            data-testid="edit-offer"
+            className="w-full px-3 py-2 leading-tight rounded-full bg-nq-raised hover:brightness-110 text-nq-text text-nq-aux font-medium transition min-h-[44px]"
+          >
+            Editar oferta
+          </button>
+        )}
+
+        {isAdmin && costs && (
+          <button
+            onClick={() => setShowCosts(!showCosts)}
+            data-testid="toggle-offer-costs"
+            aria-expanded={showCosts}
+            className="w-full px-3 py-2 leading-tight rounded-full bg-nq-raised hover:brightness-110 text-nq-text text-nq-aux font-medium transition min-h-[44px]"
+          >
+            Custos e equilíbrio
+          </button>
+        )}
+
+        {isAdmin && bumpConfig && (
+          <button
+            onClick={() => setShowBump(!showBump)}
+            data-testid="toggle-offer-bump"
+            aria-expanded={showBump}
+            className="w-full px-3 py-2 leading-tight rounded-full bg-nq-raised hover:brightness-110 text-nq-text text-nq-aux font-medium transition min-h-[44px]"
+          >
+            Adicional no Pix
+          </button>
+        )}
+
+        {isAdmin && deliveryFiles && (
+          <button
+            onClick={() => setShowFiles(!showFiles)}
+            data-testid="toggle-delivery-files"
+            aria-expanded={showFiles}
+            className="w-full px-3 py-2 leading-tight rounded-full bg-nq-raised hover:brightness-110 text-nq-text text-nq-aux font-medium transition min-h-[44px]"
+          >
+            PDF entregue ao comprador
+          </button>
+        )}
+
+        {isAdmin && (
+          <button
+            onClick={() => onManageAssets(off)}
+            className="w-full px-3 py-2 leading-tight rounded-full bg-nq-raised hover:brightness-110 text-nq-text text-nq-aux font-medium transition flex items-center justify-center gap-1.5 min-h-[44px]"
+          >
+            <Package aria-hidden="true" className="h-4 w-4 text-nq-muted" /> Arquivos de entrega
+          </button>
+        )}
+      </div>
       {canEdit && editor && editing && editor(() => setEditing(false))}
-
-      {isAdmin && costs && (
-        <button
-          onClick={() => setShowCosts(!showCosts)}
-          data-testid="toggle-offer-costs"
-          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
-        >
-          Custos e equilíbrio
-        </button>
-      )}
       {isAdmin && showCosts && costs}
-
-      {isAdmin && bumpConfig && (
-        <button
-          onClick={() => setShowBump(!showBump)}
-          data-testid="toggle-offer-bump"
-          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
-        >
-          Adicional no Pix
-        </button>
-      )}
       {isAdmin && showBump && bumpConfig}
-
-      {isAdmin && deliveryFiles && (
-        <button
-          onClick={() => setShowFiles(!showFiles)}
-          data-testid="toggle-delivery-files"
-          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition"
-        >
-          PDF entregue ao comprador
-        </button>
-      )}
       {isAdmin && showFiles && deliveryFiles}
 
-      {isAdmin && (
-        <button
-          onClick={() => onManageAssets(off)}
-          className="w-full py-1 px-2 rounded bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 text-slate-300 text-[11px] font-mono transition flex items-center justify-center gap-1.5"
-        >
-          <Package className="h-3.5 w-3.5 text-emerald-400" /> Arquivos de entrega
-        </button>
-      )}
-
       {canEdit && (
-        <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60" data-testid="offer-status-actions">
-          {off.status === 'RASCUNHO' && statusBtn('Ativar para teste', 'TESTE', 'bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-900/40')}
+        <div className="flex items-center gap-2 pt-3 border-t border-nq-line/60" data-testid="offer-status-actions">
+          {off.status === 'RASCUNHO' && statusBtn('Ativar para teste', 'TESTE', 'bg-nq-info/15 text-nq-info hover:bg-nq-info/25')}
           {off.status === 'TESTE' && (
             <>
-              {statusBtn('Ativar oferta', 'ATIVA', 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40')}
-              {statusBtn('Pausar', 'PAUSADA', 'bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700')}
+              {statusBtn('Ativar oferta', 'ATIVA', 'bg-nq-positive/15 text-nq-positive-text hover:bg-nq-positive/25')}
+              {statusBtn('Pausar', 'PAUSADA', 'bg-nq-raised text-nq-muted hover:brightness-110')}
             </>
           )}
-          {off.status === 'ATIVA' && statusBtn('Pausar oferta', 'PAUSADA', 'bg-amber-950/40 border border-amber-500/30 text-amber-400 hover:bg-amber-900/40')}
-          {off.status === 'PAUSADA' && statusBtn('Reativar', 'ATIVA', 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40')}
+          {off.status === 'ATIVA' && statusBtn('Pausar oferta', 'PAUSADA', 'bg-nq-attention/15 text-nq-attention hover:bg-nq-attention/25')}
+          {off.status === 'PAUSADA' && statusBtn('Reativar', 'ATIVA', 'bg-nq-positive/15 text-nq-positive-text hover:bg-nq-positive/25')}
         </div>
       )}
 
@@ -297,17 +305,27 @@ export const OfferCard: React.FC<{
       {isCheckoutEligible ? (
         <button
           onClick={() => onCheckout(off)}
-          className="w-full py-1.5 px-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5"
+          className="w-full px-3 rounded-full bg-nq-positive text-nq-on-positive hover:brightness-110 text-nq-aux font-semibold transition flex items-center justify-center gap-1.5 min-h-[44px]"
         >
           <ShoppingCart className="h-3.5 w-3.5" /> Checkout da oferta
         </button>
       ) : (
-        <div className="w-full py-1.5 px-3 rounded bg-slate-950/60 border border-slate-850 text-slate-500 text-[11px] font-mono text-center" title="Checkout só com a oferta em TESTE ou ATIVA">
-          Checkout indisponível ({off.status})
+        <div className="w-full py-2 px-3 rounded-full bg-nq-raised/60 text-nq-subtle text-nq-caption text-center" title="Checkout só com a oferta em teste ou ativa">
+          Checkout indisponível ({OFFER_STATUS[off.status]?.label.toLowerCase() || off.status})
         </div>
       )}
     </div>
   );
+};
+
+const PRODUCT_STATUS: Record<string, { label: string; tone: Tone }> = {
+  PLANEJADO: { label: 'Planejado', tone: 'neutral' },
+  EM_DESENVOLVIMENTO: { label: 'Em desenvolvimento', tone: 'info' },
+  REVISAO: { label: 'Em revisão', tone: 'attention' },
+  PRONTO: { label: 'Pronto', tone: 'positive' },
+  ATIVO: { label: 'Ativo', tone: 'positive' },
+  PAUSADO: { label: 'Pausado', tone: 'neutral' },
+  ARQUIVADO: { label: 'Arquivado', tone: 'neutral' }
 };
 
 export const ProductsView: React.FC<Props> = ({
@@ -357,7 +375,7 @@ export const ProductsView: React.FC<Props> = ({
   const offerTrash = (off: any) => {
     if (!isAdmin || isDemoView) return null;
     if (off.status === 'ATIVA' || off.status === 'TESTE') {
-      return <p className="text-[10px] text-slate-500 text-center" data-testid="delete-offer-hint">Para excluir, pause a oferta antes.</p>;
+      return <p className="text-[12px] text-nq-subtle text-center" data-testid="delete-offer-hint">Para excluir, pause a oferta antes.</p>;
     }
     return <TrashAction kind="offer" action={off.status === 'ARQUIVADA' ? 'restore' : 'delete'} item={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={afterTrash} />;
   };
@@ -433,14 +451,14 @@ export const ProductsView: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-6 text-sm" data-testid="products-view">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-200">Produtos</h2>
-          <p className="text-xs text-slate-400">Cada produto com as ofertas dele, os arquivos de entrega, o checkout de teste e a marca.</p>
+    <div className="space-y-5 text-nq-aux" data-testid="products-view">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[28px] leading-[34px] font-semibold tracking-tight text-nq-text">Produtos</h1>
+          <p className="mt-1 text-nq-aux text-nq-muted">Cada produto com as ofertas dele, os arquivos de entrega, o checkout de teste e a marca.</p>
         </div>
         {canEdit && (
-          <button onClick={onAddProduct} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-slate-950 font-bold rounded hover:bg-emerald-400 transition">
+          <button onClick={onAddProduct} className="shrink-0 whitespace-nowrap flex items-center gap-1.5 px-4 bg-nq-positive text-nq-on-positive font-semibold rounded-full hover:brightness-110 transition min-h-[44px]">
             <Plus className="h-4 w-4" /> Novo produto
           </button>
         )}
@@ -450,12 +468,12 @@ export const ProductsView: React.FC<Props> = ({
       {isAdmin && !isDemoView && <CatalogTrash apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onChanged={onProductsChanged} reloadKey={trashKey} />}
 
       {products.length === 0 && (
-        <div className="p-12 border border-slate-800 rounded bg-slate-900/20 text-center text-slate-500 font-mono">Nenhum produto cadastrado.</div>
+        <div className="p-12 rounded-nq bg-nq-surface text-center text-nq-subtle">Nenhum produto cadastrado.</div>
       )}
 
       {products.length > 0 && (
-        <div className="space-y-2 text-xs" data-testid="product-filters">
-          <div className="flex flex-wrap items-center gap-2 font-mono">
+        <div className="space-y-2 text-nq-aux" data-testid="product-filters">
+          <div className="-mx-4 px-4 lg:mx-0 lg:px-0 flex items-center gap-2 overflow-x-auto no-scrollbar">
             {(['ALL', 'SELLING', 'TESTING', 'OFF'] as Situation[]).map(k => (
               <button
                 key={k}
@@ -463,12 +481,12 @@ export const ProductsView: React.FC<Props> = ({
                 onClick={() => setSituation(k)}
                 aria-pressed={situation === k}
                 data-testid={`situation-${k}`}
-                className={`px-2.5 py-1 rounded border ${situation === k ? 'bg-sky-500 text-slate-950 border-sky-500' : 'border-slate-700 text-slate-300'}`}
+                className={`shrink-0 px-4 rounded-full border text-nq-aux font-medium ${situation === k ? 'bg-nq-text text-nq-bg border-nq-text' : 'bg-nq-surface border-transparent text-nq-muted'} min-h-[44px]`}
               >
                 {SITUATION_LABEL[k]} ({situationCounts[k]})
               </button>
             ))}
-            <label className="flex items-center gap-1.5 ml-1 text-slate-300 cursor-pointer">
+            <label className="shrink-0 flex min-h-[44px] items-center gap-2 ml-1 text-nq-muted cursor-pointer whitespace-nowrap">
               <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} aria-label="Exibir arquivados" data-testid="show-archived" />
               Exibir arquivados ({archivedCount})
             </label>
@@ -479,7 +497,7 @@ export const ProductsView: React.FC<Props> = ({
               data-testid="product-name-filter"
               value={effProduct}
               onChange={e => setProductFilter(e.target.value)}
-              className="max-w-[18rem] bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+              className="min-w-0 flex-1 sm:flex-none sm:max-w-[18rem] bg-nq-surface text-nq-text px-3 py-2 rounded-xl min-h-[44px]"
             >
               <option value="ALL">Procurar pelo nome do produto</option>
               {[...products]
@@ -496,7 +514,7 @@ export const ProductsView: React.FC<Props> = ({
                 data-testid="brand-filter"
                 value={effBrand}
                 onChange={e => setBrandFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-700 text-slate-200 px-2 py-1 rounded"
+                className="bg-nq-surface text-nq-text px-3 py-2 rounded-xl min-h-[44px]"
               >
                 <option value="ALL">Todas as marcas</option>
                 {brands.map(b => (
@@ -515,7 +533,7 @@ export const ProductsView: React.FC<Props> = ({
       )}
 
       {products.length > 0 && visibleProducts.length === 0 && (
-        <p className="text-sm text-slate-400" data-testid="products-none">Nenhum produto com esse filtro.</p>
+        <p className="text-sm text-nq-muted" data-testid="products-none">Nenhum produto com esse filtro.</p>
       )}
 
       <div className={containerClass(viewMode)} data-testid="products-container">
@@ -540,96 +558,104 @@ export const ProductsView: React.FC<Props> = ({
             <section
               key={prd.id}
               id={`product-card-${prd.id}`}
-              className={`border border-slate-800 bg-slate-900/30 rounded ${focusId === String(prd.id) ? 'ring-2 ring-emerald-500' : ''}`}
+              className={`bg-nq-surface rounded-nq overflow-hidden ${focusId === String(prd.id) ? 'ring-2 ring-nq-positive' : ''}`}
               data-testid="product-card"
             >
-              <div className={viewMode === 'list' ? 'p-4 grid gap-4 md:grid-cols-[1fr_18rem]' : 'p-4 grid gap-4'}>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-emerald-400 font-bold text-xs">{prd.human_id}</span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                        prd.status === 'PRONTO' || prd.status === 'ATIVO' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {prd.status}
-                    </span>
+              <div className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-nq-body font-semibold text-nq-text break-words">{prd.name}</h3>
+                    <div className="text-nq-caption text-nq-subtle">
+                      {prd.human_id}
+                      {prd.category ? ` · ${prd.category}` : ''}
+                      {prd.brand_id && brandName(prd.brand_id) ? ` · ${brandName(prd.brand_id)}` : ''}
+                    </div>
                   </div>
-                  <h3 className="text-md font-bold text-slate-200 mt-1">{prd.name}</h3>
-                  <div className="text-xs text-slate-400 font-mono">{prd.category}</div>
-                  <p className="text-xs text-slate-300 mt-1 line-clamp-2">{prd.description}</p>
+                  <span className="shrink-0">
+                    <StatusPill tone={PRODUCT_STATUS[prd.status]?.tone || 'neutral'}>{PRODUCT_STATUS[prd.status]?.label || prd.status}</StatusPill>
+                  </span>
                 </div>
-                <div className="space-y-2 text-xs">
-                  <div className="p-2.5 rounded bg-slate-950/60 border border-slate-850 space-y-1">
-                    <div className="text-[10px] font-mono text-slate-500 uppercase font-bold">Procedência</div>
-                    {prd.origin_provenance ? (
-                      <>
-                        <div className="text-slate-300">
-                          Origem: <span className="font-mono text-emerald-400 font-semibold">{prd.origin_provenance}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-mono">Evidência: {prd.origin_evidence}</div>
-                      </>
-                    ) : (
-                      <div className="text-red-400/80 italic font-mono text-[10px] flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" /> Procedência ausente: o status PRONTO fica bloqueado.
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2" data-testid="product-brand">
-                    <Tag className="h-3.5 w-3.5 text-slate-500" />
-                    {isAdmin ? (
-                      <select
-                        aria-label={`Marca de ${prd.name}`}
-                        value={prd.brand_id || ''}
-                        onChange={e => {
-                          const b = brands.find(x => String(x.id) === e.target.value);
-                          if (b) setBrandChange({ product: prd, brand: b });
-                        }}
-                        className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100"
-                      >
-                        <option value="" disabled>
-                          Sem marca
-                        </option>
-                        {brands.map(b => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
+                {prd.description && <p className="text-nq-aux text-nq-muted line-clamp-2">{prd.description}</p>}
+                {!prd.origin_provenance && (
+                  <p className="text-nq-caption text-nq-attention flex items-center gap-1.5">
+                    <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> Procedência ausente: o status PRONTO fica bloqueado.
+                  </p>
+                )}
+                <details className="group rounded-xl bg-nq-raised/60" data-testid="product-manage">
+                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 px-3 text-nq-aux font-medium text-nq-text">
+                    Gerenciar produto
+                    <ChevronDown aria-hidden="true" className="h-4 w-4 text-nq-subtle transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-3 px-3 pb-3 text-nq-aux">
+                    <div className="space-y-0.5">
+                      <div className="text-nq-caption text-nq-muted">Procedência</div>
+                      {prd.origin_provenance ? (
+                        <>
+                          <div className="text-nq-text">
+                            Origem: <span className="font-semibold">{prd.origin_provenance}</span>
+                          </div>
+                          <div className="text-nq-caption text-nq-muted">Evidência: {prd.origin_evidence}</div>
+                        </>
+                      ) : (
+                        <div className="text-nq-caption text-nq-muted">Não informada.</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2" data-testid="product-brand">
+                      <Tag aria-hidden="true" className="h-4 w-4 text-nq-subtle" />
+                      {isAdmin ? (
+                        <select
+                          aria-label={`Marca de ${prd.name}`}
+                          value={prd.brand_id || ''}
+                          onChange={e => {
+                            const b = brands.find(x => String(x.id) === e.target.value);
+                            if (b) setBrandChange({ product: prd, brand: b });
+                          }}
+                          className="flex-1 rounded-xl bg-nq-bg px-3 py-2 text-nq-body text-nq-text min-h-[44px]"
+                        >
+                          <option value="" disabled>
+                            Sem marca
                           </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-slate-400">{prd.brand_id ? brandName(prd.brand_id) || 'Marca definida' : 'Sem marca'}</span>
+                          {brands.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-nq-muted">{prd.brand_id ? brandName(prd.brand_id) || 'Marca definida' : 'Sem marca'}</span>
+                      )}
+                    </div>
+                    {canEdit && (
+                      <button onClick={() => onEditProduct(prd)} className="w-full px-4 rounded-full bg-nq-bg text-nq-text hover:brightness-125 font-semibold transition min-h-[44px]">
+                        Editar produto (nome, situação e procedência)
+                      </button>
+                    )}
+                    {isAdmin && !isDemoView && (
+                      <TrashAction kind="product" action={prd.status === 'ARQUIVADO' ? 'restore' : 'delete'} item={prd} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={afterTrash} />
                     )}
                   </div>
-                  {canEdit && (
-                    <button onClick={() => onEditProduct(prd)} className="w-full px-3 py-1.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold transition">
-                      Editar produto (nome, situação e procedência)
-                    </button>
-                  )}
-                  {isAdmin && !isDemoView && (
-                    <TrashAction kind="product" action={prd.status === 'ARQUIVADO' ? 'restore' : 'delete'} item={prd} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={afterTrash} />
-                  )}
-                </div>
+                </details>
               </div>
 
               {brandChange && brandChange.product.id === prd.id && (
-                <div role="dialog" aria-label="Confirmar marca" className="mx-4 mb-3 rounded border border-amber-600/50 bg-amber-950/20 p-3 text-xs text-amber-100 space-y-2" data-testid="confirm-brand">
+                <div role="dialog" aria-label="Confirmar marca" className="mx-4 mb-3 rounded-xl bg-nq-attention/10 p-3 text-nq-aux text-nq-attention space-y-2" data-testid="confirm-brand">
                   <p>
                     Ligar <strong>{prd.name}</strong> à marca <strong>{brandChange.brand.name}</strong>? Se a marca tiver o roteamento de pixel ligado, as vendas deste
                     produto passam a ser contadas no pixel dela.
                   </p>
                   <div className="flex gap-2">
-                    <button onClick={confirmBrand} className="px-3 py-1.5 rounded bg-emerald-600 text-white font-bold">
+                    <button onClick={confirmBrand} className="px-3 py-1.5 rounded-full bg-nq-positive text-nq-on-positive font-bold min-h-[44px]">
                       Confirmar
                     </button>
-                    <button onClick={() => setBrandChange(null)} className="px-3 py-1.5 rounded border border-slate-700 text-slate-300">
+                    <button onClick={() => setBrandChange(null)} className="px-4 rounded-full bg-nq-raised text-nq-text min-h-[44px]">
                       Cancelar
                     </button>
                   </div>
                 </div>
               )}
 
-              <div className="border-t border-slate-800">
-                <button onClick={() => toggleClaims(String(prd.id))} className="flex items-center gap-1 px-4 py-2 text-xs font-semibold text-slate-300" data-testid="toggle-claims">
+              <div className="border-t border-nq-line/60">
+                <button onClick={() => toggleClaims(String(prd.id))} className="flex items-center gap-1 px-4 py-2 text-nq-aux font-semibold text-nq-text min-h-[44px]" data-testid="toggle-claims">
                   {openClaims.has(String(prd.id)) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />} Promessas
                 </button>
                 {openClaims.has(String(prd.id)) && (
@@ -637,20 +663,20 @@ export const ProductsView: React.FC<Props> = ({
                 )}
               </div>
 
-              <div className="border-t border-slate-800">
+              <div className="border-t border-nq-line/60">
                 <div className="flex items-center justify-between px-4 py-2">
-                  <button onClick={() => toggle(String(prd.id))} className="flex items-center gap-1 text-xs font-semibold text-slate-300" data-testid="toggle-offers">
+                  <button onClick={() => toggle(String(prd.id))} className="flex items-center gap-1 text-nq-aux font-semibold text-nq-text min-h-[44px]" data-testid="toggle-offers">
                     {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />} Ofertas ({prdOffers.length})
                   </button>
                   {canEdit && (
-                    <button onClick={() => onAddOffer(String(prd.id))} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300" data-testid="add-offer">
+                    <button onClick={() => onAddOffer(String(prd.id))} className="inline-flex items-center gap-1 text-nq-aux font-semibold text-nq-positive-text hover:text-nq-positive-text min-h-[44px]" data-testid="add-offer">
                       <Plus className="h-3.5 w-3.5" /> Nova oferta
                     </button>
                   )}
                 </div>
                 {isOpen && (
                   <div className={viewMode === 'list' ? 'grid gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3' : 'grid gap-3 px-4 pb-4'} data-testid="product-offers">
-                    {prdOffers.length === 0 && <p className="text-xs text-slate-500">Nenhuma oferta para este produto.</p>}
+                    {prdOffers.length === 0 && <p className="text-xs text-nq-subtle">Nenhuma oferta para este produto.</p>}
                     {prdOffers.map(off => (
                       <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} editor={close => <OfferEditor off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onSaved={onProductsChanged} onClose={close} />} trash={offerTrash(off)} />
                     ))}
@@ -664,7 +690,7 @@ export const ProductsView: React.FC<Props> = ({
 
       {orphanOffers.length > 0 && (
         <section className="space-y-2" data-testid="orphan-offers">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ofertas de produtos fora desta lista</h3>
+          <h3 className="text-xs font-semibold text-nq-muted">Ofertas de produtos fora desta lista</h3>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {orphanOffers.map(off => (
               <OfferCard key={off.id} off={off} canEdit={canEdit} isAdmin={isAdmin} onCheckout={onCheckout} onUpdateOfferStatus={onUpdateOfferStatus} onManageAssets={setAssetOffer} costs={isAdmin ? <OfferCosts off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} bumpConfig={isAdmin ? <OfferBumpConfig off={off} offers={offers} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} deliveryFiles={isAdmin ? <DeliveryFiles off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} /> : null} editor={close => <OfferEditor off={off} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onSaved={onProductsChanged} onClose={close} />} trash={offerTrash(off)} />

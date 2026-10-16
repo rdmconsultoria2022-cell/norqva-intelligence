@@ -28,11 +28,11 @@ export const TrashAction: React.FC<{
         type="button"
         onClick={() => setOpen(true)}
         data-testid={tid}
-        className={`w-full py-1 px-2 rounded text-[11px] font-mono transition flex items-center justify-center gap-1.5 ${
+        className={`w-full py-1 px-2 rounded-full text-[12px] transition flex items-center justify-center gap-1.5 ${
           action === 'delete'
-            ? 'border border-red-900/60 text-red-300 hover:bg-red-950/30'
-            : 'border border-emerald-800/60 text-emerald-300 hover:bg-emerald-950/30'
-        }`}
+            ? 'border border-nq-critical/40 text-nq-critical-text hover:bg-nq-critical/10'
+            : 'border border-nq-positive/40 text-nq-positive-text hover:bg-nq-positive/10'
+        } min-h-[44px]`}
       >
         {action === 'delete' ? <Trash2 className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />} {label}
       </button>
@@ -67,7 +67,7 @@ export const TrashAction: React.FC<{
   };
 
   return (
-    <div role="dialog" aria-label={label} className="rounded border border-amber-700/50 bg-amber-950/20 p-2 space-y-2 text-xs text-amber-100" data-testid={`${tid}-confirm`}>
+    <div role="dialog" aria-label={label} className="rounded border border-nq-attention/40 bg-nq-attention/10 p-2 space-y-2 text-xs text-nq-attention" data-testid={`${tid}-confirm`}>
       <p>
         {action === 'delete'
           ? kind === 'creative'
@@ -76,19 +76,19 @@ export const TrashAction: React.FC<{
           : kind === 'creative'
             ? `${item.human_id} volta com todas as versões, no mesmo estado de aprovação.`
             : `${item.human_id} volta pausado(a), sem vender sozinho.`}{' '}
-        Digite <strong className="font-mono">{item.human_id}</strong> para confirmar.
+        Digite <strong className="">{item.human_id}</strong> para confirmar.
       </p>
       <input
         aria-label={`Código para ${label.toLowerCase()} ${item.human_id}`}
         value={code}
         onChange={e => setCode(e.target.value)}
-        className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-slate-100"
+        className="w-full rounded-xl bg-nq-bg px-2 py-2 text-nq-text min-h-[44px]"
       />
       <div className="flex gap-2">
-        <button type="button" onClick={go} disabled={!ok || busy} className="px-3 py-1 rounded bg-amber-600 text-white font-bold disabled:opacity-40" data-testid={`${tid}-go`}>
+        <button type="button" onClick={go} disabled={!ok || busy} className="px-3 py-1 rounded-full bg-amber-600 text-nq-text font-bold disabled:opacity-40 min-h-[44px]" data-testid={`${tid}-go`}>
           {busy ? 'Aguarde…' : label}
         </button>
-        <button type="button" onClick={() => { setOpen(false); setCode(''); }} className="px-3 py-1 rounded border border-slate-700 text-slate-300">
+        <button type="button" onClick={() => { setOpen(false); setCode(''); }} className="px-3 py-1 rounded-full border border-nq-line text-nq-text min-h-[44px]">
           Cancelar
         </button>
       </div>
@@ -129,29 +129,29 @@ export const CatalogTrash: React.FC<{
   const when = (d: string) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
   return (
-    <section className="rounded border border-slate-800 bg-slate-900/30 p-3 text-xs" data-testid="catalog-trash">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1.5 font-semibold text-slate-300" data-testid="toggle-trash">
-        <Trash2 className="h-4 w-4 text-slate-400" /> Lixeira ({total})
+    <section className="rounded-nq bg-nq-surface p-3 text-xs" data-testid="catalog-trash">
+      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1.5 font-semibold text-nq-text min-h-[44px]" data-testid="toggle-trash">
+        <Trash2 className="h-4 w-4 text-nq-muted" /> Lixeira ({total})
       </button>
       {open && (
         <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {data.products.map(p => (
-            <div key={p.id} className="rounded border border-slate-800 p-2 space-y-1.5" data-testid="trash-product">
-              <div className="font-mono text-emerald-400 font-bold">{p.human_id} · produto</div>
-              <div className="text-slate-200">{p.name}</div>
-              <div className="text-[10px] text-slate-500">Excluído em {when(p.deleted_at)}{p.deleted_by_name ? ` por ${p.deleted_by_name}` : ''}</div>
+            <div key={p.id} className="rounded border border-nq-line p-2 space-y-1.5" data-testid="trash-product">
+              <div className="text-nq-positive-text font-bold">{p.human_id} · produto</div>
+              <div className="text-nq-text">{p.name}</div>
+              <div className="text-[12px] text-nq-subtle">Excluído em {when(p.deleted_at)}{p.deleted_by_name ? ` por ${p.deleted_by_name}` : ''}</div>
               <TrashAction kind="product" action="restore" item={p} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={done} />
             </div>
           ))}
           {data.offers.map(o => (
-            <div key={o.id} className="rounded border border-slate-800 p-2 space-y-1.5" data-testid="trash-offer">
-              <div className="font-mono text-emerald-400 font-bold">{o.human_id} · oferta</div>
-              <div className="text-slate-200">{o.name}</div>
-              <div className="text-[10px] text-slate-500">
+            <div key={o.id} className="rounded border border-nq-line p-2 space-y-1.5" data-testid="trash-offer">
+              <div className="text-nq-positive-text font-bold">{o.human_id} · oferta</div>
+              <div className="text-nq-text">{o.name}</div>
+              <div className="text-[12px] text-nq-subtle">
                 {o.product_name} · excluída em {when(o.deleted_at)}{o.deleted_by_name ? ` por ${o.deleted_by_name}` : ''}
               </div>
               {o.product_deleted ? (
-                <div className="text-[10px] text-amber-300">Restaure antes o produto.</div>
+                <div className="text-[12px] text-nq-attention">Restaure antes o produto.</div>
               ) : (
                 <TrashAction kind="offer" action="restore" item={o} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onDone={done} />
               )}

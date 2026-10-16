@@ -873,16 +873,16 @@ export default function App() {
 
       {/* Modal Add Product */}
       {showAddProduct && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Planejar Novo Produto</h3>
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Planejar Novo Produto</h3>
             <form onSubmit={handleAddProduct} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Origem / Oportunidade (Opcional)</label>
+                <label className="block text-xs text-nq-muted mb-1">Origem / Oportunidade (Opcional)</label>
                 <select
                   value={productForm.opportunity_id}
                   onChange={e => setProductForm({ ...productForm, opportunity_id: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 >
                   <option value="">Nenhuma - Produto Independente</option>
                   {opportunities.map(o => (
@@ -891,65 +891,65 @@ export default function App() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Nome do Produto</label>
+                <label className="block text-xs text-nq-muted mb-1">Nome do Produto</label>
                 <input
                   type="text"
                   required
                   value={productForm.name}
                   onChange={e => setProductForm({ ...productForm, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Categoria</label>
+                <label className="block text-xs text-nq-muted mb-1">Categoria</label>
                 <input
                   type="text"
                   required
                   value={productForm.category}
                   onChange={e => setProductForm({ ...productForm, category: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Descrição</label>
+                <label className="block text-xs text-nq-muted mb-1">Descrição</label>
                 <textarea
                   required
                   value={productForm.description}
                   onChange={e => setProductForm({ ...productForm, description: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Custo Estimado (R$)</label>
+                <label className="block text-xs text-nq-muted mb-1">Custo Estimado (R$)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={productForm.estimated_cost}
                   onChange={e => setProductForm({ ...productForm, estimated_cost: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 font-mono text-emerald-400"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-positive-text min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Observações</label>
+                <label className="block text-xs text-nq-muted mb-1">Observações</label>
                 <textarea
                   value={productForm.observations}
                   onChange={e => setProductForm({ ...productForm, observations: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddProduct(false)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Criar Produto
                 </button>
@@ -961,72 +961,72 @@ export default function App() {
 
       {/* Modal Edit Product / Update Status & Provenance */}
       {showEditProduct && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm overflow-y-auto max-h-[90vh] custom-scrollbar">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm overflow-y-auto max-h-[90vh] custom-scrollbar">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 uppercase">
+              <h3 className="text-md font-bold text-nq-positive-text">
                 Editar Produto
               </h3>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400">
+              <span className="px-2 py-0.5 rounded text-[12px] bg-nq-raised text-nq-muted">
                 {showEditProduct.human_id}
               </span>
             </div>
             <form onSubmit={handleEditProduct} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Nome do Produto</label>
+                <label className="block text-xs text-nq-muted mb-1">Nome do Produto</label>
                 <input
                   aria-label="Nome do produto"
                   required
                   value={editProductForm.name}
                   onChange={e => setEditProductForm({ ...editProductForm, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Categoria</label>
+                <label className="block text-xs text-nq-muted mb-1">Categoria</label>
                 <input
                   aria-label="Categoria do produto"
                   value={editProductForm.category}
                   onChange={e => setEditProductForm({ ...editProductForm, category: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Descrição</label>
+                <label className="block text-xs text-nq-muted mb-1">Descrição</label>
                 <textarea
                   aria-label="Descrição do produto"
                   rows={3}
                   value={editProductForm.description}
                   onChange={e => setEditProductForm({ ...editProductForm, description: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Custo estimado (R$)</label>
+                <label className="block text-xs text-nq-muted mb-1">Custo estimado (R$)</label>
                 <input
                   aria-label="Custo estimado do produto"
                   inputMode="decimal"
                   value={editProductForm.estimated_cost}
                   onChange={e => setEditProductForm({ ...editProductForm, estimated_cost: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200 font-mono"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Observações</label>
+                <label className="block text-xs text-nq-muted mb-1">Observações</label>
                 <textarea
                   aria-label="Observações do produto"
                   rows={2}
                   value={editProductForm.observations}
                   onChange={e => setEditProductForm({ ...editProductForm, observations: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Status</label>
+                <label className="block text-xs text-nq-muted mb-1">Status</label>
                 <select
                   value={editProductForm.status}
                   onChange={e => setEditProductForm({ ...editProductForm, status: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 >
                   <option value="PLANEJADO">PLANEJADO</option>
                   <option value="EM_DESENVOLVIMENTO">EM DESENVOLVIMENTO</option>
@@ -1039,17 +1039,17 @@ export default function App() {
               </div>
 
               {/* Provenance fields panel */}
-              <div className="p-3 border border-slate-800 rounded bg-slate-950/50 space-y-3">
-                <div className="text-[10px] font-mono uppercase text-slate-400 font-bold flex items-center gap-1">
-                  <FileText className="h-3.5 w-3.5 text-emerald-500" />
+              <div className="p-3 rounded bg-nq-bg space-y-3">
+                <div className="text-[12px] text-nq-muted font-bold flex items-center gap-1">
+                  <FileText className="h-3.5 w-3.5 text-nq-positive-text" />
                   Informações de Procedência (Obrigatório para PRONTO/ATIVO)
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono uppercase text-slate-500 mb-0.5">Procedência</label>
+                  <label className="block text-[12px] text-nq-subtle mb-0.5">Procedência</label>
                   <select
                     value={editProductForm.origin_provenance}
                     onChange={e => setEditProductForm({ ...editProductForm, origin_provenance: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 focus:outline-none focus:border-emerald-500 text-xs text-slate-200"
+                    className="w-full bg-nq-surface rounded-nq p-1.5 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-body text-nq-text min-h-[44px]"
                   >
                     <option value="">Selecione...</option>
                     <option value="ORIGINAL">ORIGINAL (Código proprietário)</option>
@@ -1058,11 +1058,11 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono uppercase text-slate-500 mb-0.5">Responsável pelo Origem</label>
+                  <label className="block text-[12px] text-nq-subtle mb-0.5">Responsável pelo Origem</label>
                   <select
                     value={editProductForm.origin_responsible_id}
                     onChange={e => setEditProductForm({ ...editProductForm, origin_responsible_id: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 focus:outline-none focus:border-emerald-500 text-xs text-slate-200"
+                    className="w-full bg-nq-surface rounded-nq p-1.5 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-body text-nq-text min-h-[44px]"
                   >
                     <option value="">Selecione...</option>
                     {usersList.map(u => (
@@ -1071,22 +1071,22 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono uppercase text-slate-500 mb-0.5">Evidência / Documentação de Origem</label>
+                  <label className="block text-[12px] text-nq-subtle mb-0.5">Evidência / Documentação de Origem</label>
                   <textarea
                     placeholder="Ex: Registro de patente, Link do repo Git privado, Contrato assinado..."
                     value={editProductForm.origin_evidence}
                     onChange={e => setEditProductForm({ ...editProductForm, origin_evidence: e.target.value })}
                     rows={2}
-                    className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 focus:outline-none focus:border-emerald-500 text-xs text-slate-200"
+                    className="w-full bg-nq-surface rounded-nq p-1.5 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-body text-nq-text min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono uppercase text-slate-500 mb-0.5">Notas Adicionais</label>
+                  <label className="block text-[12px] text-nq-subtle mb-0.5">Notas Adicionais</label>
                   <textarea
                     value={editProductForm.origin_notes}
                     onChange={e => setEditProductForm({ ...editProductForm, origin_notes: e.target.value })}
                     rows={1}
-                    className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 focus:outline-none focus:border-emerald-500 text-xs text-slate-200"
+                    className="w-full bg-nq-surface rounded-nq p-1.5 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-body text-nq-text min-h-[44px]"
                   />
                 </div>
               </div>
@@ -1095,13 +1095,13 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowEditProduct(null)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Salvar
                 </button>
@@ -1113,17 +1113,17 @@ export default function App() {
 
       {/* Modal Add Offer */}
       {showAddOffer && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-md w-full p-6 text-sm">
-            <h3 className="text-md font-bold tracking-widest font-mono text-emerald-400 mb-4 uppercase">Criar Oferta comercial</h3>
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm">
+            <h3 className="text-nq-section font-semibold text-nq-text mb-4">Criar Oferta comercial</h3>
             <form onSubmit={handleAddOffer} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Produto Vinculado</label>
+                <label className="block text-xs text-nq-muted mb-1">Produto Vinculado</label>
                 <select
                   required
                   value={offerFormState.product_id}
                   onChange={e => setOfferFormState({ ...offerFormState, product_id: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-text min-h-[44px]"
                 >
                   <option value="">Selecione o produto...</option>
                   {products.map(p => (
@@ -1132,75 +1132,75 @@ export default function App() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Nome da Oferta</label>
+                <label className="block text-xs text-nq-muted mb-1">Nome da Oferta</label>
                 <input
                   type="text"
                   required
                   value={offerFormState.name}
                   onChange={e => setOfferFormState({ ...offerFormState, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Preço Cheio (R$)</label>
+                  <label className="block text-xs text-nq-muted mb-1">Preço Cheio (R$)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={offerFormState.price}
                     onChange={e => setOfferFormState({ ...offerFormState, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 font-mono text-emerald-400"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-positive-text min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Preço Promocional (R$)</label>
+                  <label className="block text-xs text-nq-muted mb-1">Preço Promocional (R$)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={offerFormState.promotional_price}
                     onChange={e => setOfferFormState({ ...offerFormState, promotional_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500 font-mono text-emerald-400"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 text-nq-positive-text min-h-[44px]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Bônus</label>
+                <label className="block text-xs text-nq-muted mb-1">Bônus</label>
                 <input
                   type="text"
                   placeholder="Ex: Suporte VIP, Consultoria inclusa..."
                   value={offerFormState.bonus}
                   onChange={e => setOfferFormState({ ...offerFormState, bonus: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Descrição</label>
+                <label className="block text-xs text-nq-muted mb-1">Descrição</label>
                 <textarea
                   required
                   value={offerFormState.description}
                   onChange={e => setOfferFormState({ ...offerFormState, description: e.target.value })}
                   rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Upsell Sugerido</label>
+                  <label className="block text-xs text-nq-muted mb-1">Upsell Sugerido</label>
                   <input
                     type="text"
                     value={offerFormState.upsell}
                     onChange={e => setOfferFormState({ ...offerFormState, upsell: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono uppercase text-slate-400 mb-1">Cross-sell Sugerido</label>
+                  <label className="block text-xs text-nq-muted mb-1">Cross-sell Sugerido</label>
                   <input
                     type="text"
                     value={offerFormState.cross_sell}
                     onChange={e => setOfferFormState({ ...offerFormState, cross_sell: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-nq-bg rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-nq-positive/40 min-h-[44px]"
                   />
                 </div>
               </div>
@@ -1208,13 +1208,13 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowAddOffer(false)}
-                  className="px-4 py-2 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                  className="px-4 py-2 rounded-full bg-nq-raised text-nq-text hover:bg-nq-line font-semibold min-h-[44px]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
+                  className="px-4 py-2 rounded-full bg-nq-positive text-nq-on-positive font-bold hover:brightness-110 min-h-[44px]"
                 >
                   Criar Oferta
                 </button>
