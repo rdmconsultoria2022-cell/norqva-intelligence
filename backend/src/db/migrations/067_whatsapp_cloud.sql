@@ -29,10 +29,6 @@ CREATE TABLE IF NOT EXISTS whatsapp_cloud_accounts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- uma WABA pertence a um só ambiente (teste ou produção) e a uma só conta
-CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_cloud_accounts_waba
-  ON whatsapp_cloud_accounts (waba_id) WHERE is_deleted = FALSE;
-
 ALTER TABLE whatsapp_numbers ADD COLUMN IF NOT EXISTS provider VARCHAR(20) NOT NULL DEFAULT 'EVOLUTION'
   CHECK (provider IN ('EVOLUTION', 'META_CLOUD'));
 ALTER TABLE whatsapp_numbers ADD COLUMN IF NOT EXISTS cloud_account_id UUID REFERENCES whatsapp_cloud_accounts(id) ON DELETE SET NULL;
@@ -42,12 +38,17 @@ ALTER TABLE whatsapp_numbers ADD COLUMN IF NOT EXISTS verified_name VARCHAR(120)
 ALTER TABLE whatsapp_numbers ADD COLUMN IF NOT EXISTS quality_rating VARCHAR(20);
 ALTER TABLE whatsapp_numbers ADD COLUMN IF NOT EXISTS messaging_limit VARCHAR(40);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_numbers_phone_number_id
-  ON whatsapp_numbers (phone_number_id) WHERE phone_number_id IS NOT NULL AND is_deleted = FALSE;
-
 ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20)
-  CHECK (delivery_status IS NULL OR delivery_status IN ('BLOCKED', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'OUTSIDE_WINDOW'));
+  CHECK (delivery_status IN ('BLOCKED', 'SENT', 'DELIVERED', 'READ', 'FAILED', 'OUTSIDE_WINDOW'));
 ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS error_code VARCHAR(40);
 ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS template_name VARCHAR(120);
 
 CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_provider_id ON whatsapp_messages (provider_message_id) WHERE provider_message_id IS NOT NULL;
+
+-- Índices únicos parciais: uma WABA pertence a uma só conta e a um só ambiente, e um phone_number_id a um só número ativo.
+-- Em bloco DO: o PostgreSQL (produção e CI) executa e o pg-mem dos testes ignora (não suporta este tipo de índice).
+DO $$
+BEGIN
+  EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_cloud_accounts_waba ON whatsapp_cloud_accounts (waba_id) WHERE is_deleted = FALSE';
+  EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_numbers_phone_number_id ON whatsapp_numbers (phone_number_id) WHERE phone_number_id IS NOT NULL AND is_deleted = FALSE';
+END $$;
