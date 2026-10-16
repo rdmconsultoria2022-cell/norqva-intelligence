@@ -582,7 +582,7 @@ export const ProductsView: React.FC<Props> = ({
                   </p>
                 )}
                 <details className="group rounded-xl bg-nq-raised/60" data-testid="product-manage">
-                  <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 px-3 text-nq-aux font-medium text-nq-text">
+                  <summary className="flex min-h-[44px] cursor-pointer list-none [&::-webkit-details-marker]:hidden items-center justify-between gap-2 px-3 text-nq-aux font-medium text-nq-text">
                     Gerenciar produto
                     <ChevronDown aria-hidden="true" className="h-4 w-4 text-nq-subtle transition-transform group-open:rotate-180" />
                   </summary>
@@ -669,7 +669,7 @@ export const ProductsView: React.FC<Props> = ({
                     {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />} Ofertas ({prdOffers.length})
                   </button>
                   {canEdit && (
-                    <button onClick={() => onAddOffer(String(prd.id))} className="inline-flex items-center gap-1 text-nq-aux font-semibold text-nq-positive-text hover:text-nq-positive-text min-h-[44px]" data-testid="add-offer">
+                    <button onClick={() => onAddOffer(String(prd.id))} className="inline-flex items-center gap-1 text-nq-aux font-semibold text-nq-positive-text hover:brightness-110 min-h-[44px]" data-testid="add-offer">
                       <Plus className="h-3.5 w-3.5" /> Nova oferta
                     </button>
                   )}

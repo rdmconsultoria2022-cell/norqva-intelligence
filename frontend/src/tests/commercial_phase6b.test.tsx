@@ -730,8 +730,8 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
       const offersTab = await within(await screen.findByTestId('screen-tabs', {}, { timeout: 8000 })).findByRole('button', { name: /^Produtos$/i }, { timeout: 8000 });
       fireEvent.click(offersTab);
 
-      // P03: Draft offer shows Checkout indisponível (RASCUNHO) and no checkout button for it
-      expect(await screen.findByText('Checkout indisponível (RASCUNHO)')).toBeInTheDocument();
+      // P03: Draft offer shows Checkout indisponível (rascunho) and no checkout button for it
+      expect(await screen.findByText('Checkout indisponível (rascunho)')).toBeInTheDocument();
 
       // P04 & P05: TESTE and ATIVA offers render active Checkout buttons
       const checkoutButtons = screen.getAllByRole('button', { name: /Checkout da oferta/i });

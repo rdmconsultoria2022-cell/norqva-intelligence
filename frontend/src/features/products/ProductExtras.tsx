@@ -86,7 +86,7 @@ export const OfferBumpConfig: React.FC<{
   const valid = !!form.bump_offer_id && Number.isFinite(priceNum) && priceNum >= 1;
 
   return (
-    <div className="space-y-2 rounded bg-nq-bg p-2 text-xs" data-testid="offer-bump-config">
+    <div className="space-y-2 rounded-xl bg-nq-surface p-3 text-nq-aux" data-testid="offer-bump-config">
       <div className="flex items-center justify-between">
         <span className="inline-flex items-center gap-1 font-semibold text-nq-text">
           <Gift className="h-3.5 w-3.5 text-nq-positive-text" /> Adicional no Pix

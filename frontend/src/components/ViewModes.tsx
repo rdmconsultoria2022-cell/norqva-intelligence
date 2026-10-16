@@ -96,7 +96,7 @@ export const IconTile: React.FC<{
       onClick={onOpen}
       data-testid="icon-tile"
       title={subtitle ? `${title} — ${subtitle}` : title}
-      className="text-left rounded-nq bg-nq-surface hover:border-nq-positive/40 overflow-hidden"
+      className="text-left rounded-nq bg-nq-surface hover:ring-1 hover:ring-nq-positive/40 overflow-hidden"
     >
       <div className="aspect-[4/5] bg-black flex items-center justify-center">
         {kind === 'video' ? (
@@ -108,7 +108,7 @@ export const IconTile: React.FC<{
         )}
       </div>
       <div className={small ? 'p-1' : 'p-2 space-y-0.5'}>
-        <div className={` text-nq-positive-text truncate ${small ? 'text-[12px]' : 'text-[12px]'}`}>{title}</div>
+        <div className={` text-nq-positive-text truncate text-[12px]`}>{title}</div>
         {!small && subtitle && <div className="text-[12px] text-nq-subtle truncate">{subtitle}</div>}
         {!small && badge}
       </div>

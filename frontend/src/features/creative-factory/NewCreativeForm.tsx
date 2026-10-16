@@ -33,7 +33,7 @@ export function NewCreativeForm({ products, offers, busy, onSubmit, onCancel }: 
   const fileOk = form.file_url.trim() === '' || /^https?:\/\/\S+$/i.test(form.file_url.trim());
 
   return (
-    <div className="fixed inset-0 z-50 bg-nq-bg flex items-center justify-center p-4" data-testid="new-creative-form">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" data-testid="new-creative-form">
       <div className="bg-nq-surface rounded-nq max-w-md w-full p-6 text-sm max-h-[90vh] overflow-y-auto">
         <h3 className="text-md font-bold text-nq-positive-text mb-4">Novo criativo</h3>
         <form

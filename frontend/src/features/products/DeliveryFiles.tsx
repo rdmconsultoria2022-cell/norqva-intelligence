@@ -142,7 +142,7 @@ export const DeliveryFiles: React.FC<{
   const currentLabel = (a: any) => a.file_original_name || a.name;
 
   return (
-    <div className="space-y-2 rounded bg-nq-bg p-2 text-xs" data-testid="delivery-files">
+    <div className="space-y-2 rounded-xl bg-nq-surface p-3 text-nq-aux" data-testid="delivery-files">
       <div className="inline-flex items-center gap-1 font-semibold text-nq-text">
         <FileText className="h-3.5 w-3.5 text-nq-positive-text" /> PDF entregue ao comprador
       </div>
