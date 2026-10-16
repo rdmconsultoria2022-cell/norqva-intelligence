@@ -28,6 +28,25 @@ export interface AppShellProps {
   children: React.ReactNode;
 }
 
+// NORQVA-0084: a fonte Inter (Design System NORQVA Premium) só no painel. As páginas de venda têm as
+// fontes delas; por isso o link entra aqui e não no index.html.
+const INTER_HREF = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
+function useInterFont() {
+  useEffect(() => {
+    if (typeof document === 'undefined' || document.getElementById('nq-inter-font')) return;
+    const pre = document.createElement('link');
+    pre.rel = 'preconnect';
+    pre.href = 'https://fonts.gstatic.com';
+    pre.crossOrigin = 'anonymous';
+    const l = document.createElement('link');
+    l.id = 'nq-inter-font';
+    l.rel = 'stylesheet';
+    l.href = INTER_HREF;
+    document.head.appendChild(pre);
+    document.head.appendChild(l);
+  }, []);
+}
+
 export function AppShell({
   globalError,
   globalSuccess,
@@ -38,6 +57,7 @@ export function AppShell({
   children
 }: AppShellProps) {
   const groups = visibleGroups(nav.currentUser?.role);
+  useInterFont();
 
   // uma tela nova começa do topo
   const contentRef = useRef<HTMLElement>(null);
