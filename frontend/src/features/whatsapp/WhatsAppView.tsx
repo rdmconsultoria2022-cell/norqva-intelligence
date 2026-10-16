@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageCircle, QrCode, RefreshCw, Trash2, Repeat, Send, X, UserCheck, Bot, Search, History } from 'lucide-react';
+import { MessageCircle, QrCode, RefreshCw, Trash2, Repeat, Send, X, UserCheck, Bot, Search, History, ChevronLeft } from 'lucide-react';
 import { UserObj } from '../../types';
 import { CloudAccountsPanel } from './CloudAccountsPanel';
 
@@ -68,11 +68,11 @@ const DELIVERY: Record<string, string> = {
 };
 
 const STATUS: Record<string, { text: string; cls: string }> = {
-  NEW: { text: 'NÃO CONECTADO', cls: 'bg-slate-800 text-slate-300' },
-  CONNECTING: { text: 'AGUARDANDO QR CODE', cls: 'bg-amber-950/40 text-amber-300 border border-amber-500/20' },
-  CONNECTED: { text: 'CONECTADO', cls: 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/20' },
-  DISCONNECTED: { text: 'DESCONECTADO', cls: 'bg-slate-800 text-slate-300' },
-  BANNED: { text: 'BLOQUEADO PELO WHATSAPP', cls: 'bg-red-950/40 text-red-300 border border-red-500/20' }
+  NEW: { text: 'NÃO CONECTADO', cls: 'bg-nq-raised text-nq-text' },
+  CONNECTING: { text: 'AGUARDANDO QR CODE', cls: 'bg-nq-attention/10 text-nq-attention border border-nq-attention/40' },
+  CONNECTED: { text: 'CONECTADO', cls: 'bg-nq-positive/10 text-nq-positive-text border border-nq-positive/40' },
+  DISCONNECTED: { text: 'DESCONECTADO', cls: 'bg-nq-raised text-nq-text' },
+  BANNED: { text: 'BLOQUEADO PELO WHATSAPP', cls: 'bg-nq-critical/10 text-nq-critical-text border border-nq-critical/40' }
 };
 
 const MODE: Record<string, string> = { BOT: 'Atendente', HUMAN: 'Com pessoa', OPTED_OUT: 'Pediu para parar' };
@@ -101,18 +101,15 @@ export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: 
 
   return (
     <div className="space-y-4" data-testid="whatsapp-view">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <MessageCircle className="h-5 w-5 text-emerald-400" />
-          <h2 className="text-lg font-bold text-slate-100">WhatsApp</h2>
-        </div>
-        <div className="flex flex-wrap gap-1 rounded border border-slate-800 p-0.5 text-xs">
+      <div className="space-y-4">
+        <h1 className="text-[28px] leading-[34px] font-semibold tracking-tight text-nq-text">WhatsApp</h1>
+        <div className="-mx-4 px-4 lg:mx-0 lg:px-0 flex gap-2 overflow-x-auto no-scrollbar">
           {(['conversations', 'numbers', 'conditions', 'results'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               aria-pressed={tab === t}
-              className={`rounded px-3 py-1 ${tab === t ? 'bg-emerald-950/50 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`shrink-0 h-10 rounded-full px-4 text-nq-aux font-medium transition-colors ${tab === t ? 'bg-nq-text text-nq-bg' : 'bg-nq-surface text-nq-muted hover:text-nq-text'}`}
             >
               {t === 'conversations' ? 'Conversas' : t === 'numbers' ? 'Números' : t === 'conditions' ? 'Condições de atendimento' : 'Resultados'}
             </button>
@@ -259,13 +256,13 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
   return (
     <div className="space-y-4">
       {!configured && (
-        <div className="rounded border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="wa-not-configured">
+        <div className="rounded border border-nq-attention/40 bg-nq-attention/10 p-3 text-xs text-nq-attention" data-testid="wa-not-configured">
           A conexão não oficial (QR Code) está desligada. Use o WhatsApp oficial da Meta, logo abaixo.
         </div>
       )}
 
       {!aiReady && (
-        <div className="rounded border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200" data-testid="wa-ai-missing">
+        <div className="rounded border border-nq-attention/40 bg-nq-attention/10 p-3 text-xs text-nq-attention" data-testid="wa-ai-missing">
           A inteligência do atendente ainda não está configurada (falta a chave OPENAI_API_KEY no servidor). Sem ela, as mensagens chegam aqui e uma pessoa responde.
         </div>
       )}
@@ -274,11 +271,11 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
 
       {isAdmin && configured && (
         <div className="flex flex-wrap items-start gap-2">
-          <button onClick={testServer} disabled={busy === 'check'} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+          <button onClick={testServer} disabled={busy === 'check'} className="inline-flex items-center gap-1 rounded-full bg-nq-raised px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]">
             <RefreshCw className={`h-3.5 w-3.5 ${busy === 'check' ? 'animate-spin' : ''}`} /> Testar servidor
           </button>
           {check && (
-            <div className={`flex-1 rounded border p-2 text-[11px] ${check.ok ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-200' : 'border-red-500/30 bg-red-950/20 text-red-200'}`} data-testid="wa-server-check">
+            <div className={`flex-1 rounded border p-2 text-[12px] ${check.ok ? 'border-nq-positive/40 bg-nq-positive/10 text-nq-positive-text' : 'border-nq-critical/40 bg-nq-critical/10 text-nq-critical-text'}`} data-testid="wa-server-check">
               {check.ok ? `Servidor do WhatsApp funcionando${check.version ? ` (versão ${check.version})` : ''}. Pode conectar os números.` : check.problem}
             </div>
           )}
@@ -286,21 +283,21 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
       )}
 
       {isAdmin && configured && (
-        <div className="rounded border border-slate-800 bg-slate-900/60 p-3 space-y-2" data-testid="wa-new-number">
-          <div className="text-xs font-semibold text-slate-200">Cadastrar número ({numbers.length} de {max})</div>
+        <div className="rounded-nq bg-nq-surface p-3 space-y-2" data-testid="wa-new-number">
+          <div className="text-xs font-semibold text-nq-text">Cadastrar número ({numbers.length} de {max})</div>
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               aria-label="Nome do número"
               placeholder='Nome (ex.: "Trattoria 1")'
               value={label}
               onChange={e => setLabel(e.target.value)}
-              className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+              className="flex-1 rounded-xl bg-nq-bg px-2 py-2.5 text-sm text-nq-text min-h-[44px]"
             />
             <select
               aria-label="Marca do número"
               value={brandId}
               onChange={e => setBrandId(e.target.value)}
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+              className="rounded-xl bg-nq-bg px-2 py-2.5 text-sm text-nq-text min-h-[44px]"
             >
               <option value="">Sem marca</option>
               {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -308,60 +305,60 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
             <button
               onClick={create}
               disabled={!label.trim() || busy === 'create' || numbers.length >= max}
-              className="rounded border border-emerald-500/30 bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 disabled:opacity-40"
+              className="rounded-full border border-nq-positive/40 bg-nq-positive/10 px-3 py-1.5 text-nq-aux font-semibold text-nq-positive-text disabled:opacity-40 min-h-[44px]"
             >
               Cadastrar
             </button>
           </div>
-          <p className="text-[11px] text-slate-500">Cada número fica ligado a uma marca e só oferece os produtos dela (sem marca, oferece todos os produtos à venda). O atendente automático nasce desligado.</p>
+          <p className="text-[12px] text-nq-subtle">Cada número fica ligado a uma marca e só oferece os produtos dela (sem marca, oferece todos os produtos à venda). O atendente automático nasce desligado.</p>
         </div>
       )}
 
       {numbers.length === 0 ? (
-        <div className="rounded border border-slate-800 p-6 text-center text-xs text-slate-500">Nenhum número cadastrado ainda.</div>
+        <div className="rounded border border-nq-line p-6 text-center text-xs text-nq-subtle">Nenhum número cadastrado ainda.</div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2" data-testid="wa-numbers">
           {numbers.map(n => {
             const st = STATUS[n.status] || STATUS.NEW;
             const official = n.provider === 'META_CLOUD';
             return (
-              <div key={n.id} className="rounded border border-slate-800 bg-slate-900/60 p-3 space-y-2" data-testid="wa-number">
+              <div key={n.id} className="rounded-nq bg-nq-surface p-3 space-y-2" data-testid="wa-number">
                 {editing?.id === n.id ? (
                   <div className="space-y-2">
-                    <input aria-label="Novo nome" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100" />
-                    <select aria-label="Nova marca" value={editing.brand_id} onChange={e => setEditing({ ...editing, brand_id: e.target.value })} className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100">
+                    <input aria-label="Novo nome" value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} className="w-full rounded-xl bg-nq-bg px-2 py-2 text-sm text-nq-text min-h-[44px]" />
+                    <select aria-label="Nova marca" value={editing.brand_id} onChange={e => setEditing({ ...editing, brand_id: e.target.value })} className="w-full rounded-xl bg-nq-bg px-2 py-2 text-sm text-nq-text min-h-[44px]">
                       <option value="">Sem marca</option>
                       {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                     <div className="flex gap-2">
-                      <button onClick={saveEdit} disabled={!editing.label.trim()} className="rounded border border-emerald-500/30 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40">Salvar</button>
-                      <button onClick={() => setEditing(null)} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">Cancelar</button>
+                      <button onClick={saveEdit} disabled={!editing.label.trim()} className="rounded-full bg-nq-positive/15 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">Salvar</button>
+                      <button onClick={() => setEditing(null)} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">Cancelar</button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="text-sm font-semibold text-slate-100">{n.label}</div>
-                      <div className="text-[11px] text-slate-400">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
+                      <div className="text-sm font-semibold text-nq-text">{n.label}</div>
+                      <div className="text-[12px] text-nq-muted">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
                       {official && (
-                        <div className="mt-0.5 text-[10px] text-sky-300" data-testid="wa-number-official">
+                        <div className="mt-0.5 text-[12px] text-nq-info" data-testid="wa-number-official">
                           Oficial (Meta) · {n.cloud_environment === 'PRODUCTION' ? 'produção' : 'teste'}{n.quality_rating ? ` · qualidade ${n.quality_rating}` : ''}
                         </div>
                       )}
                     </div>
-                    <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-mono font-bold ${st.cls}`} data-testid="wa-number-status">{st.text}</span>
+                    <span className={`shrink-0 rounded px-2 py-0.5 text-[12px] font-bold ${st.cls}`} data-testid="wa-number-status">{st.text}</span>
                   </div>
                 )}
-                {n.status_reason && n.status !== 'CONNECTED' && <p className="text-[11px] text-amber-300">{n.status_reason}</p>}
-                <div className="text-[11px] text-slate-500">
+                {n.status_reason && n.status !== 'CONNECTED' && <p className="text-[12px] text-nq-attention">{n.status_reason}</p>}
+                <div className="text-[12px] text-nq-subtle">
                   {n.conversations ?? 0} conversa(s){n.needs_human ? ` · ${n.needs_human} precisando de pessoa` : ''}
                 </div>
-                <div className="flex items-center justify-between gap-2 rounded border border-slate-800 px-2 py-1.5">
-                  <span className="text-[11px] text-slate-300">
-                    Atendente automático: <b className={n.bot_enabled ? 'text-emerald-300' : 'text-slate-400'} data-testid="wa-bot-state">{n.bot_enabled ? 'ligado' : 'pausado'}</b>
+                <div className="flex items-center justify-between gap-2 rounded border border-nq-line px-2 py-1.5">
+                  <span className="text-[12px] text-nq-text">
+                    Atendente automático: <b className={n.bot_enabled ? 'text-nq-positive-text' : 'text-nq-muted'} data-testid="wa-bot-state">{n.bot_enabled ? 'ligado' : 'pausado'}</b>
                   </span>
                   {isAdmin && (
-                    <button onClick={() => toggleBot(n)} disabled={!!busy} className={`rounded border px-2 py-0.5 text-[11px] disabled:opacity-40 ${n.bot_enabled ? 'border-amber-500/30 text-amber-300' : 'border-emerald-500/30 text-emerald-300'}`}>
+                    <button onClick={() => toggleBot(n)} disabled={!!busy} className={`rounded-full border px-2 py-0.5 text-[12px] disabled:opacity-40 ${n.bot_enabled ? 'border-nq-attention/40 text-nq-attention' : 'border-nq-positive/40 text-nq-positive-text'} min-h-[44px]`}>
                       {n.bot_enabled ? 'Pausar' : 'Ligar'}
                     </button>
                   )}
@@ -369,34 +366,34 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                 {isAdmin && editing?.id !== n.id && (
                   <div className="flex flex-wrap gap-1.5">
                     {official ? (
-                      <button onClick={() => checkOfficial(n)} disabled={!!busy} className="inline-flex items-center gap-1 rounded border border-sky-500/30 px-2 py-1 text-[11px] text-sky-300 disabled:opacity-40">
+                      <button onClick={() => checkOfficial(n)} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-info/40 px-2 py-1 text-[12px] text-nq-info disabled:opacity-40 min-h-[44px]">
                         <RefreshCw className="h-3.5 w-3.5" /> Conferir na Meta
                       </button>
                     ) : (
                       <>
                         {n.status !== 'CONNECTED' && (
-                          <button onClick={() => connect(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40">
+                          <button onClick={() => connect(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">
                             <QrCode className="h-3.5 w-3.5" /> Conectar
                           </button>
                         )}
-                        <button onClick={() => refresh(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+                        <button onClick={() => refresh(n)} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]">
                           <RefreshCw className="h-3.5 w-3.5" /> Atualizar
                         </button>
-                        <button onClick={() => setConfirm({ id: n.id, kind: 'swap' })} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+                        <button onClick={() => setConfirm({ id: n.id, kind: 'swap' })} disabled={!!busy || !configured} className="inline-flex items-center gap-1 rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]">
                           <Repeat className="h-3.5 w-3.5" /> Trocar número
                         </button>
                       </>
                     )}
-                    <button onClick={() => setEditing({ id: n.id, label: n.label, brand_id: n.brand_id || '' })} disabled={!!busy} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40">
+                    <button onClick={() => setEditing({ id: n.id, label: n.label, brand_id: n.brand_id || '' })} disabled={!!busy} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]">
                       Editar
                     </button>
-                    <button onClick={() => setConfirm({ id: n.id, kind: 'delete' })} disabled={!!busy} className="inline-flex items-center gap-1 rounded border border-red-500/30 px-2 py-1 text-[11px] text-red-300 disabled:opacity-40">
+                    <button onClick={() => setConfirm({ id: n.id, kind: 'delete' })} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-critical/40 px-2 py-1 text-[12px] text-nq-critical-text disabled:opacity-40 min-h-[44px]">
                       <Trash2 className="h-3.5 w-3.5" /> Excluir
                     </button>
                   </div>
                 )}
                 {confirm?.id === n.id && (
-                  <div className="rounded border border-amber-500/30 bg-amber-950/20 p-2 text-[11px] text-amber-200 space-y-2" data-testid="wa-confirm">
+                  <div className="rounded border border-nq-attention/40 bg-nq-attention/10 p-2 text-[12px] text-nq-attention space-y-2" data-testid="wa-confirm">
                     <p>
                       {confirm.kind === 'swap'
                         ? 'O celular atual será desconectado e aparece um QR Code para o número novo. Marca, condições de atendimento e conversas continuam.'
@@ -405,10 +402,10 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                           : 'O número sai do NORQVA e é desconectado. As conversas ficam guardadas até completar 180 dias.'}
                     </p>
                     <div className="flex gap-2">
-                      <button onClick={() => (confirm.kind === 'swap' ? swap(n) : remove(n))} className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">
+                      <button onClick={() => (confirm.kind === 'swap' ? swap(n) : remove(n))} className="rounded-full border border-nq-attention/40 px-2 py-1 text-nq-attention min-h-[44px]">
                         {confirm.kind === 'swap' ? 'Sim, trocar' : 'Sim, excluir'}
                       </button>
-                      <button onClick={() => setConfirm(null)} className="rounded border border-slate-700 px-2 py-1 text-slate-300">Cancelar</button>
+                      <button onClick={() => setConfirm(null)} className="rounded-full border border-nq-line px-2 py-1 text-nq-text min-h-[44px]">Cancelar</button>
                     </div>
                   </div>
                 )}
@@ -419,23 +416,23 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
       )}
 
       {qr && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" data-testid="wa-qr">
-          <div className="w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-3 text-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-testid="wa-qr">
+          <div className="w-full max-w-sm rounded-nq bg-nq-surface p-5 space-y-3 text-sm">
             <div className="flex items-center justify-between">
-              <div className="font-semibold text-slate-100">Conectar "{qr.label}"</div>
-              <button onClick={() => setQr(null)} aria-label="Fechar" className="text-slate-400 hover:text-slate-200"><X className="h-5 w-5" /></button>
+              <div className="font-semibold text-nq-text">Conectar "{qr.label}"</div>
+              <button onClick={() => setQr(null)} aria-label="Fechar" className="text-nq-muted hover:text-nq-text min-h-[44px]"><X className="h-5 w-5" /></button>
             </div>
             {qr.base64 ? (
               <img src={`data:image/png;base64,${qr.base64}`} alt="QR Code do WhatsApp" className="mx-auto h-64 w-64 rounded bg-white p-2" />
             ) : (
-              <div className="py-10 text-center text-xs text-slate-400">Gerando o QR Code...</div>
+              <div className="py-10 text-center text-xs text-nq-muted">Gerando o QR Code...</div>
             )}
-            <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-300">
+            <ol className="list-decimal space-y-1 pl-5 text-xs text-nq-text">
               <li>No celular do número, abra o <b>WhatsApp Business</b>.</li>
               <li>Toque em <b>⋮</b> (ou Configurações) → <b>Aparelhos conectados</b> → <b>Conectar um aparelho</b>.</li>
               <li>Aponte a câmera para este QR Code.</li>
             </ol>
-            <p className="text-[11px] text-slate-500">Esta janela fecha sozinha quando o número conectar. O QR Code muda a cada poucos segundos; isso é normal.</p>
+            <p className="text-[12px] text-nq-subtle">Esta janela fecha sozinha quando o número conectar. O QR Code muda a cada poucos segundos; isso é normal.</p>
           </div>
         </div>
       )}
@@ -465,9 +462,13 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
     }
   }, [api, filter, numberId, search, showError]);
 
+  // NORQVA-0088: resposta que chega depois de trocar ou fechar a conversa é descartada
+  const openRef = useRef<string | null>(null);
+  openRef.current = openId;
   const loadThread = useCallback(async (id: string) => {
     try {
       const r = await api.current(`/whatsapp/conversations/${id}/messages`);
+      if (openRef.current !== id) return;
       setThread(r);
     } catch (e: any) {
       showError(e?.message || 'Falha ao abrir a conversa.');
@@ -528,71 +529,75 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,340px)_1fr]">
-      <div className="space-y-2 min-w-0">
-        <div className="flex flex-wrap gap-1">
+      {/* NORQVA-0088: no celular, a lista some quando uma conversa está aberta (botão Voltar na conversa) */}
+      <div className={`space-y-3 min-w-0 ${conv ? 'hidden lg:block' : ''}`}>
+        <div className="-mx-4 px-4 lg:mx-0 lg:px-0 flex gap-2 overflow-x-auto no-scrollbar lg:flex-wrap">
           {FILTERS.map(f => (
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
               aria-pressed={filter === f.id}
-              className={`rounded border px-2 py-0.5 text-[11px] ${filter === f.id ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300' : 'border-slate-800 text-slate-400'}`}
+              className={`shrink-0 h-10 rounded-full px-4 text-nq-aux font-medium transition-colors ${filter === f.id ? 'bg-nq-raised text-nq-text ring-1 ring-nq-line' : 'text-nq-muted hover:text-nq-text'}`}
             >
               {f.label}
             </button>
           ))}
         </div>
         <div className="flex gap-2">
-          <select aria-label="Filtrar por número" value={numberId} onChange={e => setNumberId(e.target.value)} className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100">
+          <select aria-label="Filtrar por número" value={numberId} onChange={e => setNumberId(e.target.value)} className="min-w-0 flex-1 rounded-xl bg-nq-surface px-3 py-2 text-nq-body text-nq-text min-h-[44px]">
             <option value="">Todos os números</option>
             {numbers.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
           </select>
           <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-slate-500" />
-            <input aria-label="Buscar conversa" placeholder="Nome ou telefone" value={search} onChange={e => setSearch(e.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 py-1 pl-7 pr-2 text-xs text-slate-100" />
+            <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-nq-subtle" />
+            <input aria-label="Buscar conversa" placeholder="Nome ou telefone" value={search} onChange={e => setSearch(e.target.value)} className="w-full rounded-xl bg-nq-surface py-2 pl-9 pr-3 text-nq-body text-nq-text min-h-[44px]" />
           </div>
         </div>
-        <div className="max-h-[65vh] overflow-y-auto rounded border border-slate-800 divide-y divide-slate-800" data-testid="wa-conversations">
-          {convs.length === 0 && <div className="p-4 text-center text-xs text-slate-500">Nenhuma conversa.</div>}
+        <div className="max-h-[65vh] overflow-y-auto rounded-nq bg-nq-surface divide-y divide-nq-line/60" data-testid="wa-conversations">
+          {convs.length === 0 && <div className="p-4 text-center text-nq-aux text-nq-subtle">Nenhuma conversa.</div>}
           {convs.map(c => (
             <button
               key={c.id}
               onClick={() => setOpenId(c.id)}
-              className={`block w-full p-2.5 text-left hover:bg-slate-800/40 ${openId === c.id ? 'bg-slate-800/60' : ''}`}
+              className={`block w-full px-4 py-3 text-left hover:bg-nq-raised ${openId === c.id ? 'bg-nq-raised' : ''} min-h-[64px]`}
               data-testid="wa-conversation"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm text-slate-100">{c.contact_name || fmtPhone(c.contact_phone)}</span>
-                <span className="shrink-0 text-[10px] text-slate-500">{fmtTime(c.last_message_at)}</span>
+                <span className="truncate text-nq-body font-medium text-nq-text">{c.contact_name || fmtPhone(c.contact_phone)}</span>
+                <span className="shrink-0 text-[12px] text-nq-subtle">{fmtTime(c.last_message_at)}</span>
               </div>
-              <div className="truncate text-[11px] text-slate-400">{c.last_message_preview}</div>
-              <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
-                <span className="rounded bg-slate-800 px-1.5 text-slate-300">{c.number_label}</span>
-                <span className="rounded bg-slate-800 px-1.5 text-slate-400">{MODE[c.mode]}</span>
-                {c.needs_human && <span className="rounded bg-amber-950/50 px-1.5 text-amber-300">precisa de pessoa</span>}
-                {c.unread_count > 0 && <span className="rounded bg-emerald-600 px-1.5 font-bold text-slate-950">{c.unread_count}</span>}
+              <div className="truncate text-nq-aux text-nq-muted">{c.last_message_preview}</div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
+                <span className="rounded bg-nq-raised px-1.5 text-nq-text">{c.number_label}</span>
+                <span className="rounded bg-nq-raised px-1.5 text-nq-muted">{MODE[c.mode]}</span>
+                {c.needs_human && <span className="rounded bg-nq-attention/10 px-1.5 text-nq-attention">precisa de pessoa</span>}
+                {c.unread_count > 0 && <span className="rounded-full bg-nq-positive min-w-[20px] px-1.5 text-center font-bold text-nq-on-positive">{c.unread_count}</span>}
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="min-w-0 rounded border border-slate-800 bg-slate-900/40 flex flex-col min-h-[50vh]">
+      <div className={`min-w-0 rounded-nq bg-nq-surface flex-col min-h-[50vh] ${conv ? 'flex' : 'hidden lg:flex'}`}>
         {!conv ? (
-          <div className="m-auto p-6 text-xs text-slate-500">Escolha uma conversa.</div>
+          <div className="m-auto p-6 text-nq-aux text-nq-subtle">Escolha uma conversa.</div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 p-3">
-              <div>
-                <div className="text-sm font-semibold text-slate-100">{conv.contact_name || fmtPhone(conv.contact_phone)}</div>
-                <div className="text-[11px] text-slate-400">{fmtPhone(conv.contact_phone)} · {conv.number_label} · {MODE[conv.mode]}</div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-nq-line/70 p-3">
+              <button type="button" onClick={() => { openRef.current = null; setOpenId(null); setThread(null); }} className="lg:hidden -ml-1 inline-flex min-h-[44px] items-center gap-1 rounded-full px-2 text-nq-aux text-nq-muted" aria-label="Voltar para a lista de conversas">
+                <ChevronLeft aria-hidden="true" className="h-5 w-5" /> Voltar
+              </button>
+              <div className="min-w-0">
+                <div className="text-nq-body font-semibold text-nq-text">{conv.contact_name || fmtPhone(conv.contact_phone)}</div>
+                <div className="text-[12px] text-nq-muted">{fmtPhone(conv.contact_phone)} · {conv.number_label} · {MODE[conv.mode]}</div>
               </div>
               {conv.mode !== 'OPTED_OUT' && (
                 conv.mode === 'BOT' ? (
-                  <button onClick={() => setMode('HUMAN')} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-200">
+                  <button onClick={() => setMode('HUMAN')} className="inline-flex items-center gap-1.5 rounded-full bg-nq-raised px-4 text-nq-aux font-medium text-nq-text min-h-[44px]">
                     <UserCheck className="h-3.5 w-3.5" /> Assumir conversa
                   </button>
                 ) : (
-                  <button onClick={() => setMode('BOT')} className="inline-flex items-center gap-1 rounded border border-emerald-500/30 px-2 py-1 text-[11px] text-emerald-300">
+                  <button onClick={() => setMode('BOT')} className="inline-flex items-center gap-1.5 rounded-full bg-nq-positive/15 px-4 text-nq-aux font-medium text-nq-positive-text min-h-[44px]">
                     <Bot className="h-3.5 w-3.5" /> Devolver ao atendente
                   </button>
                 )
@@ -601,9 +606,9 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
             <div className="flex-1 space-y-2 overflow-y-auto p-3 max-h-[55vh]" data-testid="wa-thread">
               {thread!.messages.map(m => (
                 <div key={m.id} className={`flex ${m.direction === 'OUT' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${m.direction === 'OUT' ? 'bg-emerald-900/50 text-emerald-50' : 'bg-slate-800 text-slate-100'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-nq-body whitespace-pre-wrap break-words ${m.direction === 'OUT' ? 'bg-nq-positive/15 text-nq-text' : 'bg-nq-raised text-nq-text'}`}>
                     {m.body}
-                    <div className="mt-1 text-[10px] opacity-60">
+                    <div className="mt-1 text-[12px] text-nq-muted">
                       {AUTHOR[m.author]} · {fmtTime(m.created_at)}{m.delivery_status ? DELIVERY[m.delivery_status] || '' : m.send_status === 'FAILED' ? ' · não enviada' : ''}
                     </div>
                   </div>
@@ -612,13 +617,13 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
               <div ref={bottomRef} />
             </div>
             {conv.mode === 'OPTED_OUT' ? (
-              <div className="border-t border-slate-800 p-3 text-[11px] text-slate-400">O cliente pediu para não receber mais mensagens. Se ele voltar a escrever, a conversa reabre para você.</div>
+              <div className="border-t border-nq-line p-3 text-[12px] text-nq-muted">O cliente pediu para não receber mais mensagens. Se ele voltar a escrever, a conversa reabre para você.</div>
             ) : conv.window_open === false ? (
-              <div className="border-t border-slate-800 p-3 text-[11px] text-amber-300" data-testid="wa-window-closed">
+              <div className="border-t border-nq-line p-3 text-[12px] text-nq-attention" data-testid="wa-window-closed">
                 Passaram mais de 24 horas desde a última mensagem do cliente. Pelo WhatsApp oficial, só dá para responder com um modelo aprovado pela Meta (em breve). Se o cliente escrever de novo, a conversa reabre.
               </div>
             ) : (
-              <div className="flex gap-2 border-t border-slate-800 p-3">
+              <div className="flex gap-2 border-t border-nq-line p-3">
                 <textarea
                   aria-label="Mensagem"
                   rows={2}
@@ -626,9 +631,9 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
                   onChange={e => setText(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                   placeholder="Escreva a resposta (Enter envia; ao responder, você assume a conversa)"
-                  className="flex-1 resize-none rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+                  className="flex-1 resize-none rounded-xl bg-nq-bg px-3 py-2.5 text-nq-body text-nq-text min-h-[44px]"
                 />
-                <button onClick={() => void send()} disabled={sending || !text.trim()} aria-label="Enviar" className="self-end rounded border border-emerald-500/30 bg-emerald-950/40 px-3 py-2 text-emerald-300 disabled:opacity-40">
+                <button onClick={() => void send()} disabled={sending || !text.trim()} aria-label="Enviar" className="self-end h-11 w-11 flex items-center justify-center rounded-full bg-nq-positive text-nq-on-positive disabled:opacity-40">
                   <Send className="h-4 w-4" />
                 </button>
               </div>
@@ -711,20 +716,20 @@ function ConditionsPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: bo
 
   return (
     <div className="space-y-3" data-testid="wa-conditions">
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-nq-muted">
         Escreva aqui como o atendente deve atender: tom de voz, o que oferecer primeiro, respostas para as dúvidas comuns. O texto geral vale para todos os números; cada número pode ter um texto a mais.
         Preço, parcelas, entrega só com pagamento confirmado e o "parar" do cliente são regras fixas: o texto não muda isso.
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <select aria-label="Condições de" value={target} onChange={e => setTarget(e.target.value)} className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100">
+        <select aria-label="Condições de" value={target} onChange={e => setTarget(e.target.value)} className="rounded-xl bg-nq-surface px-3 py-2 text-nq-body text-nq-text min-h-[44px]">
           <option value="">Geral (todos os números)</option>
           {(data?.numbers || []).map(n => <option key={n.id} value={n.id}>Só o número: {n.label}</option>)}
         </select>
-        <button onClick={() => void openHistory()} className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+        <button onClick={() => void openHistory()} className="inline-flex items-center gap-1 rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">
           <History className="h-3.5 w-3.5" /> Versões anteriores
         </button>
         {isAdmin && !target && (
-          <button onClick={() => setText(SUGGESTED_CONDITIONS)} className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+          <button onClick={() => setText(SUGGESTED_CONDITIONS)} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">
             Usar modelo sugerido
           </button>
         )}
@@ -736,25 +741,25 @@ function ConditionsPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: bo
         readOnly={!isAdmin}
         rows={16}
         maxLength={8000}
-        className="w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm text-slate-100"
+        className="w-full rounded-xl bg-nq-surface p-3 text-nq-body text-nq-text min-h-[44px]"
         placeholder="Ex.: Atenda com simpatia. Ofereça primeiro o kit. Se perguntarem sobre versão impressa, explique que é PDF e pode ser impresso."
       />
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
+      <div className="flex items-center justify-between text-[12px] text-nq-subtle">
         <span>{text.length} de 8.000 letras</span>
         {isAdmin && (
-          <button onClick={() => void save()} disabled={saving || text === original} className="rounded border border-emerald-500/30 bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 disabled:opacity-40">
+          <button onClick={() => void save()} disabled={saving || text === original} className="rounded-full border border-nq-positive/40 bg-nq-positive/10 px-3 py-1.5 text-nq-aux font-semibold text-nq-positive-text disabled:opacity-40 min-h-[44px]">
             {saving ? 'Salvando…' : 'Salvar'}
           </button>
         )}
       </div>
       {history && (
-        <div className="space-y-2 rounded border border-slate-800 p-2" data-testid="wa-conditions-history">
-          {history.length === 0 && <div className="text-[11px] text-slate-500">Nenhuma versão salva ainda.</div>}
+        <div className="space-y-2 rounded border border-nq-line p-2" data-testid="wa-conditions-history">
+          {history.length === 0 && <div className="text-[12px] text-nq-subtle">Nenhuma versão salva ainda.</div>}
           {history.map(v => (
-            <div key={v.id} className="rounded border border-slate-800 p-2 text-[11px] text-slate-300">
-              <div className="mb-1 flex items-center justify-between text-slate-500">
+            <div key={v.id} className="rounded border border-nq-line p-2 text-[12px] text-nq-text">
+              <div className="mb-1 flex items-center justify-between text-nq-subtle">
                 <span>{new Date(v.created_at).toLocaleString('pt-BR')}{v.changed_by_name ? ` · ${v.changed_by_name}` : ''}</span>
-                {isAdmin && <button onClick={() => setText(v.conditions)} className="rounded border border-slate-700 px-2 py-0.5 text-slate-300">Voltar para esta versão</button>}
+                {isAdmin && <button onClick={() => setText(v.conditions)} className="rounded-full border border-nq-line px-2 py-0.5 text-nq-text min-h-[44px]">Voltar para esta versão</button>}
               </div>
               <div className="max-h-24 overflow-y-auto whitespace-pre-wrap">{v.conditions || '(vazio)'}</div>
             </div>
@@ -783,9 +788,9 @@ function ResultsPanel({ api, showError }: { api: React.MutableRefObject<ApiFetch
   return (
     <div className="space-y-3" data-testid="wa-results">
       <div className="flex items-center gap-2 text-xs">
-        <span className="text-slate-400">Período:</span>
+        <span className="text-nq-muted">Período:</span>
         {[7, 30, 90].map(d => (
-          <button key={d} onClick={() => setDays(d)} aria-pressed={days === d} className={`rounded border px-2 py-0.5 ${days === d ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300' : 'border-slate-800 text-slate-400'}`}>
+          <button key={d} onClick={() => setDays(d)} aria-pressed={days === d} className={`rounded-full border px-2 py-0.5 ${days === d ? 'border-nq-positive/40 bg-nq-positive/10 text-nq-positive-text' : 'border-nq-line text-nq-muted'} min-h-[44px]`}>
             {d} dias
           </button>
         ))}
@@ -799,16 +804,16 @@ function ResultsPanel({ api, showError }: { api: React.MutableRefObject<ApiFetch
             ['Valor vendido', brlNum(t.revenue)],
             ['Precisam de pessoa', String(t.needs_human_now)]
           ].map(([label, value]) => (
-            <div key={label} className="rounded border border-slate-800 bg-slate-900/60 p-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
-              <div className="text-lg font-bold text-slate-100" data-testid={`wa-total-${label}`}>{value}</div>
+            <div key={label} className="rounded-nq bg-nq-surface p-3">
+              <div className="text-[12px] text-nq-subtle">{label}</div>
+              <div className="text-lg font-bold text-nq-text" data-testid={`wa-total-${label}`}>{value}</div>
             </div>
           ))}
         </div>
       )}
-      <div className="overflow-x-auto rounded border border-slate-800">
+      <div className="overflow-x-auto rounded border border-nq-line">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-900 text-[10px] uppercase text-slate-400">
+          <thead className="bg-nq-surface text-[12px] text-nq-muted">
             <tr>
               <th className="p-2">Número</th>
               <th className="p-2">Conversas</th>
@@ -820,15 +825,15 @@ function ResultsPanel({ api, showError }: { api: React.MutableRefObject<ApiFetch
               <th className="p-2">Valor</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-nq-line/60">
             {(data?.numbers || []).length === 0 && (
-              <tr><td colSpan={8} className="p-4 text-center text-slate-500">Nenhum número cadastrado.</td></tr>
+              <tr><td colSpan={8} className="p-4 text-center text-nq-subtle">Nenhum número cadastrado.</td></tr>
             )}
             {(data?.numbers || []).map((n: any) => (
-              <tr key={n.id} className="text-slate-200">
+              <tr key={n.id} className="text-nq-text">
                 <td className="p-2">
                   <div>{n.label}</div>
-                  <div className="text-[10px] text-slate-500">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
+                  <div className="text-[12px] text-nq-subtle">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
                 </td>
                 <td className="p-2">{n.new_conversations}</td>
                 <td className="p-2">{n.messages_in}</td>
@@ -842,7 +847,7 @@ function ResultsPanel({ api, showError }: { api: React.MutableRefObject<ApiFetch
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-slate-500">Conversão = vendas pagas ÷ conversas novas no período. Só conta como venda o pedido com pagamento confirmado pelo Asaas.</p>
+      <p className="text-[12px] text-nq-subtle">Conversão = vendas pagas ÷ conversas novas no período. Só conta como venda o pedido com pagamento confirmado pelo Asaas.</p>
     </div>
   );
 }

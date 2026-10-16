@@ -630,7 +630,7 @@ describe('Auth System Regression', () => {
 
       // R03: TeamView renders Real Admin User email and title
       await waitFor(() => {
-        expect(screen.getByText('Equipe e Permissões')).toBeInTheDocument();
+        expect(screen.getByText('Equipe e permissões')).toBeInTheDocument();
         expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
       }, { timeout: 8000 });
 
@@ -690,7 +690,7 @@ describe('Auth System Regression', () => {
 
       // Initially in real view
       await waitFor(() => {
-        expect(screen.getByText('Equipe e Permissões')).toBeInTheDocument();
+        expect(screen.getByText('Equipe e permissões')).toBeInTheDocument();
         expect(screen.getByText('rdmconsultoria2022@gmail.com')).toBeInTheDocument();
       }, { timeout: 8000 });
 
