@@ -26,6 +26,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   showSuccess,
   collectionBooks,
   initialBook = null,
+  initialWithBump = false,
   summary = null
 }) => {
   const [customerName, setCustomerName] = useState(initialCustomer?.name || currentUser?.name || '');
@@ -33,8 +34,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const [customerPhone, setCustomerPhone] = useState(initialCustomer?.phone ? maskPhone(initialCustomer.phone) : '');
   const [cpfCnpj, setCpfCnpj] = useState(initialCustomer?.cpf_cnpj ? maskCpf(initialCustomer.cpf_cnpj) : '');
   const [quantity, setQuantity] = useState(1);
-  // NORQVA-0032: adicional nasce desmarcado; só entra se a pessoa marcar
-  const [withBump, setWithBump] = useState(false);
+  // NORQVA-0032: adicional nasce desmarcado; só entra se a pessoa marcar.
+  // NORQVA-0080: nasce marcado quando a pessoa já escolheu "Quero os dois" na página (pode desmarcar).
+  const [withBump, setWithBump] = useState(Boolean(initialWithBump));
   // NORQVA-0064: o kit de 5 livros vendido por qualquer página (/p/, /kit/) busca os livros avulsos sozinho
   const [fetchedBooks, setFetchedBooks] = useState<CollectionSaleBook[] | null>(null);
   const offerIsFullKit = isFullKit(offer);

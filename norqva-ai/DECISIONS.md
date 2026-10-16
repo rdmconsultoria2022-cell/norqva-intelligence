@@ -184,3 +184,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (Ricardo, 15/10/2026 10h38, "2- Aprovado"):** quem compra o Trattoria vê, na tela de entrega, os outros 4 livros da coleção (Dolci, Pães, Antipasti, Risotos) por **R$ 27,90**, num pagamento novo.
 - **Regras:** só para pedido pago da conta real; não aparece para quem já tem algum desses livros no pedido nem para quem já comprou a oferta. O preço é o da oferta no servidor (migration 066, `offers.post_purchase_offer_id`).
+
+## D-0080 — Livro + Dolci por R$ 24,90 e kit de 5 por R$ 29,90 (2026-10-16)
+
+- **Decisão (Ricardo, 16/10/2026 01h42, contrato NORQVA-0080, "Aprovado"):** o kit de 5 a R$ 79,92 vendia pouco. Cada livro (Trattoria, Pães, Antipasti, Risotos) continua a R$ 19,90 e ganha o Dolci della Nonna por mais R$ 5,00 ("de R$ 34,80 por R$ 24,90"). O kit de 5 passa a R$ 29,90 (de R$ 94,50).
+- **Cartão:** 1x sem acréscimo e 2,99% ao mês acima, com parcela mínima de R$ 5,00. Por isso não existe 10x nesses valores: 4x no livro, 5x no livro + Dolci, 6x no kit. A página mostra só o parcelamento real, com taxa e total.
+- **Coerência:** ofertas de saída do kit pausadas; +4 livros depois do Trattoria a R$ 9,90; Kit Cozinha Italiana (OFF-000006) a R$ 24,90. O "de" é sempre a soma real dos preços avulsos.
+

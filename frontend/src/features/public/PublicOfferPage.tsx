@@ -30,6 +30,8 @@ import { RecoveryRequestModal } from '../delivery/RecoveryRequestModal';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
 import { BuyChoice } from './WhatsAppChoice';
 import { bookPageFor } from './bookPages';
+import { BookComboOffer, comboMath } from './BookComboOffer';
+import type { CheckoutOffer } from '../checkout/checkoutTypes';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 
@@ -46,6 +48,9 @@ export interface PublicOfferData {
   whatsapp?: { available: boolean } | null;
   // NORQVA-0061: livro da coleção (null = página do Trattoria)
   book?: string | null;
+  // NORQVA-0080: adicional (Dolci) e cartão, para a oferta dos dois livros
+  bump?: CheckoutOffer['bump'];
+  card?: CheckoutOffer['card'];
 }
 
 interface PublicOfferPageProps {
@@ -88,7 +93,11 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
     };
   }, [offer?.name]);
 
-  const handleOpenCheckout = () => {
+  // NORQVA-0080: "Quero os dois" abre o pagamento com o adicional já marcado
+  const [checkoutWithBump, setCheckoutWithBump] = useState<boolean>(false);
+  const handleOpenCheckout = () => openCheckout(false);
+  const openCheckout = (withBump: boolean) => {
+    setCheckoutWithBump(withBump);
     if (existingSession && existingSession.status === 'PAID') {
       navigate(`/pedido/${existingSession.orderId}/entrega#token=${existingSession.checkoutToken}`);
       return;
@@ -712,6 +721,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   // NORQVA-0061: o mesmo visual serve aos Volumes III, IV e V, com textos e imagens de cada livro
   // ==========================================
   const page = bookPageFor(offer?.book);
+  const comboOffer = offer ? comboMath(offer as any) : null;
+  const brlPrice = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-stone-800 flex flex-col justify-between selection:bg-[#B83B1E]/20 selection:text-[#8F2810] font-sans antialiased">
       
@@ -825,7 +836,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
               <div className="p-4 sm:p-5 rounded-2xl bg-[#FAF7F2] border border-stone-300 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="space-y-0.5 text-center sm:text-left">
                   <span className="text-[10px] sm:text-xs font-medium uppercase tracking-wider text-stone-500 block">
-                    Pagamento único via Pix
+                    {offer?.card ? 'Pix ou cartão' : 'Pagamento único via Pix'}
                   </span>
                   <div className="flex items-baseline gap-2.5 justify-center sm:justify-start">
                     <span className="text-2xl sm:text-3xl font-serif font-black text-[#B83B1E]">
@@ -835,6 +846,11 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                   <span className="text-[10px] text-stone-500 block">
                     Pagamento único • Sem mensalidades
                   </span>
+                  {comboOffer && !(existingSession && existingSession.status === 'PAID') && (
+                    <a href="#oferta" data-testid="hero-combo-link" className="text-[11px] sm:text-xs font-semibold text-[#2B3D2B] underline block pt-1">
+                      Ou leve com o Dolci della Nonna por {brlPrice(comboOffer.comboCents)}
+                    </a>
+                  )}
                 </div>
 
                 {existingSession && existingSession.status === 'PAID' ? (
@@ -852,7 +868,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
                       onClick={handleOpenCheckout}
                       className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-[#B83B1E] hover:bg-[#8F2810] text-white font-bold text-xs sm:text-sm tracking-wide uppercase transition-all duration-200 shadow-lg shadow-[#B83B1E]/25 hover:shadow-[#B83B1E]/40 flex items-center justify-center gap-2 shrink-0 group active:scale-95"
                     >
-                      <span>Comprar com Pix</span>
+                      <span>{offer?.card ? 'Comprar' : 'Comprar com Pix'}</span>
                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </button>
                   </BuyChoice>
@@ -956,6 +972,17 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
           </div>
         </section>
 
+        {/* NORQVA-0080: oferta dos dois livros (livro + Dolci), só quando a oferta tem o adicional */}
+        {!(existingSession && existingSession.status === 'PAID') && (
+          <BookComboOffer
+            offer={offer as any}
+            bookTitle={page.defaultTitle.split(' — ')[0]}
+            bookCover={page.cover}
+            onBuyBoth={() => openCheckout(true)}
+            onBuyBook={() => openCheckout(false)}
+          />
+        )}
+
         {/* BOTTOM FINAL CALL TO ACTION */}
         <section className="p-6 sm:p-10 rounded-2xl sm:rounded-3xl bg-[#2B3D2B] text-white text-center space-y-4 shadow-xl">
           <div className="max-w-xl mx-auto space-y-2">
@@ -1011,6 +1038,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
       {showCheckout && (
         <CheckoutView
           offer={offer as any}
+          initialWithBump={checkoutWithBump}
           isDemo={offer.is_demo}
           initialCustomer={customerDraft}
           onCustomerChange={setCustomerDraft}
