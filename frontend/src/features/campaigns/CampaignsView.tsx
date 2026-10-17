@@ -127,7 +127,6 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   // NORQVA-0028: lista única (planos + campanhas criadas fora do NORQVA), resultado, alertas e experimentos
   const [metaCampaigns, setMetaCampaigns] = useState<any[]>([]);
   const [perf, setPerf] = useState<PerfItem[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
   // NORQVA-0095: pendências abertas (avisos com gravidade Atenção ou Crítica)
   const [problems, setProblems] = useState<AlertNotification[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
@@ -256,10 +255,11 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, listLoaded, openFromAlert]);
 
-  // o contador "N pendências" de cada cartão acompanha a lista de pendências
-  useEffect(() => {
-    setAlerts(problems.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id || null })));
-  }, [problems]);
+  // o contador "N pendências" de cada cartão acompanha a lista de pendências (no mesmo desenho, sem atraso)
+  const alerts = React.useMemo(
+    () => problems.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id || null })),
+    [problems]
+  );
 
   const post = (url: string, body: any = {}) => apiRef.current(url, { method: 'POST', body: JSON.stringify(body) });
 
