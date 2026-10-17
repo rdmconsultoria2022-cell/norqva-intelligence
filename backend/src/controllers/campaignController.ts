@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { CampaignInsightService, CampaignInsightError } from '../services/campaigns/campaignInsightService';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { CampaignEditorService } from '../services/launchPlans/campaignEditorService';
@@ -134,5 +135,31 @@ export async function replaceCampaignAdOnMeta(req: AuthenticatedRequest, res: Re
     return res.status(200).json({ ...r, campaign: await service.get(db(req), String(req.params.id)) });
   } catch (err) {
     return fail(res, err, 'Falha ao trocar o anúncio na Meta.');
+  }
+}
+
+// NORQVA-0096: leituras do "Gerenciar campanha" (equilíbrio da oferta e histórico). Só leitura.
+
+function insightFail(res: Response, err: any, msg: string) {
+  if (err instanceof CampaignInsightError) return res.status(err.status).json({ error: err.message });
+  console.error('[CAMPAIGN INSIGHT]', err);
+  return res.status(500).json({ error: msg });
+}
+
+export async function getCampaignEconomics(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(200).json(await new CampaignInsightService(db(req)).economics(String(req.params.id)));
+  } catch (err) {
+    return insightFail(res, err, 'Falha ao calcular o equilíbrio da campanha.');
+  }
+}
+
+export async function getCampaignHistory(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(200).json(await new CampaignInsightService(db(req)).history(String(req.params.id), { role: String(req.user?.role || '') }));
+  } catch (err) {
+    return insightFail(res, err, 'Falha ao carregar o histórico da campanha.');
   }
 }

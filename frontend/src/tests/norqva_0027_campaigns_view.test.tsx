@@ -1,6 +1,6 @@
 // NORQVA-0027: tela Campanhas — modo manual, zerar, preencher e criar pausada com confirmação.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { CampaignsView, fieldsOf } from '../features/campaigns/CampaignsView';
 
@@ -42,8 +42,12 @@ const setup = (opts: { user?: any; camp?: any } = {}) => {
   return apiFetch;
 };
 
+// NORQVA-0096: a campanha abre na Visão geral; os campos ficam em Configurações e os anúncios em Criativos
+const tabTo = async (name: string) => fireEvent.click(within(await screen.findByTestId('campaign-tabs')).getByText(name));
 const open = async () => {
   fireEvent.click(await screen.findByText('NORQVA_TR_EXP03'));
+  await screen.findByTestId('overview-tab');
+  await tabTo('Configurações');
   await screen.findByTestId('campaign-detail');
 };
 
@@ -58,6 +62,7 @@ describe('NORQVA-0027 — tela Campanhas', () => {
   it('mostra o selo manual e salva só o que mudou', async () => {
     const apiFetch = setup();
     await open();
+    await tabTo('Criativos');
     expect(screen.getByTestId('manual-ads.0.headline')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Texto do anúncio 1'), { target: { value: 'Texto novo' } });
     fireEvent.click(screen.getByTestId('save-fields'));
@@ -72,10 +77,11 @@ describe('NORQVA-0027 — tela Campanhas', () => {
     const apiFetch = setup();
     await open();
     fireEvent.click(screen.getByTestId('blank-fields'));
-    expect((screen.getByLabelText('Título do anúncio 1') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Teto de gasto') as HTMLInputElement).value).toBe('');
-    expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/fields'))).toBe(false);
     expect(screen.getByTestId('create-on-meta')).toBeDisabled();
+    await tabTo('Criativos');
+    expect((screen.getByLabelText('Título do anúncio 1') as HTMLInputElement).value).toBe('');
+    expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/fields'))).toBe(false);
   });
 
   it('preencher mostra por que um anúncio ficou de fora', async () => {
@@ -110,6 +116,8 @@ describe('NORQVA-0027 — tela Campanhas', () => {
     expect(screen.queryByTestId('new-campaign')).not.toBeInTheDocument();
     expect(screen.queryByTestId('save-fields')).not.toBeInTheDocument();
     expect(screen.queryByTestId('create-on-meta')).not.toBeInTheDocument();
+    await tabTo('Criativos');
+    expect(screen.queryByTestId('save-fields')).not.toBeInTheDocument();
     expect((screen.getByLabelText('Título do anúncio 1') as HTMLInputElement).disabled).toBe(true);
     expect(apiFetch.mock.calls.some(c => String(c[0]).includes('/creative-options'))).toBe(false);
   });
