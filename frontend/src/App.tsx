@@ -1563,5 +1563,4 @@ export default function App() {
   );
 }
 
-// -------------------- DETAILED SUBCOMPONENTS --------------------
 

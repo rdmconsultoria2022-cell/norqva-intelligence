@@ -38,7 +38,7 @@
 .nq-intro-grid { position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(167,175,188,0.035) 1px, transparent 1px); background-size: 100% 90px; }
 .nq-intro-scan { position: absolute; left: 0; right: 0; height: 120px; pointer-events: none; background: linear-gradient(180deg, rgba(167,175,188,0) 0%, rgba(167,175,188,0.06) 50%, rgba(167,175,188,0) 100%); animation: nqIntroScan 5s linear infinite; }
 .nq-intro-glow { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(167,175,188,0.08) 0%, rgba(167,175,188,0.03) 45%, rgba(167,175,188,0) 70%); animation: nqIntroBreath 4s ease-in-out infinite; }
-.nq-intro-smoke-clip { position: absolute; inset: -40px; pointer-events: none; }
+.nq-intro-smoke-clip { position: absolute; inset: -40px -80px; pointer-events: none; }
 .nq-intro-smoke-back { clip-path: inset(0 0 50% 0); }
 .nq-intro-smoke-front { clip-path: inset(50% 0 0 0); z-index: 3; }
 .nq-intro-smoke-plane { position: absolute; left: 50%; top: 50%; width: 260px; height: 260px; margin: -130px 0 0 -130px; transform: rotateX(74deg); }
@@ -55,11 +55,12 @@
 @keyframes nqIntroBreath { 0%, 100% { transform: scale(.9); opacity: .7; } 50% { transform: scale(1.08); opacity: 1; } }
 @keyframes nqIntroPuff { 0%, 100% { transform: scale(.95); opacity: .8; } 50% { transform: scale(1.1); opacity: 1; } }
 @keyframes nqIntroIn { 0% { opacity: 0; transform: scale(.7); filter: blur(8px); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
-@keyframes nqIntroRise { 0% { opacity: 0; transform: translateY(14px); letter-spacing: .9em; } 100% { opacity: 1; transform: translateY(0); letter-spacing: .42em; } }
+@keyframes nqIntroRise { 0% { opacity: 0; transform: translateY(14px); letter-spacing: .6em; } 100% { opacity: 1; transform: translateY(0); letter-spacing: .42em; } }
 @keyframes nqIntroFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes nqIntroShine { 0% { background-position: 120% 0; } 60%, 100% { background-position: -120% 0; } }
 @keyframes nqIntroLoad { to { width: 100%; } }
 @keyframes nqIntroScan { 0% { top: -120px; } 100% { top: 100%; } }
 @media (prefers-reduced-motion: reduce) {
-  .nq-intro-scan, .nq-intro-glow, .nq-intro-smoke-spin, .nq-intro-puff, .nq-intro-shine { animation: none; }
+  .nq-intro-scan { display: none; }
+  .nq-intro-glow, .nq-intro-smoke-spin, .nq-intro-puff, .nq-intro-shine { animation: none; }
 }

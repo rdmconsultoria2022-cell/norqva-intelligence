@@ -157,9 +157,10 @@ export function IntroSequence({ onFinish }: { onFinish: () => void }) {
       </div>
       <p className="nq-intro-sub mt-3.5 mb-0 pl-[0.5em] text-xs tracking-[0.5em] text-[#8FA3C0]">INTELIGÊNCIA</p>
 
-      <div className="absolute bottom-[150px] left-1/2 -translate-x-1/2 w-[262px] max-w-[calc(100%-64px)] h-0.5 rounded-sm bg-[#121C33] overflow-hidden" aria-hidden="true">
+      <div className="mt-10 w-[262px] max-w-[calc(100%-64px)] h-0.5 rounded-sm bg-[#121C33] overflow-hidden" aria-hidden="true">
         <div className="nq-intro-bar" />
       </div>
+
     </div>
   );
 }
