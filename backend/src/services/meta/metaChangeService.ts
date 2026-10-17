@@ -333,9 +333,9 @@ export class MetaChangeService {
     }
     const r = await this.pool.query(
       `UPDATE meta_change_requests SET state = $2, meta_value = $3, verified_at = NOW(),
-              confirmed_at = CASE WHEN $2 = 'CONFIRMED' THEN NOW() ELSE confirmed_at END, updated_at = NOW()
+              confirmed_at = CASE WHEN $4 THEN NOW() ELSE confirmed_at END, updated_at = NOW()
        WHERE id = $1 AND state IN ('SENDING', 'UNCONFIRMED') RETURNING *`,
-      [change.id, state, metaValue]
+      [change.id, state, metaValue, state === 'CONFIRMED']
     );
     const row = r.rows[0] || (await this.pool.query(`SELECT * FROM meta_change_requests WHERE id = $1`, [change.id])).rows[0];
     if (state === 'CONFIRMED' || first) {
