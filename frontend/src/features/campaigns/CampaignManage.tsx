@@ -30,6 +30,7 @@ interface Economics {
 /** Pausar (ou reativar) a campanha na Meta, sempre visível. Só administrador; o servidor confere tudo de novo. */
 export function PauseBar({
   metaCampaign,
+  allowResume = false,
   currentUser,
   apiFetch,
   showError,
@@ -37,6 +38,8 @@ export function PauseBar({
   onDone
 }: {
   metaCampaign: { meta_campaign_id: string; name: string; status?: string | null; effective_status?: string | null } | null;
+  /** reativar só aparece para plano já aprovado (Sim) e fora do teto; o servidor confere de novo */
+  allowResume?: boolean;
   currentUser: any;
   apiFetch: Api;
   showError: (m: string) => void;
@@ -48,6 +51,7 @@ export function PauseBar({
   const [action, setAction] = useState<MetaControlPendingAction | null>(null);
   if (!isAdmin || !metaCampaign) return null;
   const running = String(metaCampaign.status || '').toUpperCase() === 'ACTIVE';
+  if (!running && !allowResume) return null;
   const target = { entityType: 'campaign' as const, id: String(metaCampaign.meta_campaign_id), name: metaCampaign.name, status: metaCampaign.status };
   return (
     <>
@@ -138,7 +142,7 @@ export function CampaignOverview({
   const m = metrics;
   // margem estimada: vendas × valor líquido por venda − investido (sem custos fixos)
   const margin = m && eco ? Math.round((m.sales * eco.net_per_sale - m.spend) * 100) / 100 : null;
-  const roasTone = m?.roas === null || m?.roas === undefined || !eco?.breakeven_roas ? 'text-nq-text' : m.roas >= eco.breakeven_roas ? 'text-nq-positive-text' : 'text-nq-critical-text';
+  const roasTone = m?.roas === null || m?.roas === undefined || !eco?.breakeven_roas ? 'text-nq-text' : m.roas > eco.breakeven_roas ? 'text-nq-positive-text' : 'text-nq-critical-text';
 
   return (
     <div className="space-y-4" data-testid="overview-tab">

@@ -92,12 +92,16 @@ export class CampaignInsightService {
 
   async history(id: string, viewer: { role: string }) {
     const p = await this.plan(id);
-    const metaIds = planMetaIdList(p.meta_ids);
-    const patterns = [`%${p.code}%`, ...metaIds.map((m) => `%${m}%`)];
+    // só campanha, conjuntos e anúncios (vídeos e peças podem ser compartilhados entre planos)
+    const ids = parseIds(p.meta_ids);
+    const metaIds = Array.from(new Set(['campaign', 'adsets', 'ads'].flatMap((g) => Object.values(ids[g] || {}).map(String)).filter(Boolean)));
+    // palavra inteira: TR-EXP1 não pega TR-EXP10
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const patterns = [p.code, ...metaIds].map((t) => `(^|[^A-Za-z0-9_-])${esc(String(t))}([^A-Za-z0-9_-]|$)`);
     const audits = await this.pool.query(
       `SELECT a.id, a.event_type, a.description, a.previous_value, a.new_value, a.created_at, u.name AS user_name
        FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
-       WHERE a.is_demo = FALSE AND (a.description ILIKE ANY($1::text[]) OR a.new_value = $2)
+       WHERE a.is_demo = FALSE AND (a.description ~* ANY($1::text[]) OR a.new_value = $2)
        ORDER BY a.created_at DESC LIMIT 150`,
       [patterns, p.id]
     );
@@ -118,7 +122,7 @@ export class CampaignInsightService {
       const dec = await this.pool.query(
         `SELECT id, phase, action, decision, user_email, actor_type, result, error, created_at
          FROM decision_events
-         WHERE phase <> 'REQUESTED' AND (plan_id = $1 OR meta_ids ?| $2::text[])
+         WHERE phase <> 'REQUESTED' AND is_demo = FALSE AND (plan_id = $1 OR meta_ids ?| $2::text[])
          ORDER BY created_at DESC LIMIT 150`,
         [p.id, metaIds.length ? metaIds : ['__none__']]
       );

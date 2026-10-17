@@ -240,6 +240,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     },
     [campaigns, metaCampaigns, selectedId]
   );
+  // NORQVA-0096: pausar ou mudar orçamento em Resultados atualiza a situação do topo ao sair da aba
+  const prevTab = useRef<CampaignTab>('overview');
+  useEffect(() => {
+    if (prevTab.current === 'results' && tab !== 'results') loadList();
+    prevTab.current = tab;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const focusNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!focus || !listLoaded || focusNonce.current === focus.nonce) return;
@@ -712,6 +719,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                   <div className="mt-3">
                     <PauseBar
                       metaCampaign={mc}
+                      allowResume={['APPROVED', 'ACTIVE'].includes(campaign.status) && campaign.guard_state !== 'CAPPED'}
                       currentUser={currentUser}
                       apiFetch={apiFetch}
                       showError={showError}
@@ -757,7 +765,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               <CampaignOverview
                 campaign={campaign}
                 metrics={metricsOf(planMetaId(campaign))}
-                problems={problems.filter(n => n.entity.meta_campaign_id && String(n.entity.meta_campaign_id) === planMetaId(campaign))}
+                problems={problems.filter(n => {
+                  const cid = n.entity.meta_campaign_id ? String(n.entity.meta_campaign_id) : adToCampaign.get(String(n.entity.meta_ad_id || ''));
+                  return (!!cid && cid === planMetaId(campaign)) || (!!n.entity.plan_code && n.entity.plan_code === campaign.code);
+                })}
                 metaStatusLabel={(() => {
                   const mc = metaCampaigns.find((m: any) => String(m.meta_campaign_id) === planMetaId(campaign));
                   return mc ? sentence(getMetaDeliveryStatus(mc.effective_status, mc.status).label) : null;
