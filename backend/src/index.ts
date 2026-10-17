@@ -131,7 +131,7 @@ import {
   deleteFactoryCreative,
   restoreFactoryCreative
 } from './controllers/creativeFactoryController';
-import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts } from './controllers/adAlertController';
+import { listAdAlerts, acknowledgeAdAlert, evaluateAdAlerts, getAlertCenter, markAlertsRead, setAlertInProgress, dismissAlert } from './controllers/adAlertController';
 import { getCampaignBase, startMetaBackfill, getMetaBackfillStatus } from './controllers/campaignIntelligenceController';
 import { getShortlist, sendShortlist } from './controllers/shortlistController';
 import { getResearchCriteria, createResearchCriteriaDraft, validateResearchCriteria } from './controllers/researchController';
@@ -486,6 +486,12 @@ app.get('/api/meta-control/audit', requireRole(['ADMIN']), getMetaLiveAudit);
 app.get('/api/alerts', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listAdAlerts);
 app.post('/api/alerts/evaluate', requireRole(['ADMIN']), evaluateAdAlerts);
 app.post('/api/alerts/:id/ack', requireRole(['ADMIN', 'PERFORMANCE']), acknowledgeAdAlert);
+// NORQVA-0095: central de pendências
+app.get('/api/alerts/center', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getAlertCenter);
+app.post('/api/alerts/read', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), markAlertsRead);
+app.post('/api/alerts/:id/read', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), markAlertsRead);
+app.post('/api/alerts/:id/progress', requireRole(['ADMIN', 'PERFORMANCE']), setAlertInProgress);
+app.post('/api/alerts/:id/dismiss', requireRole(['ADMIN', 'PERFORMANCE']), dismissAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
 app.get('/api/decision-events', requireRole(['ADMIN']), getDecisionEvents);

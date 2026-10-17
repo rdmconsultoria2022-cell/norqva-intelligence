@@ -23,6 +23,9 @@ export interface HeaderProps {
   setIsDemoView: (isDemo: boolean) => void;
   /** NORQVA-0071: o período fica no topo, só nas telas em que ele filtra números. */
   showPeriodFilter?: boolean;
+  /** NORQVA-0095: o sino mostra os avisos que esta pessoa ainda não leu e abre a central. */
+  unreadCount?: number;
+  onOpenNotifications?: () => void;
 }
 
 export function NorqvaLogo({ compact = false }: { compact?: boolean } = {}) {
@@ -47,7 +50,9 @@ export function Header({
   badges,
   isDemoView,
   setIsDemoView,
-  showPeriodFilter = false
+  showPeriodFilter = false,
+  unreadCount,
+  onOpenNotifications
 }: HeaderProps) {
   return (
     <header data-testid="app-header" className="shrink-0 z-30 border-b border-nq-line/50 bg-nq-bg/95 backdrop-blur-md pt-[env(safe-area-inset-top)]">
@@ -83,22 +88,27 @@ export function Header({
             </div>
           )}
           {showPeriodFilter && <GlobalPeriodSelector />}
-          {/* NORQVA-0082: alertas abertos (hoje: os de Campanhas), atalho para a tela deles */}
+          {/* NORQVA-0095: sino = avisos não lidos desta pessoa; abre a central de pendências.
+              Sem a central (onOpenNotifications), volta ao atalho antigo para Campanhas (NORQVA-0082). */}
           {(() => {
-            const total = Object.values(badges || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+            const central = !!onOpenNotifications;
+            const total = central ? Number(unreadCount) || 0 : Object.values(badges || {}).reduce((a, n) => a + (Number(n) || 0), 0);
             const target = Object.keys(badges || {}).find(k => (Number(badges?.[k]) || 0) > 0) || 'campaigns';
+            const label = central
+              ? total > 0 ? `Avisos: ${total} não lido(s)` : 'Avisos'
+              : total > 0 ? `${total} alerta(s) aberto(s)` : 'Alertas: nenhum aberto';
             return (
               <button
                 type="button"
                 data-testid="header-alerts"
-                onClick={() => total > 0 && setActiveTab(target)}
-                aria-label={total > 0 ? `${total} alerta(s) aberto(s)` : 'Alertas: nenhum aberto'}
-                className="relative h-10 w-10 flex items-center justify-center rounded-full text-nq-muted hover:text-nq-text active:bg-nq-surface"
+                onClick={() => (central ? onOpenNotifications!() : total > 0 && setActiveTab(target))}
+                aria-label={label}
+                className="relative h-11 w-11 flex items-center justify-center rounded-full text-nq-muted hover:text-nq-text active:bg-nq-surface"
               >
                 <Bell aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
                 {total > 0 && (
                   <span aria-hidden="true" className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-nq-critical text-white text-[12px] font-semibold leading-[18px] text-center">
-                    {total}
+                    {total > 99 ? '99+' : total}
                   </span>
                 )}
               </button>

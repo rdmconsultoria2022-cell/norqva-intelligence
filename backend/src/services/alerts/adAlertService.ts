@@ -208,7 +208,7 @@ export class AdAlertService {
 
   async list(pool: Pool, isDemo: boolean, onlyOpen: boolean) {
     const r = await pool.query(
-      `SELECT * FROM ad_alerts WHERE is_demo = $1 ${onlyOpen ? `AND status IN ('OPEN', 'ACKNOWLEDGED')` : ''}
+      `SELECT * FROM ad_alerts WHERE is_demo = $1 ${onlyOpen ? `AND status IN ('OPEN', 'ACKNOWLEDGED') AND dismissed_at IS NULL` : ''}
        ORDER BY created_at DESC LIMIT 100`,
       [isDemo]
     );

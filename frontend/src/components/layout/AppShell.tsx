@@ -13,8 +13,11 @@ export interface AppShellNav {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   handleSignOut: () => void;
-  // NORQVA-0009/0028: contadores ao lado das telas (ex.: alertas abertos em "Campanhas")
+  // NORQVA-0009/0028: contadores ao lado das telas (ex.: pendências abertas em "Campanhas")
   badges?: Record<string, number>;
+  /** NORQVA-0095: sino = avisos não lidos; abre a central */
+  unreadCount?: number;
+  onOpenNotifications?: () => void;
 }
 
 export interface AppShellProps {
@@ -97,6 +100,8 @@ export function AppShell({
         isDemoView={isDemoView}
         setIsDemoView={setIsDemoView}
         showPeriodFilter={showPeriodFilter}
+        unreadCount={nav.unreadCount}
+        onOpenNotifications={nav.onOpenNotifications}
       />
 
       <AreaSubTabs groups={groups} activeTab={nav.activeTab} setActiveTab={nav.setActiveTab} badges={nav.badges} />
