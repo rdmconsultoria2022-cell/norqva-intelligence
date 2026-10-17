@@ -33,7 +33,7 @@ export const Login: React.FC<LoginProps> = ({
               onClick={() => setAuthMode('demo')}
               className={`py-2 px-3 border text-sm font-medium rounded-md text-center font-mono ${
                 authMode === 'demo'
-                  ? 'border-emerald-500 bg-emerald-950/20 text-[#E7EAF0]'
+                  ? 'border-[#C9CFD9] bg-[#C9CFD9]/10 text-[#E7EAF0]'
                   : 'border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
             >
@@ -43,7 +43,7 @@ export const Login: React.FC<LoginProps> = ({
               onClick={() => setAuthMode('real')}
               className={`py-2 px-3 border text-sm font-medium rounded-md text-center font-mono ${
                 authMode === 'real'
-                  ? 'border-emerald-500 bg-emerald-950/20 text-[#E7EAF0]'
+                  ? 'border-[#C9CFD9] bg-[#C9CFD9]/10 text-[#E7EAF0]'
                   : 'border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
             >
@@ -63,7 +63,7 @@ export const Login: React.FC<LoginProps> = ({
               <button
                 key={user.id}
                 onClick={() => handleLogin(user)}
-                className="w-full flex items-center justify-between p-3 rounded-md bg-slate-950/50 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-950/10 text-left transition"
+                className="w-full flex items-center justify-between p-3 rounded-md bg-slate-950/50 border border-slate-800 hover:border-[#C9CFD9]/50 hover:bg-[#C9CFD9]/5 text-left transition"
               >
                 <div>
                   <div className="text-sm font-bold text-slate-200">{user.name}</div>
