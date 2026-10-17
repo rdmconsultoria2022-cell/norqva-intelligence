@@ -1134,6 +1134,23 @@ export class MetaMutatingClient {
     return { success: true, campaignId: String(campaignMetaId), spend_cap_brl: Math.round(capBrl * 100) / 100 };
   }
 
+  /**
+   * NORQVA-0097: releitura de um objeto na Meta (só leitura) para confirmar uma alteração.
+   * Devolve situação e orçamento diário em reais (null quando o orçamento não fica neste nível).
+   */
+  public async readEntity(
+    metaId: string,
+    entityType: 'CAMPAIGN' | 'ADSET' | 'AD' = 'CAMPAIGN'
+  ): Promise<{ status: string | null; effective_status: string | null; daily_budget: number | null }> {
+    if (!/^[A-Za-z0-9_-]{3,64}$/.test(String(metaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid Meta id.');
+    // anúncio não tem orçamento: pedir o campo faz a Meta recusar a leitura inteira
+    const fields = entityType === 'AD' ? 'status,effective_status' : 'status,effective_status,daily_budget';
+    const obj = await this.callTransportGet(`/${metaId}`, { fields });
+    const raw = obj?.daily_budget;
+    const daily = raw !== undefined && raw !== null && String(raw) !== '' ? (parseFloat(raw) || 0) / 100 : null;
+    return { status: obj?.status || null, effective_status: obj?.effective_status || null, daily_budget: daily };
+  }
+
   /** H6: lifetime spend (BRL) of a campaign, read live from the Graph API (GET only). */
   public async getCampaignLifetimeSpend(campaignMetaId: string): Promise<{ spend: number; effective_status: string | null; spend_cap: number | null }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');

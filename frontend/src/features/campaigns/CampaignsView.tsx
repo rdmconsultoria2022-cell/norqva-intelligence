@@ -9,7 +9,7 @@ import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
 import { MethodView } from '../method/MethodView';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
-import { CampaignOverview, CampaignHistory, PauseBar } from './CampaignManage';
+import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
@@ -127,7 +127,6 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   // NORQVA-0028: lista única (planos + campanhas criadas fora do NORQVA), resultado, alertas e experimentos
   const [metaCampaigns, setMetaCampaigns] = useState<any[]>([]);
   const [perf, setPerf] = useState<PerfItem[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
   // NORQVA-0095: pendências abertas (avisos com gravidade Atenção ou Crítica)
   const [problems, setProblems] = useState<AlertNotification[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
@@ -256,10 +255,11 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, listLoaded, openFromAlert]);
 
-  // o contador "N pendências" de cada cartão acompanha a lista de pendências
-  useEffect(() => {
-    setAlerts(problems.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id || null })));
-  }, [problems]);
+  // o contador "N pendências" de cada cartão acompanha a lista de pendências (no mesmo desenho, sem atraso)
+  const alerts = React.useMemo(
+    () => problems.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id || null })),
+    [problems]
+  );
 
   const post = (url: string, body: any = {}) => apiRef.current(url, { method: 'POST', body: JSON.stringify(body) });
 
@@ -522,6 +522,22 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       />
       </div>
 
+      {/* NORQVA-0097: pedidos da equipe esperando o administrador */}
+      {isAdmin && (
+        <div className={hasSelection ? 'hidden lg:block' : ''}>
+          <MetaChangesList
+            query="state=AWAITING_APPROVAL"
+            title="Pedidos esperando sua autorização"
+            hideWhenEmpty
+            currentUser={currentUser}
+            apiFetch={apiFetch}
+            showError={showError}
+            showSuccess={showSuccess}
+            onChanged={() => loadList()}
+          />
+        </div>
+      )}
+
       {/* NORQVA-0095: pendências abertas, cada uma com a ação recomendada e o atalho para a campanha */}
       {problems.length > 0 && (
         <section className={hasSelection ? 'hidden lg:block' : ''} aria-label="Pendências" data-testid="campaign-problems">
@@ -756,7 +772,15 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
             {tab === 'results' &&
               (planMetaId(campaign) ? (
-                <MetaAdsView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} scopeCampaignId={planMetaId(campaign)} />
+                <MetaAdsView
+                  currentUser={currentUser}
+                  isDemoView={false}
+                  apiFetch={apiFetch}
+                  showError={showError}
+                  showSuccess={showSuccess}
+                  scopeCampaignId={planMetaId(campaign)}
+                  capInfo={{ cap: Number(campaign.max_spend_brl), spent: campaign.spent_brl_last === null || campaign.spent_brl_last === undefined ? null : Number(campaign.spent_brl_last) }}
+                />
               ) : (
                 <p className="rounded-2xl bg-nq-surface p-4 text-[13px] text-nq-muted" data-testid="results-empty">A campanha ainda não foi criada na Meta: os resultados aparecem depois.</p>
               ))}
@@ -784,7 +808,22 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               />
             )}
 
-            {tab === 'history' && <CampaignHistory campaignId={campaign.id} apiFetch={apiFetch} />}
+            {tab === 'history' && (
+              <div className="space-y-4">
+                {/* NORQVA-0097: fichas de alteração (pausar, reativar, orçamento) com a situação na Meta */}
+                <MetaChangesList
+                  query={`plan_id=${campaign.id}`}
+                  title="Alterações na Meta"
+                  currentUser={currentUser}
+                  apiFetch={apiFetch}
+                  showError={showError}
+                  showSuccess={showSuccess}
+                  onChanged={() => loadList()}
+                />
+                <h3 className="text-[13px] font-semibold text-nq-muted">Tudo o que aconteceu</h3>
+                <CampaignHistory campaignId={campaign.id} apiFetch={apiFetch} />
+              </div>
+            )}
 
             {tab === 'config' && (
           <section className="space-y-4" data-testid="campaign-detail">

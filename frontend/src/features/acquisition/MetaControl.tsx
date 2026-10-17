@@ -145,6 +145,21 @@ export const MetaControlActions: React.FC<{
   );
 };
 
+/** NORQVA-0097: id da ficha, gerado uma vez por pedido (toque duplo não repete a alteração). */
+function newChangeId(): string {
+  const c: any = (globalThis as any).crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0;
+    return (ch === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/**
+ * NORQVA-0097 (D-0097): confirmação de pausar, reativar e orçamento. Cada pedido vira uma ficha
+ * (POST /meta-changes): o administrador autoriza no mesmo passo; Performance pausa direto e o resto
+ * espera o administrador. "Confirmado pela Meta" só depois de o NORQVA reler a Meta.
+ */
 export const MetaControlDialog: React.FC<{
   action: PendingAction | null;
   status: MetaControlStatus | null;
@@ -156,18 +171,24 @@ export const MetaControlDialog: React.FC<{
   onError: (message: string) => void;
   /** NORQVA-0028: ID da campanha na Meta; o servidor recusa objetos de outra campanha */
   scopeCampaign?: string | null;
-}> = ({ action, status, isDemoView, currentUser, apiFetch, onClose, onDone, onError, scopeCampaign }) => {
+  /** NORQVA-0097: teto e gasto do plano, para mostrar em quantos dias o teto chega no novo ritmo */
+  capInfo?: { cap: number; spent: number | null } | null;
+}> = ({ action, status, isDemoView, currentUser, apiFetch, onClose, onDone, onError, scopeCampaign, capInfo }) => {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   // NORQVA-0094: reativar campanha de plano pausado pela tela pede o código do plano (vale como novo Sim)
   const [codeNeeded, setCodeNeeded] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  const [increaseOk, setIncreaseOk] = useState(false);
+  const changeId = useRef<string>(newChangeId());
 
   useEffect(() => {
     if (action?.kind === 'budget') setAmount(action.target.dailyBudget ? String(action.target.dailyBudget) : '');
     setBusy(false);
     setCodeNeeded(null);
     setCode('');
+    setIncreaseOk(false);
+    changeId.current = newChangeId();
   }, [action]);
 
   if (!action) return null;
@@ -178,45 +199,57 @@ export const MetaControlDialog: React.FC<{
   const max = status?.limits.maxDailyBudget ?? 100;
   const parsed = Number(amount.replace(',', '.'));
   const budgetValid = action.kind !== 'budget' || (Number.isFinite(parsed) && parsed >= min && parsed <= max);
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const waitsAdmin = !isAdmin && !(action.kind === 'status' && action.next === 'PAUSED');
+  const current = action.kind === 'budget' && target.dailyBudget !== null && target.dailyBudget !== undefined ? Number(target.dailyBudget) : null;
+  const diff = action.kind === 'budget' && current !== null && budgetValid ? Math.round((parsed - current) * 100) / 100 : null;
+  const increase = diff !== null && diff > 0;
+  const remaining = capInfo && capInfo.spent !== null ? Math.max(capInfo.cap - capInfo.spent, 0) : null;
 
   const confirm = async () => {
-    if (busy || !budgetValid) return;
+    if (busy || !budgetValid || (increase && !increaseOk)) return;
     setBusy(true);
     const mode = isDemoView ? 'demo' : 'real';
+    const body = {
+      id: changeId.current,
+      entity_type: target.entityType,
+      meta_id: target.id,
+      kind: action.kind === 'status' ? 'STATUS' : 'DAILY_BUDGET',
+      value: action.kind === 'status' ? action.next : parsed,
+      ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}),
+      ...(codeNeeded ? { confirm_code: code.trim() } : {})
+    };
     try {
-      if (action.kind === 'status') {
-        await apiFetch(
-          `/meta-control/${target.entityType}/${encodeURIComponent(target.id)}/status?mode=${mode}`,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              status: action.next,
-              ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}),
-              ...(codeNeeded ? { confirm_code: code.trim() } : {})
-            })
-          },
-          mode,
-          currentUser
-        );
-        onDone(`${label[0].toUpperCase()}${label.slice(1)} "${target.name}" ${action.next === 'PAUSED' ? 'pausado(a)' : 'ativado(a)'} na Meta.`);
-      } else {
-        await apiFetch(
-          `/meta-control/${target.entityType}/${encodeURIComponent(target.id)}/budget?mode=${mode}`,
-          { method: 'POST', body: JSON.stringify({ daily_budget: parsed, ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}) }) },
-          mode,
-          currentUser
-        );
-        onDone(`Orçamento diário de "${target.name}" alterado para ${brl(parsed)} na Meta.`);
-      }
-    } catch (err: any) {
-      const msg = String(err?.message || 'Falha ao alterar na Meta.');
-      const asked = action.kind === 'status' ? msg.match(/digite o código ([A-Za-z0-9_-]+)/) : null;
-      if (asked && !codeNeeded) {
-        setCodeNeeded(asked[1]);
+      const r = await apiFetch(`/meta-changes?mode=${mode}`, { method: 'POST', body: JSON.stringify(body) }, mode, currentUser);
+      const c = r?.change || {};
+      const what = action.kind === 'status' ? (action.next === 'PAUSED' ? 'pausado(a)' : 'ativado(a)') : `com orçamento de ${brl(parsed)}/dia`;
+      const name = `${label[0].toUpperCase()}${label.slice(1)} "${target.name}"`;
+      if (c.state === 'FAILED') {
+        const msg = String(c.error || 'A alteração não foi feita.');
+        const asked = action.kind === 'status' ? msg.match(/digite o código ([A-Za-z0-9_-]+)/) : null;
+        // a ficha falhou: um novo pedido ganha outro id
+        changeId.current = newChangeId();
+        if (asked && !codeNeeded) {
+          setCodeNeeded(asked[1]);
+          setBusy(false);
+          return;
+        }
+        onError(msg);
         setBusy(false);
         return;
       }
-      onError(msg);
+      if (c.state === 'AWAITING_APPROVAL') return onDone(`Pedido registrado: ${name} ${what}. Fica aguardando a autorização do administrador.`);
+      if (c.state === 'CONFIRMED') return onDone(`${name} ${what} na Meta. Confirmado pela Meta.`);
+      if (c.state === 'UNCONFIRMED' || c.state === 'SENDING')
+        return onDone(`Pedido enviado: ${name} ${what}. O NORQVA ainda está conferindo na Meta; acompanhe no Histórico da campanha.`);
+      if (c.state === 'REJECTED' || c.state === 'CANCELLED' || c.state === 'EXPIRED') {
+        onError('Este pedido já tinha sido encerrado. Abra de novo para fazer um pedido novo.');
+        setBusy(false);
+        return;
+      }
+      return onDone(`Pedido enviado: ${name} ${what}. Acompanhe a situação no Histórico da campanha.`);
+    } catch (err: any) {
+      onError(err?.message || 'Falha ao alterar na Meta.');
       setBusy(false);
     }
   };
@@ -225,7 +258,7 @@ export const MetaControlDialog: React.FC<{
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="bg-nq-surface border border-nq-line rounded-lg max-w-md w-full p-6 text-sm space-y-4">
         <h3 className="text-md font-bold text-nq-positive-text flex items-center gap-2">
-          <Power className="h-4 w-4" /> Confirmar na Meta
+          <Power className="h-4 w-4" /> {waitsAdmin ? 'Pedir ao administrador' : 'Confirmar na Meta'}
         </h3>
 
         {action.kind === 'status' ? (
@@ -241,7 +274,7 @@ export const MetaControlDialog: React.FC<{
           <div className="space-y-2">
             <p className="text-nq-text">
               Orçamento diário de {label} <strong>{target.name}</strong>
-              {target.dailyBudget ? <span className="text-nq-muted"> (atual: {brl(Number(target.dailyBudget))})</span> : null}
+              {current !== null ? <span className="text-nq-muted"> (atual: {brl(current)})</span> : null}
             </p>
             <label htmlFor="meta-control-budget" className="block text-xs text-nq-muted">
               Novo orçamento diário (R$)
@@ -250,12 +283,47 @@ export const MetaControlDialog: React.FC<{
               id="meta-control-budget"
               inputMode="decimal"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setIncreaseOk(false);
+              }}
               className="w-full bg-nq-bg border border-nq-line rounded p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text"
             />
             <p className={`text-xs ${budgetValid ? 'text-nq-subtle' : 'text-nq-critical-text'}`}>
               Permitido: {brl(min)} a {brl(max)} por dia.
             </p>
+            {diff !== null && current !== null && diff !== 0 && (
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs" data-testid="budget-review">
+                <dt className="text-nq-muted">Hoje</dt>
+                <dd className="text-nq-text tabular-nums">{brl(current)} por dia</dd>
+                <dt className="text-nq-muted">Novo</dt>
+                <dd className="text-nq-text tabular-nums">{brl(parsed)} por dia</dd>
+                <dt className="text-nq-muted">Diferença</dt>
+                <dd className={`tabular-nums ${increase ? 'text-nq-attention' : 'text-nq-positive-text'}`}>
+                  {increase ? '+ ' : '− '}
+                  {brl(Math.abs(diff))} por dia
+                </dd>
+                <dt className="text-nq-muted">No mês (30 dias)</dt>
+                <dd className="text-nq-text tabular-nums">
+                  {brl(current * 30)} → {brl(parsed * 30)} ({increase ? '+ ' : '− '}
+                  {brl(Math.abs(diff) * 30)})
+                </dd>
+                {remaining !== null && capInfo && (
+                  <>
+                    <dt className="text-nq-muted">Teto</dt>
+                    <dd className="text-nq-text">
+                      {brl(capInfo.cap)}, faltam {brl(remaining)}: no novo ritmo, cerca de {Math.max(Math.round((remaining / Math.max(parsed, 0.01)) * 10) / 10, 0).toLocaleString('pt-BR')} dia(s)
+                    </dd>
+                  </>
+                )}
+              </dl>
+            )}
+            {increase && (
+              <label className="flex items-start gap-2 text-xs text-nq-text min-h-[44px]">
+                <input type="checkbox" checked={increaseOk} onChange={(e) => setIncreaseOk(e.target.checked)} className="mt-0.5 h-5 w-5" />
+                <span>Aumentar o gasto em {brl(diff!)} por dia</span>
+              </label>
+            )}
           </div>
         )}
 
@@ -277,18 +345,19 @@ export const MetaControlDialog: React.FC<{
           </div>
         )}
 
+        {waitsAdmin && <p className="text-xs text-nq-info">Este pedido fica aguardando a autorização do administrador por até 24 horas.</p>}
         {isDemoView && <p className="text-xs text-nq-info">Modo DEMO: nada é enviado à Meta.</p>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} disabled={busy} className="px-3 py-2 rounded border border-nq-line text-nq-text text-xs">
+          <button onClick={onClose} disabled={busy} className="px-3 py-2 min-h-[44px] rounded border border-nq-line text-nq-text text-xs">
             Cancelar
           </button>
           <button
             onClick={confirm}
-            disabled={busy || !budgetValid || (!!codeNeeded && code.trim().toUpperCase() !== codeNeeded.toUpperCase())}
-            className="px-3 py-2 rounded bg-nq-positive text-nq-on-positive font-bold text-xs disabled:opacity-50"
+            disabled={busy || !budgetValid || (increase && !increaseOk) || (!!codeNeeded && code.trim().toUpperCase() !== codeNeeded.toUpperCase())}
+            className="px-3 py-2 min-h-[44px] rounded bg-nq-positive text-nq-on-positive font-bold text-xs disabled:opacity-50"
           >
-            {busy ? 'Enviando...' : 'Confirmar'}
+            {busy ? 'Enviando...' : waitsAdmin ? 'Pedir' : 'Confirmar'}
           </button>
         </div>
       </div>

@@ -46,7 +46,8 @@ export function PauseBar({
   showSuccess: (m: string) => void;
   onDone: () => void;
 }) {
-  const isAdmin = currentUser?.role === 'ADMIN';
+  // NORQVA-0097: Performance também pausa (reativar vira pedido ao administrador)
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'PERFORMANCE';
   const { status } = useMetaControl({ apiFetch: apiFetch as any, currentUser, isDemoView: false, enabled: isAdmin && !!metaCampaign });
   const [action, setAction] = useState<MetaControlPendingAction | null>(null);
   if (!isAdmin || !metaCampaign) return null;
@@ -307,5 +308,214 @@ export function CampaignHistory({ campaignId, apiFetch }: { campaignId: string; 
         );
       })}
     </ul>
+  );
+}
+
+// ---------------- NORQVA-0097: fichas de alteração na Meta ----------------
+
+const CHANGE_STATE: Record<string, { label: string; tone: 'positive' | 'attention' | 'critical' | 'neutral' | 'info' }> = {
+  AWAITING_APPROVAL: { label: 'Aguardando aprovação', tone: 'attention' },
+  SENDING: { label: 'Enviando à Meta', tone: 'info' },
+  CONFIRMED: { label: 'Confirmado pela Meta', tone: 'positive' },
+  UNCONFIRMED: { label: 'Aguardando conferência', tone: 'attention' },
+  FAILED: { label: 'Falhou', tone: 'critical' },
+  REJECTED: { label: 'Recusado', tone: 'neutral' },
+  CANCELLED: { label: 'Cancelado', tone: 'neutral' },
+  EXPIRED: { label: 'Expirou', tone: 'neutral' }
+};
+
+const brlText = (v: string | null) => (v === null || v === undefined || v === '' ? '—' : brl(Number(v)));
+
+export function changeLabel(c: any): string {
+  if (c.kind === 'STATUS') return c.requested_value === 'PAUSED' ? 'Pausar' : 'Reativar';
+  return `Orçamento ${brlText(c.previous_value)} → ${brlText(c.requested_value)} por dia`;
+}
+
+function ChangeItem({
+  c,
+  currentUser,
+  apiFetch,
+  showError,
+  showSuccess,
+  onChanged
+}: {
+  c: any;
+  currentUser: any;
+  apiFetch: Api;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+  onChanged: (c: any) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState('');
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const mine = String(c.requested_by || '') === String(currentUser?.id || '');
+  const st = CHANGE_STATE[c.state] || { label: c.state, tone: 'neutral' as const };
+  // o servidor só pede o código para a campanha de um plano (pausada pela tela)
+  const needsCode = c.state === 'AWAITING_APPROVAL' && c.kind === 'STATUS' && c.requested_value === 'ACTIVE' && !!c.plan_code && c.entity_type === 'CAMPAIGN';
+  // aumento de orçamento pedido pela equipe: mostra a diferença e pede confirmação a mais
+  const prev = c.previous_value === null || c.previous_value === undefined ? null : Number(c.previous_value);
+  const increase = c.kind === 'DAILY_BUDGET' && prev !== null && Number(c.requested_value) > prev ? Math.round((Number(c.requested_value) - prev) * 100) / 100 : 0;
+  const [increaseOk, setIncreaseOk] = useState(false);
+
+  const act = async (path: string, body: any = {}, ok?: (x: any) => string) => {
+    setBusy(true);
+    try {
+      const r = await apiFetch(`/meta-changes/${c.id}/${path}?mode=real`, { method: 'POST', body: JSON.stringify(body) });
+      if (r?.change) {
+        onChanged(r.change);
+        if (r.change.state === 'FAILED') showError(String(r.change.error || 'A alteração não foi feita.'));
+        else if (ok) showSuccess(ok(r.change));
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível atualizar o pedido.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li className="px-4 py-3.5 space-y-1.5" data-testid={`change-${c.id}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-[15px] text-nq-text">{changeLabel(c)}</span>
+        <StatusPill tone={st.tone}>{st.label}</StatusPill>
+      </div>
+      <div className="text-[12px] text-nq-muted break-words">
+        {c.entity_name || c.meta_id}
+        {c.plan_code ? ` · ${c.plan_code}` : ''}
+      </div>
+      <div className="text-[12px] text-nq-subtle">
+        Pedido por {c.requested_by_name || '—'} em {new Date(c.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+        {c.approved_by_name && c.state !== 'REJECTED' && c.state !== 'CANCELLED' ? ` · autorizado por ${c.approved_by_name}` : ''}
+        {c.state === 'REJECTED' && c.approved_by_name ? ` · recusado por ${c.approved_by_name}` : ''}
+      </div>
+      {c.state === 'UNCONFIRMED' && (
+        <p className="text-[12px] text-nq-attention">A Meta aceitou, mas a releitura ainda mostra {c.kind === 'STATUS' ? c.meta_value || '—' : brlText(c.meta_value)}. O NORQVA confere de novo sozinho.</p>
+      )}
+      {c.state === 'FAILED' && c.error && <p className="text-[12px] text-nq-critical-text break-words">{c.error}</p>}
+
+      {needsCode && isAdmin && (
+        <label className="block space-y-1 max-w-xs">
+          <span className="text-[12px] text-nq-muted">Código do plano {c.plan_code} (reativar vale como novo Sim)</span>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="off"
+            aria-label={`Código do plano para autorizar ${changeLabel(c)}`}
+            className="w-full min-h-[44px] rounded-xl bg-nq-raised px-3 text-[15px] text-nq-text border border-nq-line"
+          />
+        </label>
+      )}
+
+      {c.state === 'AWAITING_APPROVAL' && isAdmin && increase > 0 && (
+        <div className="space-y-1">
+          <p className="text-[12px] text-nq-attention">
+            + {brl(increase)} por dia (+ {brl(increase * 30)} em 30 dias). O valor de antes é de quando o pedido foi feito; confira em Resultados se mudou.
+          </p>
+          <label className="flex items-start gap-2 text-[12px] text-nq-text min-h-[44px]">
+            <input type="checkbox" checked={increaseOk} onChange={(e) => setIncreaseOk(e.target.checked)} className="mt-0.5 h-5 w-5" />
+            <span>Aumentar o gasto em {brl(increase)} por dia</span>
+          </label>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        {c.state === 'AWAITING_APPROVAL' && isAdmin && (
+          <>
+            <button
+              type="button"
+              disabled={busy || (needsCode && code.trim().toUpperCase() !== String(c.plan_code).toUpperCase()) || (increase > 0 && !increaseOk)}
+              onClick={() => act('approve', needsCode ? { confirm_code: code.trim() } : {}, (x) => (x.state === 'CONFIRMED' ? 'Autorizado e confirmado pela Meta.' : 'Autorizado: a Meta aceitou, o NORQVA está conferindo.'))}
+              className="min-h-[44px] px-4 rounded-full bg-nq-positive text-nq-on-positive text-[13px] font-semibold disabled:opacity-50"
+            >
+              Autorizar
+            </button>
+            <button type="button" disabled={busy} onClick={() => act('reject', {}, () => 'Pedido recusado.')} className="min-h-[44px] px-4 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold disabled:opacity-50">
+              Recusar
+            </button>
+          </>
+        )}
+        {c.state === 'AWAITING_APPROVAL' && !isAdmin && mine && (
+          <button type="button" disabled={busy} onClick={() => act('cancel', {}, () => 'Pedido cancelado.')} className="min-h-[44px] px-4 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold disabled:opacity-50">
+            Cancelar pedido
+          </button>
+        )}
+        {c.state === 'UNCONFIRMED' && (isAdmin || currentUser?.role === 'PERFORMANCE') && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => act('verify', {}, (x) => (x.state === 'CONFIRMED' ? 'Confirmado pela Meta.' : 'Ainda não aparece na Meta. O NORQVA confere de novo sozinho.'))}
+            className="min-h-[44px] px-4 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold disabled:opacity-50"
+          >
+            Conferir agora
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** Lista de fichas (Histórico da campanha ou pedidos esperando o administrador). */
+export function MetaChangesList({
+  query,
+  title,
+  hideWhenEmpty = false,
+  currentUser,
+  apiFetch,
+  showError,
+  showSuccess,
+  onChanged
+}: {
+  query: string;
+  title: string;
+  hideWhenEmpty?: boolean;
+  currentUser: any;
+  apiFetch: Api;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+  onChanged?: () => void;
+}) {
+  const [items, setItems] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    let off = false;
+    apiFetch(`/meta-changes?mode=real${query ? `&${query}` : ''}`)
+      .then((r) => {
+        if (!off) setItems(Array.isArray(r?.changes) ? r.changes : []);
+      })
+      .catch(() => {
+        if (!off) setItems([]);
+      });
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  if (items === null || (hideWhenEmpty && items.length === 0)) return null;
+  return (
+    <section aria-label={title} className="space-y-2" data-testid="meta-changes">
+      <h3 className="text-[13px] font-semibold text-nq-muted">{title}</h3>
+      {items.length === 0 ? (
+        <p className="rounded-2xl bg-nq-surface p-4 text-[13px] text-nq-muted">Nenhuma alteração pedida pelo NORQVA nesta campanha.</p>
+      ) : (
+        <ul className="rounded-2xl bg-nq-surface divide-y divide-nq-line/70 overflow-hidden">
+          {items.map((c) => (
+            <ChangeItem
+              key={c.id}
+              c={c}
+              currentUser={currentUser}
+              apiFetch={apiFetch}
+              showError={showError}
+              showSuccess={showSuccess}
+              onChanged={(n) => {
+                setItems((list) => (list || []).map((x) => (x.id === n.id ? n : x)));
+                onChanged?.();
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

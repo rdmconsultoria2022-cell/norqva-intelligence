@@ -66,9 +66,10 @@ describe('NORQVA-0009 — Meta results & alerts', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Pausar anúncio/ }));
     expect(screen.getByRole('dialog')).toHaveTextContent('BB-B01-H03-M1-C1');
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith('/meta-control/ad/MA1/status?mode=real', { method: 'POST', body: JSON.stringify({ status: 'PAUSED' }) }, 'real', admin)
-    );
+    // NORQVA-0097: a pausa vira uma ficha de alteração
+    await waitFor(() => expect(apiFetch.mock.calls.some((c: any[]) => c[0] === '/meta-changes?mode=real')).toBe(true));
+    const call: any[] = apiFetch.mock.calls.find((c: any[]) => c[0] === '/meta-changes?mode=real')! as any[];
+    expect(JSON.parse((call[1] as any).body)).toMatchObject({ entity_type: 'ad', meta_id: 'MA1', kind: 'STATUS', value: 'PAUSED' });
 
     fireEvent.click(screen.getByRole('button', { name: /Marcar como visto/ }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/alerts/al1/ack?mode=real', { method: 'POST' }, 'real', admin));

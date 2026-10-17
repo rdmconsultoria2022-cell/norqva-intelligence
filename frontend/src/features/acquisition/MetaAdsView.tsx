@@ -40,6 +40,8 @@ interface MetaAdsViewProps {
   showSuccess: (msg: string) => void;
   /** NORQVA-0028: dentro de uma campanha — mostra só os objetos desta campanha da Meta (ID da Meta) */
   scopeCampaignId?: string | null;
+  /** NORQVA-0097: teto e gasto do plano, para a revisão de orçamento */
+  capInfo?: { cap: number; spent: number | null } | null;
 }
 
 // Helper function to map Meta effective_status / status
@@ -121,9 +123,12 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   apiFetch,
   showError,
   showSuccess,
-  scopeCampaignId = null
+  scopeCampaignId = null,
+  capInfo = null
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
+  // NORQVA-0097: Performance também pede alterações (pausa direto; o resto espera o administrador)
+  const canControl = isAdmin || currentUser?.role === 'PERFORMANCE';
   const scoped = !!scopeCampaignId;
   // NORQVA-0083: no celular, as tabelas largas viram lista (só um dos dois layouts é desenhado)
   const isMobile = useIsMobile();
@@ -136,7 +141,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const [ads, setAds] = useState<any[]>([]);
   const [insights, setInsights] = useState<any[]>([]);
   // NORQVA-0006: campaign control (ADMIN)
-  const control = useMetaControl({ apiFetch, currentUser, isDemoView, enabled: isAdmin });
+  const control = useMetaControl({ apiFetch, currentUser, isDemoView, enabled: canControl });
   const [pendingControl, setPendingControl] = useState<MetaControlPendingAction | null>(null);
   const toBudget = (v: any) => (v === null || v === undefined || v === '' ? null : parseFloat(v));
   // NORQVA-0009: results per campaign / ad set / ad (Meta spend + NORQVA funnel) and ad alerts
@@ -355,7 +360,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           item: c,
           budget: money2(c.daily_budget),
           m,
-          actions: isAdmin ? (
+          actions: canControl ? (
             <MetaControlActions
               status={control.status}
               onRequest={setPendingControl}
@@ -383,7 +388,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           item: s,
           budget: money2(s.daily_budget),
           m,
-          actions: isAdmin ? (
+          actions: canControl ? (
             <MetaControlActions
               status={control.status}
               onRequest={setPendingControl}
@@ -408,7 +413,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
           item: a,
           m,
           extra: alert ? <span className="text-[12px] font-semibold text-nq-critical-text" data-testid="ad-alert-badge">Pausar recomendado</span> : null,
-          actions: isAdmin ? (
+          actions: canControl ? (
             <MetaControlActions
               status={control.status}
               onRequest={setPendingControl}
@@ -462,7 +467,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
       {!scoped && <ExperimentGuardCard apiFetch={apiFetch} currentUser={currentUser} isDemoView={isDemoView} showError={showError} showSuccess={showSuccess} />}
 
       {/* Governance banner: read-only for non-admins; control status for admins (NORQVA-0006) */}
-      {isAdmin && control.status ? (
+      {canControl && control.status ? (
         <MetaControlBanner status={control.status} onRecheck={() => control.refresh(true)} />
       ) : (
         <div className="p-4 rounded-2xl bg-nq-attention/10 text-nq-attention text-[13px] leading-[18px] flex items-start gap-3">
@@ -487,13 +492,14 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         }}
         onError={(msg) => showError(msg)}
         scopeCampaign={scopeCampaignId}
+        capInfo={capInfo}
       />
 
       <AlertsPanel
         alerts={alerts.filter(a => a.status !== 'RESOLVED')}
         canPause={(a) => {
           const ad = ads.find(x => String(x.meta_ad_id) === String(a.meta_ad_id));
-          return !!(isAdmin && control.status?.ready && ad && String(ad.status).toUpperCase() === 'ACTIVE');
+          return !!(canControl && control.status?.ready && ad && String(ad.status).toUpperCase() === 'ACTIVE');
         }}
         onPause={(a) =>
           setPendingControl({ kind: 'status', target: { entityType: 'ad', id: a.meta_ad_id, name: a.ad_name, status: 'ACTIVE' }, next: 'PAUSED' })
@@ -603,7 +609,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3">Status</th>
                       <th className="p-3 whitespace-nowrap">Orçamento/dia</th>
                       <MetricHeaderCells />
-                      {isAdmin && <th className="p-3">Ações</th>}
+                      {canControl && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-nq-line/60">
@@ -627,7 +633,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                           {c.daily_budget ? `R$ ${parseFloat(c.daily_budget).toFixed(2).replace('.', ',')}` : '—'}
                         </td>
                         <MetricCells m={m} />
-                        {isAdmin && (
+                        {canControl && (
                           <td className="p-3">
                             <MetaControlActions
                               status={control.status}
@@ -660,7 +666,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3">Status</th>
                       <th className="p-3 whitespace-nowrap">Orçamento/dia</th>
                       <MetricHeaderCells />
-                      {isAdmin && <th className="p-3">Ações</th>}
+                      {canControl && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-nq-line/60">
@@ -685,7 +691,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                           {s.daily_budget ? `R$ ${parseFloat(s.daily_budget).toFixed(2).replace('.', ',')}` : '—'}
                         </td>
                         <MetricCells m={m} />
-                        {isAdmin && (
+                        {canControl && (
                           <td className="p-3">
                             <MetaControlActions
                               status={control.status}
@@ -717,7 +723,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       <th className="p-3">Anúncio</th>
                       <th className="p-3">Status</th>
                       <MetricHeaderCells />
-                      {isAdmin && <th className="p-3">Ações</th>}
+                      {canControl && <th className="p-3">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-nq-line/60">
@@ -747,7 +753,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                         </td>
                         <td className="p-3">{renderStatusBadge(a)}</td>
                         <MetricCells m={m} />
-                        {isAdmin && (
+                        {canControl && (
                           <td className="p-3">
                             <MetaControlActions
                               status={control.status}
