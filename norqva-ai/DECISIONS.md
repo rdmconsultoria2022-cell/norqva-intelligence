@@ -230,3 +230,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - Campanha de plano pausada pela tela só volta com o código do plano digitado (vale como novo Sim) e nunca acima do teto; o Sim limpa essa marca.
 - Orçamento mudado pela tela atualiza o plano (o vigia projeta com ele); plano no teto não muda orçamento por aqui.
 - A chave `META_MUTATION_ENABLED` desligada continua bloqueando até a pausa: é o "desliga tudo" de propósito.
+
+## D-0096 — Gerenciar campanha (2026-10-16)
+
+- **Decisão (Ricardo, "Sim" à etapa 3 em 16/10/2026 23h12):** a campanha abre na Visão geral, com cinco abas (Visão geral, Configurações, Criativos, Resultados, Histórico) e Pausar sempre no topo. Só reorganiza ações que já existiam; nenhuma ação nova na Meta.
+- **Rentabilidade:** ROAS de equilíbrio = preço ÷ líquido por venda; CPA máximo = líquido por venda; margem estimada = vendas × líquido − investido (sem custos fixos). Sem custos cadastrados na oferta, usa a estimativa do vigia e avisa.
+- **Histórico:** auditoria para todos os perfis; decisões só para administrador, sem dados de acesso.

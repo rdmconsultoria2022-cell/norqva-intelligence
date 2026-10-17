@@ -179,7 +179,7 @@ import { attendantInboundHandler } from './services/whatsapp/attendant';
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
-import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta } from './controllers/campaignController';
+import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
 import { getTeam, inviteTeamMember, resendTeamInvite, updateTeamMember, deactivateTeamMember, reactivateTeamMember } from './controllers/teamController';
@@ -513,6 +513,9 @@ app.post('/api/campaigns', requireRole(['ADMIN']), createCampaignFromOffer);
 app.get('/api/campaigns/offer-creatives', requireRole(['ADMIN']), getOfferCreativeOptions);
 app.get('/api/campaigns/:id', requireRole(CAMPAIGNS_READ), getCampaign);
 app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampaignCreativeOptions);
+// NORQVA-0096: Gerenciar campanha (só leitura)
+app.get('/api/campaigns/:id/economics', requireRole(CAMPAIGNS_READ), getCampaignEconomics);
+app.get('/api/campaigns/:id/history', requireRole(CAMPAIGNS_READ), getCampaignHistory);
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
 app.post('/api/campaigns/:id/fields', requireRole(['ADMIN']), saveCampaignFields);
 app.post('/api/campaigns/:id/ads/:index/creative', requireRole(['ADMIN']), chooseCampaignCreative);

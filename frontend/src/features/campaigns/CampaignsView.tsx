@@ -9,6 +9,7 @@ import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
 import { MethodView } from '../method/MethodView';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
+import { CampaignOverview, CampaignHistory, PauseBar } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
@@ -35,6 +36,8 @@ export interface CampaignsViewProps {
   /** NORQVA-0095: o atalho do aviso já foi usado (não reabre ao voltar para Campanhas) */
   onFocusHandled?: () => void;
 }
+
+type CampaignTab = 'overview' | 'config' | 'creatives' | 'results' | 'history';
 
 export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Rascunho',
@@ -128,9 +131,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   // NORQVA-0095: pendências abertas (avisos com gravidade Atenção ou Crítica)
   const [problems, setProblems] = useState<AlertNotification[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
-  const pendingTabRef = useRef<'results' | 'cap' | null>(null);
+  const pendingTabRef = useRef<CampaignTab | null>(null);
   const [experiments, setExperiments] = useState<any[]>([]);
-  const [tab, setTab] = useState<'config' | 'results' | 'cap' | 'method' | 'experiment'>('config');
+  // NORQVA-0096: Gerenciar campanha em cinco abas; abre na Visão geral
+  const [tab, setTab] = useState<CampaignTab>('overview');
   // NORQVA-0083 (D-0082): nome do produto de cada campanha da Meta (mesmo vínculo da Visão Geral)
   const [productByMeta, setProductByMeta] = useState<Record<string, string>>({});
   const { globalPeriod } = useGlobalPeriod();
@@ -205,7 +209,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   useEffect(() => {
     setFillResults(null);
     if (selectedId && !selectedId.startsWith('meta:')) {
-      setTab(pendingTabRef.current || 'config');
+      setTab(pendingTabRef.current || 'overview');
       pendingTabRef.current = null;
       loadCampaign(selectedId);
     }
@@ -220,9 +224,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
           (f.metaCampaignId && Object.values(c?.meta_ids?.campaign || {}).map(String).includes(String(f.metaCampaignId)))
       );
       if (plan) {
-        pendingTabRef.current = f.tab;
+        const target: CampaignTab = f.tab === 'cap' ? 'config' : 'results';
+        pendingTabRef.current = target;
         if (selectedId === plan.id) {
-          setTab(f.tab);
+          setTab(target);
           pendingTabRef.current = null;
         } else setSelectedId(plan.id);
         return true;
@@ -235,6 +240,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     },
     [campaigns, metaCampaigns, selectedId]
   );
+  // NORQVA-0096: pausar ou mudar orçamento em Resultados atualiza a situação do topo ao sair da aba
+  const prevTab = useRef<CampaignTab>('overview');
+  useEffect(() => {
+    if (prevTab.current === 'results' && tab !== 'results') loadList();
+    prevTab.current = tab;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const focusNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!focus || !listLoaded || focusNonce.current === focus.nonce) return;
@@ -700,15 +712,35 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 <StatusPill tone={STATUS_TONE[campaign.status] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[campaign.status] || campaign.status}</StatusPill>
                 <span className="text-[13px] text-nq-muted tabular-nums">{brl(campaign.daily_budget_brl)}/dia · teto {brl(campaign.max_spend_brl)}</span>
               </div>
+              {/* NORQVA-0096: Pausar sempre à vista (só administrador; mesma confirmação de Resultados) */}
+              {(() => {
+                const mc = metaCampaigns.find((m: any) => String(m.meta_campaign_id) === planMetaId(campaign));
+                return mc ? (
+                  <div className="mt-3">
+                    <PauseBar
+                      metaCampaign={mc}
+                      allowResume={['APPROVED', 'ACTIVE'].includes(campaign.status) && campaign.guard_state !== 'CAPPED'}
+                      currentUser={currentUser}
+                      apiFetch={apiFetch}
+                      showError={showError}
+                      showSuccess={showSuccess}
+                      onDone={() => {
+                        loadList();
+                        loadCampaign(campaign.id);
+                      }}
+                    />
+                  </div>
+                ) : null;
+              })()}
             </div>
 
             <nav className="-mx-4 px-4 lg:mx-0 lg:px-0 flex gap-2 overflow-x-auto no-scrollbar" role="tablist" data-testid="campaign-tabs">
               {([
-                ['config', 'Configuração'],
-                ['results', 'Resultado e controle'],
-                ['cap', 'Teto e vigia'],
-                ['method', 'Método'],
-                ['experiment', 'Experimento']
+                ['overview', 'Visão geral'],
+                ['config', 'Configurações'],
+                ['creatives', 'Criativos'],
+                ['results', 'Resultados'],
+                ['history', 'Histórico']
               ] as const).map(([id, tabLabel]) => (
                 <button
                   key={id}
@@ -729,51 +761,30 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 <p className="rounded-2xl bg-nq-surface p-4 text-[13px] text-nq-muted" data-testid="results-empty">A campanha ainda não foi criada na Meta: os resultados aparecem depois.</p>
               ))}
 
-            {tab === 'cap' && (
-              <div className="space-y-3" data-testid="cap-tab">
-                {/* NORQVA-0084: as regras ficam em "Regras do vigia", dentro do cartão */}
-                <p className="text-[13px] leading-[18px] text-nq-muted">
-                  O teto da campanha é <span className="text-nq-text">{brl(campaign.max_spend_brl)}</span>.
-                </p>
-                <ExperimentGuardCard
-                  apiFetch={apiFetch as any}
-                  currentUser={currentUser}
-                  isDemoView={false}
-                  showError={showError}
-                  showSuccess={showSuccess}
-                  planId={campaign.id}
-                  onChanged={() => {
-                    loadCampaign(campaign.id);
-                    loadList();
-                  }}
-                />
-                {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-[13px] text-nq-subtle">O vigia começa depois do seu Sim.</p>}
-              </div>
+            {tab === 'overview' && (
+              <CampaignOverview
+                campaign={campaign}
+                metrics={metricsOf(planMetaId(campaign))}
+                problems={problems.filter(n => {
+                  const cid = n.entity.meta_campaign_id ? String(n.entity.meta_campaign_id) : adToCampaign.get(String(n.entity.meta_ad_id || ''));
+                  return (!!cid && cid === planMetaId(campaign)) || (!!n.entity.plan_code && n.entity.plan_code === campaign.code);
+                })}
+                metaStatusLabel={(() => {
+                  const mc = metaCampaigns.find((m: any) => String(m.meta_campaign_id) === planMetaId(campaign));
+                  return mc ? sentence(getMetaDeliveryStatus(mc.effective_status, mc.status).label) : null;
+                })()}
+                canAct={isAdmin || currentUser?.role === 'PERFORMANCE'}
+                apiFetch={apiFetch}
+                showError={showError}
+                onOpenAlert={n => setTab(n.link.tab === 'cap' ? 'config' : 'results')}
+                onAlertChanged={m => {
+                  setProblems(list => (m.is_open ? list.map(x => (x.id === m.id ? m : x)) : list.filter(x => x.id !== m.id)));
+                  onAlertsChanged?.();
+                }}
+              />
             )}
 
-            {tab === 'method' && (
-              <MethodView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} offerHumanId={campaign.offer_human_id} />
-            )}
-
-            {tab === 'experiment' && (() => {
-              const exp = experiments.find(e => e.id === campaign.experiment_id);
-              return (
-                <div className="rounded-2xl bg-nq-surface p-4 text-[13px] leading-5 space-y-1.5" data-testid="experiment-tab">
-                  {!exp ? (
-                    <p className="text-nq-muted">O experimento nasce quando você responde Sim; até lá não há capital reservado.</p>
-                  ) : (
-                    <>
-                      <div className="text-[15px] font-semibold text-nq-text">{exp.name}</div>
-                      <div className="text-nq-subtle">{exp.human_id}</div>
-                      <div className="text-nq-muted">Situação: <span className="text-nq-text">{expStatus(exp.status)}</span></div>
-                      <div className="text-nq-muted">Capital autorizado: <span className="text-nq-text tabular-nums">{brl(Number(exp.capital_approved))}</span> · usado: <span className="text-nq-text tabular-nums">{brl(Number(exp.capital_used))}</span></div>
-                      {exp.hypothesis && <div className="text-nq-muted">Hipótese: <span className="text-nq-text">{exp.hypothesis}</span></div>}
-                      <div className="text-nq-subtle">Resposta: {campaign.answer === 'YES' ? 'Sim' : campaign.answer === 'NO' ? 'Não' : '—'}{campaign.answered_at ? ` em ${new Date(campaign.answered_at).toLocaleString('pt-BR')}` : ''}</div>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+            {tab === 'history' && <CampaignHistory campaignId={campaign.id} apiFetch={apiFetch} />}
 
             {tab === 'config' && (
           <section className="space-y-4" data-testid="campaign-detail">
@@ -795,7 +806,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             {!editable && (
               <p className="rounded-2xl bg-nq-surface p-4 text-[13px] leading-[18px] text-nq-muted" data-testid="campaign-readonly">
                 {isAdmin
-                  ? 'Esta campanha já existe na Meta. Pausar e orçamento ficam na aba Resultado e controle; o teto em Teto e vigia; ativar é pelo seu Sim no quadro "Aguardando sua decisão", na lista de campanhas. Para trocar link, texto, título ou botão de um anúncio, use "Editar anúncio na Meta" no anúncio.'
+                  ? 'Esta campanha já existe na Meta. Pausar fica no topo; orçamento por conjunto em Resultados; o teto logo abaixo, em Teto e vigia; ativar é pelo seu Sim no quadro "Aguardando sua decisão", na lista de campanhas. Para trocar link, texto, título ou botão de um anúncio, use "Editar anúncio na Meta" na aba Criativos.'
                   : 'Só leitura: configurar, pausar e responder Sim ficam com o ADMIN.'}
               </p>
             )}
@@ -834,6 +845,120 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               </label>
             </div>
 
+            {editable && (
+              <footer className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  onClick={save}
+                  disabled={changed.length === 0 || busy === 'save'}
+                  data-testid="save-fields"
+                  className={btnLight}
+                >
+                  <Save aria-hidden="true" className="h-4 w-4" /> Salvar alterações{changed.length ? ` (${changed.length})` : ''}
+                </button>
+                <button
+                  onClick={() => setConfirmCreate(true)}
+                  disabled={!filled || changed.length > 0 || busy === 'meta'}
+                  title={!filled ? 'Preencha o vídeo de todos os anúncios' : changed.length > 0 ? 'Salve as alterações antes' : undefined}
+                  data-testid="create-on-meta"
+                  className={btnPrimary}
+                >
+                  <Rocket aria-hidden="true" className="h-4 w-4" /> Criar na Meta (pausada)
+                </button>
+                {!filled && <span className="w-full text-[12px] text-nq-subtle">Para criar na Meta, todos os anúncios precisam de vídeo.</span>}
+                {busy === 'meta' && <span className="w-full text-[13px] text-nq-muted">Enviando os vídeos para a Meta… pode levar alguns minutos.</span>}
+              </footer>
+            )}
+
+            {confirmCreate && (
+              <div role="dialog" aria-label="Confirmar criação na Meta" className="rounded-2xl bg-nq-raised p-4 space-y-3" data-testid="confirm-create">
+                <p className="text-[15px] leading-[22px] text-nq-text">
+                  Criar {campaign.spec?.ads?.length} anúncio(s) na Meta, <strong>tudo pausado</strong>. Nada é gasto agora: a campanha só começa a rodar
+                  depois que você responder Sim, com {brl(campaign.daily_budget_brl)}/dia e teto de {brl(campaign.max_spend_brl)}.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={createOnMeta} className={btnPrimary}>Criar pausada</button>
+                  <button onClick={() => setConfirmCreate(false)} className={btnGhost}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl bg-nq-surface overflow-hidden">
+              <Disclosure summary="Detalhes técnicos" testId="campaign-tech">
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12px]">
+                  <dt className="text-nq-muted">Código</dt>
+                  <dd className="font-mono text-nq-text">{campaign.code}</dd>
+                  <dt className="text-nq-muted">Oferta</dt>
+                  <dd className="font-mono text-nq-text">{campaign.offer_human_id}</dd>
+                  <dt className="text-nq-muted">Campanha na Meta</dt>
+                  <dd className="font-mono text-nq-text break-all">{campaign.spec?.campaign?.name || '—'}</dd>
+                  <dt className="text-nq-muted">ID na Meta</dt>
+                  <dd className="font-mono text-nq-text break-all">{planMetaId(campaign) || 'ainda não criada'}</dd>
+                </dl>
+              </Disclosure>
+            </div>
+          </section>
+            )}
+            {tab === 'config' && (
+              <div className="space-y-3" data-testid="cap-tab">
+                <h3 className="text-[15px] font-semibold text-nq-text">Teto e vigia</h3>
+                {/* NORQVA-0084: as regras ficam em "Regras do vigia", dentro do cartão */}
+                <p className="text-[13px] leading-[18px] text-nq-muted">
+                  O teto da campanha é <span className="text-nq-text">{brl(campaign.max_spend_brl)}</span>.
+                </p>
+                <ExperimentGuardCard
+                  apiFetch={apiFetch as any}
+                  currentUser={currentUser}
+                  isDemoView={false}
+                  showError={showError}
+                  showSuccess={showSuccess}
+                  planId={campaign.id}
+                  onChanged={() => {
+                    loadCampaign(campaign.id);
+                    loadList();
+                  }}
+                />
+                {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-[13px] text-nq-subtle">O vigia começa depois do seu Sim.</p>}
+              </div>
+            )}
+
+            {tab === 'config' && (
+              <div className="rounded-2xl bg-nq-surface overflow-hidden">
+                <Disclosure summary="Método" testId="campaign-method">
+                  <MethodView currentUser={currentUser} isDemoView={false} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} offerHumanId={campaign.offer_human_id} />
+                </Disclosure>
+              </div>
+            )}
+            {tab === 'config' && (() => {
+              const exp = experiments.find(e => e.id === campaign.experiment_id);
+              return (
+                <div className="rounded-2xl bg-nq-surface overflow-hidden">
+                <Disclosure summary="Experimento" testId="campaign-experiment">
+                <div className="text-[13px] leading-5 space-y-1.5" data-testid="experiment-tab">
+                  {!exp ? (
+                    <p className="text-nq-muted">O experimento nasce quando você responde Sim; até lá não há capital reservado.</p>
+                  ) : (
+                    <>
+                      <div className="text-[15px] font-semibold text-nq-text">{exp.name}</div>
+                      <div className="text-nq-subtle">{exp.human_id}</div>
+                      <div className="text-nq-muted">Situação: <span className="text-nq-text">{expStatus(exp.status)}</span></div>
+                      <div className="text-nq-muted">Capital autorizado: <span className="text-nq-text tabular-nums">{brl(Number(exp.capital_approved))}</span> · usado: <span className="text-nq-text tabular-nums">{brl(Number(exp.capital_used))}</span></div>
+                      {exp.hypothesis && <div className="text-nq-muted">Hipótese: <span className="text-nq-text">{exp.hypothesis}</span></div>}
+                      <div className="text-nq-subtle">Resposta: {campaign.answer === 'YES' ? 'Sim' : campaign.answer === 'NO' ? 'Não' : '—'}{campaign.answered_at ? ` em ${new Date(campaign.answered_at).toLocaleString('pt-BR')}` : ''}</div>
+                    </>
+                  )}
+                </div>
+                </Disclosure>
+                </div>
+              );
+            })()}
+
+            {tab === 'creatives' && (
+          <section className="space-y-4" data-testid="creatives-tab">
+            {!editable && isAdmin && (
+              <p className="rounded-2xl bg-nq-surface p-4 text-[13px] leading-[18px] text-nq-muted">
+                A campanha já está na Meta. Para trocar link, texto, título ou botão, use "Editar anúncio na Meta" no anúncio: a Meta revisa a peça nova antes de veicular.
+              </p>
+            )}
             <div className="space-y-3">
               {(campaign.spec?.ads || []).map((a: any, i: number) => (
                 <article key={i} className="rounded-2xl bg-nq-surface p-4 space-y-4" data-testid="campaign-ad">
@@ -907,55 +1032,12 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
             {editable && (
               <footer className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                  onClick={save}
-                  disabled={changed.length === 0 || busy === 'save'}
-                  data-testid="save-fields"
-                  className={btnLight}
-                >
+                <button onClick={save} disabled={changed.length === 0 || busy === 'save'} data-testid="save-fields" className={btnLight}>
                   <Save aria-hidden="true" className="h-4 w-4" /> Salvar alterações{changed.length ? ` (${changed.length})` : ''}
                 </button>
-                <button
-                  onClick={() => setConfirmCreate(true)}
-                  disabled={!filled || changed.length > 0 || busy === 'meta'}
-                  title={!filled ? 'Preencha o vídeo de todos os anúncios' : changed.length > 0 ? 'Salve as alterações antes' : undefined}
-                  data-testid="create-on-meta"
-                  className={btnPrimary}
-                >
-                  <Rocket aria-hidden="true" className="h-4 w-4" /> Criar na Meta (pausada)
-                </button>
-                {!filled && <span className="w-full text-[12px] text-nq-subtle">Para criar na Meta, todos os anúncios precisam de vídeo.</span>}
-                {busy === 'meta' && <span className="w-full text-[13px] text-nq-muted">Enviando os vídeos para a Meta… pode levar alguns minutos.</span>}
+                <span className="w-full text-[12px] text-nq-subtle">Para criar na Meta, use o botão em Configurações.</span>
               </footer>
             )}
-
-            {confirmCreate && (
-              <div role="dialog" aria-label="Confirmar criação na Meta" className="rounded-2xl bg-nq-raised p-4 space-y-3" data-testid="confirm-create">
-                <p className="text-[15px] leading-[22px] text-nq-text">
-                  Criar {campaign.spec?.ads?.length} anúncio(s) na Meta, <strong>tudo pausado</strong>. Nada é gasto agora: a campanha só começa a rodar
-                  depois que você responder Sim, com {brl(campaign.daily_budget_brl)}/dia e teto de {brl(campaign.max_spend_brl)}.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={createOnMeta} className={btnPrimary}>Criar pausada</button>
-                  <button onClick={() => setConfirmCreate(false)} className={btnGhost}>Cancelar</button>
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-2xl bg-nq-surface overflow-hidden">
-              <Disclosure summary="Detalhes técnicos" testId="campaign-tech">
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12px]">
-                  <dt className="text-nq-muted">Código</dt>
-                  <dd className="font-mono text-nq-text">{campaign.code}</dd>
-                  <dt className="text-nq-muted">Oferta</dt>
-                  <dd className="font-mono text-nq-text">{campaign.offer_human_id}</dd>
-                  <dt className="text-nq-muted">Campanha na Meta</dt>
-                  <dd className="font-mono text-nq-text break-all">{campaign.spec?.campaign?.name || '—'}</dd>
-                  <dt className="text-nq-muted">ID na Meta</dt>
-                  <dd className="font-mono text-nq-text break-all">{planMetaId(campaign) || 'ainda não criada'}</dd>
-                </dl>
-              </Disclosure>
-            </div>
           </section>
             )}
           </div>

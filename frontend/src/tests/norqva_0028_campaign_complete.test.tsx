@@ -104,28 +104,38 @@ describe('NORQVA-0028 — campanha completa na tela Campanhas', () => {
     fireEvent.click(await screen.findByText('NORQVA_TR_EXP03', { selector: 'div' }));
     const tabs = await screen.findByTestId('campaign-tabs');
     expect(within(tabs).getAllByRole('tab').map(t => t.textContent)).toEqual([
-      'Configuração', 'Resultado e controle', 'Teto e vigia', 'Método', 'Experimento'
+      'Visão geral', 'Configurações', 'Criativos', 'Resultados', 'Histórico'
     ]);
-    expect(screen.getByTestId('campaign-detail')).toBeInTheDocument();
+    // NORQVA-0096: abre na Visão geral, com a rentabilidade da oferta
+    expect(screen.getByTestId('overview-tab')).toBeInTheDocument();
+    await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]) === '/campaigns/p1/economics?mode=real')).toBe(true));
 
-    fireEvent.click(within(tabs).getByText('Experimento'));
+    // Configurações reúne os campos, o teto e vigia, o método e o experimento
+    fireEvent.click(within(tabs).getByText('Configurações'));
+    expect(screen.getByTestId('campaign-detail')).toBeInTheDocument();
+    expect(screen.getByTestId('cap-tab')).toHaveTextContent('teto');
+
+    fireEvent.click(within(screen.getByTestId('campaign-experiment')).getByRole('button'));
     expect(screen.getByTestId('experiment-tab')).toHaveTextContent('EXP-0010');
     expect(screen.getByTestId('experiment-tab')).toHaveTextContent('R$');
 
-    fireEvent.click(within(tabs).getByText('Teto e vigia'));
-    expect(screen.getByTestId('cap-tab')).toHaveTextContent('teto');
-
-    fireEvent.click(within(tabs).getByText('Método'));
+    fireEvent.click(within(screen.getByTestId('campaign-method')).getByRole('button'));
     expect(await screen.findByTestId('method-no-case')).toHaveTextContent('OFF-000001');
 
-    fireEvent.click(within(tabs).getByText('Resultado e controle'));
+    fireEvent.click(within(tabs).getByText('Criativos'));
+    expect(screen.getByTestId('creatives-tab')).toBeInTheDocument();
+
+    fireEvent.click(within(tabs).getByText('Resultados'));
     await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]).startsWith('/meta/adsets'))).toBe(true));
+
+    fireEvent.click(within(tabs).getByText('Histórico'));
+    await waitFor(() => expect(apiFetch.mock.calls.some(c => String(c[0]) === '/campaigns/p1/history?mode=real')).toBe(true));
   });
 
   it('plano ainda sem objetos na Meta mostra o aviso no resultado', async () => {
     setup({ camp: plan({ status: 'DRAFT', editable: true, experiment_id: null, meta_ids: { campaign: {}, adsets: {}, videos: {}, creatives: {}, ads: {} } }) });
     fireEvent.click(await screen.findByText('NORQVA_TR_EXP03', { selector: 'div' }));
-    fireEvent.click(within(await screen.findByTestId('campaign-tabs')).getByText('Resultado e controle'));
+    fireEvent.click(within(await screen.findByTestId('campaign-tabs')).getByText('Resultados'));
     expect(screen.getByTestId('results-empty')).toBeInTheDocument();
   });
 

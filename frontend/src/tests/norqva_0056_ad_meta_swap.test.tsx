@@ -1,6 +1,6 @@
 // NORQVA-0056: campanha que já está na Meta: "Editar anúncio na Meta" troca link, texto, título e botão.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { CampaignsView } from '../features/campaigns/CampaignsView';
 
@@ -51,7 +51,9 @@ const setup = (user = admin) => {
 
 const open = async () => {
   fireEvent.click(await screen.findByText('NORQVA_TRATTORIA_EXP02_CREATIVE'));
-  await screen.findByTestId('campaign-detail');
+  // NORQVA-0096: os anúncios ficam na aba Criativos
+  fireEvent.click(within(await screen.findByTestId('campaign-tabs')).getByText('Criativos'));
+  await screen.findByTestId('creatives-tab');
 };
 
 describe('NORQVA-0056 — editar anúncio que já está na Meta', () => {
