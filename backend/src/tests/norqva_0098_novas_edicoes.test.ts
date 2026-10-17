@@ -179,6 +179,7 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
   afterAll(async () => {
     if (!pool) return;
     await pool.query('DELETE FROM launch_plans WHERE id = $1', [planId]).catch(() => {});
+    await pool.query('DELETE FROM creative_meta_ads WHERE creative_id = ANY($1::uuid[])', [createdCreatives]).catch(() => {});
     await pool.query('DELETE FROM creative_reviews WHERE creative_id = ANY($1::uuid[])', [createdCreatives]).catch(() => {});
     await pool.query('DELETE FROM creatives WHERE id = ANY($1::uuid[])', [createdCreatives]).catch(() => {});
     await pool.query('DELETE FROM meta_ad_sets WHERE meta_adset_id = $1', [SET]).catch(() => {});
@@ -331,9 +332,11 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
     const vd = posts.find((p) => p.endpoint === `/${ACT}/adcreatives`)!.payload.object_story_spec.video_data;
     expect(vd.video_id).toBe(NEW_VIDEO);
     expect(vd.image_url).toBe('https://scontent.example.com/novo.jpg');
-    // as vendas do vídeo novo contam para o criativo novo
+    // etiquetas iguais (utm_content = nome do anúncio); o criativo novo fica vinculado ao anúncio
     const tags = posts.find((p) => p.endpoint === `/${ACT}/adcreatives`)!.payload.url_tags;
-    expect(tags).toBe(`utm_source=meta&utm_campaign=${code}&utm_content=G98${tag}`);
+    expect(tags).toBe(`utm_source=meta&utm_campaign=${code}&utm_content=AD98`);
+    const link = await pool.query('SELECT 1 FROM creative_meta_ads WHERE creative_id = $1 AND meta_ad_id = $2', [good, AD_ID]);
+    expect(link.rows.length).toBe(1);
     expect(posts.find((p) => p.endpoint === `/${AD_ID}`)!.payload).toEqual({ creative: { creative_id: NEW_CREATIVE } });
     const c = r.body.campaign;
     expect(c.meta_ids.videos.AD98).toBe(NEW_VIDEO);

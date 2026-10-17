@@ -143,6 +143,11 @@ export async function replaceAdCreative(
     if (old?.asset_feed_spec || !video) {
       throw new UnsupportedCreativeError('Esta peça não é um vídeo simples (peça dinâmica, post existente ou imagem): troque pelo Gerenciador de Anúncios da Meta.');
     }
+    // descrição não informada e ausente no plano: mantém a que está na peça da Meta (antes de enviar qualquer vídeo)
+    if (!descriptionGiven && !description && video.link_description) {
+      description = String(video.link_description).trim().slice(0, 255);
+      if (findPriceInFields({ description }).length) throw new LaunchPlanError(400, 'A descrição atual do anúncio na Meta tem preço: informe uma descrição nova sem preço.');
+    }
     let videoId = String(video.video_id || '');
     if (!newCreative && !META_ID_RE.test(videoId)) throw new UnsupportedCreativeError('A peça atual não tem vídeo identificável: troque pelo Gerenciador de Anúncios da Meta.');
     const pageId = story.page_id || spec.page_id || (await brandAsset(pool, row.brand_id, 'FACEBOOK_PAGE'));
@@ -164,17 +169,8 @@ export async function replaceAdCreative(
       thumbnailUrl = v?.picture || undefined;
     }
     if (!thumbnailUrl && !imageHash) throw new UnsupportedCreativeError('Não foi possível obter a miniatura do vídeo.');
-    let urlTags = String(old?.url_tags || ad.url_tags || '') || undefined;
-    // vídeo novo: as vendas passam a contar para o criativo novo (utm_content)
-    if (newCreative && urlTags) {
-      const key = encodeURIComponent(String(newCreative.utm_content_key || newCreative.human_id));
-      urlTags = /(^|&)utm_content=[^&]*/.test(urlTags) ? urlTags.replace(/(^|&)utm_content=[^&]*/, `$1utm_content=${key}`) : `${urlTags}&utm_content=${key}`;
-    }
-    // descrição não informada e ausente no plano: mantém a que está na peça da Meta
-    if (!descriptionGiven && !description && video.link_description) {
-      description = String(video.link_description).trim().slice(0, 255);
-      if (findPriceInFields({ description }).length) throw new LaunchPlanError(400, 'A descrição atual do anúncio na Meta tem preço: informe uma descrição nova sem preço.');
-    }
+    // etiquetas de origem iguais (utm_content = nome do anúncio); o vínculo com o criativo novo vai em creative_meta_ads
+    const urlTags = String(old?.url_tags || ad.url_tags || '') || undefined;
 
     // 2) peça nova (nasce sem status: não ativa nem pausa nada)
     const params: CreateAdCreativeParams = {
@@ -263,6 +259,11 @@ export async function replaceAdCreative(
   } catch (err) {
     console.error('[AD SWAP] plano não atualizado depois da troca na Meta', err);
     result.plan_sync_failed = true;
+  }
+  if (newCreative) {
+    await pool
+      .query(`INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method, linked_by) VALUES ($1, $2, 'MANUAL', $3) ON CONFLICT (creative_id, meta_ad_id) DO NOTHING`, [newCreative.id, adId, user.id || null])
+      .catch((e) => console.warn('[AD SWAP] vínculo do criativo novo não gravado', e));
   }
   await pool.query(`UPDATE meta_ads SET meta_creative_id = $2, updated_at = NOW() WHERE meta_ad_id = $1 AND is_demo = FALSE`, [adId, newCreativeId]).catch(() => {});
   await handle.finish('EXECUTED', { result }).catch(() => {});

@@ -1580,7 +1580,8 @@ export class MetaMutatingClient {
       }
       if (Number(cur?.lifetime_budget || 0) > 0) throw new Error('[VALIDATION EXCEPTION]: LIFETIME_BUDGET adset: change the end date in Ads Manager.');
       const curEnd = cur?.end_time ? new Date(cur.end_time).getTime() : NaN;
-      if (Number.isFinite(curEnd) && curEnd <= Date.now()) throw new Error('[VALIDATION EXCEPTION]: ENDED adset: a new end date would restart delivery.');
+      const st = String(cur?.effective_status || '').toUpperCase();
+      if ((Number.isFinite(curEnd) && curEnd <= Date.now()) || st === 'COMPLETED' || st === 'ARCHIVED' || st === 'DELETED') throw new Error('[VALIDATION EXCEPTION]: ENDED adset: a new end date would restart delivery.');
       if (Number.isFinite(curEnd) && end.getTime() > curEnd) throw new Error('[VALIDATION EXCEPTION]: EXTENDS end date: only an earlier date is allowed.');
       await this.callTransportPost(`/${row.meta_id}`, { end_time: iso });
       const read = await this.callTransportGet(`/${row.meta_id}`, { fields: 'end_time' }).catch(() => null);
