@@ -131,6 +131,9 @@ describe.sequential('NORQVA-0092 — gestão da Equipe', () => {
   it('ninguém desativa a si mesmo nem tira o próprio perfil de administrador', async () => {
     const d = await as(admin).post(`/api/team/${adminId}/deactivate?mode=real`);
     expect(d.status).toBe(409);
+    // o mesmo endereço em maiúsculas também é recusado
+    expect((await as(admin).post(`/api/team/${adminId.toUpperCase()}/deactivate?mode=real`)).status).toBe(409);
+    expect((await as(admin).post(`/api/team/not-a-uuid/deactivate?mode=real`)).status).toBe(404);
     const p = await as(admin).patch(`/api/team/${adminId}?mode=real`, { role: 'PERFORMANCE' });
     expect(p.status).toBe(409);
     const me = await pool.query('SELECT role, status FROM users WHERE id = $1', [adminId]);
@@ -142,7 +145,7 @@ describe.sequential('NORQVA-0092 — gestão da Equipe', () => {
     const target = crypto.randomUUID();
     const fake: any = {
       query: async (sql: string) => {
-        if (/COUNT\(\*\)/.test(sql)) return { rows: [{ n: 0 }] };
+        if (/role = 'ADMIN' AND status = 'ACTIVE'/.test(sql)) return { rows: [{ id: target }] };
         if (/FROM users WHERE id = \$1 AND is_demo = FALSE/.test(sql)) {
           return { rows: [{ id: target, name: 'Único', email: 'unico@norqva.test', role: 'ADMIN', status: 'ACTIVE', auth_user_id: 'x' }] };
         }

@@ -24,6 +24,7 @@ function realOnly(req: AuthenticatedRequest, res: Response): boolean {
 
 export async function getTeam(req: AuthenticatedRequest, res: Response) {
   if (req.user?.role !== 'ADMIN') return res.status(403).json({ error: 'Só administrador gerencia a equipe.' });
+  if (!realOnly(req, res)) return;
   try {
     return res.status(200).json({ users: await svc(req).list() });
   } catch (e) {

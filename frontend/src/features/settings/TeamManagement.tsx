@@ -27,6 +27,20 @@ interface Member {
   last_login_at?: string | null;
 }
 
+interface InviteInfo {
+  sent?: boolean;
+  simulated?: boolean;
+  alreadyRegistered?: boolean;
+  uncertain?: boolean;
+}
+
+function inviteMessage(m: { name: string; email: string }, inv: InviteInfo): string {
+  if (inv.simulated) return `${m.name} cadastrado (ambiente de teste: e-mail não enviado).`;
+  if (inv.alreadyRegistered) return `${m.name} já tinha login: está na equipe e entra com a senha que já usa (ou "Esqueci a senha").`;
+  if (inv.uncertain) return `${m.name} cadastrado, mas o envio do e-mail não foi confirmado. Se não chegar, use "Reenviar convite".`;
+  return `Convite enviado para ${m.email}.`;
+}
+
 interface Props {
   currentUser: { id: string; role: string };
   apiFetch: (url: string, options?: RequestInit) => Promise<any>;
@@ -106,10 +120,10 @@ export function TeamManagement({ currentUser, apiFetch, showError, showSuccess, 
           apiFetch={apiFetch}
           showError={showError}
           onCancel={() => setInviteOpen(false)}
-          onDone={(m, simulated) => {
+          onDone={(m, invite) => {
             setMembers((list) => [...(list || []), m].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
             setInviteOpen(false);
-            showSuccess(simulated ? `${m.name} cadastrado (ambiente de teste: e-mail não enviado).` : `Convite enviado para ${m.email}.`);
+            showSuccess(inviteMessage(m, invite));
             onChanged?.();
           }}
         />
@@ -170,7 +184,7 @@ function InviteForm({
   apiFetch: Props['apiFetch'];
   showError: Props['showError'];
   onCancel: () => void;
-  onDone: (m: Member, simulated: boolean) => void;
+  onDone: (m: Member, invite: InviteInfo) => void;
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -183,7 +197,7 @@ function InviteForm({
     setBusy(true);
     try {
       const r = await apiFetch('/team/invite?mode=real', { method: 'POST', body: JSON.stringify({ name, email, role }) });
-      onDone(r.member, !!r.invite?.simulated);
+      onDone(r.member, r.invite || {});
     } catch (err: any) {
       showError(err?.message || 'Não foi possível enviar o convite.');
     } finally {
@@ -288,12 +302,12 @@ function MemberRow({
     }
   }, [open, m.name, m.role]);
 
-  const run = async (url: string, init: RequestInit, ok: string) => {
+  const run = async (url: string, init: RequestInit, ok: string | ((r: any) => string)) => {
     setBusy(true);
     try {
       const r = await apiFetch(url, init);
       if (r?.member) onChanged(r.member);
-      showSuccess(ok);
+      showSuccess(typeof ok === 'function' ? ok(r) : ok);
       setConfirm('none');
       return true;
     } catch (err: any) {
@@ -365,7 +379,7 @@ function MemberRow({
 
           {confirm === 'role' && (
             <p className="rounded-xl bg-nq-attention/10 p-3 text-nq-aux text-nq-text" role="alert">
-              Trocar o perfil de {m.name} de {ROLE_LABEL[m.role]} para {ROLE_LABEL[role]}? Vale no próximo acesso. Toque em "Confirmar" para salvar.
+              Trocar o perfil de {m.name} de {ROLE_LABEL[m.role]} para {ROLE_LABEL[role]}? Vale na hora. Toque em "Confirmar" para salvar.
             </p>
           )}
           {confirm === 'deactivate' && (
@@ -380,7 +394,7 @@ function MemberRow({
                 type="button"
                 className={btnSecondary}
                 disabled={busy}
-                onClick={() => run(`/team/${m.id}/resend-invite?mode=real`, { method: 'POST' }, `Convite reenviado para ${m.email}.`)}
+                onClick={() => run(`/team/${m.id}/resend-invite?mode=real`, { method: 'POST' }, (r) => inviteMessage(m, r?.invite || {}).replace('Convite enviado', 'Convite reenviado'))}
               >
                 <Mail aria-hidden="true" className="h-4 w-4" />
                 Reenviar convite

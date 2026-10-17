@@ -24,6 +24,10 @@ export interface Actor {
 export interface InviteResult {
   sent: boolean;
   simulated?: boolean;
+  // e-mail já tem login no Supabase: o cadastro fica e liga no primeiro acesso dela
+  alreadyRegistered?: boolean;
+  // resposta do Supabase não chegou (rede/tempo): o convite pode ou não ter saído
+  uncertain?: boolean;
 }
 
 // Envio do convite pelo Supabase Auth (POST /auth/v1/invite). Os testes trocam esta
@@ -48,6 +52,7 @@ const defaultInviteSender: InviteSender = async (email, name) => {
 
   const url = `${supabaseUrl}/auth/v1/invite?redirect_to=${encodeURIComponent(`${frontend}/reset-password`)}`;
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(15000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -68,7 +73,7 @@ const defaultInviteSender: InviteSender = async (email, name) => {
       throw new TeamError(429, 'Limite de e-mails do Supabase atingido. Tente de novo em alguns minutos.');
     }
     if (/already|registered|exists/i.test(detail)) {
-      throw new TeamError(409, 'Este e-mail já tem login criado. A pessoa pode entrar direto ou usar "Esqueci a senha".');
+      return { sent: false, alreadyRegistered: true };
     }
     throw new TeamError(502, `O Supabase recusou o convite${detail ? `: ${detail}` : ''}.`);
   }
@@ -81,6 +86,7 @@ export function setInviteSenderForTests(fn: InviteSender | null) {
   inviteSender = fn || defaultInviteSender;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function cleanName(raw: unknown): string {
@@ -105,6 +111,8 @@ function cleanEmail(raw: unknown): string {
 const PUBLIC_COLS = `id, name, email, role, status, created_at, last_login_at, invited_at,
   (auth_user_id IS NOT NULL) AS accepted`;
 
+type Queryable = { query: (sql: string, params?: any[]) => Promise<any> };
+
 export class TeamService {
   constructor(private pool: Pool) {}
 
@@ -112,10 +120,10 @@ export class TeamService {
     if (actor.role !== 'ADMIN') throw new TeamError(403, 'Só administrador gerencia a equipe.');
   }
 
-  private async getMember(id: string) {
-    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new TeamError(404, 'Pessoa não encontrada.');
-    const r = await this.pool.query(
-      `SELECT id, name, email, role, status, auth_user_id FROM users WHERE id = $1 AND is_demo = FALSE`,
+  private async getMember(id: string, db: Queryable = this.pool as unknown as Queryable, lock = false) {
+    if (!UUID_RE.test(String(id || ''))) throw new TeamError(404, 'Pessoa não encontrada.');
+    const r = await db.query(
+      `SELECT id, name, email, role, status, auth_user_id FROM users WHERE id = $1 AND is_demo = FALSE${lock ? ' FOR UPDATE' : ''}`,
       [id]
     );
     if (r.rows.length === 0) throw new TeamError(404, 'Pessoa não encontrada.');
@@ -123,13 +131,33 @@ export class TeamService {
   }
 
   // Trava: depois da mudança, tem que sobrar ao menos um ADMIN ativo (fora o alvo).
-  private async ensureAnotherActiveAdmin(targetId: string) {
-    const r = await this.pool.query(
-      `SELECT COUNT(*)::int AS n FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE' AND is_demo = FALSE AND id <> $1`,
-      [targetId]
+  // Roda dentro da transação com os administradores travados (FOR UPDATE), para que
+  // dois administradores não se desativem ao mesmo tempo.
+  private async ensureAnotherActiveAdmin(db: Queryable, targetId: string) {
+    const r = await db.query(
+      `SELECT id FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE' AND is_demo = FALSE ORDER BY id FOR UPDATE`
     );
-    if ((r.rows[0]?.n ?? 0) < 1) {
+    const others = r.rows.filter((row: any) => String(row.id) !== String(targetId));
+    if (others.length < 1) {
       throw new TeamError(409, 'A equipe ficaria sem nenhum administrador ativo.');
+    }
+  }
+
+  // Executa fn numa transação; os testes podem passar um banco simulado sem connect().
+  private async tx<T>(fn: (db: Queryable) => Promise<T>): Promise<T> {
+    const anyPool = this.pool as any;
+    if (typeof anyPool.connect !== 'function') return fn(anyPool as Queryable);
+    const client = await anyPool.connect();
+    try {
+      await client.query('BEGIN');
+      const out = await fn(client);
+      await client.query('COMMIT');
+      return out;
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
     }
   }
 
@@ -154,21 +182,32 @@ export class TeamService {
       );
     }
 
-    const ins = await this.pool.query(
-      `INSERT INTO users (id, name, email, role, status, is_demo, invited_at, invited_by)
-       VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', FALSE, NOW(), $4)
-       RETURNING id`,
-      [name, email, role, actor.id]
-    );
-    const id = ins.rows[0].id;
+    let id: string;
+    try {
+      const ins = await this.pool.query(
+        `INSERT INTO users (id, name, email, role, status, is_demo, invited_at, invited_by)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', FALSE, NOW(), $4)
+         RETURNING id`,
+        [name, email, role, actor.id]
+      );
+      id = ins.rows[0].id;
+    } catch (e: any) {
+      if (e?.code === '23505') throw new TeamError(409, 'Esta pessoa já está na equipe.');
+      throw e;
+    }
 
     let result: InviteResult;
     try {
       result = await inviteSender(email, name);
     } catch (e) {
-      // convite não saiu: desfaz o cadastro para não deixar acesso pendurado
-      await this.pool.query(`DELETE FROM users WHERE id = $1 AND auth_user_id IS NULL`, [id]).catch(() => {});
-      throw e;
+      if (e instanceof TeamError) {
+        // o Supabase recusou de forma clara: desfaz o cadastro recém-criado (ninguém usou)
+        await this.pool.query(`DELETE FROM users WHERE id = $1 AND auth_user_id IS NULL`, [id]).catch(() => {});
+        throw e;
+      }
+      // sem resposta (rede/tempo): o convite pode ter saído; o cadastro fica e dá para reenviar
+      console.error('[team] convite sem resposta do Supabase:', e);
+      result = { sent: false, uncertain: true };
     }
 
     await writeAuditLog(
@@ -177,7 +216,7 @@ export class TeamService {
       'TEAM_MEMBER_INVITED',
       `Convite para ${name} (${email}) como ${role}`,
       null,
-      JSON.stringify({ id, name, email, role, sent: result.sent, simulated: !!result.simulated })
+      JSON.stringify({ id, name, email, role, ...result })
     );
     return { member: await this.one(id), invite: result };
   }
@@ -188,55 +227,66 @@ export class TeamService {
     if (m.auth_user_id) throw new TeamError(409, 'Esta pessoa já aceitou o convite.');
     if (m.status !== 'ACTIVE') throw new TeamError(409, 'Reative a pessoa antes de reenviar o convite.');
     const result = await inviteSender(m.email, m.name);
-    await this.pool.query(`UPDATE users SET invited_at = NOW(), invited_by = $2 WHERE id = $1`, [id, actor.id]);
-    await writeAuditLog(this.pool, actor.id, 'TEAM_INVITE_RESENT', `Convite reenviado para ${m.name} (${m.email})`, null, JSON.stringify({ id, sent: result.sent }));
-    return { member: await this.one(id), invite: result };
+    await this.pool.query(`UPDATE users SET invited_at = NOW(), invited_by = $2 WHERE id = $1`, [m.id, actor.id]);
+    await writeAuditLog(this.pool, actor.id, 'TEAM_INVITE_RESENT', `Convite reenviado para ${m.name} (${m.email})`, null, JSON.stringify({ id: m.id, ...result }));
+    return { member: await this.one(m.id), invite: result };
   }
 
   async update(actor: Actor, id: string, body: any) {
     this.requireAdmin(actor);
-    const m = await this.getMember(id);
-    const name = body?.name !== undefined ? cleanName(body.name) : m.name;
-    const role = body?.role !== undefined ? cleanRole(body.role) : (m.role as TeamRole);
+    const changedId = await this.tx(async (db) => {
+      const m = await this.getMember(id, db, true);
+      const name = body?.name !== undefined ? cleanName(body.name) : m.name;
+      const role = body?.role !== undefined ? cleanRole(body.role) : (m.role as TeamRole);
 
-    if (m.role === 'ADMIN' && role !== 'ADMIN') {
-      if (id === actor.id) throw new TeamError(409, 'Você não pode tirar o seu próprio perfil de administrador.');
-      if (m.status === 'ACTIVE') await this.ensureAnotherActiveAdmin(id);
-    }
-    if (name === m.name && role === m.role) return { member: await this.one(id) };
+      if (m.role === 'ADMIN' && role !== 'ADMIN') {
+        // m.id é o valor do banco: não depende de maiúsculas no endereço
+        if (String(m.id) === String(actor.id)) throw new TeamError(409, 'Você não pode tirar o seu próprio perfil de administrador.');
+        if (m.status === 'ACTIVE') await this.ensureAnotherActiveAdmin(db, m.id);
+      }
+      if (name === m.name && role === m.role) return m.id;
 
-    await this.pool.query(`UPDATE users SET name = $2, role = $3, updated_at = NOW(), updated_by = $4 WHERE id = $1`, [id, name, role, actor.id]);
-    await writeAuditLog(
-      this.pool,
-      actor.id,
-      'TEAM_MEMBER_UPDATED',
-      `Equipe: ${m.name} alterado`,
-      JSON.stringify({ name: m.name, role: m.role }),
-      JSON.stringify({ name, role })
-    );
-    return { member: await this.one(id) };
+      await db.query(`UPDATE users SET name = $2, role = $3, updated_at = NOW(), updated_by = $4 WHERE id = $1`, [m.id, name, role, actor.id]);
+      await writeAuditLog(
+        db as any,
+        actor.id,
+        'TEAM_MEMBER_UPDATED',
+        `Equipe: ${m.name} alterado`,
+        JSON.stringify({ name: m.name, role: m.role }),
+        JSON.stringify({ name, role }),
+        false,
+        true
+      );
+      return m.id;
+    });
+    return { member: await this.one(changedId) };
   }
 
   async setActive(actor: Actor, id: string, active: boolean) {
     this.requireAdmin(actor);
-    const m = await this.getMember(id);
     const next = active ? 'ACTIVE' : 'INACTIVE';
-    if (!active) {
-      if (id === actor.id) throw new TeamError(409, 'Você não pode desativar o seu próprio acesso.');
-      if (m.role === 'ADMIN' && m.status === 'ACTIVE') await this.ensureAnotherActiveAdmin(id);
-    }
-    if (m.status === next) return { member: await this.one(id) };
+    const changedId = await this.tx(async (db) => {
+      const m = await this.getMember(id, db, true);
+      if (!active) {
+        if (String(m.id) === String(actor.id)) throw new TeamError(409, 'Você não pode desativar o seu próprio acesso.');
+        if (m.role === 'ADMIN' && m.status === 'ACTIVE') await this.ensureAnotherActiveAdmin(db, m.id);
+      }
+      if (m.status === next) return m.id;
 
-    await this.pool.query(`UPDATE users SET status = $2, updated_at = NOW(), updated_by = $3 WHERE id = $1`, [id, next, actor.id]);
-    await writeAuditLog(
-      this.pool,
-      actor.id,
-      active ? 'TEAM_MEMBER_REACTIVATED' : 'TEAM_MEMBER_DEACTIVATED',
-      `Equipe: ${m.name} (${m.email}) ${active ? 'reativado' : 'desativado'}`,
-      m.status,
-      next
-    );
-    return { member: await this.one(id) };
+      await db.query(`UPDATE users SET status = $2, updated_at = NOW(), updated_by = $3 WHERE id = $1`, [m.id, next, actor.id]);
+      await writeAuditLog(
+        db as any,
+        actor.id,
+        active ? 'TEAM_MEMBER_REACTIVATED' : 'TEAM_MEMBER_DEACTIVATED',
+        `Equipe: ${m.name} (${m.email}) ${active ? 'reativado' : 'desativado'}`,
+        m.status,
+        next,
+        false,
+        true
+      );
+      return m.id;
+    });
+    return { member: await this.one(changedId) };
   }
 
   private async one(id: string) {
