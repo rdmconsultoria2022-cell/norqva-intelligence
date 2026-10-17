@@ -8,35 +8,37 @@ import { useEffect } from 'react';
 const INTRO_DURATION_MS = 3400;
 const SOUND_DELAY_MS = 250;
 
-// Duas batidas graves e um acorde que cresce. Se o navegador bloquear o som
-// (sessão restaurada sem toque na página) ou não tiver Web Audio, fica em silêncio.
-function playIntroSound() {
-  const w = window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
-  const AC = w.AudioContext || w.webkitAudioContext;
-  if (!AC) return;
-  let ctx: AudioContext;
-  try {
-    ctx = new AC();
-  } catch {
-    return;
-  }
-  if (ctx.state === 'suspended') {
-    ctx.resume().catch(() => undefined);
-  }
-  const now = ctx.currentTime + 0.02;
-  const master = ctx.createGain();
-  master.gain.value = 0.7;
-  master.connect(ctx.destination);
+type AudioCtor = typeof AudioContext;
 
-  const hit = (t: number, base: number, tones: number[], decay: number, level: number) => {
-    tones.forEach((mult, i) => {
+function getAudioCtor(): AudioCtor | null {
+  const w = window as unknown as { AudioContext?: AudioCtor; webkitAudioContext?: AudioCtor };
+  return w.AudioContext || w.webkitAudioContext || null;
+}
+
+// NORQVA-0091: "ta-dum" com energia entre 150 e 2.000 Hz para soar no alto-falante
+// do celular (o 0090 ficava abaixo de 60 Hz, que o celular não reproduz).
+// Duas batidas e um acorde de Mi que abre; compressor para ganhar volume sem estourar.
+function scheduleTadum(ctx: AudioContext) {
+  const now = ctx.currentTime + 0.03;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18;
+  comp.ratio.value = 4;
+  comp.attack.value = 0.003;
+  comp.release.value = 0.25;
+  const master = ctx.createGain();
+  master.gain.value = 0.9;
+  master.connect(comp);
+  comp.connect(ctx.destination);
+
+  const hit = (t: number, base: number, partials: number[], decay: number, level: number) => {
+    partials.forEach((mult, i) => {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
       o.type = i === 0 ? 'sine' : 'triangle';
-      o.frequency.setValueAtTime(base * mult * 1.6, t);
-      o.frequency.exponentialRampToValueAtTime(base * mult, t + 0.08);
+      o.frequency.setValueAtTime(base * mult * 1.5, t);
+      o.frequency.exponentialRampToValueAtTime(base * mult, t + 0.07);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(level / (i + 1), t + 0.012);
+      g.gain.exponentialRampToValueAtTime(level / Math.sqrt(i + 1), t + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
       o.connect(g);
       g.connect(master);
@@ -44,29 +46,75 @@ function playIntroSound() {
       o.stop(t + decay + 0.05);
     });
   };
-  hit(now, 55, [1, 2], 0.35, 0.8);
-  hit(now + 0.3, 41.2, [1, 1.5, 2, 3], 2.2, 0.9);
+  // "ta": batida curta
+  hit(now, 110, [1, 2, 3, 4], 0.32, 0.35);
+  // "dum": batida mais longa e grave
+  hit(now + 0.3, 82.41, [1, 2, 3, 4, 5, 6], 2.0, 0.4);
 
-  const pad = ctx.createOscillator();
-  const pg = ctx.createGain();
+  // acorde que abre depois do "dum" (Mi, Si, Mi)
   const lp = ctx.createBiquadFilter();
-  pad.type = 'sawtooth';
-  pad.frequency.value = 164.8;
   lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(200, now + 0.3);
-  lp.frequency.exponentialRampToValueAtTime(1400, now + 1.2);
+  lp.frequency.setValueAtTime(300, now + 0.3);
+  lp.frequency.exponentialRampToValueAtTime(2500, now + 1.3);
+  const pg = ctx.createGain();
   pg.gain.setValueAtTime(0.0001, now + 0.3);
-  pg.gain.exponentialRampToValueAtTime(0.08, now + 0.9);
-  pg.gain.exponentialRampToValueAtTime(0.0001, now + 2.6);
-  pad.connect(lp);
+  pg.gain.exponentialRampToValueAtTime(0.12, now + 0.9);
+  pg.gain.exponentialRampToValueAtTime(0.0001, now + 2.8);
   lp.connect(pg);
   pg.connect(master);
-  pad.start(now + 0.3);
-  pad.stop(now + 2.7);
+  [164.81, 246.94, 329.63].forEach((f) => {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = f;
+    o.connect(lp);
+    o.start(now + 0.3);
+    o.stop(now + 2.9);
+  });
+}
 
-  window.setTimeout(() => {
-    ctx.close().catch(() => undefined);
-  }, 3200);
+// Toca o som da abertura. Navegadores só liberam som depois de um toque na página:
+// depois do login sempre toca; com a sessão já salva (app reaberto) o som fica
+// esperando o primeiro toque durante a abertura. Devolve a limpeza.
+function startIntroSound(): () => void {
+  const AC = getAudioCtor();
+  if (!AC) return () => undefined;
+  let ctx: AudioContext;
+  try {
+    ctx = new AC();
+  } catch {
+    return () => undefined;
+  }
+  let played = false;
+  let closed = false;
+  const events: Array<keyof WindowEventMap> = ['pointerdown', 'touchstart', 'keydown'];
+
+  const removeUnlock = () => events.forEach((e) => window.removeEventListener(e, unlock, true));
+  const play = () => {
+    if (played || closed || ctx.state !== 'running') return;
+    played = true;
+    removeUnlock();
+    scheduleTadum(ctx);
+  };
+  function unlock() {
+    ctx.resume().then(play).catch(() => undefined);
+  }
+
+  if (ctx.state === 'running') {
+    play();
+  } else {
+    events.forEach((e) => window.addEventListener(e, unlock, true));
+    ctx.resume().then(play).catch(() => undefined);
+  }
+
+  return () => {
+    removeUnlock();
+    if (closed) return;
+    closed = true;
+    // deixa o som que já começou terminar antes de fechar
+    window.setTimeout(() => {
+      ctx.close().catch(() => undefined);
+    }, played ? 3000 : 0);
+  };
 }
 
 const PUFFS = [
@@ -106,9 +154,10 @@ function SmokeHalf({ side }: { side: 'back' | 'front' }) {
 
 export function IntroSequence({ onFinish }: { onFinish: () => void }) {
   useEffect(() => {
+    let stopSound: () => void = () => undefined;
     const soundTimer = window.setTimeout(() => {
       try {
-        playIntroSound();
+        stopSound = startIntroSound();
       } catch {
         // som é enfeite: nunca impede a abertura
       }
@@ -117,6 +166,7 @@ export function IntroSequence({ onFinish }: { onFinish: () => void }) {
     return () => {
       window.clearTimeout(soundTimer);
       window.clearTimeout(finishTimer);
+      stopSound();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

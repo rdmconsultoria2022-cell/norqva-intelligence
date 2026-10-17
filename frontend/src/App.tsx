@@ -599,6 +599,12 @@ export default function App() {
 
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
 
+  // NORQVA-0091: enquanto confere a sessão salva, mostra o fundo da abertura em vez
+  // do login (antes o login piscava por uma fração de segundo ao reabrir o app).
+  if (!isAuthReady && !currentUser && !isAuthRoute && recoveryState === 'NONE') {
+    return <div className="nq-intro min-h-screen" aria-busy="true" />;
+  }
+
   if (!currentUser || isAuthRoute) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden select-none">
