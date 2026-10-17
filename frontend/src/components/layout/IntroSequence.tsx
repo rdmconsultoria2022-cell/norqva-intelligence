@@ -214,3 +214,32 @@ export function IntroSequence({ onFinish }: { onFinish: () => void }) {
     </div>
   );
 }
+
+// NORQVA-0099: o mesmo triângulo com fumaça, menor e sem a entrada animada, para o login.
+const MARK_PUFFS = PUFFS.map((p) => ({ left: Math.round(p.left * 0.62), top: Math.round(p.top * 0.62) }));
+
+export function NorqvaMark() {
+  return (
+    <div className="nq-auth-mark" aria-hidden="true">
+      <div className="nq-intro-glow" />
+      {(['back', 'front'] as const).map((side) => (
+        <div key={side} className={`nq-intro-smoke-clip nq-intro-smoke-${side}`}>
+          <div className="nq-intro-smoke-plane">
+            <div className="nq-intro-smoke-spin">
+              <div className="nq-intro-smoke-band" />
+              {MARK_PUFFS.map((p, i) => (
+                <div key={i} className="nq-intro-puff" style={{ left: p.left, top: p.top, animationDelay: `${-(i * 0.57).toFixed(2)}s` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+      <div className="nq-intro-tri">
+        <svg viewBox="0 0 120 120" width="84" height="84" style={{ overflow: 'visible', display: 'block' }}>
+          <path d="M60 10 L104 86 L16 86 Z" fill="rgba(167,175,188,0.06)" stroke="#C9CFD9" strokeWidth="6" strokeLinejoin="miter" />
+          <circle cx="60" cy="10" r="4" fill="#F4F6F9" />
+        </svg>
+      </div>
+    </div>
+  );
+}

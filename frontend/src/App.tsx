@@ -20,7 +20,6 @@ import {
   CheckCircle,
   FileText,
   User,
-  Shield,
   Activity,
   Trash2,
   TrendingUp,
@@ -28,7 +27,7 @@ import {
   ShoppingCart
 } from 'lucide-react';
 import { Login } from './features/auth/Login';
-import { IntroSequence } from './components/layout/IntroSequence';
+import { IntroSequence, NorqvaMark } from './components/layout/IntroSequence';
 import { ForgotPassword } from './features/auth/ForgotPassword';
 import { PasswordRecovery } from './features/auth/PasswordRecovery';
 import { DashboardView } from './features/dashboard/DashboardView';
@@ -616,7 +615,7 @@ export default function App() {
 
   if (!currentUser || isAuthRoute) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden select-none">
+      <div className="nq-auth min-h-screen flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 relative overflow-hidden select-none">
         {/* Global Toast Error & Success */}
         {globalError && (
           <div className="fixed top-4 right-4 z-50 bg-red-950 border border-red-500 text-red-200 px-4 py-3 rounded-md shadow-lg flex items-center gap-2 max-w-md animate-bounce">
@@ -631,23 +630,20 @@ export default function App() {
           </div>
         )}
 
-        {/* Decorative Grid Lines */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-60"></div>
-        
+        {/* NORQVA-0099: mesmo fundo da abertura */}
+        <div className="nq-intro-grid" aria-hidden="true" />
+        <div className="nq-intro-scan" aria-hidden="true" />
+
         <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 flex flex-col items-center">
-          <div className="h-10 w-10 rounded bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-center mb-4">
-            <Shield className="h-5 w-5 text-emerald-400" />
-          </div>
-          <h2 className="mt-6 text-center text-xl font-bold tracking-tight text-slate-100">
+          <NorqvaMark />
+          <h1 className="nq-intro-shine mt-2 text-center text-[30px] font-bold tracking-[0.32em] pl-[0.32em]">NORQVA</h1>
+          <h2 className="mt-2 text-center text-[11px] tracking-[0.28em] text-[#5B6B86] font-mono">
             INTELLIGENCE & PERFORMANCE
           </h2>
-          <p className="mt-2 text-center text-sm text-slate-400">
-            Centro operacional e analítico de performance digital
-          </p>
         </div>
 
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-          <div className="bg-slate-900/80 border border-slate-800 backdrop-blur-md py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <div className="nq-auth-card rounded-2xl py-7 px-5 sm:px-8">
             <div className="space-y-6">
               {location.pathname === '/reset-password' || recoveryState !== 'NONE' ? (
                 <PasswordRecovery
