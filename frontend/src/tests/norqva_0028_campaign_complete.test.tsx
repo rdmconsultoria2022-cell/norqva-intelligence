@@ -47,6 +47,19 @@ const setup = (opts: { user?: any; camp?: any } = {}) => {
     if (url.startsWith('/meta/ads')) return Promise.resolve([]);
     if (url.startsWith('/meta/insights')) return Promise.resolve([]);
     if (url.startsWith('/intelligence/creative-performance')) return Promise.resolve({ creatives: perf });
+    if (url.startsWith('/alerts/center'))
+      return Promise.resolve({
+        unread_count: 1,
+        open_problems_count: 1,
+        notifications: [
+          {
+            id: 'al1', rule_code: 'SPEND_WITHOUT_SALE', title: 'Anúncio gastando sem vender', description: 'x', severity: 'CRITICAL',
+            recommended_action: 'Pausar o anúncio ou trocar o criativo.', state: 'NOVA', read: false, is_problem: true, is_open: true,
+            entity: { type: 'AD', meta_campaign_id: null, campaign_name: 'NORQVA_TRATTORIA_REVENUE_V1', meta_ad_id: 'ad-2', ad_name: 'Anúncio 2', plan_code: null },
+            link: { tab: 'results', meta_campaign_id: null, plan_code: null }, resolution: null, dismiss_reason: null, created_at: '2026-10-16T12:00:00Z', resolved_at: null
+          }
+        ]
+      });
     if (url.startsWith('/alerts')) return Promise.resolve({ alerts: [{ id: 'al1', status: 'OPEN', meta_ad_id: 'ad-2', campaign_name: 'NORQVA_TRATTORIA_REVENUE_V1' }] });
     if (url.startsWith('/experiments')) {
       return Promise.resolve({
@@ -69,9 +82,9 @@ describe('NORQVA-0028 — campanha completa na tela Campanhas', () => {
     const ext = await screen.findByTestId('external-campaign');
     expect(ext).toHaveTextContent('NORQVA_TRATTORIA_REVENUE_V1');
     expect(ext).toHaveTextContent('criada fora do NORQVA');
-    // NORQVA-0083: cartão novo mostra "Vendas 2" e "1 alerta"
+    // NORQVA-0083: cartão novo mostra "Vendas 2" e a pendência (NORQVA-0095)
     expect(ext).toHaveTextContent(/Vendas\s*2/);
-    expect(ext).toHaveTextContent('1 alerta');
+    expect(ext).toHaveTextContent('1 pendência');
     // a campanha do plano não aparece repetida como "de fora"
     expect(screen.getAllByTestId('external-campaign')).toHaveLength(1);
     expect(within(screen.getByTestId('campaign-list')).getByText('NORQVA_TR_EXP03')).toBeInTheDocument();

@@ -216,3 +216,16 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Travas:** só ADMIN; ninguém desativa a si mesmo nem tira o próprio perfil de administrador; o servidor recusa qualquer ação que deixaria a equipe sem administrador ativo.
 - **Convite:** pelo Supabase Auth (envio padrão, limite de poucos e-mails por hora); remetente próprio da NORQVA pode ser configurado depois no Supabase sem mudar o app.
 - **Fora do escopo:** perfis novos, mudar permissões de perfil, troca de e-mail, login com Google, exclusão definitiva.
+
+## D-0095 — Central de pendências (2026-10-16)
+
+- **Decisão (Ricardo, "Sim" às etapas 1 e 2 do diagnóstico NORQVA-0093 em 16/10/2026 22h29):** o sino conta avisos não lidos de cada pessoa e abre a central; Campanhas e Operação contam só pendências abertas (Atenção ou Crítico). Os dois números não se misturam.
+- **Regras:** ler não resolve; resolver só com evidência (venda chegou, anúncio parou, leitura voltou, campanha pausada, teto subiu); descartar é decisão registrada e, em alerta crítico, pede motivo.
+- **Gravidade por tipo:** gasto sem venda e falhas do vigia = Crítico; 90%, 100% e pausa no teto = Atenção; 80% e teto ampliado por lucro = Informativo.
+
+## D-0094 — Segurança em Campanhas (2026-10-16)
+
+- Rota antiga `migrate-destination-url` desligada (410).
+- Campanha de plano pausada pela tela só volta com o código do plano digitado (vale como novo Sim) e nunca acima do teto; o Sim limpa essa marca.
+- Orçamento mudado pela tela atualiza o plano (o vigia projeta com ele); plano no teto não muda orçamento por aqui.
+- A chave `META_MUTATION_ENABLED` desligada continua bloqueando até a pausa: é o "desliga tudo" de propósito.

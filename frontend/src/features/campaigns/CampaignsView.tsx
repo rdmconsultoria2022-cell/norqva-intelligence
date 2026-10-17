@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCard, focusOf, type AlertNotification, type CampaignFocus } from '../alerts/AlertCenter';
 import { RefreshCw, Wand2, RotateCcw, Eraser, Rocket, Plus, Save, ChevronLeft } from 'lucide-react';
 import { UserObj } from '../../types';
 import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
@@ -27,6 +28,10 @@ export interface CampaignsViewProps {
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
   offers?: any[];
+  /** NORQVA-0095: abrir uma campanha vinda de um aviso (sino ou pendências) */
+  focus?: CampaignFocus | null;
+  /** NORQVA-0095: avisa o App para atualizar o sino depois de tratar um aviso aqui */
+  onAlertsChanged?: () => void;
 }
 
 export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
@@ -100,7 +105,7 @@ export function fieldsOf(c: any): Fields {
   return f;
 }
 
-export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, showSuccess, offers = [] }: CampaignsViewProps) {
+export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, showSuccess, offers = [], focus = null, onAlertsChanged }: CampaignsViewProps) {
   const isAdmin = currentUser?.role === 'ADMIN';
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -118,6 +123,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const [metaCampaigns, setMetaCampaigns] = useState<any[]>([]);
   const [perf, setPerf] = useState<PerfItem[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
+  // NORQVA-0095: pendências abertas (avisos com gravidade Atenção ou Crítica)
+  const [problems, setProblems] = useState<AlertNotification[]>([]);
+  const [listLoaded, setListLoaded] = useState(false);
+  const pendingTabRef = useRef<'results' | 'cap' | null>(null);
   const [experiments, setExperiments] = useState<any[]>([]);
   const [tab, setTab] = useState<'config' | 'results' | 'cap' | 'method' | 'experiment'>('config');
   // NORQVA-0083 (D-0082): nome do produto de cada campanha da Meta (mesmo vínculo da Visão Geral)
@@ -144,7 +153,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     const [mc, pr, al, ex] = await Promise.all([
       apiRef.current('/meta/campaigns?mode=real').catch(() => []),
       apiRef.current(`/intelligence/creative-performance?mode=real&${periodQs}`).catch(() => null),
-      apiRef.current('/alerts?mode=real').catch(() => null),
+      apiRef.current('/alerts/center?mode=real').catch(() => null),
       apiRef.current('/experiments?mode=real').catch(() => null)
     ]);
     // O nome do produto das campanhas do NORQVA vem da oferta. Só as campanhas criadas fora do NORQVA
@@ -161,7 +170,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     setProductByMeta(names);
     setMetaCampaigns(Array.isArray(mc) ? mc : []);
     setPerf(Array.isArray(pr?.creatives) ? pr.creatives : []);
-    setAlerts(Array.isArray(al?.alerts) ? al.alerts.filter((a: any) => a.status === 'OPEN') : []);
+    const open: AlertNotification[] = Array.isArray(al?.notifications) ? al.notifications.filter((n: AlertNotification) => n.is_open && n.is_problem) : [];
+    setProblems(open);
+    setAlerts(open.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id })));
+    setListLoaded(true);
     setExperiments(Array.isArray(ex?.experiments) ? ex.experiments : []);
   }, [periodQs]);
 
@@ -192,10 +204,42 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   useEffect(() => {
     setFillResults(null);
     if (selectedId && !selectedId.startsWith('meta:')) {
-      setTab('config');
+      setTab(pendingTabRef.current || 'config');
+      pendingTabRef.current = null;
       loadCampaign(selectedId);
     }
   }, [selectedId, loadCampaign]);
+
+  // NORQVA-0095: aviso do sino ou das pendências → abre a campanha certa, na aba que resolve
+  const openFromAlert = useCallback(
+    (f: { metaCampaignId: string | null; planCode: string | null; tab: 'results' | 'cap' }) => {
+      const plan = campaigns.find(
+        (c: any) =>
+          (f.planCode && c.code === f.planCode) ||
+          (f.metaCampaignId && Object.values(c?.meta_ids?.campaign || {}).map(String).includes(String(f.metaCampaignId)))
+      );
+      if (plan) {
+        pendingTabRef.current = f.tab;
+        if (selectedId === plan.id) {
+          setTab(f.tab);
+          pendingTabRef.current = null;
+        } else setSelectedId(plan.id);
+        return true;
+      }
+      if (f.metaCampaignId && metaCampaigns.some((m: any) => String(m.meta_campaign_id) === String(f.metaCampaignId))) {
+        setSelectedId(`meta:${f.metaCampaignId}`);
+        return true;
+      }
+      return false;
+    },
+    [campaigns, metaCampaigns, selectedId]
+  );
+  const focusNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focus || !listLoaded || focusNonce.current === focus.nonce) return;
+    focusNonce.current = focus.nonce;
+    if (!openFromAlert(focus)) errRef.current('A campanha deste aviso não está mais na lista.');
+  }, [focus, listLoaded, openFromAlert]);
 
   const post = (url: string, body: any = {}) => apiRef.current(url, { method: 'POST', body: JSON.stringify(body) });
 
@@ -349,7 +393,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         </div>
         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
           {pill}
-          {n > 0 && <StatusPill tone="critical">{n === 1 ? '1 alerta' : `${n} alertas`}</StatusPill>}
+          {n > 0 && <StatusPill tone="critical">{n === 1 ? '1 pendência' : `${n} pendências`}</StatusPill>}
           {losing && <StatusPill tone="attention">Receita abaixo do investimento</StatusPill>}
         </div>
         {m && (
@@ -457,6 +501,35 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         }}
       />
       </div>
+
+      {/* NORQVA-0095: pendências abertas, cada uma com a ação recomendada e o atalho para a campanha */}
+      {problems.length > 0 && (
+        <section className={hasSelection ? 'hidden lg:block' : ''} aria-label="Pendências" data-testid="campaign-problems">
+          <h2 className="text-[13px] leading-[18px] font-semibold text-nq-muted mb-2">
+            {problems.length === 1 ? '1 pendência precisa de ação' : `${problems.length} pendências precisam de ação`}
+          </h2>
+          <ul className="rounded-2xl bg-nq-surface divide-y divide-nq-line/70 overflow-hidden">
+            {problems.slice(0, 5).map(n => (
+              <AlertCard
+                key={n.id}
+                n={n}
+                canAct={isAdmin || currentUser?.role === 'PERFORMANCE'}
+                apiFetch={apiFetch}
+                isDemoView={false}
+                onOpenCampaign={x => {
+                  if (!openFromAlert(focusOf(x))) showError('A campanha deste aviso não está mais na lista.');
+                }}
+                onChanged={m => {
+                  setProblems(list => (m.is_open ? list.map(x => (x.id === m.id ? m : x)) : list.filter(x => x.id !== m.id)));
+                  onAlertsChanged?.();
+                }}
+                showError={showError}
+              />
+            ))}
+          </ul>
+          {problems.length > 5 && <p className="mt-2 text-[12px] text-nq-muted">Mais {problems.length - 5} no sino, no topo da tela.</p>}
+        </section>
+      )}
 
       {creating && (
         <section className="rounded-2xl bg-nq-surface p-4 space-y-4" data-testid="new-campaign-form">

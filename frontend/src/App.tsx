@@ -71,6 +71,7 @@ import { useAuth } from './features/auth/useAuth';
 import { SalesView } from './features/sales/SalesView';
 import { WhatsAppView } from './features/whatsapp/WhatsAppView';
 import { TeamView, ConfigView } from './features/settings/SettingsViews';
+import { AlertCenterSheet, fetchAlertCenter, focusOf, type AlertCenterData, type CampaignFocus } from './features/alerts/AlertCenter';
 import { CampaignsView } from './features/campaigns/CampaignsView';
 import { initMetaPixel, trackPageView, isPublicCommercialRoute } from './services/metaPixel';
 
@@ -242,26 +243,24 @@ export default function App() {
     });
   }, [authMode, currentUser]);
 
-  // NORQVA-0009/0028: alertas abertos → badge em "Campanhas" (refreshed every 5 min and on tab change)
-  const [openAlertsCount, setOpenAlertsCount] = useState(0);
+  // NORQVA-0095: central de pendências. Sino = avisos não lidos desta pessoa; "Campanhas" = pendências abertas.
+  // Atualiza ao abrir, a cada 5 min e ao trocar de tela.
+  const [alertCenter, setAlertCenter] = useState<AlertCenterData | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [campaignFocus, setCampaignFocus] = useState<CampaignFocus | null>(null);
   const alertsFetchRef = React.useRef(apiFetch);
   alertsFetchRef.current = apiFetch;
+  const loadAlertCenter = React.useCallback(async () => {
+    const d = await fetchAlertCenter((u, o) => alertsFetchRef.current(u, o), isDemoView);
+    if (d) setAlertCenter(d);
+  }, [isDemoView]);
   useEffect(() => {
     if (!currentUser) return;
-    let cancelled = false;
-    const load = () =>
-      alertsFetchRef.current(`/alerts?mode=${isDemoView ? 'demo' : 'real'}`)
-        .then((r: any) => {
-          if (!cancelled) setOpenAlertsCount(Array.isArray(r?.alerts) ? r.alerts.filter((a: any) => a.status === 'OPEN').length : 0);
-        })
-        .catch(() => {});
-    load();
-    const t = setInterval(load, 5 * 60 * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [currentUser?.id, isDemoView, activeTab]);
+    loadAlertCenter();
+    const t = setInterval(loadAlertCenter, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [currentUser?.id, isDemoView, activeTab, loadAlertCenter]);
+  const openAlertsCount = alertCenter?.open_problems_count ?? 0;
 
 
 
@@ -697,7 +696,12 @@ export default function App() {
         activeTab,
         setActiveTab,
         handleSignOut,
-        badges: { 'campaigns': openAlertsCount }
+        badges: { 'campaigns': openAlertsCount },
+        unreadCount: alertCenter?.unread_count ?? 0,
+        onOpenNotifications: () => {
+          setAlertsOpen(true);
+          loadAlertCenter();
+        }
       }}
       // NORQVA-0004 + NORQVA-0071: one period for every screen, in the fixed top bar,
       // shown only on the screens where it filters the numbers
@@ -844,6 +848,8 @@ export default function App() {
               showError={showError}
               showSuccess={showSuccess}
               offers={offers}
+              focus={campaignFocus}
+              onAlertsChanged={loadAlertCenter}
             />
           )}
 
@@ -880,6 +886,21 @@ export default function App() {
               onClearDemo={handleClearDemoData}
             />
           )}
+        <AlertCenterSheet
+          open={alertsOpen}
+          data={alertCenter}
+          canAct={currentUser?.role === 'ADMIN' || currentUser?.role === 'PERFORMANCE'}
+          apiFetch={apiFetch}
+          isDemoView={isDemoView}
+          onClose={() => setAlertsOpen(false)}
+          onOpenCampaign={(n) => {
+            setAlertsOpen(false);
+            setActiveTab('campaigns');
+            setCampaignFocus(focusOf(n));
+          }}
+          onChanged={loadAlertCenter}
+          showError={showError}
+        />
       </AppShell>
 
       {/* -------------------- MODALS -------------------- */}
