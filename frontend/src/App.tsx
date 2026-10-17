@@ -28,6 +28,7 @@ import {
   ShoppingCart
 } from 'lucide-react';
 import { Login } from './features/auth/Login';
+import { IntroSequence } from './components/layout/IntroSequence';
 import { ForgotPassword } from './features/auth/ForgotPassword';
 import { PasswordRecovery } from './features/auth/PasswordRecovery';
 import { DashboardView } from './features/dashboard/DashboardView';
@@ -1562,55 +1563,4 @@ export default function App() {
   );
 }
 
-// -------------------- DETAILED SUBCOMPONENTS --------------------
 
-// Premium entry animation sequence
-function IntroSequence({ onFinish }: { onFinish: () => void }) {
-  const words = ['INTELEGÊNCIA', 'CONTROLE', 'TERRITÓRIO', 'TECNOLOGIA', 'ESCALA'];
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (index < words.length) {
-      const timer = setTimeout(() => {
-        setIndex(i => i + 1);
-      }, 550);
-      return () => clearTimeout(timer);
-    } else {
-      const timer = setTimeout(() => {
-        onFinish();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [index]);
-
-  return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center relative overflow-hidden font-mono select-none">
-      {/* Target scanning line */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_49%,rgba(16,185,129,0.05)_50%,transparent_51%)] bg-[size:100%_4rem] animate-[pulse_2s_infinite]"></div>
-
-      <div className="text-center space-y-6 relative z-10">
-        <div className="text-[10px] tracking-widest text-slate-500 uppercase">NORQVA Intelligence Core System Initializing...</div>
-        
-        <div className="h-16 flex items-center justify-center">
-          {index < words.length ? (
-            <h2 className="text-3xl font-black tracking-[0.3em] text-emerald-400 animate-pulse">
-              {words[index]}
-            </h2>
-          ) : (
-            <div className="text-emerald-500 font-bold text-sm tracking-wider animate-bounce flex items-center gap-2">
-              <Activity className="h-4 w-4 animate-spin" />
-              SISTEMA ONLINE - CARREGANDO DASHBOARD
-            </div>
-          )}
-        </div>
-
-        <div className="w-64 bg-slate-900 h-1 rounded-full overflow-hidden border border-slate-800">
-          <div
-            className="bg-emerald-500 h-full transition-all duration-300"
-            style={{ width: `${(index / words.length) * 100}%` }}
-          ></div>
-        </div>
-      </div>
-    </div>
-  );
-}

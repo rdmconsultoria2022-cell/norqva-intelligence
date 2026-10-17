@@ -32,3 +32,35 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* NORQVA-0090: tela de abertura depois do login (components/layout/IntroSequence.tsx) */
+.nq-intro { background: #02040F; color: #A7AFBC; }
+.nq-intro-grid { position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(167,175,188,0.035) 1px, transparent 1px); background-size: 100% 90px; }
+.nq-intro-scan { position: absolute; left: 0; right: 0; height: 120px; pointer-events: none; background: linear-gradient(180deg, rgba(167,175,188,0) 0%, rgba(167,175,188,0.06) 50%, rgba(167,175,188,0) 100%); animation: nqIntroScan 5s linear infinite; }
+.nq-intro-glow { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(167,175,188,0.08) 0%, rgba(167,175,188,0.03) 45%, rgba(167,175,188,0) 70%); animation: nqIntroBreath 4s ease-in-out infinite; }
+.nq-intro-smoke-clip { position: absolute; inset: -40px -80px; pointer-events: none; }
+.nq-intro-smoke-back { clip-path: inset(0 0 50% 0); }
+.nq-intro-smoke-front { clip-path: inset(50% 0 0 0); z-index: 3; }
+.nq-intro-smoke-plane { position: absolute; left: 50%; top: 50%; width: 260px; height: 260px; margin: -130px 0 0 -130px; transform: rotateX(74deg); }
+.nq-intro-smoke-spin { position: absolute; inset: 0; animation: nqIntroSpin 9s linear infinite; }
+.nq-intro-smoke-band { position: absolute; inset: 0; border-radius: 50%; border: 30px solid rgba(190,197,208,0.07); filter: blur(14px); }
+.nq-intro-puff { position: absolute; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(200,206,216,0.13) 0%, rgba(200,206,216,0.09) 40%, rgba(200,206,216,0) 75%); filter: blur(16px); animation: nqIntroPuff 7s ease-in-out infinite; }
+.nq-intro-tri { position: relative; z-index: 2; filter: drop-shadow(0 0 14px rgba(220,226,234,0.45)) drop-shadow(0 0 40px rgba(167,175,188,0.25)); }
+.nq-intro-tri-in { display: block; animation: nqIntroIn 1.2s cubic-bezier(.2,.8,.2,1) both; }
+.nq-intro-name { position: relative; animation: nqIntroRise 1.2s .5s cubic-bezier(.2,.8,.2,1) both; }
+.nq-intro-shine { background: linear-gradient(100deg, #A7AFBC 0%, #A7AFBC 40%, #F4F6F9 50%, #A7AFBC 60%, #A7AFBC 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: nqIntroShine 3.6s 1.4s ease-in-out infinite; }
+.nq-intro-sub { animation: nqIntroFade 1s 1.1s ease both; }
+.nq-intro-bar { height: 100%; width: 0; background: #A7AFBC; box-shadow: 0 0 12px rgba(167,175,188,0.8); animation: nqIntroLoad 2.2s 1s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes nqIntroSpin { to { transform: rotate(360deg); } }
+@keyframes nqIntroBreath { 0%, 100% { transform: scale(.9); opacity: .7; } 50% { transform: scale(1.08); opacity: 1; } }
+@keyframes nqIntroPuff { 0%, 100% { transform: scale(.95); opacity: .8; } 50% { transform: scale(1.1); opacity: 1; } }
+@keyframes nqIntroIn { 0% { opacity: 0; transform: scale(.7); filter: blur(8px); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
+@keyframes nqIntroRise { 0% { opacity: 0; transform: translateY(14px); letter-spacing: .6em; } 100% { opacity: 1; transform: translateY(0); letter-spacing: .42em; } }
+@keyframes nqIntroFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nqIntroShine { 0% { background-position: 120% 0; } 60%, 100% { background-position: -120% 0; } }
+@keyframes nqIntroLoad { to { width: 100%; } }
+@keyframes nqIntroScan { 0% { top: -120px; } 100% { top: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .nq-intro-scan { display: none; }
+  .nq-intro-glow, .nq-intro-smoke-spin, .nq-intro-puff, .nq-intro-shine { animation: none; }
+}
