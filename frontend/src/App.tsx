@@ -108,6 +108,13 @@ export default function App() {
   } = useAuth();
 
   const [researchTab, setResearchTab] = useState<ResearchTab>('base');
+  // NORQVA-0091: trava de segurança. Se a conferência da sessão travar (rede ruim),
+  // depois de 4 s o app segue para o login em vez de ficar na tela vazia.
+  const [bootTimedOut, setBootTimedOut] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setBootTimedOut(true), 4000);
+    return () => window.clearTimeout(t);
+  }, []);
   const [resultsTab, setResultsTab] = useState<ResultsTab>('financial');
   const [productsOpenAll, setProductsOpenAll] = useState(false);
 
@@ -598,6 +605,12 @@ export default function App() {
   }
 
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+
+  // NORQVA-0091: enquanto confere a sessão salva, mostra o fundo da abertura em vez
+  // do login (antes o login piscava por uma fração de segundo ao reabrir o app).
+  if (!isAuthReady && !bootTimedOut && !currentUser && !isAuthRoute && recoveryState === 'NONE') {
+    return <div className="nq-intro min-h-screen" aria-busy="true" />;
+  }
 
   if (!currentUser || isAuthRoute) {
     return (
