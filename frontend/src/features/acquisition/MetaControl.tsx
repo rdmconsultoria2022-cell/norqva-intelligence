@@ -159,10 +159,15 @@ export const MetaControlDialog: React.FC<{
 }> = ({ action, status, isDemoView, currentUser, apiFetch, onClose, onDone, onError, scopeCampaign }) => {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
+  // NORQVA-0094: reativar campanha de plano pausado pela tela pede o código do plano (vale como novo Sim)
+  const [codeNeeded, setCodeNeeded] = useState<string | null>(null);
+  const [code, setCode] = useState('');
 
   useEffect(() => {
     if (action?.kind === 'budget') setAmount(action.target.dailyBudget ? String(action.target.dailyBudget) : '');
     setBusy(false);
+    setCodeNeeded(null);
+    setCode('');
   }, [action]);
 
   if (!action) return null;
@@ -182,7 +187,14 @@ export const MetaControlDialog: React.FC<{
       if (action.kind === 'status') {
         await apiFetch(
           `/meta-control/${target.entityType}/${encodeURIComponent(target.id)}/status?mode=${mode}`,
-          { method: 'POST', body: JSON.stringify({ status: action.next, ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}) }) },
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              status: action.next,
+              ...(scopeCampaign ? { scope_campaign: scopeCampaign } : {}),
+              ...(codeNeeded ? { confirm_code: code.trim() } : {})
+            })
+          },
           mode,
           currentUser
         );
@@ -197,7 +209,14 @@ export const MetaControlDialog: React.FC<{
         onDone(`Orçamento diário de "${target.name}" alterado para ${brl(parsed)} na Meta.`);
       }
     } catch (err: any) {
-      onError(err?.message || 'Falha ao alterar na Meta.');
+      const msg = String(err?.message || 'Falha ao alterar na Meta.');
+      const asked = action.kind === 'status' ? msg.match(/digite o código ([A-Za-z0-9_-]+)/) : null;
+      if (asked && !codeNeeded) {
+        setCodeNeeded(asked[1]);
+        setBusy(false);
+        return;
+      }
+      onError(msg);
       setBusy(false);
     }
   };
@@ -240,6 +259,24 @@ export const MetaControlDialog: React.FC<{
           </div>
         )}
 
+        {codeNeeded && (
+          <div className="space-y-2" data-testid="meta-control-confirm-code">
+            <p className="text-xs text-nq-attention">
+              Esta campanha foi pausada pela tela. Para reativar, digite o código <strong>{codeNeeded}</strong>: vale como um novo Sim.
+            </p>
+            <label htmlFor="meta-control-code" className="block text-xs text-nq-muted">
+              Código do plano
+            </label>
+            <input
+              id="meta-control-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              autoComplete="off"
+              className="w-full bg-nq-bg border border-nq-line rounded p-2 focus:outline-none focus:border-nq-positive/40 text-nq-text"
+            />
+          </div>
+        )}
+
         {isDemoView && <p className="text-xs text-nq-info">Modo DEMO: nada é enviado à Meta.</p>}
 
         <div className="flex justify-end gap-2 pt-2">
@@ -248,7 +285,7 @@ export const MetaControlDialog: React.FC<{
           </button>
           <button
             onClick={confirm}
-            disabled={busy || !budgetValid}
+            disabled={busy || !budgetValid || (!!codeNeeded && code.trim().toUpperCase() !== codeNeeded.toUpperCase())}
             className="px-3 py-2 rounded bg-nq-positive text-nq-on-positive font-bold text-xs disabled:opacity-50"
           >
             {busy ? 'Enviando...' : 'Confirmar'}

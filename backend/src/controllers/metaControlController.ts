@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { writeAuditLog } from '../db/audit';
 import { beginDecision, decisionContextFromRequest, DecisionAuditError, metaIdsOfPlan } from '../db/decisionEvents';
 import {
   MetaMutatingClient,
@@ -202,6 +203,35 @@ async function passesCampaignScope(
   return true;
 }
 
+
+// NORQVA-0094: plano do NORQVA a que pertence um objeto da Meta (por ID da Meta ou ID interno).
+const ENTITY_TABLE: Record<'CAMPAIGN' | 'ADSET' | 'AD', { table: string; idCol: string }> = {
+  CAMPAIGN: { table: 'meta_campaigns', idCol: 'meta_campaign_id' },
+  ADSET: { table: 'meta_ad_sets', idCol: 'meta_adset_id' },
+  AD: { table: 'meta_ads', idCol: 'meta_ad_id' }
+};
+
+function parseIds(v: any): Record<string, Record<string, string>> {
+  const o = typeof v === 'string' ? JSON.parse(v || '{}') : v || {};
+  return o && typeof o === 'object' ? o : {};
+}
+
+export async function planOfEntity(pool: Pool, entityType: 'CAMPAIGN' | 'ADSET' | 'AD', id: string, isDemo: boolean): Promise<{ plan: any; metaId: string } | null> {
+  const { table, idCol } = ENTITY_TABLE[entityType];
+  const r = await pool.query(`SELECT ${idCol} AS meta_id FROM ${table} WHERE (${idCol} = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1`, [id, isDemo]);
+  const metaId = String(r.rows[0]?.meta_id || id);
+  const plans = await pool.query(
+    `SELECT id, code, status, guard_state, spec, meta_ids, daily_budget_brl, max_spend_brl, spent_brl_last, operator_paused_at
+     FROM launch_plans WHERE meta_ids IS NOT NULL AND meta_ids::text <> '{}'`
+  );
+  const plan = plans.rows.find((p: any) => metaIdsOfPlan(parseIds(p.meta_ids)).includes(metaId));
+  return plan ? { plan, metaId } : null;
+}
+
+function isPlanCampaign(plan: any, metaId: string): boolean {
+  return Object.values(parseIds(plan.meta_ids).campaign || {}).map(String).includes(metaId);
+}
+
 export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
@@ -244,17 +274,94 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
       await decision.finish('REJECTED', { result: { http_status: 409 }, error });
       return res.status(409).json({ error });
     }
+    // NORQVA-0094: campanha de plano pausada pela tela só volta com o código do plano digitado (vale como novo Sim).
+    let owner: { plan: any; metaId: string } | null;
+    try {
+      owner = await planOfEntity(pool, entityType, String(req.params.id), isDemoReq(req));
+    } catch {
+      const error = 'Não foi possível conferir a qual plano este objeto pertence. Nada foi ativado; tente de novo.';
+      await decision.finish('REJECTED', { result: { http_status: 503 }, error });
+      return res.status(503).json({ error });
+    }
+    if (owner && entityType === 'CAMPAIGN' && owner.plan.operator_paused_at && isPlanCampaign(owner.plan, owner.metaId)) {
+      const code = String(req.body?.confirm_code || '').trim().toUpperCase();
+      if (code !== String(owner.plan.code).toUpperCase()) {
+        const error = `A campanha do plano ${owner.plan.code} foi pausada pela tela. Para reativar, digite o código ${owner.plan.code}: vale como um novo Sim.`;
+        await decision.finish('REJECTED', { result: { http_status: 409 }, error });
+        return res.status(409).json({ error, needs_confirm_code: owner.plan.code });
+      }
+      const spent = owner.plan.spent_brl_last === null || owner.plan.spent_brl_last === undefined ? null : parseFloat(owner.plan.spent_brl_last);
+      const cap = parseFloat(owner.plan.max_spend_brl);
+      if (spent !== null && Number.isFinite(cap) && spent >= cap) {
+        const error = `O plano ${owner.plan.code} já gastou o teto (R$ ${cap.toFixed(2)}). Para continuar, suba o teto em Teto e vigia.`;
+        await decision.finish('REJECTED', { result: { http_status: 409 }, error });
+        return res.status(409).json({ error });
+      }
+    }
   }
 
   try {
     const result = await clientFactory().setEntityStatus(pool, entityType, String(req.params.id), status, contextFor(req));
     const recorded = await decision.finish('EXECUTED', { result });
-    return res.status(200).json(recorded ? result : { ...(result as any), audit_incomplete: true });
+    const extra = entityType === 'CAMPAIGN' ? await syncPlanPauseState(pool, req, String(result.entityId), status) : {};
+    return res.status(200).json(recorded ? { ...(result as any), ...extra } : { ...(result as any), ...extra, audit_incomplete: true });
   } catch (err: any) {
     const t = translateMetaControlError(err);
     if (t.status === 500) console.error('[META CONTROL] status change error', err);
     await decision.finish(t.status >= 500 ? 'FAILED' : 'REJECTED', { result: { http_status: t.status }, error: err?.message || t.error });
     return res.status(t.status).json({ error: t.error });
+  }
+}
+
+
+// NORQVA-0094: depois de pausar ou reativar a campanha de um plano pela tela, registra no plano.
+// Nunca derruba a resposta: a pausa na Meta já aconteceu.
+async function syncPlanPauseState(pool: Pool, req: AuthenticatedRequest, metaId: string, status: string): Promise<Record<string, unknown>> {
+  try {
+    const owner = await planOfEntity(pool, 'CAMPAIGN', metaId, isDemoReq(req));
+    if (!owner || !isPlanCampaign(owner.plan, owner.metaId)) return {};
+    const p = owner.plan;
+    if (status === 'PAUSED' && ['ACTIVE', 'APPROVED'].includes(p.status) && !p.operator_paused_at) {
+      await pool.query(`UPDATE launch_plans SET operator_paused_at = NOW(), operator_paused_by = $2, updated_at = NOW() WHERE id = $1`, [p.id, req.user?.id || null]);
+      await writeAuditLog(pool, req.user?.id || null, 'LAUNCH_PLAN_PAUSED_BY_OPERATOR', `Plano ${p.code}: campanha pausada pela tela. Reativar pede o código do plano.`, p.status, 'PAUSED');
+      return { plan_paused: p.code };
+    }
+    if (status === 'ACTIVE' && p.operator_paused_at) {
+      await pool.query(`UPDATE launch_plans SET operator_paused_at = NULL, operator_paused_by = NULL, updated_at = NOW() WHERE id = $1`, [p.id]);
+      await writeAuditLog(pool, req.user?.id || null, 'LAUNCH_PLAN_RESUMED_BY_OPERATOR', `Plano ${p.code}: campanha reativada pela tela com o código do plano.`, 'PAUSED', 'ACTIVE');
+      return { plan_resumed: p.code };
+    }
+    return {};
+  } catch (err) {
+    console.error('[META CONTROL] não registrou a pausa no plano', err);
+    return { plan_sync_failed: true };
+  }
+}
+
+// NORQVA-0094: orçamento mudado pela tela também muda o plano, para o vigia projetar o gasto certo.
+async function syncPlanBudget(pool: Pool, req: AuthenticatedRequest, owner: { plan: any; metaId: string } | null, entityType: 'CAMPAIGN' | 'ADSET', amount: number): Promise<Record<string, unknown>> {
+  if (!owner) return {};
+  try {
+    const p = owner.plan;
+    const spec = typeof p.spec === 'string' ? JSON.parse(p.spec || '{}') : p.spec || {};
+    const ids = parseIds(p.meta_ids);
+    let total: number;
+    if (entityType === 'ADSET') {
+      const name = Object.entries(ids.adsets || {}).find(([, v]) => String(v) === owner.metaId)?.[0];
+      if (!name || !Array.isArray(spec.adsets)) return {};
+      spec.adsets = spec.adsets.map((a: any) => (a?.name === name ? { ...a, daily_budget_brl: amount } : a));
+      total = Math.round(spec.adsets.reduce((s: number, a: any) => s + (Number(a?.daily_budget_brl) || 0), 0) * 100) / 100;
+    } else {
+      if (!isPlanCampaign(p, owner.metaId)) return {};
+      total = amount;
+    }
+    const before = parseFloat(p.daily_budget_brl);
+    await pool.query(`UPDATE launch_plans SET spec = $2, daily_budget_brl = $3, updated_at = NOW() WHERE id = $1`, [p.id, JSON.stringify(spec), total]);
+    await writeAuditLog(pool, req.user?.id || null, 'LAUNCH_PLAN_BUDGET_SYNCED', `Plano ${p.code}: orçamento diário atualizado pela tela.`, String(before), String(total));
+    return { plan_daily_budget: total };
+  } catch (err) {
+    console.error('[META CONTROL] não atualizou o orçamento do plano', err);
+    return { plan_sync_failed: true };
   }
 }
 
@@ -276,10 +383,26 @@ export async function setMetaEntityDailyBudget(req: AuthenticatedRequest, res: R
   }
   if (!(await passesCampaignScope(req, res, decision, entityType))) return;
 
+  // NORQVA-0094: plano que bateu o teto não muda orçamento por aqui; a conferência é fail-closed.
+  let owner: { plan: any; metaId: string } | null;
+  try {
+    owner = await planOfEntity(pool, entityType, String(req.params.id), isDemoReq(req));
+  } catch {
+    const error = 'Não foi possível conferir a qual plano este objeto pertence. Nada foi alterado; tente de novo.';
+    await decision.finish('REJECTED', { result: { http_status: 503 }, error });
+    return res.status(503).json({ error });
+  }
+  if (owner && owner.plan.guard_state === 'CAPPED') {
+    const error = `Este objeto pertence ao plano ${owner.plan.code}, que atingiu o teto. Orçamento não muda por aqui; suba o teto em Teto e vigia.`;
+    await decision.finish('REJECTED', { result: { http_status: 409 }, error });
+    return res.status(409).json({ error });
+  }
+
   try {
     const result = await clientFactory().setDailyBudget(pool, entityType, String(req.params.id), amount, contextFor(req));
     const recorded = await decision.finish('EXECUTED', { result });
-    return res.status(200).json(recorded ? result : { ...(result as any), audit_incomplete: true });
+    const extra = await syncPlanBudget(pool, req, owner, entityType, amount);
+    return res.status(200).json(recorded ? { ...(result as any), ...extra } : { ...(result as any), ...extra, audit_incomplete: true });
   } catch (err: any) {
     const t = translateMetaControlError(err);
     if (t.status === 500) console.error('[META CONTROL] budget change error', err);
