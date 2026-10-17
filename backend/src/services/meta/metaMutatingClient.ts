@@ -82,6 +82,8 @@ export interface CreateAdCreativeParams {
   instagramUserId?: string;
   /** NORQVA-0019: tracking parameters appended by Meta to the destination (creative url_tags). */
   urlTags?: string;
+  /** NORQVA-0098: descrição do anúncio (video_data.link_description / link_data.description). */
+  description?: string;
 }
 
 export interface CreateAdParams {
@@ -733,6 +735,7 @@ export class MetaMutatingClient {
       };
       if (params.thumbnailUrl) videoData.image_url = params.thumbnailUrl;
       else if (params.imageHash) videoData.image_hash = params.imageHash;
+      if (params.description) videoData.link_description = params.description;
       objectStorySpec.video_data = videoData;
     } else {
       objectStorySpec.link_data = {
@@ -1093,7 +1096,19 @@ export class MetaMutatingClient {
     }
   }
 
-  private static entityTable(entityType: 'CAMPAIGN' | 'ADSET' | 'AD'): { table: string; idCol: string } {
+  /** NORQVA-0098: IDs da Meta do objeto e dos pais (conjunto e campanha), para a trava de controle. */
+  static async lineageMetaIds(pool: Pool, entityType: 'CAMPAIGN' | 'ADSET' | 'AD', rowId: string): Promise<string[]> {
+    if (entityType === 'CAMPAIGN') return [];
+    const sql =
+      entityType === 'ADSET'
+        ? `SELECT c.meta_campaign_id AS c FROM meta_ad_sets s LEFT JOIN meta_campaigns c ON c.id = s.campaign_id WHERE s.id = $1`
+        : `SELECT s.meta_adset_id AS s, c.meta_campaign_id AS c FROM meta_ads a LEFT JOIN meta_ad_sets s ON s.id = a.adset_id LEFT JOIN meta_campaigns c ON c.id = s.campaign_id WHERE a.id = $1`;
+    const r = await pool.query(sql, [rowId]);
+    const row = r.rows[0] || {};
+    return [row.s, row.c].filter(Boolean).map(String);
+  }
+
+  static entityTable(entityType: 'CAMPAIGN' | 'ADSET' | 'AD'): { table: string; idCol: string } {
     if (entityType === 'CAMPAIGN') return { table: 'meta_campaigns', idCol: 'meta_campaign_id' };
     if (entityType === 'ADSET') return { table: 'meta_ad_sets', idCol: 'meta_adset_id' };
     if (entityType === 'AD') return { table: 'meta_ads', idCol: 'meta_ad_id' };
@@ -1489,6 +1504,93 @@ export class MetaMutatingClient {
   // =========================================================================
   // NORQVA-0018 (fase C): ativos de marca no portfólio (D-0009)
   // =========================================================================
+
+  /**
+   * NORQVA-0098: renomeia campanha, conjunto ou anúncio na Meta (POST /{id} {name}). Não muda status,
+   * orçamento nem público. Travas: chave geral + credencial; nunca em objeto protegido (CONTROL).
+   * Confirma relendo o nome na Meta; atualiza o nome na cópia local.
+   */
+  public async setEntityName(
+    pool: Pool,
+    entityType: 'CAMPAIGN' | 'ADSET' | 'AD',
+    metaEntityId: string,
+    name: string,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; entityId: string; previousName: string | null; name: string; confirmed: boolean }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    const clean = String(name || '').trim().replace(/\s+/g, ' ');
+    if (clean.length < 3 || clean.length > 200) throw new Error('[VALIDATION EXCEPTION]: Name must have 3 to 200 characters.');
+    const { table, idCol } = MetaMutatingClient.entityTable(entityType);
+    const r = await pool.query(`SELECT id, ${idCol} AS meta_id, name FROM ${table} WHERE (${idCol} = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1`, [metaEntityId, context.isDemo]);
+    if (r.rows.length === 0) throw new Error(`[VALIDATION EXCEPTION]: ${entityType} '${metaEntityId}' not found. Sync Meta data first.`);
+    const row = r.rows[0];
+    const lineage = [String(row.meta_id), ...(await MetaMutatingClient.lineageMetaIds(pool, entityType, row.id))];
+    if (lineage.some((id) => protectedIds.has(id))) throw new Error('[SECURITY EXCEPTION]: Protected (CONTROL) object cannot be changed.');
+    let confirmed = context.isDemo;
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${row.meta_id}`, { name: clean });
+      const read = await this.callTransportGet(`/${row.meta_id}`, { fields: 'name' }).catch(() => null);
+      confirmed = String(read?.name || '') === clean;
+    }
+    // a cópia local só muda quando a Meta mostra o nome novo
+    if (confirmed) await pool.query(`UPDATE ${table} SET name = $1, updated_at = NOW() WHERE id = $2`, [clean, row.id]);
+    await writeAuditLog(
+      pool,
+      context.userId || null,
+      confirmed ? `META_${entityType}_RENAMED` : `META_${entityType}_RENAME_UNCONFIRMED`,
+      `${confirmed ? 'Renamed' : 'Rename sent, not yet visible on Meta:'} ${entityType} (${row.meta_id}) from '${row.name}' to '${clean}'.`,
+      row.name || null,
+      clean,
+      context.isDemo,
+      false
+    );
+    return { success: true, entityId: String(row.meta_id), previousName: row.name || null, name: clean, confirmed };
+  }
+
+  /**
+   * NORQVA-0098: data de término de um conjunto (POST /{adset} {end_time}). Só data futura (reduz gasto).
+   * Confirma relendo end_time na Meta.
+   */
+  public async setAdSetEndTime(
+    pool: Pool,
+    metaAdSetId: string,
+    endIso: string,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; entityId: string; end_time: string; confirmed: boolean }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    const end = new Date(endIso);
+    if (!Number.isFinite(end.getTime())) throw new Error('[VALIDATION EXCEPTION]: Invalid end date.');
+    if (end.getTime() < Date.now() + 60 * 60 * 1000) throw new Error('[VALIDATION EXCEPTION]: End date must be at least 1 hour in the future.');
+    const r = await pool.query(`SELECT id, meta_adset_id AS meta_id, name FROM meta_ad_sets WHERE (meta_adset_id = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1`, [metaAdSetId, context.isDemo]);
+    if (r.rows.length === 0) throw new Error(`[VALIDATION EXCEPTION]: ADSET '${metaAdSetId}' not found. Sync Meta data first.`);
+    const row = r.rows[0];
+    const lineage = [String(row.meta_id), ...(await MetaMutatingClient.lineageMetaIds(pool, 'ADSET', row.id))];
+    if (lineage.some((id) => protectedIds.has(id))) throw new Error('[SECURITY EXCEPTION]: Protected (CONTROL) object cannot be changed.');
+    const iso = end.toISOString();
+    let confirmed = context.isDemo;
+    if (!context.isDemo) {
+      // só encurta: nunca estende a entrega, nunca religa conjunto que já terminou, nunca em orçamento total
+      let cur: any;
+      try {
+        cur = await this.callTransportGet(`/${row.meta_id}`, { fields: 'end_time,lifetime_budget,effective_status' });
+      } catch (err: any) {
+        throw new Error(`[META GRAPH API ERROR]: could not read the current end date (${String(err?.message || err)}); nothing was changed.`);
+      }
+      if (Number(cur?.lifetime_budget || 0) > 0) throw new Error('[VALIDATION EXCEPTION]: LIFETIME_BUDGET adset: change the end date in Ads Manager.');
+      const curEnd = cur?.end_time ? new Date(cur.end_time).getTime() : NaN;
+      const st = String(cur?.effective_status || '').toUpperCase();
+      if ((Number.isFinite(curEnd) && curEnd <= Date.now()) || st === 'COMPLETED' || st === 'ARCHIVED' || st === 'DELETED') throw new Error('[VALIDATION EXCEPTION]: ENDED adset: a new end date would restart delivery.');
+      if (Number.isFinite(curEnd) && end.getTime() > curEnd) throw new Error('[VALIDATION EXCEPTION]: EXTENDS end date: only an earlier date is allowed.');
+      await this.callTransportPost(`/${row.meta_id}`, { end_time: iso });
+      const read = await this.callTransportGet(`/${row.meta_id}`, { fields: 'end_time' }).catch(() => null);
+      const got = read?.end_time ? new Date(read.end_time).getTime() : NaN;
+      confirmed = Number.isFinite(got) && Math.abs(got - end.getTime()) < 60 * 1000;
+    }
+    await writeAuditLog(pool, context.userId || null, 'META_ADSET_END_TIME_SET', `Set end date of ADSET '${row.name}' (${row.meta_id}) to ${iso}.`, null, iso, context.isDemo, false);
+    return { success: true, entityId: String(row.meta_id), end_time: iso, confirmed };
+  }
 
   /** Leitura na Graph API (sem efeito na conta). Usada para conferir ativos de marca. */
   public async readGraph(endpoint: string, params: Record<string, string> = {}): Promise<any> {

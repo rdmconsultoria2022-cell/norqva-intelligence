@@ -242,3 +242,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, "Aprovado" em 16/10/2026 23h32):** pausar, reativar e orçamento viram fichas; "Confirmado pela Meta" só depois de reler a Meta. O envio usa as mesmas rotas e travas de antes.
 - **Performance:** pausa sem esperar (só reduz gasto); reativar e orçamento ficam aguardando o administrador por até 24 h.
 - **Orçamento:** aumento mostra a diferença por dia e em 30 dias e pede confirmação a mais.
+
+## D-0098 — Novas edições de campanha (2026-10-17)
+
+- **Decisão (Ricardo, "Aprovado" em 16/10/2026 23h59):** pelo NORQVA, o administrador vê o público, edita a descrição, troca o vídeo de um anúncio no ar, renomeia campanha/conjunto/anúncio e marca a data de término do conjunto.
+- **Vídeo novo:** só de criativo aprovado da oferta, com o mesmo crivo da criação e sem preço; peça nova no mesmo anúncio (a Meta revisa de novo).
+- **Data de término:** só futura; tirar a data e editar público ficam pelo Gerenciador.
+- Cada edição relê a Meta antes de dizer que foi feita.

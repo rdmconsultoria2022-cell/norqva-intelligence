@@ -9,6 +9,7 @@ import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
 import { protectedMetaIds } from '../experiments/protectedIds';
 import { beginDecision, DecisionContext, DecisionAuditError, DecisionHandle } from '../../db/decisionEvents';
 import { writeAuditLog } from '../../db/audit';
+import { checkCreativeForAd, offerOf } from './campaignEditorService';
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 const META_ID_RE = /^\d{5,25}$/;
@@ -20,6 +21,10 @@ export interface AdSwapInput {
   headline?: unknown;
   cta?: unknown;
   confirm_code?: unknown;
+  /** NORQVA-0098: descrição do anúncio */
+  description?: unknown;
+  /** NORQVA-0098: outro criativo aprovado da oferta (troca o vídeo) */
+  creative_id?: unknown;
 }
 
 async function brandAsset(pool: Pool, brandId: string | null, type: 'FACEBOOK_PAGE' | 'INSTAGRAM'): Promise<string | null> {
@@ -70,7 +75,11 @@ export async function replaceAdCreative(
   if (!body || body.length > 2000) throw new LaunchPlanError(400, 'Informe o texto do anúncio (até 2.000 caracteres).');
   if (!title || title.length > 255) throw new LaunchPlanError(400, 'Informe o título do anúncio (até 255 caracteres).');
   if (!ALLOWED_CTA_TYPES.includes(cta)) throw new LaunchPlanError(400, `Botão inválido (${ALLOWED_CTA_TYPES.join(', ')}).`);
-  const hits = findPriceInFields({ primary_text: body, headline: title });
+  // undefined = manter (a do plano ou, depois, a que está na Meta); '' = tirar
+  const descriptionGiven = input.description !== undefined && input.description !== null;
+  let description = String(descriptionGiven ? input.description : ad.description ?? '').trim();
+  if (description.length > 255) throw new LaunchPlanError(400, 'Descrição com até 255 caracteres.');
+  const hits = findPriceInFields({ primary_text: body, headline: title, description });
   if (hits.length) throw new LaunchPlanError(400, priceErrorMessage(hits, `Anúncio ${adIndex + 1}`));
   try {
     client.assertUrlWhitelisted(destination);
@@ -81,6 +90,27 @@ export async function replaceAdCreative(
   if (!newHumanId) throw new LaunchPlanError(400, 'Destino precisa ser a página de uma oferta (/p/...) ou de um kit (/kit/...).');
   const offer = (await pool.query(`SELECT id FROM offers WHERE human_id = $1 AND is_deleted = FALSE AND is_demo = FALSE LIMIT 1`, [newHumanId])).rows[0];
   if (!offer) throw new LaunchPlanError(400, `A oferta ${newHumanId} do link não existe no NORQVA.`);
+
+  // NORQVA-0098: trocar o vídeo = outro criativo aprovado da oferta, com o mesmo crivo da criação
+  let newCreative: any = null;
+  if (input.creative_id !== undefined && input.creative_id !== null && String(input.creative_id) !== '') {
+    const cid = String(input.creative_id);
+    if (!UUID_RE.test(cid)) throw new LaunchPlanError(400, 'Criativo inválido.');
+    const c = (await pool.query(`SELECT * FROM creatives WHERE id = $1 AND is_deleted = FALSE AND is_demo = FALSE`, [cid])).rows[0];
+    // o vídeo tem de ser de um produto da oferta para onde o anúncio vai levar (o link novo)
+    const destOffer = await offerOf(pool, newHumanId);
+    if (!destOffer) throw new LaunchPlanError(409, `Oferta ${newHumanId} não encontrada.`);
+    const check = await checkCreativeForAd(pool, c, destOffer.allowed_product_ids);
+    if (!check.ok) throw new LaunchPlanError(400, `Criativo não pode ir para o anúncio: ${check.reason}`);
+    const cHits = findPriceInFields({ hook: c.hook, script: c.script, cta: c.cta });
+    if (cHits.length) throw new LaunchPlanError(400, priceErrorMessage(cHits, `Criativo ${c.human_id}`));
+    const priceClaim = await pool.query(
+      `SELECT cr.human_id FROM creative_claims cc JOIN claims_registry cr ON cr.id = cc.claim_id WHERE cc.creative_id = $1 AND cr.claim_type = 'PRICE' LIMIT 1`,
+      [c.id]
+    );
+    if (priceClaim.rows.length) throw new LaunchPlanError(400, `O criativo ${c.human_id} usa promessa de preço (${priceClaim.rows[0].human_id}). Anúncio sem preço.`);
+    newCreative = c;
+  }
 
   let handle: DecisionHandle;
   try {
@@ -100,6 +130,7 @@ export async function replaceAdCreative(
   const version = Number(ad.meta_swaps || 0) + 1;
   let oldCreativeId = '';
   let newCreativeId = '';
+  let newVideoId = '';
   let swapSent = false;
   try {
     // 1) a peça atual dá o vídeo, a miniatura, a página/Instagram e as etiquetas de origem
@@ -112,18 +143,33 @@ export async function replaceAdCreative(
     if (old?.asset_feed_spec || !video) {
       throw new UnsupportedCreativeError('Esta peça não é um vídeo simples (peça dinâmica, post existente ou imagem): troque pelo Gerenciador de Anúncios da Meta.');
     }
-    const videoId = String(video.video_id || '');
-    if (!META_ID_RE.test(videoId)) throw new UnsupportedCreativeError('A peça atual não tem vídeo identificável: troque pelo Gerenciador de Anúncios da Meta.');
+    // descrição não informada e ausente no plano: mantém a que está na peça da Meta (antes de enviar qualquer vídeo)
+    if (!descriptionGiven && !description && video.link_description) {
+      description = String(video.link_description).trim().slice(0, 255);
+      if (findPriceInFields({ description }).length) throw new LaunchPlanError(400, 'A descrição atual do anúncio na Meta tem preço: informe uma descrição nova sem preço.');
+    }
+    let videoId = String(video.video_id || '');
+    if (!newCreative && !META_ID_RE.test(videoId)) throw new UnsupportedCreativeError('A peça atual não tem vídeo identificável: troque pelo Gerenciador de Anúncios da Meta.');
     const pageId = story.page_id || spec.page_id || (await brandAsset(pool, row.brand_id, 'FACEBOOK_PAGE'));
     if (!pageId) throw new UnsupportedCreativeError('Não foi possível saber a Página do Facebook do anúncio.');
     const instagramUserId = story.instagram_user_id || story.instagram_actor_id || spec.instagram_id || (await brandAsset(pool, row.brand_id, 'INSTAGRAM')) || undefined;
     let thumbnailUrl: string | undefined = video.image_url || ad.thumbnail_url || undefined;
-    const imageHash: string | undefined = video.image_hash || undefined;
+    let imageHash: string | undefined = video.image_hash || undefined;
+    if (newCreative) {
+      // NORQVA-0098: envia o vídeo novo e espera a Meta processar (a miniatura vem dele)
+      const up = await client.uploadVideoFromUrl(pool, { fileUrl: String(newCreative.file_url), name: `${row.code}_${ad.name}_V${version + 1}` }, ctx);
+      newVideoId = up.id;
+      const ready = await client.waitForVideoReady(up.id);
+      videoId = up.id;
+      thumbnailUrl = newCreative.thumbnail_url || ready.picture || undefined;
+      imageHash = undefined;
+    }
     if (!thumbnailUrl && !imageHash) {
       const v = await client.readGraph(`/${videoId}`, { fields: 'picture' }).catch(() => null);
       thumbnailUrl = v?.picture || undefined;
     }
     if (!thumbnailUrl && !imageHash) throw new UnsupportedCreativeError('Não foi possível obter a miniatura do vídeo.');
+    // etiquetas de origem iguais (utm_content = nome do anúncio); o vínculo com o criativo novo vai em creative_meta_ads
     const urlTags = String(old?.url_tags || ad.url_tags || '') || undefined;
 
     // 2) peça nova (nasce sem status: não ativa nem pausa nada)
@@ -138,7 +184,8 @@ export async function replaceAdCreative(
       imageHash,
       pageId: String(pageId),
       instagramUserId: instagramUserId ? String(instagramUserId) : undefined,
-      urlTags
+      urlTags,
+      description: description || undefined
     };
     const created = await client.createAdCreative(pool, params, ctx);
     newCreativeId = created.externalId;
@@ -168,11 +215,26 @@ export async function replaceAdCreative(
 
   // 4) o plano passa a refletir o que está na Meta (a troca já aconteceu: falha aqui não desfaz nada)
   const previousOffer = row.offer_human_id;
-  ads[adIndex] = { ...ad, destination_url: destination, primary_text: body, headline: title, cta, meta_swaps: version };
+  ads[adIndex] = {
+    ...ad,
+    destination_url: destination,
+    primary_text: body,
+    headline: title,
+    cta,
+    ...(description ? { description } : {}),
+    ...(newCreative ? { video_url: newCreative.file_url } : {}),
+    meta_swaps: version
+  };
+  if (!description) delete ads[adIndex].description;
+  // a miniatura antiga era do vídeo anterior
+  if (newCreative) delete ads[adIndex].thumbnail_url;
   spec.ads = ads;
   ids.creatives = { ...(ids.creatives || {}), [ad.name]: newCreativeId };
+  if (newVideoId) ids.videos = { ...(ids.videos || {}), [ad.name]: newVideoId };
+  const chosen = obj(row.ad_creatives);
+  if (newCreative) chosen[String(adIndex)] = newCreative.id;
   const manual = obj(row.manual_fields);
-  for (const f of ['destination_url', 'primary_text', 'headline', 'cta']) manual[`ads.${adIndex}.${f}`] = true;
+  for (const f of ['destination_url', 'primary_text', 'headline', 'cta', ...(descriptionGiven ? ['description'] : [])]) manual[`ads.${adIndex}.${f}`] = true;
   const destIds = Array.from(new Set(ads.map(a => humanIdFromUrl(String(a.destination_url || '')))));
   const nextOffer = destIds.length === 1 && destIds[0] ? destIds[0] : previousOffer;
   const result = {
@@ -182,6 +244,8 @@ export async function replaceAdCreative(
     creative_id: newCreativeId,
     destination_url: destination,
     previous_destination_url: ad.destination_url || null,
+    video_changed: !!newCreative,
+    new_video_id: newVideoId || null,
     offer_human_id: nextOffer,
     previous_offer_human_id: previousOffer,
     mixed_offers: destIds.length > 1,
@@ -189,12 +253,17 @@ export async function replaceAdCreative(
   };
   try {
     await pool.query(
-      `UPDATE launch_plans SET spec = $2, meta_ids = $3, manual_fields = $4, offer_human_id = $5, updated_at = NOW() WHERE id = $1`,
-      [row.id, JSON.stringify(spec), JSON.stringify(ids), JSON.stringify(manual), nextOffer]
+      `UPDATE launch_plans SET spec = $2, meta_ids = $3, manual_fields = $4, offer_human_id = $5, ad_creatives = $6, updated_at = NOW() WHERE id = $1`,
+      [row.id, JSON.stringify(spec), JSON.stringify(ids), JSON.stringify(manual), nextOffer, JSON.stringify(chosen)]
     );
   } catch (err) {
     console.error('[AD SWAP] plano não atualizado depois da troca na Meta', err);
     result.plan_sync_failed = true;
+  }
+  if (newCreative) {
+    await pool
+      .query(`INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method, linked_by) VALUES ($1, $2, 'MANUAL', $3) ON CONFLICT (creative_id, meta_ad_id) DO NOTHING`, [newCreative.id, adId, user.id || null])
+      .catch((e) => console.warn('[AD SWAP] vínculo do criativo novo não gravado', e));
   }
   await pool.query(`UPDATE meta_ads SET meta_creative_id = $2, updated_at = NOW() WHERE meta_ad_id = $1 AND is_demo = FALSE`, [adId, newCreativeId]).catch(() => {});
   await handle.finish('EXECUTED', { result }).catch(() => {});
@@ -205,7 +274,7 @@ export async function replaceAdCreative(
     `Campanha ${row.code}: anúncio ${ad.name} com peça nova na Meta (${newCreativeId}); destino ${destination}. Vai para revisão da Meta.` +
       (result.plan_sync_failed ? ' ATENÇÃO: o plano no NORQVA não foi atualizado.' : ''),
     JSON.stringify({ creative_id: oldCreativeId, destination_url: ad.destination_url, primary_text: ad.primary_text, headline: ad.headline, cta: ad.cta, offer_human_id: previousOffer }),
-    JSON.stringify({ creative_id: newCreativeId, destination_url: destination, primary_text: body, headline: title, cta, offer_human_id: nextOffer, by: user.email || null }),
+    JSON.stringify({ creative_id: newCreativeId, destination_url: destination, primary_text: body, headline: title, cta, description: description || null, video_from_creative: newCreative?.human_id || null, offer_human_id: nextOffer, by: user.email || null }),
     false,
     false
   ).catch(() => {});

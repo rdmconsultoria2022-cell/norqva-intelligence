@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { writeAuditLog } from '../db/audit';
+import { protectedMetaIds } from '../services/experiments/protectedIds';
 import { beginDecision, decisionContextFromRequest, DecisionAuditError, metaIdsOfPlan } from '../db/decisionEvents';
 import {
   MetaMutatingClient,
@@ -450,5 +451,83 @@ export async function getMetaLiveAudit(req: AuthenticatedRequest, res: Response)
   } catch (err) {
     console.error('[META CONTROL] live audit error', err);
     return res.status(500).json({ error: 'Falha na auditoria ao vivo.' });
+  }
+}
+
+
+// ---------------- NORQVA-0098: renomear e data de término ----------------
+
+const EDIT_MESSAGES: Array<[RegExp, string, number?]> = [
+  [/LIFETIME_BUDGET/, 'Este conjunto usa orçamento total: mude a data de término pelo Gerenciador da Meta.'],
+  [/ENDED adset/, 'Este conjunto já terminou: uma data nova faria ele voltar a rodar. Nada foi alterado.'],
+  [/EXTENDS end date/, 'A data nova é depois da data de término atual: por aqui só dá para antecipar (estender aumenta o gasto).'],
+  [/could not read the current end date/, 'Não foi possível ler a data de término atual na Meta. Nada foi alterado; tente de novo.', 502]
+];
+
+function translateEditError(err: any) {
+  const msg = String(err?.message || '');
+  if (/Protected \(CONTROL\)/.test(msg)) return { status: 403, error: 'Objeto protegido (controle): não pode ser alterado.' };
+  for (const [re, error, status] of EDIT_MESSAGES) if (re.test(msg)) return { status: status || 400, error };
+  return translateMetaControlError(err);
+}
+
+/** Edições novas: só conta real e sempre dentro de uma campanha informada. */
+async function editPreconditions(req: AuthenticatedRequest, res: Response, decision: any): Promise<boolean> {
+  const error = isDemoReq(req)
+    ? 'Esta edição só existe na conta real.'
+    : !req.body?.scope_campaign
+      ? 'Informe a campanha (scope_campaign) da edição.'
+      : '';
+  if (!error) return true;
+  await decision.finish('REJECTED', { result: { http_status: 400 }, error });
+  res.status(400).json({ error });
+  return false;
+}
+
+export async function setMetaEntityName(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
+  const decision = await beginEntityDecision(req, res, 'META_ENTITY_RENAME', `${entityType || 'INVALID'}:NAME`);
+  if (!decision) return;
+  const name = String(req.body?.name || '').trim();
+  if (!entityType || name.length < 3 || name.length > 200) {
+    const error = !entityType ? 'Tipo inválido. Use campaign, adset ou ad.' : 'Nome precisa ter de 3 a 200 caracteres.';
+    await decision.finish('REJECTED', { result: { http_status: 400 }, error });
+    return res.status(400).json({ error });
+  }
+  if (!(await editPreconditions(req, res, decision))) return;
+  if (!(await passesCampaignScope(req, res, decision, entityType))) return;
+  try {
+    const result = await clientFactory().setEntityName(pool, entityType, String(req.params.id), name, contextFor(req), protectedMetaIds());
+    const recorded = await decision.finish('EXECUTED', { result });
+    return res.status(200).json(recorded ? result : { ...result, audit_incomplete: true });
+  } catch (err: any) {
+    const t = translateEditError(err);
+    await decision.finish(t.status >= 500 ? 'FAILED' : 'REJECTED', { result: { http_status: t.status }, error: err?.message || t.error });
+    return res.status(t.status).json({ error: t.error });
+  }
+}
+
+export async function setMetaAdSetEndTime(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const decision = await beginEntityDecision(req, res, 'META_ADSET_END_TIME', `ADSET:END_TIME`);
+  if (!decision) return;
+  const end = String(req.body?.end_time || '');
+  const t = new Date(end).getTime();
+  if (!Number.isFinite(t) || t < Date.now() + 60 * 60 * 1000) {
+    const error = 'Escolha uma data de término futura (pelo menos 1 hora a partir de agora).';
+    await decision.finish('REJECTED', { result: { http_status: 400 }, error });
+    return res.status(400).json({ error });
+  }
+  if (!(await editPreconditions(req, res, decision))) return;
+  if (!(await passesCampaignScope(req, res, decision, 'ADSET'))) return;
+  try {
+    const result = await clientFactory().setAdSetEndTime(pool, String(req.params.id), end, contextFor(req), protectedMetaIds());
+    const recorded = await decision.finish('EXECUTED', { result });
+    return res.status(200).json(recorded ? result : { ...result, audit_incomplete: true });
+  } catch (err: any) {
+    const tr = translateEditError(err);
+    await decision.finish(tr.status >= 500 ? 'FAILED' : 'REJECTED', { result: { http_status: tr.status }, error: err?.message || tr.error });
+    return res.status(tr.status).json({ error: tr.error });
   }
 }

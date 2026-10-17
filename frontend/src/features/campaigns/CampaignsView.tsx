@@ -9,7 +9,7 @@ import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
 import { MethodView } from '../method/MethodView';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
-import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList } from './CampaignManage';
+import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList, AudienceList, MetaObjectsEditor } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
@@ -921,6 +921,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               </div>
             )}
 
+            {/* NORQVA-0098: público (só leitura), nomes e término na Meta */}
+            <AudienceList adsets={campaign.spec?.adsets || []} />
+            <MetaObjectsEditor campaign={campaign} currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
+
             <div className="rounded-2xl bg-nq-surface overflow-hidden">
               <Disclosure summary="Detalhes técnicos" testId="campaign-tech">
                 <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12px]">
@@ -1063,6 +1067,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                         applyCampaign(c);
                         loadList();
                       }}
+                      options={options}
                     />
                   )}
                 </article>
