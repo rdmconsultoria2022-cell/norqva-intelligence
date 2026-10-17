@@ -63,7 +63,8 @@ export function AdMetaSwap({
         method: 'POST',
         body: JSON.stringify({
           ...f,
-          ...(description.trim() ? { description: description.trim() } : {}),
+          // vai quando mudou (vazio = tirar a descrição)
+          ...(description.trim() !== String(ad?.description || '').trim() ? { description: description.trim() } : {}),
           ...(creativeId ? { creative_id: creativeId } : {})
         })
       });

@@ -523,6 +523,17 @@ export function MetaChangesList({
 // ---------------- NORQVA-0098: público, nomes e data de término ----------------
 
 /** Público de cada conjunto (só leitura): país, idade e tipo de público, como foi criado. */
+/** Texto do público a partir do que o plano registrou (sem inventar nada). */
+export function audienceText(t: any): string {
+  if (!t || typeof t !== 'object') return 'não informado';
+  const parts: string[] = [];
+  const countries = Array.isArray(t.countries) ? t.countries : [];
+  if (countries.length) parts.push(countries.map((c: string) => (c === 'BR' ? 'Brasil' : c)).join(', '));
+  if (t.age_min || t.age_max) parts.push(`${t.age_min || 18} a ${t.age_max || 65} anos`);
+  if (t.advantage_audience) parts.push('público Advantage');
+  return parts.length ? parts.join(', ') : 'não informado';
+}
+
 export function AudienceList({ adsets }: { adsets: any[] }) {
   if (!adsets.length) return null;
   return (
@@ -532,7 +543,7 @@ export function AudienceList({ adsets }: { adsets: any[] }) {
         {adsets.map((s: any) => (
           <li key={s.name}>
             <span className="text-nq-muted break-all">{s.name}: </span>
-            <span className="text-nq-text">{s.targeting_summary || 'Brasil, 25 a 65 anos, público Advantage (padrão)'}</span>
+            <span className="text-nq-text">{s.targeting_summary || audienceText(s.targeting)}</span>
           </li>
         ))}
       </ul>
@@ -605,7 +616,9 @@ function NameRow({
 function EndDateRow({ metaId, scope, apiFetch, showError, showSuccess }: { metaId: string; scope: string; apiFetch: Api; showError: (m: string) => void; showSuccess: (m: string) => void }) {
   const [date, setDate] = useState('');
   const [busy, setBusy] = useState(false);
-  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+  // amanhã no horário local (não em UTC: depois das 21h o UTC já é o dia seguinte)
+  const t = new Date(Date.now() + 24 * 3600 * 1000);
+  const tomorrow = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
   const save = async () => {
     setBusy(true);
     try {

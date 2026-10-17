@@ -75,7 +75,9 @@ export async function replaceAdCreative(
   if (!body || body.length > 2000) throw new LaunchPlanError(400, 'Informe o texto do anúncio (até 2.000 caracteres).');
   if (!title || title.length > 255) throw new LaunchPlanError(400, 'Informe o título do anúncio (até 255 caracteres).');
   if (!ALLOWED_CTA_TYPES.includes(cta)) throw new LaunchPlanError(400, `Botão inválido (${ALLOWED_CTA_TYPES.join(', ')}).`);
-  const description = String(input.description ?? ad.description ?? '').trim();
+  // undefined = manter (a do plano ou, depois, a que está na Meta); '' = tirar
+  const descriptionGiven = input.description !== undefined && input.description !== null;
+  let description = String(descriptionGiven ? input.description : ad.description ?? '').trim();
   if (description.length > 255) throw new LaunchPlanError(400, 'Descrição com até 255 caracteres.');
   const hits = findPriceInFields({ primary_text: body, headline: title, description });
   if (hits.length) throw new LaunchPlanError(400, priceErrorMessage(hits, `Anúncio ${adIndex + 1}`));
@@ -95,9 +97,10 @@ export async function replaceAdCreative(
     const cid = String(input.creative_id);
     if (!UUID_RE.test(cid)) throw new LaunchPlanError(400, 'Criativo inválido.');
     const c = (await pool.query(`SELECT * FROM creatives WHERE id = $1 AND is_deleted = FALSE AND is_demo = FALSE`, [cid])).rows[0];
-    const planOffer = await offerOf(pool, row.offer_human_id);
-    if (!planOffer) throw new LaunchPlanError(409, `Oferta ${row.offer_human_id} não encontrada.`);
-    const check = await checkCreativeForAd(pool, c, planOffer.allowed_product_ids);
+    // o vídeo tem de ser de um produto da oferta para onde o anúncio vai levar (o link novo)
+    const destOffer = await offerOf(pool, newHumanId);
+    if (!destOffer) throw new LaunchPlanError(409, `Oferta ${newHumanId} não encontrada.`);
+    const check = await checkCreativeForAd(pool, c, destOffer.allowed_product_ids);
     if (!check.ok) throw new LaunchPlanError(400, `Criativo não pode ir para o anúncio: ${check.reason}`);
     const cHits = findPriceInFields({ hook: c.hook, script: c.script, cta: c.cta });
     if (cHits.length) throw new LaunchPlanError(400, priceErrorMessage(cHits, `Criativo ${c.human_id}`));
@@ -161,7 +164,17 @@ export async function replaceAdCreative(
       thumbnailUrl = v?.picture || undefined;
     }
     if (!thumbnailUrl && !imageHash) throw new UnsupportedCreativeError('Não foi possível obter a miniatura do vídeo.');
-    const urlTags = String(old?.url_tags || ad.url_tags || '') || undefined;
+    let urlTags = String(old?.url_tags || ad.url_tags || '') || undefined;
+    // vídeo novo: as vendas passam a contar para o criativo novo (utm_content)
+    if (newCreative && urlTags) {
+      const key = encodeURIComponent(String(newCreative.utm_content_key || newCreative.human_id));
+      urlTags = /(^|&)utm_content=[^&]*/.test(urlTags) ? urlTags.replace(/(^|&)utm_content=[^&]*/, `$1utm_content=${key}`) : `${urlTags}&utm_content=${key}`;
+    }
+    // descrição não informada e ausente no plano: mantém a que está na peça da Meta
+    if (!descriptionGiven && !description && video.link_description) {
+      description = String(video.link_description).trim().slice(0, 255);
+      if (findPriceInFields({ description }).length) throw new LaunchPlanError(400, 'A descrição atual do anúncio na Meta tem preço: informe uma descrição nova sem preço.');
+    }
 
     // 2) peça nova (nasce sem status: não ativa nem pausa nada)
     const params: CreateAdCreativeParams = {
@@ -213,16 +226,19 @@ export async function replaceAdCreative(
     headline: title,
     cta,
     ...(description ? { description } : {}),
-    ...(newCreative ? { video_url: newCreative.file_url, ...(newCreative.thumbnail_url ? { thumbnail_url: newCreative.thumbnail_url } : {}) } : {}),
+    ...(newCreative ? { video_url: newCreative.file_url } : {}),
     meta_swaps: version
   };
+  if (!description) delete ads[adIndex].description;
+  // a miniatura antiga era do vídeo anterior
+  if (newCreative) delete ads[adIndex].thumbnail_url;
   spec.ads = ads;
   ids.creatives = { ...(ids.creatives || {}), [ad.name]: newCreativeId };
   if (newVideoId) ids.videos = { ...(ids.videos || {}), [ad.name]: newVideoId };
   const chosen = obj(row.ad_creatives);
   if (newCreative) chosen[String(adIndex)] = newCreative.id;
   const manual = obj(row.manual_fields);
-  for (const f of ['destination_url', 'primary_text', 'headline', 'cta', ...(description ? ['description'] : [])]) manual[`ads.${adIndex}.${f}`] = true;
+  for (const f of ['destination_url', 'primary_text', 'headline', 'cta', ...(descriptionGiven ? ['description'] : [])]) manual[`ads.${adIndex}.${f}`] = true;
   const destIds = Array.from(new Set(ads.map(a => humanIdFromUrl(String(a.destination_url || '')))));
   const nextOffer = destIds.length === 1 && destIds[0] ? destIds[0] : previousOffer;
   const result = {

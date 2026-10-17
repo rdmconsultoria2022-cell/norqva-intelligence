@@ -43,6 +43,7 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
   let endTimes: Record<string, string> = {};
   let currentCreative = OLD_CREATIVE;
   let ignoreName = false;
+  let lifetimeBudget = 0;
 
   const destination = `${DEFAULT_OFFER_BASE_URL}/p/${offerHid}`;
 
@@ -85,7 +86,7 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
       const id = endpoint.slice(1);
       if (id === AD_ID && String(params.fields || '').includes('creative')) return { id: AD_ID, creative: { id: currentCreative } };
       if (params.fields === 'name') return { id, name: names[id] };
-      if (params.fields === 'end_time') return { id, end_time: endTimes[id] };
+      if (String(params.fields || '').startsWith('end_time')) return { id, end_time: endTimes[id], lifetime_budget: String(lifetimeBudget) };
       throw new Error('unexpected GET ' + endpoint);
     });
     return new MetaMutatingClient(post as any, undefined, get as any);
@@ -160,6 +161,7 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
     resetMetaPreflightCacheForTesting();
     posts = [];
     ignoreName = false;
+    lifetimeBudget = 0;
     setMetaControlClientFactoryForTesting(() => fakeClient());
     setAdSwapClientFactoryForTesting(() => fakeClient());
   });
@@ -192,13 +194,13 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
   // ---------------- renomear ----------------
 
   it('renomear: só ADMIN', async () => {
-    const r = await as(perf).post(`/api/meta-control/campaign/${CMP}/name`, { name: 'Novo nome' });
+    const r = await as(perf).post(`/api/meta-control/campaign/${CMP}/name`, { name: 'Novo nome', scope_campaign: CMP });
     expect(r.status).toBe(403);
     expect(posts).toHaveLength(0);
   });
 
   it('renomear campanha: envia o nome, confirma relendo e atualiza a cópia local', async () => {
-    const r = await as(admin).post(`/api/meta-control/campaign/${CMP}/name`, { name: `${code} | campanha nova` });
+    const r = await as(admin).post(`/api/meta-control/campaign/${CMP}/name`, { name: `${code} | campanha nova`, scope_campaign: CMP });
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ success: true, confirmed: true, name: `${code} | campanha nova`, previousName: `${code} | campanha` });
     expect(posts).toEqual([{ endpoint: `/${CMP}`, payload: { name: `${code} | campanha nova` } }]);
@@ -210,28 +212,39 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
 
   it('renomear: a Meta não mostra o nome novo → não confirmado', async () => {
     ignoreName = true;
-    const r = await as(admin).post(`/api/meta-control/adset/${SET}/name`, { name: 'Conj renomeado' });
+    const r = await as(admin).post(`/api/meta-control/adset/${SET}/name`, { name: 'Conj renomeado', scope_campaign: CMP });
     expect(r.status).toBe(200);
     expect(r.body.confirmed).toBe(false);
+    // a cópia local só muda quando a Meta mostra o nome novo
+    const row = await pool.query('SELECT name FROM meta_ad_sets WHERE meta_adset_id = $1', [SET]);
+    expect(row.rows[0].name).toBe('Conj 98');
   });
 
   it('renomear: nome curto, tipo inválido e objeto protegido são recusados sem falar com a Meta', async () => {
-    expect((await as(admin).post(`/api/meta-control/campaign/${CMP}/name`, { name: 'ab' })).status).toBe(400);
-    expect((await as(admin).post(`/api/meta-control/pixel/${CMP}/name`, { name: 'Nome bom' })).status).toBe(400);
+    expect((await as(admin).post(`/api/meta-control/campaign/${CMP}/name`, { name: 'ab', scope_campaign: CMP })).status).toBe(400);
+    expect((await as(admin).post(`/api/meta-control/pixel/${CMP}/name`, { name: 'Nome bom', scope_campaign: CMP })).status).toBe(400);
+    // sem a campanha informada, ou fora dela
+    expect((await as(admin).post(`/api/meta-control/adset/${SET}/name`, { name: 'Nome bom' })).status).toBe(400);
+    expect((await as(admin).post(`/api/meta-control/adset/${SET}/name`, { name: 'Nome bom', scope_campaign: '999999' })).status).toBe(409);
+    // modo demo não existe para estas edições
+    expect((await as(admin).post(`/api/meta-control/campaign/${CMP}/name?mode=demo`, { name: 'Nome bom', scope_campaign: CMP })).status).toBe(400);
     process.env.PROTECTED_META_IDS = CMP;
-    const p = await as(admin).post(`/api/meta-control/campaign/${CMP}/name`, { name: 'Nome bom' });
+    const p = await as(admin).post(`/api/meta-control/campaign/${CMP}/name`, { name: 'Nome bom', scope_campaign: CMP });
     expect(p.status).toBe(403);
+    // conjunto de uma campanha protegida também é protegido
+    const child = await as(admin).post(`/api/meta-control/adset/${SET}/name`, { name: 'Nome bom', scope_campaign: CMP });
+    expect(child.status).toBe(403);
     expect(posts.filter((x) => x.payload.name !== undefined)).toHaveLength(0);
   });
 
   // ---------------- data de término ----------------
 
   it('data de término no passado ou em menos de 1 hora é recusada', async () => {
-    const past = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: new Date(Date.now() - 86400000).toISOString() });
+    const past = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: new Date(Date.now() - 86400000).toISOString(), scope_campaign: CMP });
     expect(past.status).toBe(400);
-    const soon = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: new Date(Date.now() + 10 * 60000).toISOString() });
+    const soon = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: new Date(Date.now() + 10 * 60000).toISOString(), scope_campaign: CMP });
     expect(soon.status).toBe(400);
-    const junk = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: 'amanhã' });
+    const junk = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: 'amanhã', scope_campaign: CMP });
     expect(junk.status).toBe(400);
     expect(posts).toHaveLength(0);
   });
@@ -239,10 +252,34 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
   it('data de término futura: envia e confirma relendo', async () => {
     const end = new Date(Date.now() + 3 * 86400000);
     end.setUTCSeconds(0, 0);
-    const r = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: end.toISOString() });
+    const r = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: end.toISOString(), scope_campaign: CMP });
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ success: true, confirmed: true, end_time: end.toISOString() });
     expect(posts).toEqual([{ endpoint: `/${SET}`, payload: { end_time: end.toISOString() } }]);
+  });
+
+  it('data de término: só antecipa; não estende, não religa conjunto encerrado, não mexe em orçamento total', async () => {
+    const later = new Date(Date.now() + 10 * 86400000).toISOString();
+    const ext = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: later, scope_campaign: CMP });
+    expect(ext.status).toBe(400);
+    expect(ext.body.error).toMatch(/antecipar/);
+
+    const earlier = new Date(Date.now() + 2 * 86400000);
+    earlier.setUTCSeconds(0, 0);
+    const ok = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: earlier.toISOString(), scope_campaign: CMP });
+    expect(ok.status).toBe(200);
+
+    endTimes[SET] = new Date(Date.now() - 3600000).toISOString();
+    const ended = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: new Date(Date.now() + 86400000).toISOString(), scope_campaign: CMP });
+    expect(ended.status).toBe(400);
+    expect(ended.body.error).toMatch(/já terminou/);
+
+    delete endTimes[SET];
+    lifetimeBudget = 50000;
+    const life = await as(admin).post(`/api/meta-control/adset/${SET}/end-time`, { end_time: new Date(Date.now() + 86400000).toISOString(), scope_campaign: CMP });
+    expect(life.status).toBe(400);
+    expect(life.body.error).toMatch(/orçamento total/);
+    expect(posts.filter((p) => p.payload.end_time !== undefined)).toHaveLength(1);
   });
 
   // ---------------- troca no anúncio: descrição e vídeo ----------------
@@ -294,6 +331,9 @@ describe.sequential('NORQVA-0098 — novas edições na Meta', () => {
     const vd = posts.find((p) => p.endpoint === `/${ACT}/adcreatives`)!.payload.object_story_spec.video_data;
     expect(vd.video_id).toBe(NEW_VIDEO);
     expect(vd.image_url).toBe('https://scontent.example.com/novo.jpg');
+    // as vendas do vídeo novo contam para o criativo novo
+    const tags = posts.find((p) => p.endpoint === `/${ACT}/adcreatives`)!.payload.url_tags;
+    expect(tags).toBe(`utm_source=meta&utm_campaign=${code}&utm_content=G98${tag}`);
     expect(posts.find((p) => p.endpoint === `/${AD_ID}`)!.payload).toEqual({ creative: { creative_id: NEW_CREATIVE } });
     const c = r.body.campaign;
     expect(c.meta_ids.videos.AD98).toBe(NEW_VIDEO);
