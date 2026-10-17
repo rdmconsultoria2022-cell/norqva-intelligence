@@ -474,7 +474,11 @@ app.get('/api/meta/adsets', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CR
 app.get('/api/meta/ads', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaAds);
 app.get('/api/meta/insights', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMetaInsights);
 app.post('/api/meta/sync', requireRole(['ADMIN']), syncMetaData);
-app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), migrateDestinationUrl);
+// NORQVA-0094: rota antiga desligada. Alterava anúncio na Meta sem a chave META_MUTATION_ENABLED, sem conferência
+// de credencial, sem registro de decisão e com IDs fixos. Para trocar link de anúncio: "Editar anúncio na Meta" (NORQVA-0056).
+app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), (_req, res) =>
+  res.status(410).json({ error: 'Rota desligada (NORQVA-0094). Use "Editar anúncio na Meta" na campanha.' })
+);
 // NORQVA-0006: campaign control (pause/activate, daily budget). ADMIN only, fail-closed.
 app.get('/api/meta-control/status', requireRole(['ADMIN']), getMetaControlStatus);
 app.get('/api/meta-control/audit', requireRole(['ADMIN']), getMetaLiveAudit);
