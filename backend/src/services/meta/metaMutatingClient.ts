@@ -82,6 +82,8 @@ export interface CreateAdCreativeParams {
   instagramUserId?: string;
   /** NORQVA-0019: tracking parameters appended by Meta to the destination (creative url_tags). */
   urlTags?: string;
+  /** NORQVA-0098: descrição do anúncio (video_data.link_description / link_data.description). */
+  description?: string;
 }
 
 export interface CreateAdParams {
@@ -733,6 +735,7 @@ export class MetaMutatingClient {
       };
       if (params.thumbnailUrl) videoData.image_url = params.thumbnailUrl;
       else if (params.imageHash) videoData.image_hash = params.imageHash;
+      if (params.description) videoData.link_description = params.description;
       objectStorySpec.video_data = videoData;
     } else {
       objectStorySpec.link_data = {
@@ -1093,7 +1096,7 @@ export class MetaMutatingClient {
     }
   }
 
-  private static entityTable(entityType: 'CAMPAIGN' | 'ADSET' | 'AD'): { table: string; idCol: string } {
+  static entityTable(entityType: 'CAMPAIGN' | 'ADSET' | 'AD'): { table: string; idCol: string } {
     if (entityType === 'CAMPAIGN') return { table: 'meta_campaigns', idCol: 'meta_campaign_id' };
     if (entityType === 'ADSET') return { table: 'meta_ad_sets', idCol: 'meta_adset_id' };
     if (entityType === 'AD') return { table: 'meta_ads', idCol: 'meta_ad_id' };
@@ -1491,6 +1494,69 @@ export class MetaMutatingClient {
   // =========================================================================
 
   /** Leitura na Graph API (sem efeito na conta). Usada para conferir ativos de marca. */
+  /**
+   * NORQVA-0098: renomeia campanha, conjunto ou anúncio na Meta (POST /{id} {name}). Não muda status,
+   * orçamento nem público. Travas: chave geral + credencial; nunca em objeto protegido (CONTROL).
+   * Confirma relendo o nome na Meta; atualiza o nome na cópia local.
+   */
+  public async setEntityName(
+    pool: Pool,
+    entityType: 'CAMPAIGN' | 'ADSET' | 'AD',
+    metaEntityId: string,
+    name: string,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; entityId: string; previousName: string | null; name: string; confirmed: boolean }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    const clean = String(name || '').trim().replace(/\s+/g, ' ');
+    if (clean.length < 3 || clean.length > 200) throw new Error('[VALIDATION EXCEPTION]: Name must have 3 to 200 characters.');
+    const { table, idCol } = MetaMutatingClient.entityTable(entityType);
+    const r = await pool.query(`SELECT id, ${idCol} AS meta_id, name FROM ${table} WHERE (${idCol} = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1`, [metaEntityId, context.isDemo]);
+    if (r.rows.length === 0) throw new Error(`[VALIDATION EXCEPTION]: ${entityType} '${metaEntityId}' not found. Sync Meta data first.`);
+    const row = r.rows[0];
+    if (protectedIds.has(String(row.meta_id))) throw new Error('[SECURITY EXCEPTION]: Protected (CONTROL) object cannot be changed.');
+    let confirmed = context.isDemo;
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${row.meta_id}`, { name: clean });
+      const read = await this.callTransportGet(`/${row.meta_id}`, { fields: 'name' }).catch(() => null);
+      confirmed = String(read?.name || '') === clean;
+    }
+    await pool.query(`UPDATE ${table} SET name = $1, updated_at = NOW() WHERE id = $2`, [clean, row.id]);
+    await writeAuditLog(pool, context.userId || null, `META_${entityType}_RENAMED`, `Renamed ${entityType} (${row.meta_id}) from '${row.name}' to '${clean}'.`, row.name || null, clean, context.isDemo, false);
+    return { success: true, entityId: String(row.meta_id), previousName: row.name || null, name: clean, confirmed };
+  }
+
+  /**
+   * NORQVA-0098: data de término de um conjunto (POST /{adset} {end_time}). Só data futura (reduz gasto).
+   * Confirma relendo end_time na Meta.
+   */
+  public async setAdSetEndTime(
+    pool: Pool,
+    metaAdSetId: string,
+    endIso: string,
+    context: MetaMutatingSecurityContext,
+    protectedIds: Set<string> = new Set()
+  ): Promise<{ success: boolean; entityId: string; end_time: string; confirmed: boolean }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    const end = new Date(endIso);
+    if (!Number.isFinite(end.getTime())) throw new Error('[VALIDATION EXCEPTION]: Invalid end date.');
+    if (end.getTime() < Date.now() + 60 * 60 * 1000) throw new Error('[VALIDATION EXCEPTION]: End date must be at least 1 hour in the future.');
+    const r = await pool.query(`SELECT id, meta_adset_id AS meta_id, name FROM meta_ad_sets WHERE (meta_adset_id = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1`, [metaAdSetId, context.isDemo]);
+    if (r.rows.length === 0) throw new Error(`[VALIDATION EXCEPTION]: ADSET '${metaAdSetId}' not found. Sync Meta data first.`);
+    const row = r.rows[0];
+    if (protectedIds.has(String(row.meta_id))) throw new Error('[SECURITY EXCEPTION]: Protected (CONTROL) object cannot be changed.');
+    const iso = end.toISOString();
+    let confirmed = context.isDemo;
+    if (!context.isDemo) {
+      await this.callTransportPost(`/${row.meta_id}`, { end_time: iso });
+      const read = await this.callTransportGet(`/${row.meta_id}`, { fields: 'end_time' }).catch(() => null);
+      const got = read?.end_time ? new Date(read.end_time).getTime() : NaN;
+      confirmed = Number.isFinite(got) && Math.abs(got - end.getTime()) < 60 * 1000;
+    }
+    await writeAuditLog(pool, context.userId || null, 'META_ADSET_END_TIME_SET', `Set end date of ADSET '${row.name}' (${row.meta_id}) to ${iso}.`, null, iso, context.isDemo, false);
+    return { success: true, entityId: String(row.meta_id), end_time: iso, confirmed };
+  }
+
   public async readGraph(endpoint: string, params: Record<string, string> = {}): Promise<any> {
     return this.callTransportGet(endpoint, params);
   }

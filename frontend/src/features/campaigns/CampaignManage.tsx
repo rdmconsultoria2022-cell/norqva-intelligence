@@ -519,3 +519,168 @@ export function MetaChangesList({
     </section>
   );
 }
+
+// ---------------- NORQVA-0098: público, nomes e data de término ----------------
+
+/** Público de cada conjunto (só leitura): país, idade e tipo de público, como foi criado. */
+export function AudienceList({ adsets }: { adsets: any[] }) {
+  if (!adsets.length) return null;
+  return (
+    <section className="rounded-2xl bg-nq-surface p-4 space-y-2" aria-label="Público" data-testid="audience">
+      <h3 className="text-[15px] font-semibold text-nq-text">Público</h3>
+      <ul className="space-y-1.5 text-[13px]">
+        {adsets.map((s: any) => (
+          <li key={s.name}>
+            <span className="text-nq-muted break-all">{s.name}: </span>
+            <span className="text-nq-text">{s.targeting_summary || 'Brasil, 25 a 65 anos, público Advantage (padrão)'}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[12px] text-nq-subtle">Para mudar o público, crie uma campanha nova ou use o Gerenciador da Meta.</p>
+    </section>
+  );
+}
+
+function NameRow({
+  label,
+  entity,
+  metaId,
+  initial,
+  scope,
+  apiFetch,
+  showError,
+  showSuccess
+}: {
+  label: string;
+  entity: 'campaign' | 'adset' | 'ad';
+  metaId: string;
+  initial: string;
+  scope: string;
+  apiFetch: Api;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+}) {
+  const [name, setName] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await apiFetch(`/meta-control/${entity}/${encodeURIComponent(metaId)}/name?mode=real`, {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), scope_campaign: scope })
+      });
+      setSaved(name.trim());
+      showSuccess(r?.confirmed ? `Nome trocado e confirmado pela Meta.` : 'A Meta aceitou o nome novo; a releitura ainda não mostra. Confira mais tarde.');
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível renomear.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="block flex-1 min-w-[200px] space-y-1">
+        <span className="text-[12px] text-nq-muted">{label}</span>
+        <input
+          value={name}
+          maxLength={200}
+          onChange={(e) => setName(e.target.value)}
+          aria-label={`Nome na Meta: ${label}`}
+          className="w-full min-h-[44px] rounded-xl bg-nq-raised px-3 text-[15px] text-nq-text border border-nq-line"
+        />
+      </label>
+      <button
+        type="button"
+        disabled={busy || name.trim().length < 3 || name.trim() === saved}
+        onClick={save}
+        className="min-h-[44px] px-4 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold disabled:opacity-40"
+      >
+        Renomear
+      </button>
+    </div>
+  );
+}
+
+function EndDateRow({ metaId, scope, apiFetch, showError, showSuccess }: { metaId: string; scope: string; apiFetch: Api; showError: (m: string) => void; showSuccess: (m: string) => void }) {
+  const [date, setDate] = useState('');
+  const [busy, setBusy] = useState(false);
+  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const save = async () => {
+    setBusy(true);
+    try {
+      // fim do dia escolhido, no horário de Brasília
+      const r = await apiFetch(`/meta-control/adset/${encodeURIComponent(metaId)}/end-time?mode=real`, {
+        method: 'POST',
+        body: JSON.stringify({ end_time: `${date}T23:59:00-03:00`, scope_campaign: scope })
+      });
+      showSuccess(r?.confirmed ? `Término em ${date.split('-').reverse().join('/')} confirmado pela Meta.` : 'A Meta aceitou a data; a releitura ainda não mostra. Confira mais tarde.');
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível marcar a data de término.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="block space-y-1">
+        <span className="text-[12px] text-nq-muted">Termina em (para sozinho no fim do dia)</span>
+        <input
+          type="date"
+          min={tomorrow}
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          aria-label="Data de término do conjunto"
+          className="min-h-[44px] rounded-xl bg-nq-raised px-3 text-[15px] text-nq-text border border-nq-line"
+        />
+      </label>
+      <button type="button" disabled={busy || !date} onClick={save} className="min-h-[44px] px-4 rounded-full bg-nq-raised text-nq-text text-[13px] font-semibold disabled:opacity-40">
+        Marcar término
+      </button>
+    </div>
+  );
+}
+
+/** Nomes na Meta (campanha, conjuntos, anúncios) e data de término dos conjuntos. Só administrador. */
+export function MetaObjectsEditor({
+  campaign,
+  currentUser,
+  apiFetch,
+  showError,
+  showSuccess
+}: {
+  campaign: any;
+  currentUser: any;
+  apiFetch: Api;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+}) {
+  if (currentUser?.role !== 'ADMIN') return null;
+  const ids = campaign?.meta_ids || {};
+  const cmp = Object.entries(ids.campaign || {})[0] as [string, string] | undefined;
+  if (!cmp) return null;
+  const scope = String(cmp[1]);
+  const adsets = Object.entries(ids.adsets || {}) as Array<[string, string]>;
+  const ads = Object.entries(ids.ads || {}) as Array<[string, string]>;
+  const common = { apiFetch, showError, showSuccess, scope };
+  return (
+    <section className="rounded-2xl bg-nq-surface p-4 space-y-4" aria-label="Nomes e término na Meta" data-testid="meta-objects">
+      <div>
+        <h3 className="text-[15px] font-semibold text-nq-text">Nomes e término na Meta</h3>
+        <p className="mt-1 text-[12px] text-nq-subtle">Muda só o nome que aparece na Meta; o código {campaign.code} continua o mesmo no NORQVA.</p>
+      </div>
+      <NameRow label="Campanha" entity="campaign" metaId={scope} initial={String(cmp[0])} {...common} />
+      {adsets.map(([name, id]) => (
+        <div key={id} className="space-y-2 border-t border-nq-line/60 pt-3">
+          <NameRow label="Conjunto" entity="adset" metaId={String(id)} initial={name} {...common} />
+          <EndDateRow metaId={String(id)} scope={scope} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
+        </div>
+      ))}
+      {ads.map(([name, id]) => (
+        <div key={id} className="border-t border-nq-line/60 pt-3">
+          <NameRow label="Anúncio" entity="ad" metaId={String(id)} initial={name} {...common} />
+        </div>
+      ))}
+    </section>
+  );
+}

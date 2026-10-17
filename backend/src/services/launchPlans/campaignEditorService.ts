@@ -68,7 +68,7 @@ async function loadPlanRow(pool: Pool, id: string) {
   return r.rows[0];
 }
 
-async function offerOf(pool: Pool, offerHumanId: string) {
+export async function offerOf(pool: Pool, offerHumanId: string) {
   const r = await pool.query(
     `SELECT o.id, o.human_id, o.name, o.product_id, p.brand_id
      FROM offers o JOIN products p ON p.id = o.product_id

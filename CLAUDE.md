@@ -89,6 +89,8 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - NORQVA-0090/0091: abertura NORQVA depois do login (`components/layout/IntroSequence.tsx`, classes `nq-intro-*` em `index.css`): triângulo com fumaça, som "ta-dum" por Web Audio (só toca depois de um toque na página, regra do navegador); enquanto confere a sessão mostra o fundo da abertura, não o login (trava de 4 s).
 - NORQVA-0092 (D-0092): gestão da Equipe (só ADMIN): convite por e-mail pelo Supabase (`services/team/teamService.ts`, volta em `/reset-password`), editar nome e perfil, desativar/reativar, travas de administrador. Tela em `features/settings/TeamManagement.tsx`.
 
+- NORQVA-0093 a 0098 (D-0094 a D-0098): Centro de Controle de Campanhas (diagnóstico no Claude Docs "NORQVA-0093"). 0094: segurança (reativar campanha pausada pede o código do plano; rota antiga de troca de link desligada). 0095: central de alertas (sino e pendências, `services/alerts/alertCenterService.ts`). 0096: "Gerenciar campanha" com abas Visão geral, Configurações, Criativos, Resultados e Histórico (`CampaignManage.tsx`, `campaignInsightService.ts`). 0097: fichas de alteração na Meta (`meta_change_requests`, `services/meta/metaChangeService.ts`): "Confirmado pela Meta" só depois de reler; Performance pausa sozinho, o resto espera o administrador. 0098: ver público, descrição do anúncio, trocar o vídeo no ar (criativo aprovado), renomear e data de término do conjunto (`/api/meta-control/:entity/:id/name`, `/api/meta-control/adset/:id/end-time`).
+
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
 
 

@@ -138,7 +138,7 @@ import { getResearchCriteria, createResearchCriteriaDraft, validateResearchCrite
 import { probeMarketEu, listMarketNiches, createMarketNiche, updateMarketNiche, listNicheAds, collectMarketEu, startMarketEuScheduler } from './controllers/marketEuController';
 import { listBrands, createBrand, updateBrand, recordBrandAsset, assignBrandProduct, provisionBrandPixel, verifyBrandAssets, setBrandPixelRouting } from './controllers/brandController';
 import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decideAiOpportunity, automationGetOpportunity, automationOpportunityStatus, automationOpportunityEvaluation, automationOpportunityPlan, automationOpportunityValidation, overrideAiValidation } from './controllers/aiTeamController';
-import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget } from './controllers/metaControlController';
+import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget, setMetaEntityName, setMetaAdSetEndTime } from './controllers/metaControlController';
 import { getDecisionEvents } from './controllers/decisionEventsController';
 import { purgeDecisionEventPii } from './db/decisionEvents';
 import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
@@ -496,6 +496,9 @@ app.post('/api/alerts/:id/progress', requireRole(['ADMIN', 'PERFORMANCE']), setA
 app.post('/api/alerts/:id/dismiss', requireRole(['ADMIN', 'PERFORMANCE']), dismissAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
+// NORQVA-0098: renomear (campanha, conjunto, anúncio) e data de término do conjunto
+app.post('/api/meta-control/:entityType/:id/name', requireRole(['ADMIN']), setMetaEntityName);
+app.post('/api/meta-control/adset/:id/end-time', requireRole(['ADMIN']), setMetaAdSetEndTime);
 // NORQVA-0097: fichas de alteração (pedir → autorizar → enviar → confirmar relendo a Meta)
 app.get('/api/meta-changes', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listMetaChanges);
 app.post('/api/meta-changes', requireRole(['ADMIN', 'PERFORMANCE']), createMetaChange);
