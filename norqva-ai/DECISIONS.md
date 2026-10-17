@@ -221,6 +221,7 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (Ricardo, "Sim" às etapas 1 e 2 do diagnóstico NORQVA-0093 em 16/10/2026 22h29):** o sino conta avisos não lidos de cada pessoa e abre a central; Campanhas e Operação contam só pendências abertas (Atenção ou Crítico). Os dois números não se misturam.
 - **Regras:** ler não resolve; resolver só com evidência (venda chegou, anúncio parou, leitura voltou, campanha pausada, teto subiu); descartar é decisão registrada e, em alerta crítico, pede motivo.
+- **Descartar:** vale para o problema inteiro (duplicados juntos) e sai também da lista antiga em Resultado e controle. Um anúncio com "gasto sem venda" descartado não gera novo alerta da mesma regra enquanto o descarte existir (decisão do operador prevalece).
 - **Gravidade por tipo:** gasto sem venda e falhas do vigia = Crítico; 90%, 100% e pausa no teto = Atenção; 80% e teto ampliado por lucro = Informativo.
 
 ## D-0094 — Segurança em Campanhas (2026-10-16)

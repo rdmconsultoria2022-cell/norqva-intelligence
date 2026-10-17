@@ -58,7 +58,7 @@ export class AlertCenterService {
        FROM ad_alerts a
        LEFT JOIN launch_plans p ON p.code = a.ad_name
        LEFT JOIN meta_campaigns mc ON mc.meta_campaign_id = a.meta_campaign_id AND mc.is_demo = FALSE
-       WHERE a.is_demo = FALSE AND a.status IN ('OPEN', 'ACKNOWLEDGED') AND a.rule_code LIKE 'EXPERIMENT_%'`
+       WHERE a.is_demo = FALSE AND a.status IN ('OPEN', 'ACKNOWLEDGED') AND a.dismissed_at IS NULL AND a.rule_code LIKE 'EXPERIMENT_%'`
     );
     let n = 0;
     for (const a of open.rows) {
@@ -69,7 +69,10 @@ export class AlertCenterService {
          WHERE id = $1 AND status IN ('OPEN', 'ACKNOWLEDGED')`,
         [a.id, resolution]
       );
-      n += r.rowCount || 0;
+      if (r.rowCount) {
+        n += r.rowCount;
+        await writeAuditLog(this.pool, null, 'AD_ALERT_AUTO_RESOLVED', `Alerta resolvido com evidência: ${describeRule(a.rule_code).title} (${a.ad_name || a.meta_campaign_id})`, null, resolution);
+      }
     }
     return n;
   }
@@ -90,7 +93,7 @@ export class AlertCenterService {
          AND (a.status IN ('OPEN', 'ACKNOWLEDGED') AND a.dismissed_at IS NULL
               OR a.created_at >= NOW() - INTERVAL '${CENTER_DAYS} days'
               OR a.resolved_at >= NOW() - INTERVAL '${CENTER_DAYS} days')
-       ORDER BY a.created_at DESC
+       ORDER BY (a.status IN ('OPEN', 'ACKNOWLEDGED') AND a.dismissed_at IS NULL) DESC, a.created_at DESC
        LIMIT 200`,
       [isDemo, UUID_RE.test(userId) ? userId : null]
     );
@@ -123,6 +126,8 @@ export class AlertCenterService {
 
   async markRead(userId: string, ids: string[] | 'all', isDemo: boolean) {
     if (!UUID_RE.test(userId)) return { marked: 0 };
+    const known = await this.pool.query('SELECT 1 FROM users WHERE id = $1', [userId]);
+    if (known.rows.length === 0) return { marked: 0 };
     const r =
       ids === 'all'
         ? await this.pool.query(
@@ -144,7 +149,12 @@ export class AlertCenterService {
     const a = await this.getAlert(id, isDemo);
     if (a.status === 'RESOLVED' || a.dismissed_at) throw new AlertCenterError(409, 'Este alerta já foi encerrado.');
     if (a.in_progress_at) return shape({ ...a, read_by_me: true });
-    await this.pool.query(`UPDATE ad_alerts SET in_progress_at = NOW(), in_progress_by = $2, updated_at = NOW() WHERE id = $1`, [a.id, userId || null]);
+    // vale também para os duplicados abertos do mesmo problema (mesma regra e objeto)
+    await this.pool.query(
+      `UPDATE ad_alerts SET in_progress_at = NOW(), in_progress_by = $2, updated_at = NOW()
+       WHERE rule_code = $3 AND meta_ad_id = $4 AND is_demo = $5 AND status IN ('OPEN', 'ACKNOWLEDGED') AND dismissed_at IS NULL AND in_progress_at IS NULL`,
+      [a.id, UUID_RE.test(userId) ? userId : null, a.rule_code, a.meta_ad_id, isDemo]
+    );
     await writeAuditLog(this.pool, userId || null, 'AD_ALERT_IN_PROGRESS', `Alerta em tratamento: ${describeRule(a.rule_code).title} (${a.campaign_name || a.ad_name || a.meta_ad_id})`, null, a.id, isDemo);
     return shape({ ...a, in_progress_at: new Date(), read_by_me: true });
   }
@@ -157,9 +167,11 @@ export class AlertCenterService {
     if (info.severity === 'CRITICAL' && why.length < 5) {
       throw new AlertCenterError(400, 'Alerta crítico: escreva em poucas palavras por que está descartando.');
     }
+    // vale também para os duplicados abertos do mesmo problema (mesma regra e objeto)
     await this.pool.query(
-      `UPDATE ad_alerts SET dismissed_at = NOW(), dismissed_by = $2, dismiss_reason = $3, updated_at = NOW() WHERE id = $1`,
-      [a.id, userId || null, why || null]
+      `UPDATE ad_alerts SET dismissed_at = NOW(), dismissed_by = $2, dismiss_reason = $3, updated_at = NOW()
+       WHERE (id = $1 OR (rule_code = $4 AND meta_ad_id = $5 AND is_demo = $6 AND status IN ('OPEN', 'ACKNOWLEDGED'))) AND dismissed_at IS NULL`,
+      [a.id, UUID_RE.test(userId) ? userId : null, why || null, a.rule_code, a.meta_ad_id, isDemo]
     );
     await writeAuditLog(this.pool, userId || null, 'AD_ALERT_DISMISSED', `Alerta descartado: ${info.title} (${a.campaign_name || a.ad_name || a.meta_ad_id})`, null, why || null, isDemo);
     return shape({ ...a, dismissed_at: new Date(), dismiss_reason: why || null, read_by_me: true });
@@ -195,7 +207,9 @@ export function guardResolution(a: {
       // continua aberto enquanto o plano estiver parado no teto; some quando o teto sobe
       return a.guard_state !== undefined && a.guard_state !== null && !capped && spent !== null && cap !== null && spent < cap ? 'CAP_RAISED' : null;
     case 'EXPERIMENT_GUARD_READ_FAILED':
-      return a.guard_read_failures !== undefined && a.guard_read_failures !== null && Number(a.guard_read_failures) === 0 ? 'READ_RECOVERED' : null;
+      if (a.guard_read_failures !== undefined && a.guard_read_failures !== null && Number(a.guard_read_failures) === 0) return 'READ_RECOVERED';
+      // a pausa preventiva do vigia (teto) ou uma pausa manual encerra o risco
+      return capped || String(a.campaign_status || '').toUpperCase() === 'PAUSED' ? 'CAMPAIGN_PAUSED' : null;
     case 'EXPERIMENT_GUARD_PAUSE_FAILED':
       return String(a.campaign_status || '').toUpperCase() === 'PAUSED' || capped ? 'CAMPAIGN_PAUSED' : null;
     default:
@@ -207,10 +221,10 @@ function shape(row: any) {
   const info = describeRule(String(row.rule_code));
   const resolved = row.status === 'RESOLVED';
   const dismissed = !!row.dismissed_at;
-  const state: AlertState = resolved
-    ? 'RESOLVIDA'
-    : dismissed
-      ? 'DESCARTADA'
+  const state: AlertState = dismissed
+    ? 'DESCARTADA'
+    : resolved
+      ? 'RESOLVIDA'
       : row.in_progress_at
         ? 'EM_TRATAMENTO'
         : row.read_by_me

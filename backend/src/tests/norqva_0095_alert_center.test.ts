@@ -21,6 +21,7 @@ describe('NORQVA-0095 — regras puras', () => {
   it('o vigia só resolve com evidência', () => {
     expect(guardResolution({ rule_code: 'EXPERIMENT_GUARD_READ_FAILED', guard_read_failures: 0 })).toBe('READ_RECOVERED');
     expect(guardResolution({ rule_code: 'EXPERIMENT_GUARD_READ_FAILED', guard_read_failures: 2 })).toBeNull();
+    expect(guardResolution({ rule_code: 'EXPERIMENT_GUARD_READ_FAILED', guard_read_failures: 2, guard_state: 'CAPPED' })).toBe('CAMPAIGN_PAUSED');
     expect(guardResolution({ rule_code: 'EXPERIMENT_GUARD_PAUSE_FAILED', campaign_status: 'PAUSED' })).toBe('CAMPAIGN_PAUSED');
     expect(guardResolution({ rule_code: 'EXPERIMENT_GUARD_PAUSE_FAILED', campaign_status: 'ACTIVE' })).toBeNull();
     expect(guardResolution({ rule_code: 'EXPERIMENT_CAP_90', guard_state: 'WATCHING', spent_brl_last: 50, max_spend_brl: 150 })).toBe('CAP_RAISED');

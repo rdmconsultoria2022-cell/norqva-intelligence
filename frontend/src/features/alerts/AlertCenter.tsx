@@ -17,7 +17,7 @@ export interface AlertNotification {
   read: boolean;
   is_problem: boolean;
   is_open: boolean;
-  entity: { type: 'AD' | 'CAMPAIGN'; meta_campaign_id: string | null; campaign_name: string | null; ad_name: string | null; plan_code: string | null };
+  entity: { type: 'AD' | 'CAMPAIGN'; meta_campaign_id: string | null; campaign_name: string | null; meta_ad_id?: string | null; ad_name: string | null; plan_code: string | null };
   link: { tab: 'results' | 'cap'; meta_campaign_id: string | null; plan_code: string | null };
   resolution: string | null;
   dismiss_reason: string | null;
@@ -232,14 +232,16 @@ export function AlertCenterSheet({
     if (open) setItems(data?.notifications || []);
   }, [open, data]);
 
-  // ao abrir, marca como lidos (só para esta pessoa) e atualiza o sino
+  // aberta, marca como lidos (só para esta pessoa) os avisos que ainda estão como não lidos e atualiza o sino
   useEffect(() => {
-    if (!open || !data || data.unread_count === 0) return;
-    apiFetch(`/alerts/read?mode=${isDemoView ? 'demo' : 'real'}`, { method: 'POST', body: JSON.stringify({ ids: data.notifications.filter((x) => !x.read).map((x) => x.id) }) })
+    if (!open || !data) return;
+    const unread = data.notifications.filter((x) => !x.read).map((x) => x.id);
+    if (unread.length === 0) return;
+    apiFetch(`/alerts/read?mode=${isDemoView ? 'demo' : 'real'}`, { method: 'POST', body: JSON.stringify({ ids: unread }) })
       .then(() => onChanged())
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, data]);
 
   useEffect(() => {
     if (!open) return;

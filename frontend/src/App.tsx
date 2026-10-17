@@ -250,9 +250,12 @@ export default function App() {
   const [campaignFocus, setCampaignFocus] = useState<CampaignFocus | null>(null);
   const alertsFetchRef = React.useRef(apiFetch);
   alertsFetchRef.current = apiFetch;
+  const alertsSeq = React.useRef(0);
   const loadAlertCenter = React.useCallback(async () => {
+    const seq = ++alertsSeq.current;
     const d = await fetchAlertCenter((u, o) => alertsFetchRef.current(u, o), isDemoView);
-    if (d) setAlertCenter(d);
+    // só a resposta mais recente vale (evita um número velho no sino)
+    if (d && seq === alertsSeq.current) setAlertCenter(d);
   }, [isDemoView]);
   useEffect(() => {
     if (!currentUser) return;
@@ -849,6 +852,7 @@ export default function App() {
               showSuccess={showSuccess}
               offers={offers}
               focus={campaignFocus}
+              onFocusHandled={() => setCampaignFocus(null)}
               onAlertsChanged={loadAlertCenter}
             />
           )}

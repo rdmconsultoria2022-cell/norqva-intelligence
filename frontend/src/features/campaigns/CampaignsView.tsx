@@ -32,6 +32,8 @@ export interface CampaignsViewProps {
   focus?: CampaignFocus | null;
   /** NORQVA-0095: avisa o App para atualizar o sino depois de tratar um aviso aqui */
   onAlertsChanged?: () => void;
+  /** NORQVA-0095: o atalho do aviso já foi usado (não reabre ao voltar para Campanhas) */
+  onFocusHandled?: () => void;
 }
 
 export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
@@ -105,7 +107,7 @@ export function fieldsOf(c: any): Fields {
   return f;
 }
 
-export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, showSuccess, offers = [], focus = null, onAlertsChanged }: CampaignsViewProps) {
+export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, showSuccess, offers = [], focus = null, onAlertsChanged, onFocusHandled }: CampaignsViewProps) {
   const isAdmin = currentUser?.role === 'ADMIN';
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -172,7 +174,6 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     setPerf(Array.isArray(pr?.creatives) ? pr.creatives : []);
     const open: AlertNotification[] = Array.isArray(al?.notifications) ? al.notifications.filter((n: AlertNotification) => n.is_open && n.is_problem) : [];
     setProblems(open);
-    setAlerts(open.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id })));
     setListLoaded(true);
     setExperiments(Array.isArray(ex?.experiments) ? ex.experiments : []);
   }, [periodQs]);
@@ -239,7 +240,14 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
     if (!focus || !listLoaded || focusNonce.current === focus.nonce) return;
     focusNonce.current = focus.nonce;
     if (!openFromAlert(focus)) errRef.current('A campanha deste aviso não está mais na lista.');
+    onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, listLoaded, openFromAlert]);
+
+  // o contador "N pendências" de cada cartão acompanha a lista de pendências
+  useEffect(() => {
+    setAlerts(problems.map((n) => ({ meta_campaign_id: n.entity.meta_campaign_id, meta_ad_id: n.entity.meta_ad_id || null })));
+  }, [problems]);
 
   const post = (url: string, body: any = {}) => apiRef.current(url, { method: 'POST', body: JSON.stringify(body) });
 

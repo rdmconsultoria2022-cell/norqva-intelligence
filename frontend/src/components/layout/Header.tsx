@@ -103,7 +103,7 @@ export function Header({
                 data-testid="header-alerts"
                 onClick={() => (central ? onOpenNotifications!() : total > 0 && setActiveTab(target))}
                 aria-label={label}
-                className="relative h-10 w-10 flex items-center justify-center rounded-full text-nq-muted hover:text-nq-text active:bg-nq-surface"
+                className="relative h-11 w-11 flex items-center justify-center rounded-full text-nq-muted hover:text-nq-text active:bg-nq-surface"
               >
                 <Bell aria-hidden="true" className="h-5 w-5" strokeWidth={1.8} />
                 {total > 0 && (
