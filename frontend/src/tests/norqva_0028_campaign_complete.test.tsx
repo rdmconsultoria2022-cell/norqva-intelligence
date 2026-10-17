@@ -171,13 +171,13 @@ describe('NORQVA-0028 — controle só da campanha aberta', () => {
     const { rerender } = render(<MetaControlDialog {...props} action={{ kind: 'status', target, next: 'PAUSED' }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
-    expect(apiFetch.mock.calls[0][0]).toBe('/meta-control/adset/s9/status?mode=real');
-    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ status: 'PAUSED', scope_campaign: '111' });
+    expect(apiFetch.mock.calls[0][0]).toBe('/meta-changes?mode=real');
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toMatchObject({ entity_type: 'adset', meta_id: 's9', kind: 'STATUS', value: 'PAUSED', scope_campaign: '111' });
 
     rerender(<MetaControlDialog {...props} action={{ kind: 'budget', target }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
-    expect(JSON.parse(apiFetch.mock.calls[1][1].body)).toEqual({ daily_budget: 20, scope_campaign: '111' });
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body)).toMatchObject({ kind: 'DAILY_BUDGET', value: 20, scope_campaign: '111' });
   });
 });
 

@@ -236,3 +236,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, "Sim" à etapa 3 em 16/10/2026 23h12):** a campanha abre na Visão geral, com cinco abas (Visão geral, Configurações, Criativos, Resultados, Histórico) e Pausar sempre no topo. Só reorganiza ações que já existiam; nenhuma ação nova na Meta.
 - **Rentabilidade:** ROAS de equilíbrio = preço ÷ líquido por venda; CPA máximo = líquido por venda; margem estimada = vendas × líquido − investido (sem custos fixos). Sem custos cadastrados na oferta, usa a estimativa do vigia e avisa.
 - **Histórico:** auditoria para todos os perfis; decisões só para administrador, sem dados de acesso.
+
+## D-0097 — Alterações com confirmação da Meta (2026-10-16)
+
+- **Decisão (Ricardo, "Aprovado" em 16/10/2026 23h32):** pausar, reativar e orçamento viram fichas; "Confirmado pela Meta" só depois de reler a Meta. O envio usa as mesmas rotas e travas de antes.
+- **Performance:** pausa sem esperar (só reduz gasto); reativar e orçamento ficam aguardando o administrador por até 24 h.
+- **Orçamento:** aumento mostra a diferença por dia e em 30 dias e pede confirmação a mais.

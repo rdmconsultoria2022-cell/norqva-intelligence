@@ -182,6 +182,7 @@ import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
+import { createMetaChange, listMetaChanges, approveMetaChange, rejectMetaChange, cancelMetaChange, verifyMetaChange } from './controllers/metaChangeController';
 import { getTeam, inviteTeamMember, resendTeamInvite, updateTeamMember, deactivateTeamMember, reactivateTeamMember } from './controllers/teamController';
 import { getHiddenProducts, promoteHiddenProduct, getCatalogTrash, deleteOfferToTrash, restoreOfferFromTrash, deleteProductToTrash, restoreProductFromTrash } from './controllers/catalogVisibilityController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
@@ -480,7 +481,8 @@ app.post('/api/meta/migrate-destination-url', requireRole(['ADMIN']), (_req, res
   res.status(410).json({ error: 'Rota desligada (NORQVA-0094). Use "Editar anúncio na Meta" na campanha.' })
 );
 // NORQVA-0006: campaign control (pause/activate, daily budget). ADMIN only, fail-closed.
-app.get('/api/meta-control/status', requireRole(['ADMIN']), getMetaControlStatus);
+// NORQVA-0097: Performance também vê a situação do controle (pede alterações)
+app.get('/api/meta-control/status', requireRole(['ADMIN', 'PERFORMANCE']), getMetaControlStatus);
 app.get('/api/meta-control/audit', requireRole(['ADMIN']), getMetaLiveAudit);
 // NORQVA-0009: ad alerts
 app.get('/api/alerts', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listAdAlerts);
@@ -494,6 +496,13 @@ app.post('/api/alerts/:id/progress', requireRole(['ADMIN', 'PERFORMANCE']), setA
 app.post('/api/alerts/:id/dismiss', requireRole(['ADMIN', 'PERFORMANCE']), dismissAlert);
 app.post('/api/meta-control/:entityType/:id/status', requireRole(['ADMIN']), setMetaEntityStatus);
 app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), setMetaEntityDailyBudget);
+// NORQVA-0097: fichas de alteração (pedir → autorizar → enviar → confirmar relendo a Meta)
+app.get('/api/meta-changes', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listMetaChanges);
+app.post('/api/meta-changes', requireRole(['ADMIN', 'PERFORMANCE']), createMetaChange);
+app.post('/api/meta-changes/:id/approve', requireRole(['ADMIN']), approveMetaChange);
+app.post('/api/meta-changes/:id/reject', requireRole(['ADMIN']), rejectMetaChange);
+app.post('/api/meta-changes/:id/cancel', requireRole(['ADMIN', 'PERFORMANCE']), cancelMetaChange);
+app.post('/api/meta-changes/:id/verify', requireRole(['ADMIN', 'PERFORMANCE']), verifyMetaChange);
 app.get('/api/decision-events', requireRole(['ADMIN']), getDecisionEvents);
 // NORQVA-0019 (D-0010): planos de lançamento — criados PAUSADOS pelo Claude, ativados só pela resposta do operador
 app.get('/api/launch-plans', requireRole(['ADMIN']), listLaunchPlans);
