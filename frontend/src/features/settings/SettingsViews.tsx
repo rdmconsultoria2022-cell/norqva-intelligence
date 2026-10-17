@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { DEMO_MODE_ENABLED } from '../../lib/demoMode';
+import { TeamManagement } from './TeamManagement';
 
 // NORQVA-0088: Equipe e Configurações saíram do App.tsx para cá, no padrão NORQVA Premium.
 // Mesmas chamadas (/meta/connection/status, /meta/connection/validate, /meta/sync) e mesmas condições (só ADMIN).
 
 // 8. Team (Equipe) Subcomponent
-export function TeamView({ users }: any) {
+export function TeamView({ users, currentUser, isDemoView, apiFetch, showError, showSuccess, onChanged }: any) {
+  // NORQVA-0092: administrador na conta real gerencia a equipe (convidar, editar, desativar)
+  if (currentUser?.role === 'ADMIN' && !isDemoView && apiFetch) {
+    return <TeamManagement currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onChanged={onChanged} />;
+  }
   // NORQVA-0088: lista no padrão NORQVA Premium. Só apresentação; perfil vem do cadastro.
-  const ROLE: Record<string, string> = { ADMIN: 'Administrador', OPERATIONS: 'Operações', PERFORMANCE: 'Performance', INTELLIGENCE: 'Inteligência', PRODUCT: 'Produto' };
+  const ROLE: Record<string, string> = { ADMIN: 'Administrador', OPERATIONS: 'Operações', PERFORMANCE: 'Performance', INTELLIGENCE: 'Inteligência', PRODUCT: 'Produto', CREATIVE: 'Criativo' };
   return (
     <div className="space-y-5">
       <div>

@@ -866,7 +866,7 @@ export default function App() {
           )}
 
           {activeTab === 'team' && (
-            <TeamView users={usersList} />
+            <TeamView users={usersList} currentUser={currentUser} isDemoView={isDemoView} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} onChanged={refreshUsers} />
           )}
 
           {activeTab === 'config' && (
