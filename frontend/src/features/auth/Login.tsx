@@ -33,7 +33,7 @@ export const Login: React.FC<LoginProps> = ({
               onClick={() => setAuthMode('demo')}
               className={`py-2 px-3 border text-sm font-medium rounded-md text-center font-mono ${
                 authMode === 'demo'
-                  ? 'border-emerald-500 bg-emerald-950/20 text-emerald-400'
+                  ? 'border-emerald-500 bg-emerald-950/20 text-[#E7EAF0]'
                   : 'border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
             >
@@ -43,7 +43,7 @@ export const Login: React.FC<LoginProps> = ({
               onClick={() => setAuthMode('real')}
               className={`py-2 px-3 border text-sm font-medium rounded-md text-center font-mono ${
                 authMode === 'real'
-                  ? 'border-emerald-500 bg-emerald-950/20 text-emerald-400'
+                  ? 'border-emerald-500 bg-emerald-950/20 text-[#E7EAF0]'
                   : 'border-slate-800 hover:border-slate-700 text-slate-400'
               }`}
             >
@@ -91,20 +91,20 @@ export const Login: React.FC<LoginProps> = ({
           }
         }} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-xs font-mono uppercase text-slate-400">
-              E-mail Corporativo
+            <label htmlFor="email" className="nq-auth-label block">
+              E-mail
             </label>
             <input
               id="email"
               name="email"
               type="email"
               required
-              placeholder="seuemail@norqva.com"
-              className="mt-1 block w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-slate-200 text-sm focus:outline-none focus:border-emerald-500"
+              placeholder="seu e-mail"
+              className="mt-1 block w-full nq-auth-input px-3.5 py-3 rounded-xl text-[15px]"
             />
           </div>
           <div>
-            <label htmlFor="pass" className="block text-xs font-mono uppercase text-slate-400">
+            <label htmlFor="pass" className="nq-auth-label block">
               Senha
             </label>
             <input
@@ -113,19 +113,19 @@ export const Login: React.FC<LoginProps> = ({
               type="password"
               required
               placeholder="••••••••"
-              className="mt-1 block w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-md text-slate-200 text-sm focus:outline-none focus:border-emerald-500"
+              className="mt-1 block w-full nq-auth-input px-3.5 py-3 rounded-xl text-[15px]"
             />
           </div>
           <button
             type="submit"
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-slate-950 bg-emerald-400 hover:bg-emerald-300 font-mono"
+            className="nq-auth-btn w-full flex justify-center py-3 px-4 rounded-xl text-[15px] font-semibold"
           >
-            Autenticar
+            Entrar
           </button>
           <button
             type="button"
             onClick={() => setIsForgotPasswordView(true)}
-            className="w-full text-center mt-2 text-xs font-mono text-slate-400 hover:text-slate-200"
+            className="nq-auth-link w-full text-center mt-1 py-2 text-[13px]"
           >
             Esqueci minha senha
           </button>

@@ -64,3 +64,22 @@
   .nq-intro-scan { display: none; }
   .nq-intro-glow, .nq-intro-smoke-spin, .nq-intro-puff, .nq-intro-shine { animation: none; }
 }
+
+/* NORQVA-0099: login no mesmo visual da abertura (fundo, triângulo e fumaça cinza) */
+.nq-auth { background: #02040F; color: #A7AFBC; }
+.nq-auth-card { background: rgba(14,18,32,0.72); border: 1px solid rgba(167,175,188,0.14); box-shadow: 0 20px 60px rgba(0,0,0,0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.nq-auth-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7D879A; }
+.nq-auth-input { margin-top: 6px; display: block; width: 100%; background: #070A16; border: 1px solid rgba(167,175,188,0.18); color: #E7EAF0; transition: border-color .2s, box-shadow .2s; }
+.nq-auth-input::placeholder { color: #4E586B; }
+.nq-auth-input:focus { outline: none; border-color: #C9CFD9; box-shadow: 0 0 0 3px rgba(201,207,217,0.12); }
+.nq-auth-btn { background: linear-gradient(180deg, #E1E5EC 0%, #B9C0CC 100%); color: #02040F; box-shadow: 0 0 18px rgba(201,207,217,0.22); transition: filter .2s; }
+.nq-auth-btn:hover { filter: brightness(1.06); }
+.nq-auth-btn:disabled { opacity: .5; }
+.nq-auth-link { color: #7D879A; }
+.nq-auth-link:hover { color: #E7EAF0; }
+.nq-auth-ghost { border: 1px solid rgba(167,175,188,0.22); color: #C9CFD9; }
+.nq-auth-mark { position: relative; width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; }
+.nq-auth-mark .nq-intro-smoke-clip { inset: -30px -60px; }
+.nq-auth-mark .nq-intro-smoke-plane { width: 170px; height: 170px; margin: -85px 0 0 -85px; }
+.nq-auth-mark .nq-intro-puff { width: 80px; height: 80px; }
+.nq-auth-mark .nq-intro-glow { width: 200px; height: 200px; margin: -100px 0 0 -100px; }
