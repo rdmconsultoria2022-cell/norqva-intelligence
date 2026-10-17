@@ -216,10 +216,14 @@ function parseIds(v: any): Record<string, Record<string, string>> {
   return o && typeof o === 'object' ? o : {};
 }
 
-export async function planOfEntity(pool: Pool, entityType: 'CAMPAIGN' | 'ADSET' | 'AD', id: string, isDemo: boolean): Promise<{ plan: any; metaId: string } | null> {
+export async function resolveMetaId(pool: Pool, entityType: 'CAMPAIGN' | 'ADSET' | 'AD', id: string, isDemo: boolean): Promise<string> {
   const { table, idCol } = ENTITY_TABLE[entityType];
   const r = await pool.query(`SELECT ${idCol} AS meta_id FROM ${table} WHERE (${idCol} = $1 OR id::text = $1) AND is_demo = $2 LIMIT 1`, [id, isDemo]);
-  const metaId = String(r.rows[0]?.meta_id || id);
+  return String(r.rows[0]?.meta_id || id);
+}
+
+export async function planOfEntity(pool: Pool, entityType: 'CAMPAIGN' | 'ADSET' | 'AD', id: string, isDemo: boolean): Promise<{ plan: any; metaId: string } | null> {
+  const metaId = await resolveMetaId(pool, entityType, id, isDemo);
   const plans = await pool.query(
     `SELECT id, code, status, guard_state, spec, meta_ids, daily_budget_brl, max_spend_brl, spent_brl_last, operator_paused_at
      FROM launch_plans WHERE meta_ids IS NOT NULL AND meta_ids::text <> '{}'`
@@ -249,8 +253,17 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
   if (!(await passesCampaignScope(req, res, decision, entityType, isEmergencyPause))) return;
   // H7: objetos de um plano que atingiu o teto (CAPPED) não podem ser reativados por aqui.
   if (status === 'ACTIVE') {
+    // NORQVA-0094: as conferências usam o ID da Meta mesmo quando o pedido traz o ID interno.
+    let targetId: string;
+    try {
+      targetId = await resolveMetaId(pool, entityType, String(req.params.id), isDemoReq(req));
+    } catch {
+      const error = 'Não foi possível conferir este objeto. Nada foi ativado; tente de novo.';
+      await decision.finish('REJECTED', { result: { http_status: 503 }, error });
+      return res.status(503).json({ error });
+    }
     const capped = await pool.query(`SELECT code, meta_ids FROM launch_plans WHERE guard_state = 'CAPPED'`).catch(() => ({ rows: [] as any[] }));
-    const hit = capped.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
+    const hit = capped.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(targetId));
     // NORQVA-0027: objetos de uma campanha que ainda não recebeu o Sim (ou recebeu Não) só ativam pela resposta Sim.
     let unapproved: { rows: any[] };
     try {
@@ -260,7 +273,7 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
       await decision.finish('REJECTED', { result: { http_status: 503 }, error });
       return res.status(503).json({ error });
     }
-    const waiting = unapproved.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(String(req.params.id)));
+    const waiting = unapproved.rows.find((p: any) => metaIdsOfPlan(typeof p.meta_ids === 'string' ? JSON.parse(p.meta_ids) : p.meta_ids).includes(targetId));
     if (!hit && waiting) {
       const error =
         waiting.status === 'REJECTED'
@@ -303,7 +316,7 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
   try {
     const result = await clientFactory().setEntityStatus(pool, entityType, String(req.params.id), status, contextFor(req));
     const recorded = await decision.finish('EXECUTED', { result });
-    const extra = entityType === 'CAMPAIGN' ? await syncPlanPauseState(pool, req, String(result.entityId), status) : {};
+    const extra = entityType === 'CAMPAIGN' ? await syncPlanPauseState(pool, req, String((result as any)?.entityId ?? req.params.id), status) : {};
     return res.status(200).json(recorded ? { ...(result as any), ...extra } : { ...(result as any), ...extra, audit_incomplete: true });
   } catch (err: any) {
     const t = translateMetaControlError(err);
@@ -348,7 +361,7 @@ async function syncPlanBudget(pool: Pool, req: AuthenticatedRequest, owner: { pl
     let total: number;
     if (entityType === 'ADSET') {
       const name = Object.entries(ids.adsets || {}).find(([, v]) => String(v) === owner.metaId)?.[0];
-      if (!name || !Array.isArray(spec.adsets)) return {};
+      if (!name || !Array.isArray(spec.adsets) || !spec.adsets.some((a: any) => a?.name === name)) return {};
       spec.adsets = spec.adsets.map((a: any) => (a?.name === name ? { ...a, daily_budget_brl: amount } : a));
       total = Math.round(spec.adsets.reduce((s: number, a: any) => s + (Number(a?.daily_budget_brl) || 0), 0) * 100) / 100;
     } else {
@@ -401,7 +414,7 @@ export async function setMetaEntityDailyBudget(req: AuthenticatedRequest, res: R
   try {
     const result = await clientFactory().setDailyBudget(pool, entityType, String(req.params.id), amount, contextFor(req));
     const recorded = await decision.finish('EXECUTED', { result });
-    const extra = await syncPlanBudget(pool, req, owner, entityType, amount);
+    const extra = await syncPlanBudget(pool, req, owner, entityType, Number((result as any)?.newDailyBudget ?? amount));
     return res.status(200).json(recorded ? { ...(result as any), ...extra } : { ...(result as any), ...extra, audit_incomplete: true });
   } catch (err: any) {
     const t = translateMetaControlError(err);

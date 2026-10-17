@@ -119,6 +119,12 @@ describe.sequential('NORQVA-0094 — segurança em Campanhas', () => {
     expect(noCode.body.needs_confirm_code).toBe(p.code);
     expect(noCode.body.error).toContain(`digite o código ${p.code}`);
 
+    // o mesmo pedido com o ID interno da campanha também pede o código
+    const cmpRow = await pool.query('SELECT id FROM meta_campaigns WHERE meta_campaign_id = $1', [p.cmpMeta]);
+    const byUuid = await post(`/api/meta-control/campaign/${cmpRow.rows[0].id}/status`, { status: 'ACTIVE' });
+    expect(byUuid.status).toBe(409);
+    expect(byUuid.body.needs_confirm_code).toBe(p.code);
+
     const wrong = await post(`/api/meta-control/campaign/${p.cmpMeta}/status`, { status: 'ACTIVE', confirm_code: 'ERRADO' });
     expect(wrong.status).toBe(409);
 

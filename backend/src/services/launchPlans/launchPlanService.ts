@@ -828,7 +828,8 @@ export class LaunchPlanService {
       }
       await client.setEntityStatus(pool, 'CAMPAIGN', owned.campaignId, 'ACTIVE', ctx);
 
-      const r = await pool.query(`UPDATE launch_plans SET status = 'ACTIVE', last_error = NULL, updated_at = NOW() WHERE id = $1 RETURNING *`, [id]);
+      // NORQVA-0094: o Sim reativa tudo; a marca de pausa pela tela deixa de valer
+      const r = await pool.query(`UPDATE launch_plans SET status = 'ACTIVE', last_error = NULL, operator_paused_at = NULL, operator_paused_by = NULL, updated_at = NOW() WHERE id = $1 RETURNING *`, [id]);
       await audit(pool, user.id, 'LAUNCH_PLAN_ACTIVATED', `Plano ${plan.code}: ${owned.ads.length} anúncio(s), ${owned.adsets.length} conjunto(s) e a campanha ativados (R$ ${input.daily_budget_brl.toFixed(2)}/dia).`, { id, decisionId, experimentId });
       return { plan: serializeLaunchPlan(r.rows[0]) };
     } catch (err: any) {
