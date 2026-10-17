@@ -378,7 +378,7 @@ describe('Auth System Regression', () => {
         </MemoryRouter>
       );
 
-      expect(await screen.findByText(/Initializing/i)).toBeInTheDocument();
+      expect(await screen.findByRole('status', { name: /Intelligence Core/i })).toBeInTheDocument();
     });
 
     it('A05 no real session preserves Demo/Real selection', async () => {

@@ -604,7 +604,7 @@ describe('Gate 2.5E Phase 6B: Commercial Checkout, Payment & Delivery Architectu
     );
 
     // Initializing intro renders when user is set
-    expect(await screen.findByText(/Initializing/i)).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: /Intelligence Core/i })).toBeInTheDocument();
   });
 
   describe('Offer Pricing UI and Safe Test Status Regression', () => {
