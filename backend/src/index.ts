@@ -182,6 +182,7 @@ import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta } from './controllers/campaignController';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
+import { getTeam, inviteTeamMember, resendTeamInvite, updateTeamMember, deactivateTeamMember, reactivateTeamMember } from './controllers/teamController';
 import { getHiddenProducts, promoteHiddenProduct, getCatalogTrash, deleteOfferToTrash, restoreOfferFromTrash, deleteProductToTrash, restoreProductFromTrash } from './controllers/catalogVisibilityController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
@@ -317,6 +318,13 @@ app.get('/api/executive/daily', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT',
 app.get('/api/analytics/attribution', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getAttributionAnalytics);
 app.get('/api/users', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getUsers);
 app.get('/api/me', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getMe);
+// NORQVA-0092: gestão da Equipe (só ADMIN; travas em services/team/teamService.ts)
+app.get('/api/team', requireRole(['ADMIN']), getTeam);
+app.post('/api/team/invite', requireRole(['ADMIN']), inviteTeamMember);
+app.post('/api/team/:id/resend-invite', requireRole(['ADMIN']), resendTeamInvite);
+app.patch('/api/team/:id', requireRole(['ADMIN']), updateTeamMember);
+app.post('/api/team/:id/deactivate', requireRole(['ADMIN']), deactivateTeamMember);
+app.post('/api/team/:id/reactivate', requireRole(['ADMIN']), reactivateTeamMember);
 
 app.get('/api/opportunities', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getOpportunities);
 app.post('/api/opportunities', requireRole(['INTELLIGENCE', 'ADMIN']), createOpportunity);

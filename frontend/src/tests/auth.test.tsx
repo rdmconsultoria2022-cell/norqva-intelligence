@@ -603,7 +603,7 @@ describe('Auth System Regression', () => {
         if (url.includes('/me')) {
           return Promise.resolve({ ok: true, json: async () => ({ user: realAdminUser }) });
         }
-        if (url.includes('/users')) {
+        if (url.includes('/users') || url.includes('/team?')) {
           return Promise.resolve({ ok: true, json: async () => ({ users: [realAdminUser] }) });
         }
         if (url.includes('/products')) {
@@ -663,7 +663,7 @@ describe('Auth System Regression', () => {
         if (url.includes('/me')) {
           return Promise.resolve({ ok: true, json: async () => ({ user: realAdminUser }) });
         }
-        if (url.includes('/users?mode=real') || (url.includes('/users') && !url.includes('mode=demo'))) {
+        if (url.includes('/team?') || url.includes('/users?mode=real') || (url.includes('/users') && !url.includes('mode=demo'))) {
           return Promise.resolve({ ok: true, json: async () => ({ users: [realAdminUser] }) });
         }
         if (url.includes('/users?mode=demo')) {

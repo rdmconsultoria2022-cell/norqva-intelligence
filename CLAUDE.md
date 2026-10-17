@@ -86,9 +86,11 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 
 - NORQVA-0082 a 0089 (D-0082, D-0089): redesign NORQVA Premium das telas internas, só apresentação. Tokens `nq-*` no `tailwind.config.js`, peças em `components/ui/premium.tsx` (Section, Surface, Row, StatusPill, Stat, Disclosure, `useIsMobile`). Tabela larga vira lista só no celular (renderiza uma das duas). Financeiro em `dashboard/FinancialResults.tsx`; Equipe e Configurações em `features/settings/SettingsViews.tsx`. Capturas e medições usam o harness local `frontend/harness/` (fora do git).
 
+- NORQVA-0090/0091: abertura NORQVA depois do login (`components/layout/IntroSequence.tsx`, classes `nq-intro-*` em `index.css`): triângulo com fumaça, som "ta-dum" por Web Audio (só toca depois de um toque na página, regra do navegador); enquanto confere a sessão mostra o fundo da abertura, não o login (trava de 4 s).
+- NORQVA-0092 (D-0092): gestão da Equipe (só ADMIN): convite por e-mail pelo Supabase (`services/team/teamService.ts`, volta em `/reset-password`), editar nome e perfil, desativar/reativar, travas de administrador. Tela em `features/settings/TeamManagement.tsx`.
+
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
 
-- Gestão da Equipe (criar com convite, editar, desativar): próxima etapa, precisa do "Aprovado" (D-0089).
 
 - WhatsApp (NORQVA-0079): etapa 2 = conta TEST da Meta (app dedicado no portfólio Norqva, marca Trattoria) + `WHATSAPP_SECRETS_KEY` e `OPENAI_API_KEY` no Render; etapa 3 = homologação com o "sim" do Ricardo; etapa 4 = templates. A Evolution (NORQVA-0046) fica desligada.
 

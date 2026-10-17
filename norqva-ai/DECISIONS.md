@@ -209,3 +209,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Fora do escopo:** página pública de venda, pagamento e entrega ao comprador (fluxos protegidos), tela de login, janela "Arquivos de entrega" e janelas antigas de experimentos.
 - **Próxima etapa (combinada com o Ricardo em 16/10/2026 19h59):** gestão da Equipe (criar com convite por e-mail, editar nome e perfil, desativar em vez de excluir, travas para nunca ficar sem administrador). Mexe em controle de acesso: precisa do "Aprovado" antes de começar.
 
+
+## D-0092 — Gestão da Equipe pelo app (2026-10-16)
+
+- **Decisão (Ricardo, "Aprovado" em 16/10/2026 22h06):** administrador convida por e-mail, edita nome e perfil, desativa e reativa pela tela Equipe. Ninguém é apagado.
+- **Travas:** só ADMIN; ninguém desativa a si mesmo nem tira o próprio perfil de administrador; o servidor recusa qualquer ação que deixaria a equipe sem administrador ativo.
+- **Convite:** pelo Supabase Auth (envio padrão, limite de poucos e-mails por hora); remetente próprio da NORQVA pode ser configurado depois no Supabase sem mudar o app.
+- **Fora do escopo:** perfis novos, mudar permissões de perfil, troca de e-mail, login com Google, exclusão definitiva.

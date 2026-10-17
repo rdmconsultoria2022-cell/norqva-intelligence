@@ -49,7 +49,7 @@ export function requireRole(allowedRoles: string[]) {
             );
             if (userQuery.rows.length === 0 && decoded.email) {
               const emailLookup = await pool.query(
-                'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE email = $1',
+                'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE LOWER(email) = LOWER($1)',
                 [decoded.email]
               );
               if (emailLookup.rows.length > 0) {
@@ -127,7 +127,7 @@ export function requireRole(allowedRoles: string[]) {
         // 2. Safe Fallback by Email for PRE-PROVISIONED users only (Linking auth_user_id)
         if (userQuery.rows.length === 0 && decoded.email) {
           const emailLookup = await pool.query(
-            'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE email = $1',
+            'SELECT id, auth_user_id, name, email, role, status, is_demo FROM users WHERE LOWER(email) = LOWER($1)',
             [decoded.email]
           );
           if (emailLookup.rows.length > 0) {
