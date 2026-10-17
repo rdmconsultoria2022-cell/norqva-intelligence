@@ -152,7 +152,7 @@ export class AlertCenterService {
     // vale também para os duplicados abertos do mesmo problema (mesma regra e objeto)
     await this.pool.query(
       `UPDATE ad_alerts SET in_progress_at = NOW(), in_progress_by = $2, updated_at = NOW()
-       WHERE rule_code = $3 AND meta_ad_id = $4 AND is_demo = $5 AND status IN ('OPEN', 'ACKNOWLEDGED') AND dismissed_at IS NULL AND in_progress_at IS NULL`,
+       WHERE (id = $1 OR (rule_code = $3 AND meta_ad_id = $4 AND is_demo = $5 AND status IN ('OPEN', 'ACKNOWLEDGED') AND dismissed_at IS NULL)) AND in_progress_at IS NULL`,
       [a.id, UUID_RE.test(userId) ? userId : null, a.rule_code, a.meta_ad_id, isDemo]
     );
     await writeAuditLog(this.pool, userId || null, 'AD_ALERT_IN_PROGRESS', `Alerta em tratamento: ${describeRule(a.rule_code).title} (${a.campaign_name || a.ad_name || a.meta_ad_id})`, null, a.id, isDemo);
