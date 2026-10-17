@@ -351,7 +351,12 @@ function ChangeItem({
   const isAdmin = currentUser?.role === 'ADMIN';
   const mine = String(c.requested_by || '') === String(currentUser?.id || '');
   const st = CHANGE_STATE[c.state] || { label: c.state, tone: 'neutral' as const };
-  const needsCode = c.state === 'AWAITING_APPROVAL' && c.kind === 'STATUS' && c.requested_value === 'ACTIVE' && !!c.plan_code;
+  // o servidor só pede o código para a campanha de um plano (pausada pela tela)
+  const needsCode = c.state === 'AWAITING_APPROVAL' && c.kind === 'STATUS' && c.requested_value === 'ACTIVE' && !!c.plan_code && c.entity_type === 'CAMPAIGN';
+  // aumento de orçamento pedido pela equipe: mostra a diferença e pede confirmação a mais
+  const prev = c.previous_value === null || c.previous_value === undefined ? null : Number(c.previous_value);
+  const increase = c.kind === 'DAILY_BUDGET' && prev !== null && Number(c.requested_value) > prev ? Math.round((Number(c.requested_value) - prev) * 100) / 100 : 0;
+  const [increaseOk, setIncreaseOk] = useState(false);
 
   const act = async (path: string, body: any = {}, ok?: (x: any) => string) => {
     setBusy(true);
@@ -402,12 +407,24 @@ function ChangeItem({
         </label>
       )}
 
+      {c.state === 'AWAITING_APPROVAL' && isAdmin && increase > 0 && (
+        <div className="space-y-1">
+          <p className="text-[12px] text-nq-attention">
+            + {brl(increase)} por dia (+ {brl(increase * 30)} em 30 dias). O valor de antes é de quando o pedido foi feito; confira em Resultados se mudou.
+          </p>
+          <label className="flex items-start gap-2 text-[12px] text-nq-text min-h-[44px]">
+            <input type="checkbox" checked={increaseOk} onChange={(e) => setIncreaseOk(e.target.checked)} className="mt-0.5 h-5 w-5" />
+            <span>Aumentar o gasto em {brl(increase)} por dia</span>
+          </label>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 pt-1">
         {c.state === 'AWAITING_APPROVAL' && isAdmin && (
           <>
             <button
               type="button"
-              disabled={busy || (needsCode && code.trim().toUpperCase() !== String(c.plan_code).toUpperCase())}
+              disabled={busy || (needsCode && code.trim().toUpperCase() !== String(c.plan_code).toUpperCase()) || (increase > 0 && !increaseOk)}
               onClick={() => act('approve', needsCode ? { confirm_code: code.trim() } : {}, (x) => (x.state === 'CONFIRMED' ? 'Autorizado e confirmado pela Meta.' : 'Autorizado: a Meta aceitou, o NORQVA está conferindo.'))}
               className="min-h-[44px] px-4 rounded-full bg-nq-positive text-nq-on-positive text-[13px] font-semibold disabled:opacity-50"
             >

@@ -239,8 +239,15 @@ export const MetaControlDialog: React.FC<{
         return;
       }
       if (c.state === 'AWAITING_APPROVAL') return onDone(`Pedido registrado: ${name} ${what}. Fica aguardando a autorização do administrador.`);
-      if (c.state === 'UNCONFIRMED') return onDone(`A Meta aceitou: ${name} ${what}. O NORQVA ainda está conferindo; acompanhe no Histórico da campanha.`);
-      return onDone(`${name} ${what} na Meta. Confirmado pela Meta.`);
+      if (c.state === 'CONFIRMED') return onDone(`${name} ${what} na Meta. Confirmado pela Meta.`);
+      if (c.state === 'UNCONFIRMED' || c.state === 'SENDING')
+        return onDone(`Pedido enviado: ${name} ${what}. O NORQVA ainda está conferindo na Meta; acompanhe no Histórico da campanha.`);
+      if (c.state === 'REJECTED' || c.state === 'CANCELLED' || c.state === 'EXPIRED') {
+        onError('Este pedido já tinha sido encerrado. Abra de novo para fazer um pedido novo.');
+        setBusy(false);
+        return;
+      }
+      return onDone(`Pedido enviado: ${name} ${what}. Acompanhe a situação no Histórico da campanha.`);
     } catch (err: any) {
       onError(err?.message || 'Falha ao alterar na Meta.');
       setBusy(false);

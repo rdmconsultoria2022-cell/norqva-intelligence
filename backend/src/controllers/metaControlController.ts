@@ -31,8 +31,8 @@ const CHECK_LABELS: Record<string, string> = {
 
 let clientFactory: () => MetaMutatingClient = () => new MetaMutatingClient();
 /** NORQVA-0097: releitura na Meta pelo mesmo cliente (simulado nos testes). */
-export async function readMetaEntity(metaId: string) {
-  return clientFactory().readEntity(metaId);
+export async function readMetaEntity(metaId: string, entityType: 'CAMPAIGN' | 'ADSET' | 'AD') {
+  return clientFactory().readEntity(metaId, entityType);
 }
 
 export function setMetaControlClientFactoryForTesting(factory: (() => MetaMutatingClient) | null) {

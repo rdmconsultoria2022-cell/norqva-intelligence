@@ -33,8 +33,10 @@ describe.sequential('NORQVA-0097 — fichas de alteração (HTTP)', () => {
   const onMeta = new Map<string, { status?: string; daily_budget?: number | null }>();
   let post: ReturnType<typeof vi.fn>;
 
+  const asked: Array<{ endpoint: string; fields?: string }> = [];
   const get = () =>
-    vi.fn(async (endpoint: string) => {
+    vi.fn(async (endpoint: string, params?: any) => {
+      asked.push({ endpoint, fields: params?.fields });
       if (endpoint === '/me') return { id: 'u1' };
       if (endpoint === '/me/permissions') return { data: ['ads_management', 'ads_read'].map((p) => ({ permission: p, status: 'granted' })) };
       if (endpoint.startsWith('/act_')) return { id: endpoint.slice(1), account_status: 1 };
@@ -62,9 +64,16 @@ describe.sequential('NORQVA-0097 — fichas de alteração (HTTP)', () => {
        VALUES (gen_random_uuid(), $1, $2, 'Conjunto 0097', 'ACTIVE', 'ACTIVE', 20, FALSE)`,
       [setMeta, cmpDb]
     );
+    const adMeta = `ad97_${crypto.randomUUID().slice(0, 8)}`;
+    await pool.query(
+      `INSERT INTO meta_ads (id, meta_ad_id, adset_id, name, status, effective_status, is_demo)
+       VALUES (gen_random_uuid(), $1, (SELECT id FROM meta_ad_sets WHERE meta_adset_id = $2), 'Anúncio 0097', 'ACTIVE', 'ACTIVE', FALSE)`,
+      [adMeta, setMeta]
+    );
     onMeta.set(cmp, { status: 'ACTIVE' });
     onMeta.set(setMeta, { status: 'ACTIVE', daily_budget: 20 });
-    return { cmp, setMeta };
+    onMeta.set(adMeta, { status: 'ACTIVE' });
+    return { cmp, setMeta, adMeta };
   };
 
   beforeAll(async () => {
@@ -173,6 +182,23 @@ describe.sequential('NORQVA-0097 — fichas de alteração (HTTP)', () => {
     expect(r.body.change.state).toBe('FAILED');
     expect(r.body.change.error).toContain('META_MUTATION_ENABLED');
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it('pausar anúncio confirma lendo só a situação (anúncio não tem orçamento)', async () => {
+    const { adMeta } = await seed();
+    const r = await as(admin).post('/api/meta-changes?mode=real', { id: crypto.randomUUID(), entity_type: 'ad', meta_id: adMeta, kind: 'STATUS', value: 'PAUSED' });
+    expect(r.body.change.state).toBe('CONFIRMED');
+    const read = asked.filter((a) => a.endpoint === `/${adMeta}`);
+    expect(read.length).toBeGreaterThan(0);
+    expect(read.every((a) => !String(a.fields).includes('daily_budget'))).toBe(true);
+  });
+
+  it('o mesmo identificador para outra alteração é recusado', async () => {
+    const { cmp } = await seed();
+    const id = crypto.randomUUID();
+    await as(admin).post('/api/meta-changes?mode=real', { id, entity_type: 'campaign', meta_id: cmp, kind: 'STATUS', value: 'PAUSED' });
+    const other = await as(admin).post('/api/meta-changes?mode=real', { id, entity_type: 'campaign', meta_id: cmp, kind: 'STATUS', value: 'ACTIVE' });
+    expect(other.status).toBe(409);
   });
 
   it('outros perfis só veem as fichas', async () => {

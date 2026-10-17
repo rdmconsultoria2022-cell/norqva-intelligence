@@ -101,8 +101,8 @@ export class MetaChangeService {
     if (!UUID_RE.test(id)) throw new MetaChangeError(400, 'Pedido sem identificador.');
 
     // mesmo pedido de novo (toque duplo, rede): devolve a ficha, sem enviar outra vez
-    const again = await this.pool.query(`SELECT * FROM meta_change_requests WHERE id = $1`, [id]);
-    if (again.rows.length > 0) return { change: again.rows[0], repeated: true };
+    const again = await this.pool.query(`SELECT * FROM meta_change_requests WHERE id = $1 AND is_demo = $2`, [id, isDemo]);
+    if (again.rows.length > 0) return { change: this.sameRequest(again.rows[0], body), repeated: true };
 
     const type = ENTITY[String(body?.entity_type || '').toLowerCase()];
     if (!type) throw new MetaChangeError(400, 'Tipo inválido. Use campaign, adset ou ad.');
@@ -157,7 +157,8 @@ export class MetaChangeService {
     );
     if (ins.rows.length === 0) {
       const r = await this.pool.query(`SELECT * FROM meta_change_requests WHERE id = $1`, [id]);
-      return { change: r.rows[0], repeated: true };
+      if (!r.rows[0] || Boolean(r.rows[0].is_demo) !== isDemo) throw new MetaChangeError(409, 'Identificador de pedido já usado.');
+      return { change: this.sameRequest(r.rows[0], body), repeated: true };
     }
     const change = ins.rows[0];
     await writeAuditLog(
@@ -170,7 +171,17 @@ export class MetaChangeService {
       isDemo
     );
     if (!immediate) return { change };
-    return { change: await this.execute(req, change, { approvedBy: req.user, confirmCode: body?.confirm_code }) };
+    return { change: await this.execute(req, change, { approvedBy: role === 'ADMIN' ? req.user : null, confirmCode: body?.confirm_code }) };
+  }
+
+  /** O id repetido precisa ser do mesmo pedido (mesmo objeto, mesma alteração). */
+  private sameRequest(row: any, body: any) {
+    const kind = body?.kind === 'DAILY_BUDGET' ? 'DAILY_BUDGET' : 'STATUS';
+    const value = kind === 'STATUS' ? String(body?.value || '').toUpperCase() : Number.isFinite(Number(body?.value)) ? money(Number(body.value)) : '';
+    if (row.kind !== kind || String(row.requested_value) !== value) {
+      throw new MetaChangeError(409, 'Identificador de pedido já usado para outra alteração.');
+    }
+    return row;
   }
 
   async approve(req: AuthenticatedRequest, id: string, body: any) {
@@ -178,7 +189,8 @@ export class MetaChangeService {
     const isDemo = isDemoReq(req);
     await this.expireOld(isDemo);
     const claimed = await this.pool.query(
-      `UPDATE meta_change_requests SET state = 'SENDING', updated_at = NOW() WHERE id = $1 AND is_demo = $2 AND state = 'AWAITING_APPROVAL' RETURNING *`,
+      `UPDATE meta_change_requests SET state = 'SENDING', updated_at = NOW()
+       WHERE id = $1 AND is_demo = $2 AND state = 'AWAITING_APPROVAL' AND (expires_at IS NULL OR expires_at > NOW()) RETURNING *`,
       [id, isDemo]
     );
     if (claimed.rows.length === 0) {
@@ -247,10 +259,31 @@ export class MetaChangeService {
       `UPDATE meta_change_requests SET state = 'EXPIRED', updated_at = NOW() WHERE is_demo = $1 AND state = 'AWAITING_APPROVAL' AND expires_at < NOW()`,
       [isDemo]
     );
+    // "Enviando" há mais de 5 min (queda no meio do envio): a releitura decide
+    await this.pool.query(
+      `UPDATE meta_change_requests SET state = 'UNCONFIRMED', updated_at = NOW() WHERE is_demo = $1 AND state = 'SENDING' AND updated_at < NOW() - INTERVAL '5 minutes'`,
+      [isDemo]
+    );
   }
 
   /** Envia pela rota de controle existente e confere relendo a Meta. A ficha já está em SENDING. */
   private async execute(req: AuthenticatedRequest, change: any, opts: { approvedBy: any; confirmCode?: unknown }) {
+    try {
+      return await this.executeInner(req, change, opts);
+    } catch (err: any) {
+      // nada fica preso em "Enviando": sem saber se a Meta recebeu, vai para conferência (a releitura decide)
+      console.error('[META CHANGE] erro depois de enviar; fica aguardando conferência', err);
+      const r = await this.pool
+        .query(`UPDATE meta_change_requests SET state = 'UNCONFIRMED', error = $2, updated_at = NOW() WHERE id = $1 AND state = 'SENDING' RETURNING *`, [
+          change.id,
+          String(err?.message || 'erro interno').slice(0, 500)
+        ])
+        .catch(() => ({ rows: [] as any[] }));
+      return r.rows[0] || { ...change, state: 'UNCONFIRMED' };
+    }
+  }
+
+  private async executeInner(req: AuthenticatedRequest, change: any, opts: { approvedBy: any; confirmCode?: unknown }) {
     const approvedBy = opts.approvedBy || {};
     await this.pool.query(
       `UPDATE meta_change_requests SET approved_by = $2, approved_by_name = $3, approved_at = NOW(), sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
@@ -291,7 +324,7 @@ export class MetaChangeService {
       metaValue = change.requested_value;
     } else {
       try {
-        const read = await readMetaEntity(change.meta_id);
+        const read = await readMetaEntity(change.meta_id, change.entity_type);
         metaValue = change.kind === 'STATUS' ? read.status : read.daily_budget === null ? null : money(read.daily_budget);
         if (readbackMatches(change.kind, change.requested_value, read)) state = 'CONFIRMED';
       } catch (err) {
