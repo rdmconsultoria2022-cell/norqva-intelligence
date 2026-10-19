@@ -128,6 +128,7 @@ export async function processCloudWebhook(pool: Pool, baseAccount: any, payload:
       const number = nr.rows[0];
       if (!number) {
         // número de outra conta ou ainda não cadastrado no NORQVA
+        console.warn(JSON.stringify({ event: 'WHATSAPP_CLOUD_WEBHOOK_UNKNOWN_NUMBER', account_id: account.id, phone_number_id: phoneNumberId || null }));
         out.ignored++;
         continue;
       }
@@ -163,6 +164,21 @@ export async function processCloudWebhook(pool: Pool, baseAccount: any, payload:
         const map = STATUS_MAP[String(s?.status || '')];
         if (!map || !s?.id) continue;
         const errCode = Array.isArray(s.errors) && s.errors[0]?.code !== undefined ? String(s.errors[0].code).slice(0, 40) : null;
+        // NORQVA-0101: falha de entrega fica no log com o motivo da Meta (também para mensagens enviadas pelo painel da Meta,
+        // que não estão no NORQVA). Destino mascarado: só os 4 últimos dígitos.
+        if (map.status === 'FAILED') {
+          const e0 = Array.isArray(s.errors) ? s.errors[0] || {} : {};
+          console.warn(JSON.stringify({
+            event: 'WHATSAPP_CLOUD_DELIVERY_FAILED',
+            account_id: account.id,
+            phone_number_id: phoneNumberId,
+            recipient_last4: digitsOf(s.recipient_id).slice(-4),
+            code: e0.code ?? null,
+            title: e0.title ? String(e0.title).slice(0, 200) : null,
+            message: e0.message ? String(e0.message).slice(0, 300) : null,
+            details: e0.error_data?.details ? String(e0.error_data.details).slice(0, 300) : null
+          }));
+        }
         const upd = await pool.query(
           `UPDATE whatsapp_messages m
               SET delivery_status = $1::text,
