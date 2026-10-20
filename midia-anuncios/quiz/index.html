@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Desafio Seca Barriga 21 Dias | NORQVA</title>
+<meta name="description" content="Responda em 2 minutos e receba seu cardápio personalizado de 21 dias.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+/* =================== CONFIGURAÇÃO NORQVA =================== */
+window.NORQVA = {
+  PIXEL_ID: "1049452567443586", // Pixel NORQVA WEB DATA (conta Norqva 2887010388338951) (Gerenciador de Eventos da Meta)
+  CHECKOUT_URL: "https://pay.kiwify.com.br/HAH95a9", // Kiwify – oferta "21 Dias" (título: Desafio Seca Barriga - 21 Dias)
+  LEAD_WEBHOOK: "https://script.google.com/macros/s/AKfycbx3KW-0ndgaqw3IUziaMyjeX1suusJs9jR3USuPAJnRIWz7KbSOyasLAzUsTcApjmLs/exec", // planilha "Leads Seca Barriga 21 Dias"
+  PRECO: 97, PRECO_DE: 297, MOEDA: "BRL",
+  CONTADOR_ALUNAS: "",   // ex.: "2.300" quando tiver clientes reais; vazio = texto de primeira turma
+  TIMER_MIN: 10
+};
+/* =========================================================== */
+</script>
+<script>
+/* Meta Pixel (carrega só se PIXEL_ID estiver preenchido) */
+(function(){var id=window.NORQVA.PIXEL_ID;if(!id)return;
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init',id);fbq('track','PageView');})();
+</script>
+<style>
+:root{--bg:#F6F1E9;--card:#FFFFFF;--ink:#1F2A22;--muted:#5E6B61;--line:#E3DACB;--green:#2F5D3A;--green-2:#3E7A4C;--green-soft:#E6EFE6;--accent:#C8553D;--accent-soft:#F7E3DC;--gold:#D9A441;--shadow:0 6px 24px rgba(31,42,34,.08)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:16px;line-height:1.45}
+.app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding:0 16px 120px}
+header{display:flex;align-items:center;gap:12px;padding:14px 0 10px;position:sticky;top:0;background:var(--bg);z-index:10}
+.back{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);font-size:18px;flex:none}
+.back.hide{visibility:hidden}
+.brand{flex:1;text-align:center;font-family:Fraunces,Georgia,serif;font-weight:700;letter-spacing:.18em;font-size:15px;color:var(--green)}
+.brand small{display:block;font-family:Inter,sans-serif;letter-spacing:.06em;font-weight:600;font-size:10.5px;color:var(--muted);margin-top:1px}
+.spacer{width:38px;flex:none}
+.prog{display:flex;gap:6px;margin:4px 0 18px}
+.prog div{flex:1;height:5px;border-radius:5px;background:var(--line);overflow:hidden}
+.prog div i{display:block;height:100%;background:var(--green);width:0;transition:width .35s}
+.sec{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--green-2);text-align:center;margin-bottom:8px}
+h1,h2{font-family:Fraunces,Georgia,serif;font-weight:700;line-height:1.15;text-align:center}
+h1{font-size:30px;margin:6px 0 12px}
+h2{font-size:24px;margin:0 0 8px}
+.sub{color:var(--muted);text-align:center;margin:0 auto 22px;max-width:440px}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{display:flex;align-items:center;gap:14px;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:16px 18px;cursor:pointer;font-weight:500;transition:transform .1s,border-color .15s,background .15s;box-shadow:var(--shadow)}
+.opt:active{transform:scale(.985)}
+.opt .box{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+.opt.multi .box{border-radius:6px}
+.opt.on{border-color:var(--green);background:var(--green-soft)}
+.opt.on .box{background:var(--green);border-color:var(--green)}
+.hero-pick{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.hero-pick .opt{flex-direction:column;justify-content:center;text-align:center;padding:22px 12px;font-size:17px;font-weight:600}
+.hero-pick svg{width:84px;height:84px;margin-bottom:6px}
+.badge-row{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin:6px 0 20px;color:var(--muted);font-size:13px}
+.badge-row b{color:var(--ink)}
+.info{background:var(--card);border-radius:20px;padding:26px 22px;box-shadow:var(--shadow);text-align:center}
+.info .big{font-family:Fraunces,serif;font-size:42px;color:var(--green);font-weight:700;line-height:1}
+.info p{color:var(--muted);margin-top:10px}
+.quote{border-left:3px solid var(--accent);padding:10px 14px;background:var(--card);border-radius:0 12px 12px 0;margin-top:16px;text-align:left;font-size:15px}
+.quote b{display:block;font-size:13px;color:var(--muted);margin-top:6px;font-weight:600}
+.field{background:var(--card);border:1.5px solid var(--line);border-radius:16px;display:flex;align-items:center;padding:4px 18px;box-shadow:var(--shadow)}
+.field input,.field select{flex:1;border:0;outline:0;background:transparent;font:600 22px Inter,sans-serif;color:var(--ink);padding:14px 0;width:100%}
+.field input.small{font-size:17px;font-weight:500}
+.field span{color:var(--muted);font-weight:600}
+.field+.field{margin-top:12px}
+.err{color:var(--accent);font-size:14px;text-align:center;margin-top:10px;min-height:20px}
+.note{margin-top:16px;background:var(--accent-soft);border-radius:14px;padding:14px 16px;font-size:14px}
+.note b{display:block;margin-bottom:2px}
+.foot{position:fixed;left:0;right:0;bottom:0;padding:14px 16px 18px;background:linear-gradient(to top,var(--bg) 70%,rgba(246,241,233,0));z-index:20}
+.btn{display:block;width:100%;max-width:488px;margin:0 auto;border:0;border-radius:100px;background:var(--green);color:#fff;font:700 16px Inter,sans-serif;letter-spacing:.04em;padding:18px;cursor:pointer;text-transform:uppercase;box-shadow:0 8px 20px rgba(47,93,58,.3)}
+.btn:disabled{opacity:.4;box-shadow:none}
+.btn.accent{background:var(--accent);box-shadow:0 8px 20px rgba(200,85,61,.35)}
+.legal{font-size:11.5px;color:var(--muted);text-align:center;margin-top:14px}
+.imc{background:var(--card);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
+.imc-bar{position:relative;height:10px;border-radius:10px;background:linear-gradient(90deg,#7FB3D5 0%,#6DBE7B 25%,#F2C14E 55%,#E07A5F 80%,#C8553D 100%);margin:46px 0 8px}
+.imc-tag{position:absolute;top:-38px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.imc-dot{position:absolute;top:-4px;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--ink);transform:translateX(-50%)}
+.imc-lbl{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.rows{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rows div{background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--muted)}
+.rows b{display:block;color:var(--ink);font-size:15px}
+.risk{margin-top:12px;font-size:13.5px;background:var(--accent-soft);padding:10px 12px;border-radius:12px}
+.chart{background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow)}
+.chart svg{width:100%;height:auto;display:block}
+.pill{display:inline-block;background:var(--green-soft);color:var(--green);font-weight:700;border-radius:100px;padding:8px 14px;font-size:14px;margin-top:12px}
+.disc{font-size:11.5px;color:var(--muted);margin-top:12px;text-align:center}
+.ring{width:170px;height:170px;margin:10px auto 18px;position:relative}
+.ring svg{transform:rotate(-90deg)}
+.ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 38px Fraunces,serif;color:var(--green)}
+.plan{background:var(--card);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
+.plan li{list-style:none;display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.plan li:last-child{border:0}
+.plan li i{width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;font-style:normal;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none}
+.plan li span{font-size:15px}
+.plan li span b{display:block}
+.diag{background:var(--card);border-radius:20px;padding:22px;box-shadow:var(--shadow)}
+.diag .name{font:700 26px Fraunces,serif;color:var(--accent);text-align:center}
+.meter{height:12px;background:var(--line);border-radius:12px;margin:14px 0 6px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);width:0;transition:width 1.2s ease}
+.diag ul{margin-top:14px}
+.diag li{list-style:none;padding:8px 0 8px 26px;position:relative;font-size:15px}
+.diag li:before{content:"!";position:absolute;left:0;top:9px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.scratch{position:relative;width:100%;max-width:340px;height:190px;margin:10px auto;border-radius:20px;overflow:hidden;box-shadow:var(--shadow)}
+.scratch .prize{position:absolute;inset:0;background:var(--green);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.scratch .prize b{font:700 46px Fraunces,serif;line-height:1}
+.scratch .prize small{font-size:13px;opacity:.9;margin-top:6px}
+.scratch .prize .code{margin-top:10px;background:rgba(255,255,255,.18);border:1px dashed rgba(255,255,255,.6);padding:6px 14px;border-radius:8px;font-weight:700;letter-spacing:.08em}
+.scratch canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:pointer}
+.offer-top{background:var(--accent);color:#fff;text-align:center;border-radius:14px;padding:10px;font-size:14px;font-weight:600;margin-bottom:16px}
+.offer-top b{font-variant-numeric:tabular-nums;font-size:16px}
+.ocard{background:var(--card);border-radius:22px;padding:22px;box-shadow:var(--shadow);border:2px solid var(--green)}
+.ocard ul{margin:14px 0}
+.ocard li{list-style:none;padding:8px 0 8px 30px;position:relative;font-size:15px;border-bottom:1px dashed var(--line)}
+.ocard li:last-child{border:0}
+.ocard li:before{content:"✓";position:absolute;left:0;top:8px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.ocard li.bonus:before{content:"+";background:var(--gold)}
+.price{text-align:center;margin-top:8px}
+.price s{color:var(--muted);font-size:18px}
+.price .now{font:700 44px Fraunces,serif;color:var(--green);line-height:1.05}
+.price small{display:block;color:var(--muted);font-size:14px}
+.coupon{display:inline-block;background:var(--green-soft);color:var(--green);font-weight:700;font-size:13px;border-radius:8px;padding:4px 10px;margin-top:8px}
+.guar{display:flex;gap:14px;align-items:center;background:var(--card);border-radius:18px;padding:16px;margin-top:16px;box-shadow:var(--shadow)}
+.guar .seal{width:72px;height:72px;border-radius:50%;background:var(--gold);color:#fff;font:700 11px Inter;display:flex;align-items:center;justify-content:center;text-align:center;flex:none;line-height:1.1}
+.guar p{font-size:14px;color:var(--muted)}
+.guar b{color:var(--ink)}
+.testis{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.testi{background:var(--card);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);font-size:14.5px}
+.testi .stars{color:var(--gold);letter-spacing:2px;font-size:13px}
+.testi b{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+.faq{margin-top:18px}
+.faq details{background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:8px;box-shadow:var(--shadow)}
+.faq summary{font-weight:600;cursor:pointer}
+.faq p{margin-top:8px;color:var(--muted);font-size:14.5px}
+.mt{margin-top:18px}
+.fade{animation:fade .35s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button class="back hide" id="back" aria-label="Voltar">&#8592;</button>
+    <div class="brand">NORQVA<small>SECA BARRIGA 21 DIAS</small></div>
+    <div class="spacer"></div>
+  </header>
+  <div class="prog" id="prog"><div><i></i></div><div><i></i></div><div><i></i></div><div><i></i></div><div><i></i></div></div>
+  <main id="screen"></main>
+</div>
+<div class="foot" id="foot"><button class="btn" id="next">Continuar</button></div>
+
+<script>
+(function(){
+const C = window.NORQVA;
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const track = (ev, data, custom, eventID) => { try{ if(window.fbq){ custom ? fbq('trackCustom', ev, data||{}, eventID?{eventID}:undefined) : fbq('track', ev, data||{}, eventID?{eventID}:undefined); } }catch(e){} };
+const uid = () => 'nq-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const params = new URLSearchParams(location.search);
+const UTM = {}; ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','fbclid'].forEach(k=>{ if(params.get(k)) UTM[k]=params.get(k); });
+const SESSION = uid();
+
+/* Estado */
+const S = { i:0, a:{}, m:{}, lead:{}, revealed:false, t0:null };
+
+/* Telas: sec = bloco (0..4) */
+const SCREENS = [
+ {k:'hero', sec:0},
+ {k:'single', sec:0, key:'idade', title:'Qual é a sua faixa de idade?', sub:'Vamos ajustar o cardápio ao seu momento de vida', opts:['18 a 29 anos','30 a 39 anos','40 a 49 anos','50 anos ou mais']},
+ {k:'info', sec:0, id:'social'},
+ {k:'single', sec:0, key:'tentou', title:'Você já tentou dieta para emagrecer?', opts:['Sim, várias vezes','Sim, uma ou duas vezes','Nunca tentei de verdade']},
+ {k:'info', sec:0, id:'diferente'},
+ {k:'multi', sec:0, key:'objetivos', title:'O que mais você quer conquistar?', sub:'Escolha todas que se aplicam', opts:['Secar a barriga','Parar a compulsão por doce','Desinchar','Ter mais energia','Voltar a caber nas roupas','Sair do efeito sanfona']},
+ {k:'single', sec:0, key:'corpo', title:'Como você descreve seu corpo hoje?', opts:['Falsa magra','Peso médio','Acima do peso','Bem acima do peso']},
+ {k:'multi', sec:0, key:'regioes', title:'Onde a gordura mais acumula?', sub:'Escolha todas que se aplicam', opts:['Barriga','Cintura e flancos','Braços','Culote e coxas','Corpo todo']},
+ {k:'info', sec:0, id:'tipo'},
+ {k:'single', sec:1, key:'tempo', title:'Quanto tempo você tem para cozinhar por dia?', opts:['Até 15 minutos','15 a 30 minutos','30 a 60 minutos','Cozinho no fim de semana e congelo']},
+ {k:'single', sec:1, key:'quem', title:'Quem come com você?', opts:['Só eu','Eu e meu parceiro(a)','Família com crianças','Família grande']},
+ {k:'info', sec:1, id:'familia'},
+ {k:'single', sec:1, key:'orcamento', title:'Quanto você quer gastar no mercado por semana?', opts:['Até R$ 150','De R$ 150 a R$ 300','Acima de R$ 300']},
+ {k:'multi', sec:1, key:'utensilios', title:'Que utensílios você tem?', sub:'Escolha todas que se aplicam', opts:['Air fryer','Panela de pressão','Liquidificador','Forno','Só fogão']},
+ {k:'single', sec:1, key:'rotina', title:'Como é sua rotina de trabalho?', opts:['Horário comercial','Trabalho em turnos','Horário flexível','Em casa com os filhos']},
+ {k:'single', sec:1, key:'atividade', title:'Você faz alguma atividade física?', opts:['Nenhuma','Caminhada de vez em quando','Academia 1 a 2 vezes por semana','Academia 3 vezes ou mais']},
+ {k:'info', sec:1, id:'prato'},
+ {k:'single', sec:2, key:'alimentacao', title:'Como é sua alimentação hoje?', opts:['Como de tudo','Tento comer saudável','Low carb','Vegetariana','Sem controle nenhum']},
+ {k:'multi', sec:2, key:'vontades', title:'Do que você mais sente vontade?', sub:'Escolha todas que se aplicam', opts:['Doce','Pão e massa','Salgadinho','Refrigerante','Fast food']},
+ {k:'multi', sec:2, key:'habitos', title:'Você tem algum destes hábitos?', sub:'Escolha todas que se aplicam', opts:['Belisco o dia todo','Como por ansiedade','Pulo refeição e compenso depois','Ataco a geladeira à noite','Nenhum deles'], none:'Nenhum deles'},
+ {k:'info', sec:2, id:'vontade'},
+ {k:'single', sec:2, key:'agua', title:'Quanta água você bebe por dia?', sub:'1 copo = 240 ml', opts:['Só café ou chá','1 a 2 copos','3 a 6 copos','Mais de 6 copos']},
+ {k:'single', sec:2, key:'sono', title:'Quantas horas você dorme por noite?', opts:['Menos de 5 horas','5 a 6 horas','7 a 8 horas','Mais de 8 horas']},
+ {k:'multi', sec:2, key:'eventos', title:'Algum destes eventos fez você ganhar peso?', sub:'Escolha todas que se aplicam', opts:['Gravidez ou pós-parto','Estresse no trabalho','Fim de relacionamento','Menopausa','Rotina corrida','Nenhum deles'], none:'Nenhum deles'},
+ {k:'multi', sec:2, key:'impediu', title:'O que te impediu de emagrecer antes?', sub:'Escolha todas que se aplicam', opts:['Passava fome','Não sabia o que comer','Falta de tempo','Comida sem gosto','Comecei e desisti no meio']},
+ {k:'info', sec:2, id:'pratos'},
+ {k:'num', sec:3, key:'h', title:'Qual é a sua altura?', unit:'cm', min:120, max:220, ph:'165'},
+ {k:'num', sec:3, key:'w', title:'Qual é o seu peso atual?', unit:'kg', min:35, max:250, ph:'72'},
+ {k:'num', sec:3, key:'gw', title:'Qual é o peso que você deseja?', unit:'kg', min:35, max:250, ph:'64'},
+ {k:'num', sec:3, key:'age', title:'Qual é a sua idade?', unit:'anos', min:18, max:90, ph:'35'},
+ {k:'profile', sec:3},
+ {k:'single', sec:3, key:'evento', title:'Você tem algum compromisso pela frente?', sub:'Ter uma data marcada dobra a chance de chegar lá', opts:['Viagem ou praia','Casamento','Aniversário','Festas de fim de ano','Nada marcado']},
+ {k:'date', sec:3, key:'data', title:'Quando é o seu compromisso?', sub:'Vamos usar essa data como alvo do seu desafio'},
+ {k:'chart', sec:3},
+ {k:'single', sec:3, key:'confianca', titleFn:()=>`Quão confiante você está em perder ${perda()} kg em 21 dias?`, opts:['Acredito que consigo!','Estou incerta, mas vou tentar','Ainda estou insegura']},
+ {k:'load', sec:3},
+ {k:'capture', sec:4},
+ {k:'whats', sec:4},
+ {k:'plan', sec:4},
+ {k:'diag', sec:4},
+ {k:'scratch', sec:4},
+ {k:'offer', sec:4}
+];
+
+/* Cálculos */
+const num = k => parseFloat(String(S.a[k]||'').replace(',','.'));
+const imc = () => { const h=num('h')/100, w=num('w'); return h&&w ? w/(h*h) : 0; };
+const imcTxt = v => v<18.5?'Abaixo do peso':v<25?'Peso normal':v<30?'Acima do peso':'Obesidade';
+const tipo = () => { const c=S.a.corpo||''; if(/Acima|Bem acima/.test(c)) return 'Acumulador'; if(/Falsa/.test(c)) return 'Inflamado'; return 'Lento'; };
+const tipoTxt = { Acumulador:'Seu corpo guarda energia com facilidade, principalmente na barriga. O cardápio certo faz ele usar essa reserva sem você passar fome.', Inflamado:'Você não está tão acima do peso, mas o corpo retém líquido e incha. Os primeiros dias vão desinchar antes de secar.', Lento:'Seu metabolismo desacelerou com dietas e rotina. O segredo é comer na hora certa, a comida certa, para ele voltar a acelerar.' };
+const perda = () => { const v=imc(); let p = v<=25?3:v<=30?5:7; const w=num('w'), gw=num('gw'); if(w&&gw&&gw<w) p=Math.min(p, Math.round((w-gw)*10)/10); return Math.max(1,Math.round(p)); };
+const alvo = () => { const w=num('w'); return w ? Math.round((w-perda())*10)/10 : ''; };
+const dataFim = () => { const d=new Date(); d.setDate(d.getDate()+21); return d; };
+const fmtD = d => d.toLocaleDateString('pt-BR',{day:'numeric',month:'short'}).replace('.','');
+const trava = () => { const h=S.m.habitos||[], o=S.m.objetivos||[]; if(h.includes('Como por ansiedade')||h.includes('Ataco a geladeira à noite')) return 'Fome Emocional'; if(['Só café ou chá','1 a 2 copos'].includes(S.a.agua)||o.includes('Desinchar')) return 'Inchaço Crônico'; return 'Metabolismo Lento'; };
+const travaInfo = () => {
+  const t=trava(), b=[];
+  (S.m.vontades||[]).length && b.push(`Vontade frequente de ${(S.m.vontades||[]).map(x=>x.toLowerCase()).join(', ')}`);
+  (S.m.habitos||[]).filter(x=>x!=='Nenhum deles').length && b.push(`Hábito: ${(S.m.habitos||[]).filter(x=>x!=='Nenhum deles')[0].toLowerCase()}`);
+  ['Só café ou chá','1 a 2 copos'].includes(S.a.agua) && b.push('Pouca água: o corpo segura líquido e incha');
+  ['Menos de 5 horas','5 a 6 horas'].includes(S.a.sono) && b.push('Sono curto aumenta a fome no dia seguinte');
+  if(b.length<3) b.push('Refeições sem proteína suficiente para dar saciedade');
+  const why = { 'Fome Emocional':'A fome não vem do estômago, vem da cabeça. Por isso as dietas duram 3 dias.', 'Inchaço Crônico':'Boa parte do volume da sua barriga é retenção. Ela sai rápido com o cardápio certo.', 'Metabolismo Lento':'Comer pouco e errado fez o corpo economizar energia. Ele precisa voltar a queimar.' }[t];
+  const pct = 60 + Math.min(25, b.length*6 + (imc()>30?6:0));
+  return {t, why, b:b.slice(0,3), pct};
+};
+const nome1 = () => (S.lead.nome||'').trim().split(/\s+/)[0] || '';
+const cupom = () => (nome1().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z]/g,'').toUpperCase() || 'SECA') + '67';
+
+/* Envio de lead */
+function sendLead(etapa){
+  const payload = Object.assign({ sessao:SESSION, etapa, data:new Date().toISOString(), nome:S.lead.nome||'', email:S.lead.email||'', whatsapp:S.lead.whats||'',
+    idade:S.a.age||'', faixa:S.a.idade||'', altura:S.a.h||'', peso:S.a.w||'', meta:S.a.gw||'', imc:imc()?imc().toFixed(1):'', tipo:tipo(), trava:trava(), perda_estimada:perda(),
+    evento:S.a.evento||'', respostas:JSON.stringify(Object.assign({},S.a,S.m)), pagina:location.href.split('?')[0] }, UTM);
+  try{ localStorage.setItem('norqva_lead', JSON.stringify(payload)); }catch(e){}
+  if(!C.LEAD_WEBHOOK) return;
+  try{ fetch(C.LEAD_WEBHOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),keepalive:true}); }catch(e){}
+}
+
+/* Render */
+const screenEl=$('#screen'), nextBtn=$('#next'), foot=$('#foot'), backBtn=$('#back');
+function progress(){ const s=SCREENS[S.i]; const bars=[...document.querySelectorAll('#prog i')]; bars.forEach((b,n)=>{ const tot=SCREENS.filter(x=>x.sec===n).length; const done=SCREENS.slice(0,S.i+1).filter(x=>x.sec===n).length; b.style.width = (n<s.sec?100:n>s.sec?0:Math.round(done/tot*100))+'%'; }); }
+function setBtn(label, enabled, cls){ nextBtn.textContent=label; nextBtn.disabled=!enabled; nextBtn.className='btn'+(cls?' '+cls:''); foot.style.display=''; }
+function hideBtn(){ foot.style.display='none'; }
+
+function render(){
+  const s=SCREENS[S.i]; progress(); backBtn.classList.toggle('hide', S.i===0 || ['load','offer'].includes(s.k));
+  const h=[]; const secNames=['Seu perfil','Sua rotina','Seus hábitos','Sua meta','Seu plano'];
+  if(s.k!=='hero') h.push(`<div class="sec">${secNames[s.sec]}</div>`);
+  const title = s.titleFn ? s.titleFn() : s.title;
+  switch(s.k){
+   case 'hero':
+    h.push(`<h1>Perca até 7 kg em 21 dias comendo comida de verdade</h1><p class="sub">Responda em 2 minutos e receba seu cardápio personalizado: sem passar fome, sem academia e com a comida que a família toda come.</p>
+     <div class="badge-row"><span><b>21 dias</b> de cardápio</span><span><b>150</b> receitas</span><span><b>até 20 min</b> por prato</span></div>
+     <p class="sub" style="margin-bottom:12px;font-weight:600;color:var(--ink)">Selecione para começar</p>
+     <div class="hero-pick"><div class="opt" data-v="Mulher">${svgPerson('f')}Mulher</div><div class="opt" data-v="Homem">${svgPerson('m')}Homem</div></div>
+     <p class="legal">Ao continuar você concorda com o uso dos seus dados para montar seu plano.</p>`);
+    hideBtn(); break;
+   case 'single':
+    h.push(`<h2>${esc(title)}</h2>${s.sub?`<p class="sub">${esc(s.sub)}</p>`:'<div style="height:14px"></div>'}<div class="opts">${s.opts.map(o=>`<div class="opt${S.a[s.key]===o?' on':''}" data-v="${esc(o)}"><span class="box">${S.a[s.key]===o?'✓':''}</span>${esc(o)}</div>`).join('')}</div>`);
+    hideBtn(); break;
+   case 'multi': {
+    const sel=S.m[s.key]||[];
+    h.push(`<h2>${esc(title)}</h2><p class="sub">${esc(s.sub||'')}</p><div class="opts">${s.opts.map(o=>`<div class="opt multi${sel.includes(o)?' on':''}" data-v="${esc(o)}"><span class="box">${sel.includes(o)?'✓':''}</span>${esc(o)}</div>`).join('')}</div>`);
+    setBtn('Próximo passo', sel.length>0); break; }
+   case 'info': h.push(infoHTML(s.id)); setBtn('Continuar', true); break;
+   case 'num':
+    h.push(`<h2>${esc(title)}</h2><div style="height:14px"></div><div class="field"><input id="numin" type="number" inputmode="decimal" placeholder="${s.ph}" value="${esc(S.a[s.key]||'')}"><span>${s.unit}</span></div><div class="err" id="err"></div><div id="numnote"></div>`);
+    setBtn('Continuar', !!S.a[s.key]); break;
+   case 'date':
+    h.push(`<h2>${esc(title)}</h2><p class="sub">${esc(s.sub)}</p><div class="field"><input id="datein" class="small" type="date" value="${esc(S.a.data||'')}"></div>`);
+    setBtn('Continuar', true); break;
+   case 'profile': {
+    const v=imc(), pct=Math.max(4,Math.min(96,(v-15)/25*100));
+    h.push(`<h2>Aqui está o seu perfil metabólico</h2><div style="height:10px"></div><div class="imc"><div style="font-weight:600">Índice de Massa Corporal (IMC)</div>
+     <div class="imc-bar"><div class="imc-tag" style="left:${pct}%">O seu: ${v.toFixed(1).replace('.',',')}</div><div class="imc-dot" style="left:${pct}%"></div></div>
+     <div class="imc-lbl"><span>Abaixo</span><span>Normal</span><span>Acima</span><span>Obesidade</span></div>
+     ${v>=25?`<div class="risk"><b>Atenção:</b> IMC acima de 25 está ligado a gordura abdominal, inchaço, cansaço e resistência à insulina.</div>`:''}
+     <div class="rows"><div>Metabolismo<b>${tipo()}</b></div><div>Classificação<b>${imcTxt(v)}</b></div><div>Tempo para cozinhar<b>${esc(S.a.tempo||'-')}</b></div><div>Rotina<b>${esc(S.a.rotina||'-')}</b></div></div></div>`);
+    setBtn('Continuar', true); break; }
+   case 'chart': {
+    const w=num('w'), a=alvo(), ev=S.a.evento&&S.a.evento!=='Nada marcado' ? S.a.evento.toLowerCase() : '';
+    h.push(`<h2>O plano que finalmente vai colocar você em forma</h2><p class="sub">Estimamos que você chegue a <b>${String(a).replace('.',',')} kg</b> até <b>${fmtD(dataFim())}</b>.</p>
+     <div class="chart">${svgChart(w,a)}<div style="text-align:center"><span class="pill">~${perda()} kg ${ev?'até '+esc(ev):'em 21 dias'}</span></div></div>
+     <p class="disc">*Estimativa baseada nas suas respostas e na média de quem seguiu o cardápio. Resultados individuais variam. Consulte um profissional de saúde antes de começar.</p>`);
+    setBtn('Continuar', true); break; }
+   case 'load':
+    h.push(`<h2>Montando seu cardápio de 21 dias…</h2><div class="ring"><svg viewBox="0 0 120 120" width="170" height="170"><circle cx="60" cy="60" r="52" fill="none" stroke="#E3DACB" stroke-width="10"/><circle id="ringc" cx="60" cy="60" r="52" fill="none" stroke="#2F5D3A" stroke-width="10" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg><div class="pct" id="pct">0%</div></div>
+     <p class="sub" id="loadtxt">Analisando seu perfil metabólico</p>
+     <div class="quote" id="lq">Achei que ia passar fome. Comi bem os 21 dias e a calça voltou a fechar.<b>Cliente NORQVA</b></div>`);
+    hideBtn(); setTimeout(runLoad,50); break;
+   case 'capture':
+    h.push(`<h2>Seu cardápio está pronto! Para onde enviamos?</h2><p class="sub">Digite seu nome e e-mail para receber o seu Plano Seca Barriga personalizado.</p>
+     <div class="field"><input id="nomein" class="small" type="text" autocomplete="given-name" placeholder="Seu primeiro nome" value="${esc(S.lead.nome||'')}"></div>
+     <div class="field"><input id="emailin" class="small" type="email" autocomplete="email" inputmode="email" placeholder="Seu melhor e-mail" value="${esc(S.lead.email||'')}"></div>
+     <div class="err" id="err"></div><p class="legal">Respeitamos sua privacidade. Seus dados são usados só para montar e entregar seu plano.</p>`);
+    setBtn('Continuar', true); break;
+   case 'whats':
+    h.push(`<h2>Digite seu WhatsApp para liberar o resultado</h2><p class="sub">Você também recebe o cardápio do dia direto no celular.</p>
+     <div class="field"><span style="margin-right:8px">+55</span><input id="whatsin" class="small" type="tel" autocomplete="tel-national" inputmode="tel" placeholder="(11) 99999-9999" value="${esc(S.lead.whats||'')}"></div>
+     <div class="err" id="err"></div>`);
+    setBtn('Liberar meu resultado', true); break;
+   case 'plan': {
+    const ut=(S.m.utensilios||[]).filter(x=>x!=='Só fogão').map(x=>x.toLowerCase());
+    h.push(`<h2>${esc(nome1()?nome1()+', seu':'Seu')} Desafio Seca Barriga 21 Dias</h2><div style="height:12px"></div><ul class="plan">
+     <li><i>1</i><span><b>Meta: ${perda()} kg em 21 dias</b>De ${String(num('w')).replace('.',',')} kg para ${String(alvo()).replace('.',',')} kg até ${fmtD(dataFim())}</span></li>
+     <li><i>2</i><span><b>Cardápio para metabolismo ${tipo()}</b>Fase Desincha, fase Queima e fase Firma</span></li>
+     <li><i>3</i><span><b>Pratos de ${esc((S.a.tempo||'').toLowerCase().replace('cozinho no fim de semana e congelo','preparo no fim de semana'))}</b>${ut.length?'Receitas para '+esc(ut.join(', ')):'Receitas só no fogão'}</span></li>
+     <li><i>4</i><span><b>Mercado ${esc((S.a.orcamento||'').toLowerCase())} por semana</b>Lista de compras pronta para cada semana</span></li></ul>`);
+    setBtn('Ver meu diagnóstico', true); break; }
+   case 'diag': {
+    const d=travaInfo();
+    h.push(`<h2>Encontramos o que trava o seu emagrecimento</h2><div style="height:12px"></div><div class="diag"><div style="text-align:center;color:var(--muted);font-size:13px;font-weight:600;letter-spacing:.06em">SUA TRAVA</div><div class="name">${d.t}</div>
+     <div class="meter"><i id="meter"></i></div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>Leve</span><span>Intensidade: ${d.pct}%</span><span>Alta</span></div>
+     <p style="margin-top:14px;font-size:15px">${d.why}</p><ul>${d.b.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+     <p style="margin-top:10px;font-size:15px;font-weight:600">A boa notícia: seu cardápio de 21 dias já foi montado para destravar isso.</p></div>`);
+    setBtn('Continuar', true); setTimeout(()=>{const m=$('#meter'); if(m) m.style.width=d.pct+'%';},80); break; }
+   case 'scratch':
+    h.push(`<h2>${S.revealed?'Desconto liberado!':'Raspe para revelar seu desconto'}</h2><p class="sub">${S.revealed?'Aplicado automaticamente na sua oferta':'Queremos que você comece com uma boa surpresa'}</p>
+     <div class="scratch"><div class="prize"><b>67% OFF</b><small>no Desafio Seca Barriga 21 Dias</small><span class="code">${esc(cupom())}</span></div>${S.revealed?'':'<canvas id="sc"></canvas>'}</div>
+     <p class="legal">${S.revealed?'Toque em continuar para ver sua oferta com o desconto aplicado.':'Arraste o dedo sobre o cartão.'}</p>`);
+    setBtn(S.revealed?'Ver minha oferta':'Raspe para continuar', S.revealed, S.revealed?'accent':''); break;
+   case 'offer': h.push(offerHTML()); setBtn('Garantir meu acesso', true, 'accent'); break;
+  }
+  screenEl.innerHTML=`<div class="fade">${h.join('')}</div>`; window.scrollTo(0,0);
+  bind(s);
+  track('QuizStep',{step:S.i, tela:s.key||s.k||s.id||'', bloco:s.sec}, true);
+}
+
+function infoHTML(id){
+  const n=C.CONTADOR_ALUNAS;
+  const faixa=(S.a.idade||'').replace(' anos','').replace(' ou mais','+');
+  const T={
+   social:`<div class="info">${n?`<div class="big">+${esc(n)}</div><p>mulheres na faixa dos ${esc(faixa)} anos já começaram o Desafio Seca Barriga.</p>`:`<div class="big">Turma de ${new Date().toLocaleDateString('pt-BR',{month:'long'})}</div><p>Você está entrando na nova turma do Desafio Seca Barriga 21 Dias. As vagas com desconto são limitadas.</p>`}</div>`,
+   diferente:`<div class="info"><h2>Desta vez é diferente</h2><p>Você não vai cortar comida. Vai trocar. São 21 dias com cardápio de cada refeição, receitas rápidas e lista de compras pronta.</p></div>`,
+   tipo:`<div class="info"><p style="margin:0 0 6px;font-weight:600;color:var(--ink)">Pelas suas respostas, seu metabolismo é do tipo</p><div class="big">${tipo()}</div><p>${tipoTxt[tipo()]}</p><p style="font-weight:600;color:var(--ink)">As 3 fases do desafio serão ajustadas para esse tipo desde o dia 1.</p></div>`,
+   familia:`<div class="info"><h2>A família come a mesma coisa</h2><p>Ninguém em casa vai perceber que é dieta. Você não precisa cozinhar duas vezes.</p></div>`,
+   prato:`<div class="info"><div class="big">80%</div><p>do resultado vem do prato. O desafio funciona mesmo sem academia. Se você já treina, os resultados aparecem ainda mais rápido.</p></div>`,
+   vontade:`<div class="info"><h2>Não é falta de força de vontade</h2><p>É cardápio errado. Quando o prato sacia de verdade, a vontade de doce e de beliscar diminui sozinha.</p></div>`,
+   pratos:`<div class="info"><h2>Comida de verdade, pronta em até 20 minutos</h2><p>Frango cremoso com legumes, escondidinho de abóbora, omelete de forno, sopa que sacia. É isso que você vai comer nos próximos 21 dias.</p><div class="quote">Comi bem e perdi peso sem sofrer. O melhor é que meu marido come junto.<b>Cliente NORQVA</b></div></div>`
+  };
+  return T[id]||'';
+}
+
+function offerHTML(){
+  const p=C.PRECO, de=C.PRECO_DE, parc=(p*1.13/12).toFixed(2).replace('.',',');
+  return `<div class="offer-top">Seu desconto expira em <b id="timer">${C.TIMER_MIN}:00</b></div>
+   <h2>${esc(nome1()?nome1()+', seu':'Seu')} plano para perder até ${perda()} kg em 21 dias está reservado</h2><div style="height:12px"></div>
+   <div class="ocard"><div style="font-weight:700;font-size:17px">Desafio Seca Barriga 21 Dias</div><div style="color:var(--muted);font-size:14px">Metabolismo ${tipo()} · Trava: ${trava()}</div>
+    <ul><li>Cardápio de 21 dias, refeição por refeição, ajustado ao seu metabolismo</li><li>150 receitas que secam a barriga, prontas em até 20 minutos</li><li>Lista de compras semanal dentro do seu orçamento</li><li>Protocolo Desincha 3 Dias para a primeira semana</li><li>Tabela de acompanhamento de peso e medidas</li><li class="bonus"><b>Bônus:</b> 30 sobremesas leves</li><li class="bonus"><b>Bônus:</b> 30 sucos e chás refrescantes</li></ul>
+    <div class="price"><s>De R$ ${de},00</s><div class="now">R$ ${p},00</div><small>à vista ou 12x de R$ ${parc} no cartão</small><span class="coupon">Cupom ${esc(cupom())} aplicado</span></div></div>
+   <div class="guar"><div class="seal">7 DIAS<br>GARANTIA</div><p><b>Risco zero.</b> Se em 7 dias não gostar, devolvemos 100%. E se seguir o cardápio por 21 dias e não perder peso, também devolvemos 100%.</p></div>
+   <div class="testis"><div class="testi"><div class="stars">★★★★★</div>Achei que ia passar fome. Comi muito bem e a calça voltou a fechar na segunda semana.<b>Cliente NORQVA</b></div><div class="testi"><div class="stars">★★★★★</div>As receitas são rápidas e a família come junto. Não cozinho mais duas vezes.<b>Cliente NORQVA</b></div><div class="testi"><div class="stars">★★★★★</div>A lista de compras salvou meu orçamento. Gastei menos do que antes.<b>Cliente NORQVA</b></div></div>
+   <div class="faq"><details><summary>Preciso fazer academia?</summary><p>Não. O desafio é baseado no cardápio. Se você já se exercita, continue: o resultado aparece mais rápido.</p></details><details><summary>Vou passar fome?</summary><p>Não. Toda refeição tem proteína e volume de legumes para dar saciedade. Você come 4 a 5 vezes por dia.</p></details><details><summary>Serve para quem tem pouco tempo?</summary><p>Sim. As receitas ficam prontas em até 20 minutos, e há opções para cozinhar no fim de semana e congelar.</p></details><details><summary>Como recebo?</summary><p>Logo após o pagamento você recebe o acesso por e-mail e WhatsApp, com tudo em PDF para ver no celular ou imprimir.</p></details></div>
+   <p class="disc">*Resultados individuais variam e dependem de seguir o cardápio. Este material não substitui acompanhamento médico ou nutricional. Consulte um profissional de saúde antes de começar.</p>`;
+}
+
+function svgPerson(g){ return g==='f'
+ ? `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#F7E3DC"/><path d="M17 44c-1-6 0-14 2-20 2-8 7-13 13-13s11 5 13 13c2 6 3 14 2 20z" fill="#4A3426"/><rect x="28" y="34" width="8" height="9" rx="3" fill="#E2A97E"/><circle cx="32" cy="26" r="10" fill="#E9B48F"/><path d="M21 27c0-9 5-14 11-14s11 5 11 14c-3-5-8-8-14-7-3 1-6 3-8 7z" fill="#4A3426"/><path d="M11 60c2-11 10-17 21-17s19 6 21 17c-6 3-13 4-21 4s-15-1-21-4z" fill="#C8553D"/><path d="M26 43c2 4 4 5 6 5s4-1 6-5" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>`
+ : `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#E6EFE6"/><rect x="28" y="33" width="8" height="10" rx="3" fill="#E2A97E"/><circle cx="32" cy="25" r="10" fill="#E9B48F"/><path d="M21.5 24c-1-8 4-13 10.5-13s11.5 4 10.5 13c-1-3-3-5-5-5-3 1-8 1-11 0-2 0-4 2-5 5z" fill="#4A3426"/><path d="M10 60c2-11 10-17 22-17s20 6 22 17c-6 3-14 4-22 4s-16-1-22-4z" fill="#2F5D3A"/><path d="M27 43l5 6 5-6z" fill="#fff"/></svg>`; }
+
+function svgChart(w,a){
+ const x0=30,x1=330,y0=30,y1=150; const pts=[[x0,y0],[110,y0+40],[200,y0+82],[x1,y1]];
+ const d=`M${pts[0][0]} ${pts[0][1]} C 90 ${y0+10}, 130 ${y0+70}, 200 ${y0+82} S 300 ${y1-4}, ${x1} ${y1}`;
+ return `<svg viewBox="0 0 360 200"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C8553D" stop-opacity=".25"/><stop offset="1" stop-color="#2F5D3A" stop-opacity=".05"/></linearGradient></defs>
+  <line x1="30" x2="330" y1="170" y2="170" stroke="#E3DACB"/><path d="${d} L ${x1} 170 L ${x0} 170 Z" fill="url(#g)"/><path d="${d}" fill="none" stroke="#2F5D3A" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="${x0}" cy="${y0}" r="7" fill="#C8553D"/><circle cx="${x1}" cy="${y1}" r="7" fill="#2F5D3A"/>
+  <rect x="${x0-6}" y="${y0-26}" width="70" height="22" rx="6" fill="#1F2A22"/><text x="${x0+29}" y="${y0-11}" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">${String(w).replace('.',',')} kg</text>
+  <rect x="${x1-70}" y="${y1-34}" width="70" height="22" rx="6" fill="#2F5D3A"/><text x="${x1-35}" y="${y1-19}" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">${String(a).replace('.',',')} kg</text>
+  <text x="${x0}" y="190" fill="#5E6B61" font-size="11.5">Você hoje</text><text x="${x1}" y="190" fill="#5E6B61" font-size="11.5" text-anchor="end">Em 21 dias</text></svg>`;
+}
+
+function runLoad(){
+ const msgs=['Analisando seu perfil metabólico','Separando receitas para o seu tempo','Ajustando ao seu orçamento','Montando as 3 fases do desafio'];
+ const quotes=[['Achei que ia passar fome. Comi bem os 21 dias e a calça voltou a fechar.','Cliente NORQVA'],['Meu marido come junto e nem percebe que é dieta.','Cliente NORQVA']];
+ let p=0; const iv=setInterval(()=>{ p+=1.25; const c=$('#ringc'), t=$('#pct'); if(!c){clearInterval(iv);return;} c.style.strokeDashoffset=326.7-326.7*p/100; t.textContent=Math.round(p)+'%'; $('#loadtxt').textContent=msgs[Math.min(3,Math.floor(p/25))]; const q=quotes[Math.floor(p/50)%2]; $('#lq').innerHTML=esc(q[0])+'<b>'+esc(q[1])+'</b>'; if(p>=100){clearInterval(iv); setTimeout(()=>go(1),500);} },100);
+}
+
+function initScratch(){
+ const cv=$('#sc'); if(!cv) return; const r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1; cv.width=r.width*dpr; cv.height=r.height*dpr; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+ const g=ctx.createLinearGradient(0,0,r.width,r.height); g.addColorStop(0,'#BDB3A3'); g.addColorStop(.5,'#E3DACB'); g.addColorStop(1,'#BDB3A3'); ctx.fillStyle=g; ctx.fillRect(0,0,r.width,r.height);
+ ctx.fillStyle='#5E6B61'; ctx.font='600 16px Inter,sans-serif'; ctx.textAlign='center'; ctx.fillText('RASPE AQUI',r.width/2,r.height/2+6);
+ ctx.globalCompositeOperation='destination-out'; let down=false, n=0;
+ const pos=e=>{const b=cv.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return [t.clientX-b.left,t.clientY-b.top];};
+ const erase=e=>{ if(!down) return; e.preventDefault(); const [x,y]=pos(e); ctx.beginPath(); ctx.arc(x,y,24,0,Math.PI*2); ctx.fill(); if(++n%8===0) check(); };
+ const check=()=>{ const d=ctx.getImageData(0,0,cv.width,cv.height).data; let c=0; for(let i=3;i<d.length;i+=64) if(d[i]===0) c++; if(c/(d.length/64)>.5) reveal(); };
+ const reveal=()=>{ if(S.revealed) return; S.revealed=true; track('ScratchRevealed',{},true); render(); };
+ cv.addEventListener('pointerdown',e=>{down=true;erase(e);}); cv.addEventListener('pointermove',erase); window.addEventListener('pointerup',()=>{down=false;});
+ cv.addEventListener('touchstart',e=>{down=true;erase(e);},{passive:false}); cv.addEventListener('touchmove',erase,{passive:false}); cv.addEventListener('touchend',()=>{down=false;});
+}
+
+let timerIv=null;
+function startTimer(){ if(!S.t0) S.t0=Date.now(); clearInterval(timerIv); timerIv=setInterval(()=>{ const el=$('#timer'); if(!el){clearInterval(timerIv);return;} const left=Math.max(0,C.TIMER_MIN*60-Math.floor((Date.now()-S.t0)/1000)); el.textContent=Math.floor(left/60)+':'+String(left%60).padStart(2,'0'); },250); }
+
+function checkoutUrl(){
+ if(!C.CHECKOUT_URL) return null; let u; try{ u=new URL(C.CHECKOUT_URL); }catch(e){ return C.CHECKOUT_URL; }
+ S.lead.nome && u.searchParams.set('name', S.lead.nome); S.lead.email && u.searchParams.set('email', S.lead.email); S.lead.whats && u.searchParams.set('phone', S.lead.whats.replace(/\D/g,''));
+ Object.entries(UTM).forEach(([k,v])=>u.searchParams.set(k,v)); u.searchParams.set('src', SESSION); return u.toString();
+}
+
+function bind(s){
+ screenEl.querySelectorAll('.opt').forEach(el=>el.addEventListener('click',()=>{
+  const v=el.dataset.v;
+  if(s.k==='hero'){ S.a.sexo=v; track('ViewContent',{content_name:'Quiz Seca Barriga',content_category:'quiz_inicio'}); go(1); return; }
+  if(s.k==='single'){ S.a[s.key]=v; render(); setTimeout(()=>{ if(s.key==='evento' && v==='Nada marcado') go(2); else go(1); },220); return; }
+  if(s.k==='multi'){ let sel=S.m[s.key]||[]; if(s.none && v===s.none) sel = sel.includes(v)?[]:[v]; else { sel=sel.filter(x=>x!==s.none); sel = sel.includes(v)?sel.filter(x=>x!==v):sel.concat(v); } S.m[s.key]=sel; render(); }
+ }));
+ if(s.k==='num'){ const inp=$('#numin'); inp.focus(); inp.addEventListener('input',()=>{ S.a[s.key]=inp.value; nextBtn.disabled=!inp.value; $('#err').textContent=''; numNote(s); }); numNote(s); }
+ if(s.k==='scratch' && !S.revealed) setTimeout(initScratch,30);
+ if(s.k==='offer'){ startTimer(); track('ViewContent',{content_name:'Oferta Seca Barriga 21 Dias',content_category:'oferta',value:C.PRECO,currency:C.MOEDA}); sendLead('oferta'); }
+}
+
+function numNote(s){
+ const box=$('#numnote'); if(!box) return; let t='';
+ if(s.key==='w'){ const v=imc(); if(v) t = v>=25 ? `<div class="note"><b>Seu IMC é ${v.toFixed(1).replace('.',',')}</b>Está acima do ideal. O desafio foi feito exatamente para isso: secar a barriga sem passar fome.</div>` : `<div class="note" style="background:var(--green-soft)"><b>Seu IMC é ${v.toFixed(1).replace('.',',')}</b>Você está no peso normal. O foco vai ser desinchar e secar a barriga.</div>`; }
+ if(s.key==='gw'){ const w=num('w'), g=num('gw'); if(w&&g&&g<w) t=`<div class="note" style="background:var(--green-soft)"><b>Meta: perder ${String(Math.round((w-g)*10)/10).replace('.',',')} kg</b>Os primeiros quilos vêm já no desafio de 21 dias.</div>`; }
+ box.innerHTML=t;
+}
+
+function validNum(s){ const v=num(s.key); if(!(v>=s.min && v<=s.max)){ $('#err').textContent=`Digite um valor entre ${s.min} e ${s.max} ${s.unit}.`; return false; } if(s.key==='gw' && v>=num('w')){ $('#err').textContent='O peso desejado precisa ser menor que o atual.'; return false; } return true; }
+
+nextBtn.addEventListener('click',()=>{
+ const s=SCREENS[S.i];
+ if(s.k==='num' && !validNum(s)) return;
+ if(s.k==='date'){ S.a.data=$('#datein').value||''; }
+ if(s.k==='capture'){
+  const n=$('#nomein').value.trim(), e=$('#emailin').value.trim();
+  if(n.length<2){ $('#err').textContent='Digite seu nome.'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)){ $('#err').textContent='Digite um e-mail válido.'; return; }
+  S.lead.nome=n; S.lead.email=e.toLowerCase(); sendLead('email');
+ }
+ if(s.k==='whats'){
+  const w=$('#whatsin').value.replace(/\D/g,''); if(w.length<10||w.length>11){ $('#err').textContent='Digite seu WhatsApp com DDD.'; return; }
+  S.lead.whats='55'+w; sendLead('lead');
+  if(window.fbq && C.PIXEL_ID){ try{ fbq('init', C.PIXEL_ID, {em:S.lead.email, ph:S.lead.whats, fn:nome1().toLowerCase(), external_id:SESSION}); }catch(e){} }
+  track('Lead',{content_name:'Quiz Seca Barriga',value:C.PRECO,currency:C.MOEDA, tipo:tipo(), trava:trava()}, false, 'lead-'+SESSION);
+  track('CompleteRegistration',{content_name:'Quiz Seca Barriga'}, false, 'reg-'+SESSION);
+ }
+ if(s.k==='offer'){
+  track('InitiateCheckout',{value:C.PRECO,currency:C.MOEDA,content_name:'Desafio Seca Barriga 21 Dias',num_items:1}, false, 'ic-'+SESSION);
+  sendLead('checkout');
+  const u=checkoutUrl(); if(u){ setTimeout(()=>{ location.href=u; },250); } else { alert('Configure CHECKOUT_URL no topo do arquivo.'); }
+  return;
+ }
+ go(1);
+});
+backBtn.addEventListener('click',()=>go(-1));
+
+function go(d){
+ let i=S.i+d;
+ if(d<0){ while(i>0 && ['load','info'].includes(SCREENS[i].k) && SCREENS[i].id!=='tipo') i--; if(SCREENS[i] && SCREENS[i].k==='date' && S.a.evento==='Nada marcado') i--; }
+ S.i=Math.max(0,Math.min(SCREENS.length-1,i)); render();
+}
+
+render();
+})();
+</script>
+</body>
+</html>
