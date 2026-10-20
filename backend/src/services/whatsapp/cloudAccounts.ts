@@ -378,6 +378,7 @@ export async function createCloudNumber(pool: Pool, body: any, userId: string | 
     throw err;
   }
   if (!info) throw new WhatsAppError(400, 'Este número não pertence à conta do WhatsApp Business cadastrada.');
+  let created: any;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -399,13 +400,24 @@ export async function createCloudNumber(pool: Pool, body: any, userId: string | 
     );
     await writeAuditLog(client, userId, 'WHATSAPP_NUMBER_CREATED', `Número oficial "${label}" (${a.environment}, ${info.display_phone_number || phoneNumberId}) cadastrado (atendente desligado).`, null, r.rows[0].id, false, true);
     await client.query('COMMIT');
-    return r.rows[0];
+    created = r.rows[0];
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     client.release();
   }
+  // NORQVA-0102: já mostra se falta ativar o número na API (se a Meta não responder, fica como está)
+  try {
+    const p = await graphGet(a, token, `/${encodeURIComponent(phoneNumberId)}?fields=platform_type`);
+    if (notRegistered(p)) {
+      const u = await pool.query(`UPDATE whatsapp_numbers SET status = 'DISCONNECTED', status_reason = $1, updated_at = NOW() WHERE id = $2 RETURNING *`, [PENDING_REASON, created.id]);
+      return u.rows[0] || created;
+    }
+  } catch (e: any) {
+    console.warn('[WhatsApp oficial] não deu para ver se o número está ativo na API:', e?.message || e);
+  }
+  return created;
 }
 
 /** "Conferir número" de um número oficial: atualiza nome, qualidade e limite de envio. */
@@ -418,14 +430,17 @@ export async function checkCloudNumber(pool: Pool, n: any) {
   }
   try {
     const token = decryptOrFail(acc.access_token_enc, 'o token');
-    const info = await graphGet(acc, token, `/${encodeURIComponent(n.phone_number_id)}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier`);
+    const info = await graphGet(acc, token, `/${encodeURIComponent(n.phone_number_id)}?fields=display_phone_number,verified_name,quality_rating,messaging_limit_tier,platform_type`);
+    // NORQVA-0102: número que ainda não foi ativado na API (platform_type diferente de CLOUD_API) não envia nada
+    const pending = notRegistered(info);
     await pool.query(
-      `UPDATE whatsapp_numbers SET status = CASE WHEN status = 'BANNED' THEN status ELSE 'CONNECTED' END, status_reason = CASE WHEN status = 'BANNED' THEN status_reason ELSE NULL END,
+      `UPDATE whatsapp_numbers SET status = CASE WHEN status = 'BANNED' THEN status WHEN $7 THEN 'DISCONNECTED' ELSE 'CONNECTED' END,
+              status_reason = CASE WHEN status = 'BANNED' THEN status_reason WHEN $7 THEN $8 ELSE NULL END,
               display_phone_number = COALESCE($1, display_phone_number), verified_name = COALESCE($2, verified_name),
               quality_rating = COALESCE($3, quality_rating), messaging_limit = COALESCE($4, messaging_limit),
               phone = COALESCE($5, phone), profile_name = COALESCE($2, profile_name), updated_at = NOW()
        WHERE id = $6`,
-      [info?.display_phone_number || null, info?.verified_name || null, info?.quality_rating || null, info?.messaging_limit_tier || null, digitsOf(info?.display_phone_number) || null, n.id]
+      [info?.display_phone_number || null, info?.verified_name || null, info?.quality_rating || null, info?.messaging_limit_tier || null, digitsOf(info?.display_phone_number) || null, n.id, pending, PENDING_REASON]
     );
   } catch (err: any) {
     if (err instanceof ProviderError || err instanceof WhatsAppError) {
@@ -434,6 +449,55 @@ export async function checkCloudNumber(pool: Pool, n: any) {
     }
     throw err;
   }
+}
+
+// ---------- NORQVA-0102: ativar o número na API ----------
+
+export const PENDING_REASON = 'Falta ativar o número na API oficial: clique em "Ativar número" e crie o PIN de 6 números.';
+
+/** A Meta devolve platform_type = CLOUD_API quando o número já está ativo na API. Sem o campo, não acusa nada. */
+export function notRegistered(info: any): boolean {
+  const t = info?.platform_type ? String(info.platform_type).toUpperCase() : '';
+  return !!t && t !== 'CLOUD_API';
+}
+
+/**
+ * "Ativar número": registra o número na Cloud API (POST /{phone_number_id}/register) com o PIN de 6 números
+ * da verificação em duas etapas. Na primeira ativação, o PIN informado passa a ser o PIN do número.
+ * O PIN não é guardado no NORQVA nem vai para o histórico.
+ */
+export async function registerCloudNumber(pool: Pool, numberId: string, body: any, userId: string | null) {
+  checkId(numberId, 'Número');
+  const pin = String(body?.pin ?? '').trim();
+  if (!/^\d{6}$/.test(pin)) throw new WhatsAppError(400, 'O PIN precisa ter exatamente 6 números.');
+  const nr = await pool.query('SELECT * FROM whatsapp_numbers WHERE id = $1 AND is_deleted = FALSE', [numberId]);
+  const n = nr.rows[0];
+  if (!n) throw new WhatsAppError(404, 'Número não encontrado.');
+  if (n.provider !== 'META_CLOUD' || !n.phone_number_id || !n.cloud_account_id) throw new WhatsAppError(400, 'Só número oficial (Meta) é ativado assim.');
+  const a = await loadAccountRow(pool, n.cloud_account_id);
+  if (a.status === 'DISABLED') throw new WhatsAppError(409, 'Conta Meta desativada. Reative antes de ativar o número.');
+  const token = decryptOrFail(a.access_token_enc, 'o token');
+  let res: any;
+  try {
+    res = await graphFetch()(`${graphBase(a.graph_api_version)}/${encodeURIComponent(n.phone_number_id)}/register`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', pin })
+    });
+  } catch (err: any) {
+    if (err instanceof ProviderError) throw new WhatsAppError(502, err.message);
+    throw err;
+  }
+  if (!(res.status >= 200 && res.status < 300) || res.json?.error || res.json?.success === false) {
+    const code = Number.isFinite(Number(res.json?.error?.code)) ? Number(res.json.error.code) : null;
+    const msg = describeCloudError(code, res.json?.error?.error_user_msg || res.json?.error?.message).message;
+    await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_REGISTER_FAILED', `Número "${n.label}": ${msg.slice(0, 300)}`, null, n.id);
+    throw new WhatsAppError(code === 190 ? 409 : 422, msg);
+  }
+  await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_REGISTERED', `Número oficial "${n.label}" ativado na API da Meta.`, null, n.id);
+  await checkCloudNumber(pool, n);
+  const r = await pool.query('SELECT status, status_reason FROM whatsapp_numbers WHERE id = $1', [n.id]);
+  return { ok: true, status: r.rows[0]?.status ?? null, status_reason: r.rows[0]?.status_reason ?? null };
 }
 
 // ---------- motor por número ----------

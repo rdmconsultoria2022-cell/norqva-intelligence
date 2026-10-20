@@ -31,6 +31,7 @@ function makeApi() {
     if (url === '/whatsapp/cloud/accounts' && method === 'POST') return { account: { ...account, id: 'acc2' }, verify_token: 'abc123verify' };
     if (url === '/whatsapp/cloud/accounts/acc1/check') return { ok: true, phone_numbers: [{ phone_number_id: '999', display_phone_number: '+1 555-010-0001', verified_name: 'Trattoria Teste', quality_rating: 'GREEN' }], subscribed: false };
     if (url === '/whatsapp/cloud/numbers' && method === 'POST') return { id: 'n10' };
+    if (url === '/whatsapp/cloud/numbers/n9/register' && method === 'POST') return { ok: true, status: 'CONNECTED', status_reason: null };
     if (url.startsWith('/whatsapp/conversations?')) return { conversations: [conversation] };
     if (url === '/whatsapp/conversations/c9/messages' && method === 'GET') {
       return {
@@ -84,6 +85,26 @@ describe('NORQVA-0079 — WhatsApp oficial na tela', () => {
     const phones = await screen.findByTestId('wa-cloud-phones');
     fireEvent.click(within(phones).getByText('Usar este número'));
     await waitFor(() => expect(api.mock.calls.some(c => c[0] === '/whatsapp/cloud/numbers')).toBe(true));
+  });
+
+  it('NORQVA-0102: "Ativar número" pede o PIN de 6 números e envia para a ativação', async () => {
+    const api = makeApi();
+    const ok = vi.fn();
+    render(<WhatsAppView currentUser={admin} apiFetch={api} showError={vi.fn()} showSuccess={ok} />);
+    fireEvent.click(screen.getByText('Números'));
+    const card = await screen.findByTestId('wa-number');
+    fireEvent.click(within(card).getByText('Ativar número'));
+    const box = await screen.findByTestId('wa-register');
+    const input = within(box).getByLabelText('PIN de 6 números') as HTMLInputElement;
+    const btn = within(box).getByText('Ativar') as HTMLButtonElement;
+    fireEvent.change(input, { target: { value: '12a34' } });
+    expect(input.value).toBe('1234');
+    expect(btn.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: '123456' } });
+    fireEvent.click(btn);
+    await waitFor(() => expect(ok).toHaveBeenCalledWith('Número ativado na API da Meta.'));
+    const call = api.mock.calls.find(c => c[0] === '/whatsapp/cloud/numbers/n9/register');
+    expect(JSON.parse(String((call![1] as RequestInit).body))).toEqual({ pin: '123456' });
   });
 
   it('conversa com a janela de 24h fechada não deixa digitar e mostra mensagem bloqueada', async () => {

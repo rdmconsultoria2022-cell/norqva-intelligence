@@ -116,6 +116,14 @@ export function describeCloudError(code: number | null, metaMessage?: string): C
       return { message: 'A mensagem não chegou: o número do cliente não tem WhatsApp ou está inalcançável.', retry: false, effect: 'NONE', outsideWindow: false };
     case 368:
       return { message: 'A Meta bloqueou o envio por política. O atendente foi parado neste número.', retry: false, effect: 'NUMBER_BANNED', outsideWindow: false };
+    case 133010:
+      return { message: 'O número ainda não foi ativado na API oficial: use "Ativar número" no cartão do número.', retry: false, effect: 'NONE', outsideWindow: false };
+    case 133005:
+      return { message: 'PIN errado: use o PIN de 6 números da verificação em duas etapas deste número.', retry: false, effect: 'NONE', outsideWindow: false };
+    case 133006:
+      return { message: 'A Meta pede para verificar o número (código por SMS) antes de ativá-lo.', retry: false, effect: 'NONE', outsideWindow: false };
+    case 133009:
+      return { message: 'Tentativas de PIN rápidas demais. Aguarde alguns minutos e tente de novo.', retry: false, effect: 'NONE', outsideWindow: false };
     case 10:
     case 200:
       return { message: 'O token não tem permissão para esta conta do WhatsApp (whatsapp_business_messaging e whatsapp_business_management).', retry: false, effect: 'TOKEN_INVALID', outsideWindow: false };

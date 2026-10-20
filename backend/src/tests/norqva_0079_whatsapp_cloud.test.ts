@@ -14,7 +14,7 @@ import { resetAllRateLimits } from '../middleware/rateLimiter';
 import { maskPath } from '../middleware/logging';
 import { setWhatsAppInboundHandler } from '../controllers/whatsappController';
 import { setGraphFetchForTests, GraphFetch, MetaCloudProvider, describeCloudError, phoneVariants, SendBlockedError, CloudApiError } from '../services/whatsapp/metaCloudProvider';
-import { providerForNumber } from '../services/whatsapp/cloudAccounts';
+import { providerForNumber, notRegistered, PENDING_REASON } from '../services/whatsapp/cloudAccounts';
 import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiReply } from '../services/whatsapp/attendant';
 import { whatsappNumberForOffer } from '../services/whatsapp/whatsappRefs';
 import { windowOpenAt } from '../services/whatsapp/serviceWindow';
@@ -59,6 +59,7 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
   const calls: GraphCall[] = [];
   let failNext: { code: number; times: number } | null = null;
   let scopes = ['whatsapp_business_messaging', 'whatsapp_business_management'];
+  let platformA: string | undefined; // NORQVA-0102
   const inbound: { numberId: string; n: number }[] = [];
   const spies: any[] = [];
   let script: AiReply[] = [];
@@ -81,7 +82,13 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     if (path.endsWith('/subscribed_apps')) return { status: 200, json: { success: true } };
     if (path.endsWith('/media')) return { status: 200, json: { id: 'MEDIA-1' } };
     if (path.endsWith('/messages')) return { status: 200, json: { messages: [{ id: `wamid.${crypto.randomUUID()}` }] } };
-    if (path === `/${pnA}`) return { status: 200, json: { display_phone_number: '+1 555-010-0001', verified_name: 'Trattoria Teste', quality_rating: 'GREEN', messaging_limit_tier: 'TIER_250' } };
+    if (path === `/${pnA}/register`) {
+      const b = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+      if (b?.pin !== '123456') return { status: 400, json: { error: { code: 133005, message: 'Two step verification PIN Mismatch' } } };
+      platformA = 'CLOUD_API';
+      return { status: 200, json: { success: true } };
+    }
+    if (path === `/${pnA}`) return { status: 200, json: { display_phone_number: '+1 555-010-0001', verified_name: 'Trattoria Teste', quality_rating: 'GREEN', messaging_limit_tier: 'TIER_250', ...(platformA ? { platform_type: platformA } : {}) } };
     return { status: 404, json: { error: { code: 100, message: 'nao simulado' } } };
   };
 
@@ -267,6 +274,40 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     const conf = await request(app).post(`/api/whatsapp/numbers/${numberA}/connect`).set(auth(admin));
     expect(conf.status).toBe(200);
     expect(conf.body.number.messaging_limit).toBe('TIER_250');
+  });
+
+  it('NORQVA-0102: número ainda não ativado na API aparece pendente; "Ativar número" registra com o PIN, sem guardar o PIN', async () => {
+    platformA = 'NOT_APPLICABLE';
+    const pending = await request(app).post(`/api/whatsapp/numbers/${numberA}/connect`).set(auth(admin));
+    expect(pending.status).toBe(200);
+    expect(pending.body.number.status).toBe('DISCONNECTED');
+    expect(pending.body.number.status_reason).toBe(PENDING_REASON);
+
+    const noRole = await request(app).post(`/api/whatsapp/cloud/numbers/${numberA}/register`).set(auth(ops)).send({ pin: '123456' });
+    expect(noRole.status).toBe(403);
+    const badFormat = await request(app).post(`/api/whatsapp/cloud/numbers/${numberA}/register`).set(auth(admin)).send({ pin: '12ab' });
+    expect(badFormat.status).toBe(400);
+    expect(calls.some(c => c.url.endsWith('/register'))).toBe(false);
+
+    const wrong = await request(app).post(`/api/whatsapp/cloud/numbers/${numberA}/register`).set(auth(admin)).send({ pin: '654321' });
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error).toContain('PIN errado');
+
+    const ok = await request(app).post(`/api/whatsapp/cloud/numbers/${numberA}/register`).set(auth(admin)).send({ pin: '123456' });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ ok: true, status: 'CONNECTED', status_reason: null });
+    const reg = calls.filter(c => c.url.endsWith(`/${pnA}/register`)).pop()!;
+    expect(reg.method).toBe('POST');
+    expect(reg.auth).toBe(`Bearer ${TOKEN_A}`);
+    expect(reg.body).toEqual({ messaging_product: 'whatsapp', pin: '123456' });
+
+    const logs = await pool.query(`SELECT event_type, description, previous_value, new_value FROM audit_logs WHERE event_type LIKE 'WHATSAPP_CLOUD_NUMBER_REGISTER%' AND new_value = $1`, [numberA]);
+    expect(logs.rows.map((l: any) => l.event_type)).toEqual(expect.arrayContaining(['WHATSAPP_CLOUD_NUMBER_REGISTERED', 'WHATSAPP_CLOUD_NUMBER_REGISTER_FAILED']));
+    for (const l of logs.rows) expect(JSON.stringify(l)).not.toMatch(/123456|654321/);
+    expect(notRegistered({ platform_type: 'CLOUD_API' })).toBe(false);
+    expect(notRegistered({ platform_type: 'NOT_APPLICABLE' })).toBe(true);
+    expect(notRegistered({})).toBe(false);
+    platformA = undefined;
   });
 
   // ---------- webhook ----------

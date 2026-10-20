@@ -32,7 +32,8 @@ import {
   updateCloudAccount,
   deleteCloudAccount,
   checkCloudAccount,
-  loadAccountForWebhook
+  loadAccountForWebhook,
+  registerCloudNumber
 } from '../services/whatsapp/cloudAccounts';
 import { verifyCloudWebhook, signatureValid, processCloudWebhook } from '../services/whatsapp/cloudWebhook';
 import { cloudSendEnabled, allowedCloudEnvironments } from '../services/whatsapp/metaCloudProvider';
@@ -278,6 +279,15 @@ export async function postCloudNumber(req: AuthenticatedRequest, res: Response) 
     return res.status(201).json(await createOfficialNumber(db(req), req.body, uid(req)));
   } catch (err) {
     return handle(res, err, 'Falha ao cadastrar o número oficial.');
+  }
+}
+
+/** NORQVA-0102: ativa o número oficial na API da Meta com o PIN de 6 números (o PIN não é guardado). */
+export async function postCloudNumberRegister(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await registerCloudNumber(db(req), String(req.params.id), req.body, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao ativar o número na Meta.');
   }
 }
 
