@@ -491,8 +491,15 @@ export async function registerCloudNumber(pool: Pool, numberId: string, body: an
   }
   if (!(res.status >= 200 && res.status < 300) || res.json?.error || res.json?.success === false) {
     const code = Number.isFinite(Number(res.json?.error?.code)) ? Number(res.json.error.code) : null;
-    const msg = describeCloudError(code, res.json?.error?.error_user_msg || res.json?.error?.message).message;
-    await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_REGISTER_FAILED', `Número "${n.label}": ${msg.slice(0, 300)}`, null, n.id);
+    const e = res.json?.error || {};
+    const known = describeCloudError(code, e.error_user_msg || e.message).message;
+    // texto da ativação, não de envio de mensagem
+    const msg = known.replace(/^A Meta recusou o envio/, 'A Meta recusou a ativação');
+    const sub = Number.isFinite(Number(e.error_subcode)) ? Number(e.error_subcode) : null;
+    // NORQVA-0103: detalhes técnicos da Meta no histórico e no log (sem o PIN)
+    const detail = [e.message, e.error_user_title, e.error_user_msg, e.error_data?.details].filter(Boolean).map(String).join(' | ').slice(0, 600);
+    console.warn(JSON.stringify({ event: 'WHATSAPP_CLOUD_REGISTER_FAILED', number_id: n.id, code, subcode: sub, type: e.type || null, detail, fbtrace_id: e.fbtrace_id || null }));
+    await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_REGISTER_FAILED', `Número "${n.label}": ${msg.slice(0, 300)}${sub ? ` [subcódigo ${sub}]` : ''}${detail ? ` — Meta: ${detail}` : ''}`.slice(0, 1000), null, n.id);
     throw new WhatsAppError(code === 190 ? 409 : 422, msg);
   }
   await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_REGISTERED', `Número oficial "${n.label}" ativado na API da Meta.`, null, n.id);
