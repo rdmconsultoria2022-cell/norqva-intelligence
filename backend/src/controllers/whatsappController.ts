@@ -306,6 +306,14 @@ export async function postCloudWebhook(req: Request, res: Response) {
     if (loaded.account.status === 'DISABLED') return res.status(200).json({ ok: true, ignored: true });
     const r = await processCloudWebhook(pool, loaded.account, req.body, loaded.appSecret);
     res.status(200).json({ ok: true });
+    // NORQVA-0101: resumo de cada entrega da Meta (sem conteúdo de mensagem)
+    console.log(JSON.stringify({
+      event: 'WHATSAPP_CLOUD_WEBHOOK',
+      account_id: loaded.account.id,
+      inbound: r.inbound.reduce((n, i) => n + i.messages.length, 0),
+      statuses: r.statuses,
+      ignored: r.ignored
+    }));
     if (inboundHandler) {
       for (const item of r.inbound) {
         const handler = inboundHandler;
