@@ -95,7 +95,7 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
 
 
-- WhatsApp (NORQVA-0079): etapa 2 = conta TEST da Meta (app dedicado no portfólio Norqva, marca Trattoria) + `WHATSAPP_SECRETS_KEY` e `OPENAI_API_KEY` no Render; etapa 3 = homologação com o "sim" do Ricardo; etapa 4 = templates. A Evolution (NORQVA-0046) fica desligada.
+- WhatsApp (NORQVA-0079): etapa 2 feita (app "NORQVA Atendimento" 2550182755448535, usuário do sistema NORQVA_Backend, chaves no Render, envio liberado só para TEST). Número dedicado +55 31 98585-5642 (phone_number_id 1322512717623181) na WABA "Trattoria em Casa" 1578522077628653, cadastrado no NORQVA como conta TEST "Trattoria — 5642 (homologação)" (destinatário de teste só o 6969). Em 19/10/2026 a ativação (NORQVA-0102, botão "Ativar número" com PIN que o Ricardo guarda) parou em "Conta do WhatsApp Business não verificada": a WABA está em "Análise em andamento" e a verificação da empresa (RDMCONSULTORIA LTDA, CNPJ 44.999.831/0001-94) foi enviada no portfólio Norqva (cerca de 2 dias úteis). Depois: ativar número, ligar atendente, conversa de teste, Pix real só com o "sim" do Ricardo; forma de pagamento na WABA antes de vender; etapa 4 = templates. O número de teste +1 555 não entrega para o Brasil (erro 130497). A Evolution (NORQVA-0046) fica desligada; o cartão antigo "+5531985855642" (Evolution) no NORQVA pode ser excluído.
 
 - Reavaliar a OPP-0010 quando o anúncio TR_V1_EMO chegar perto de R$ 150 de gasto.
 - Conferir no banco que a migration 048 reclassificou o pedido de teste (evento `ORDER_RECLASSIFIED_TEST` em `audit_logs`).
