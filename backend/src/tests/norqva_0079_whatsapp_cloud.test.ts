@@ -278,6 +278,7 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
 
   it('NORQVA-0102: número ainda não ativado na API aparece pendente; "Ativar número" registra com o PIN, sem guardar o PIN', async () => {
     platformA = 'NOT_APPLICABLE';
+    try {
     const pending = await request(app).post(`/api/whatsapp/numbers/${numberA}/connect`).set(auth(admin));
     expect(pending.status).toBe(200);
     expect(pending.body.number.status).toBe('DISCONNECTED');
@@ -307,7 +308,9 @@ describe.sequential('NORQVA-0079 — WhatsApp oficial (Cloud API)', () => {
     expect(notRegistered({ platform_type: 'CLOUD_API' })).toBe(false);
     expect(notRegistered({ platform_type: 'NOT_APPLICABLE' })).toBe(true);
     expect(notRegistered({})).toBe(false);
-    platformA = undefined;
+    } finally {
+      platformA = undefined;
+    }
   });
 
   // ---------- webhook ----------

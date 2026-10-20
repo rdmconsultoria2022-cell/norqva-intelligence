@@ -62,6 +62,7 @@ describe('NORQVA-0079 — WhatsApp oficial na tela', () => {
     expect(within(card).getByTestId('wa-number-official').textContent).toContain('teste');
     expect(within(card).queryByText('Trocar número')).toBeNull();
     expect(within(card).getByText('Conferir na Meta')).toBeInTheDocument();
+    expect(within(card).queryByText('Ativar número')).toBeNull();
     // conexão não oficial desligada: sem o cadastro por QR Code
     expect(screen.queryByTestId('wa-new-number')).toBeNull();
   });
@@ -88,7 +89,13 @@ describe('NORQVA-0079 — WhatsApp oficial na tela', () => {
   });
 
   it('NORQVA-0102: "Ativar número" pede o PIN de 6 números e envia para a ativação', async () => {
-    const api = makeApi();
+    const base = makeApi();
+    const api = vi.fn(async (url: string, opts?: RequestInit) => {
+      if (url === '/whatsapp/numbers' && (opts?.method || 'GET') === 'GET') {
+        return { numbers: [{ ...official, status: 'DISCONNECTED', status_reason: 'Falta ativar o número na API oficial' }], max: 100, server_configured: false };
+      }
+      return base(url, opts);
+    });
     const ok = vi.fn();
     render(<WhatsAppView currentUser={admin} apiFetch={api} showError={vi.fn()} showSuccess={ok} />);
     fireEvent.click(screen.getByText('Números'));

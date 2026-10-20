@@ -382,9 +382,11 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                       <button onClick={() => checkOfficial(n)} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-info/40 px-2 py-1 text-[12px] text-nq-info disabled:opacity-40 min-h-[44px]">
                         <RefreshCw className="h-3.5 w-3.5" /> Conferir na Meta
                       </button>
-                      <button onClick={() => { setPin(''); setPinFor(pinFor === n.id ? null : n.id); }} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-positive/40 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">
-                        Ativar número
-                      </button>
+                      {n.status !== 'CONNECTED' && n.status !== 'BANNED' && (
+                        <button onClick={() => { setPin(''); setPinFor(pinFor === n.id ? null : n.id); }} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-positive/40 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">
+                          Ativar número
+                        </button>
+                      )}
                       </>
                     ) : (
                       <>

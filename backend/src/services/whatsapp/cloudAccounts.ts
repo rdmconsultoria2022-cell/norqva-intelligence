@@ -454,6 +454,7 @@ export async function checkCloudNumber(pool: Pool, n: any) {
 // ---------- NORQVA-0102: ativar o número na API ----------
 
 export const PENDING_REASON = 'Falta ativar o número na API oficial: clique em "Ativar número" e crie o PIN de 6 números.';
+export const ACTIVATED_WAITING_REASON = 'Número ativado; aguardando a Meta confirmar. Use "Conferir na Meta" em alguns minutos.';
 
 /** A Meta devolve platform_type = CLOUD_API quando o número já está ativo na API. Sem o campo, não acusa nada. */
 export function notRegistered(info: any): boolean {
@@ -496,6 +497,8 @@ export async function registerCloudNumber(pool: Pool, numberId: string, body: an
   }
   await writeAuditLog(pool, userId, 'WHATSAPP_CLOUD_NUMBER_REGISTERED', `Número oficial "${n.label}" ativado na API da Meta.`, null, n.id);
   await checkCloudNumber(pool, n);
+  // a Meta pode levar alguns instantes para mostrar o número como ativo: não pedir para ativar de novo
+  await pool.query(`UPDATE whatsapp_numbers SET status_reason = $1, updated_at = NOW() WHERE id = $2 AND status_reason = $3`, [ACTIVATED_WAITING_REASON, n.id, PENDING_REASON]);
   const r = await pool.query('SELECT status, status_reason FROM whatsapp_numbers WHERE id = $1', [n.id]);
   return { ok: true, status: r.rows[0]?.status ?? null, status_reason: r.rows[0]?.status_reason ?? null };
 }
