@@ -122,6 +122,10 @@ export function describeCloudError(code: number | null, metaMessage?: string): C
       return { message: 'PIN errado: use o PIN de 6 números da verificação em duas etapas deste número.', retry: false, effect: 'NONE', outsideWindow: false };
     case 133006:
       return { message: 'A Meta pede para verificar o número (código por SMS) antes de ativá-lo.', retry: false, effect: 'NONE', outsideWindow: false };
+    case 133016:
+      return { message: 'A Meta bloqueou novas ativações deste número por excesso de tentativas. Espere 3 dias sem tentar e faça uma tentativa só.', retry: false, effect: 'NONE', outsideWindow: false };
+    case 133015:
+      return { message: 'O número foi apagado há pouco e a Meta ainda está terminando. Espere uns 5 minutos.', retry: false, effect: 'NONE', outsideWindow: false };
     case 133009:
       return { message: 'Tentativas de PIN rápidas demais. Aguarde alguns minutos e tente de novo.', retry: false, effect: 'NONE', outsideWindow: false };
     case 10:
