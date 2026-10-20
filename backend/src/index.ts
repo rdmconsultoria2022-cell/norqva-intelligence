@@ -171,7 +171,7 @@ import {
   getWhatsAppNumbers, postWhatsAppNumber, patchWhatsAppNumber, postWhatsAppConnect, getWhatsAppNumberStatus, postWhatsAppSwap,
   deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook,
   getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler, getWhatsAppResults, getWhatsAppServerCheck,
-  postPublicWhatsAppRef, getCloudAccounts, postCloudAccount, patchCloudAccount, deleteCloudAccountRoute, postCloudAccountCheck, postCloudNumber,
+  postPublicWhatsAppRef, getCloudAccounts, postCloudAccount, patchCloudAccount, deleteCloudAccountRoute, postCloudAccountCheck, postCloudNumber, postCloudNumberRegister,
   getCloudWebhook, postCloudWebhook
 } from './controllers/whatsappController';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
@@ -431,6 +431,7 @@ app.patch('/api/whatsapp/cloud/accounts/:id', requireRole(['ADMIN']), patchCloud
 app.delete('/api/whatsapp/cloud/accounts/:id', requireRole(['ADMIN']), deleteCloudAccountRoute);
 app.post('/api/whatsapp/cloud/accounts/:id/check', requireRole(['ADMIN']), postCloudAccountCheck);
 app.post('/api/whatsapp/cloud/numbers', requireRole(['ADMIN']), postCloudNumber);
+app.post('/api/whatsapp/cloud/numbers/:id/register', requireRole(['ADMIN']), postCloudNumberRegister);
 app.get('/api/checkout/orders/:orderId/delivery-tokens', deliveryRateLimiter, getDeliveryTokens);
 app.get('/api/delivery/:token', deliveryRateLimiter, downloadDelivery);
 

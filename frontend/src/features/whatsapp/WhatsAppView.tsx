@@ -140,6 +140,9 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
   const [confirm, setConfirm] = useState<{ id: string; kind: 'swap' | 'delete' } | null>(null);
   const [editing, setEditing] = useState<{ id: string; label: string; brand_id: string } | null>(null);
   const [check, setCheck] = useState<{ ok: boolean; problem: string | null; version: string | null; host: string | null } | null>(null);
+  // NORQVA-0102: ativar número oficial na API (PIN de 6 números, não fica salvo)
+  const [pinFor, setPinFor] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
 
   const testServer = () => run('check', async () => {
     const r = await api.current('/whatsapp/server-check');
@@ -239,6 +242,15 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
     const r = await api.current(`/whatsapp/numbers/${n.id}/connect`, { method: 'POST' });
     if (r?.number?.status === 'CONNECTED') showSuccess('Número oficial conferido na Meta.');
     else showError(r?.number?.status_reason || 'A Meta não confirmou o número. Veja o aviso no cartão.');
+    await load();
+  });
+
+  const registerOfficial = (n: WaNumber) => run(`register-${n.id}`, async () => {
+    const r = await api.current(`/whatsapp/cloud/numbers/${n.id}/register`, { method: 'POST', body: JSON.stringify({ pin }) });
+    setPin('');
+    setPinFor(null);
+    if (r?.status === 'CONNECTED') showSuccess('Número ativado na API da Meta.');
+    else showError(r?.status_reason || 'A Meta ainda não confirmou o número. Use "Conferir na Meta" em instantes.');
     await load();
   });
 
@@ -366,9 +378,16 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                 {isAdmin && editing?.id !== n.id && (
                   <div className="flex flex-wrap gap-1.5">
                     {official ? (
+                      <>
                       <button onClick={() => checkOfficial(n)} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-info/40 px-2 py-1 text-[12px] text-nq-info disabled:opacity-40 min-h-[44px]">
                         <RefreshCw className="h-3.5 w-3.5" /> Conferir na Meta
                       </button>
+                      {n.status !== 'CONNECTED' && n.status !== 'BANNED' && (
+                        <button onClick={() => { setPin(''); setPinFor(pinFor === n.id ? null : n.id); }} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-positive/40 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">
+                          Ativar número
+                        </button>
+                      )}
+                      </>
                     ) : (
                       <>
                         {n.status !== 'CONNECTED' && (
@@ -390,6 +409,26 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                     <button onClick={() => setConfirm({ id: n.id, kind: 'delete' })} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-critical/40 px-2 py-1 text-[12px] text-nq-critical-text disabled:opacity-40 min-h-[44px]">
                       <Trash2 className="h-3.5 w-3.5" /> Excluir
                     </button>
+                  </div>
+                )}
+                {pinFor === n.id && (
+                  <div className="rounded border border-nq-line p-2 text-[12px] text-nq-text space-y-2" data-testid="wa-register">
+                    <p>Crie um PIN de 6 números para este número (verificação em duas etapas da Meta). Anote: ele é pedido se o número for levado para outro lugar. O NORQVA não guarda o PIN.</p>
+                    <div className="flex gap-2">
+                      <input
+                        aria-label="PIN de 6 números"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={6}
+                        value={pin}
+                        onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="w-32 rounded-xl bg-nq-bg px-2 py-2 text-sm tracking-widest text-nq-text min-h-[44px]"
+                      />
+                      <button onClick={() => registerOfficial(n)} disabled={pin.length !== 6 || !!busy} className="rounded-full border border-nq-positive/40 bg-nq-positive/10 px-3 py-1 text-nq-positive-text disabled:opacity-40 min-h-[44px]">
+                        Ativar
+                      </button>
+                      <button onClick={() => { setPin(''); setPinFor(null); }} className="rounded-full border border-nq-line px-2 py-1 text-nq-text min-h-[44px]">Cancelar</button>
+                    </div>
                   </div>
                 )}
                 {confirm?.id === n.id && (
