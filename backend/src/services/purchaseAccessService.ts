@@ -15,6 +15,7 @@
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { emailService, validateFrontendUrl } from './emailService';
+import { brandSenderNameForOrder } from './emailSender';
 
 export const PURCHASE_ACCESS_MAX_ATTEMPTS = 3;
 const DEFAULT_FRONTEND_URL = 'https://norqva-intelligence-frontend.vercel.app';
@@ -143,6 +144,7 @@ export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Pro
     const tokenId = tokenRes.rows[0].id;
 
     const correlationId = crypto.randomUUID();
+    const senderName = await brandSenderNameForOrder(pool, orderId);
     const result = await emailService.sendPurchaseAccessEmail({
       email: order.customer_email,
       offerName: order.offer_name || 'sua compra',
@@ -151,7 +153,8 @@ export async function sendPaidOrderAccessEmail(pool: Pool, orderId: string): Pro
       correlationId,
       isDemo: order.is_demo,
       kind: 'PURCHASE',
-      validityHours: ttlHours
+      validityHours: ttlHours,
+      senderName
     });
 
     if (!result.success) {

@@ -249,3 +249,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Vídeo novo:** só de criativo aprovado da oferta, com o mesmo crivo da criação e sem preço; peça nova no mesmo anúncio (a Meta revisa de novo).
 - **Data de término:** só futura; tirar a data e editar público ficam pelo Gerenciador.
 - Cada edição relê a Meta antes de dizer que foi feita.
+
+## D-0107 — E-mail de acesso com a marca e lembrete de download (2026-10-21)
+
+- **Decisão (Ricardo, "2 sim" em 21/10/2026 20h12):** o e-mail de acesso sai com o nome da marca do produto no remetente (mesmo endereço; sem marca, "NORQVA"), em visual claro com botão "Baixar meu livro" e a dica de procurar no spam.
+- **Lembrete de download:** quem pagou e não baixou recebe link novo 3 h e 24 h depois da confirmação do pagamento; no máximo dois por pedido (pedido antigo: só o de 24 h), pelo menos 12 h entre eles, até 30 dias depois do pagamento. Nunca para estorno, entrega bloqueada, teste ou demo. `DOWNLOAD_REMINDER_ENABLED=false` desliga.
+- **DNS:** registro DMARC `_dmarc.norqva.com.br` TXT `v=DMARC1; p=none; adkim=r; aspf=r`, criado pelo Ricardo no Registro.br.

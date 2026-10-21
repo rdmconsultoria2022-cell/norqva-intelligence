@@ -6,6 +6,7 @@
 import { Resend } from 'resend';
 import { IEmailProvider, SendPurchaseAccessEmailParams, SendPaymentReminderEmailParams, EmailServiceResult } from './emailService';
 import { sanitizeEmailProviderError } from './emailConfig';
+import { buildFromHeader, sanitizeSenderName, DEFAULT_SENDER_NAME } from './emailSender';
 
 export class ResendEmailProvider implements IEmailProvider {
   private resend: Resend;
@@ -38,7 +39,7 @@ export class ResendEmailProvider implements IEmailProvider {
   }
 
   async sendPurchaseAccessEmail(params: SendPurchaseAccessEmailParams): Promise<EmailServiceResult> {
-    const { email, offerName, recoveryUrl } = params;
+    const { email, recoveryUrl } = params;
 
     if (!email || !recoveryUrl) {
       return {
@@ -47,8 +48,78 @@ export class ResendEmailProvider implements IEmailProvider {
       };
     }
 
-    const fromAddress = this.defaultFrom || process.env.EMAIL_FROM || 'NORQVA <acesso@mail.norqva.com.br>';
-    // NORQVA-0023: o mesmo e-mail serve à compra confirmada (PURCHASE) e à recuperação (RECOVERY, padrão).
+    const fromAddress = buildFromHeader(this.defaultFrom || process.env.EMAIL_FROM || 'NORQVA <acesso@mail.norqva.com.br>', params.senderName);
+    // NORQVA-0107: compra e lembrete de download no visual claro com a marca; recuperação segue igual.
+    const built = params.kind === 'PURCHASE' || params.kind === 'DOWNLOAD_REMINDER'
+      ? buildPurchaseAccessEmail(params)
+      : buildRecoveryAccessEmail(params);
+    const subject = built.subject;
+    const textContent = built.text;
+    const htmlContent = built.html;
+
+    const correlationId = params.correlationId;
+
+    try {
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_SEND_START',
+        timestamp: new Date().toISOString(),
+        ...(correlationId ? { correlation_id: correlationId } : {}),
+        from_configured: Boolean(fromAddress)
+      }));
+
+      const { data, error } = await this.resend.emails.send({
+        from: fromAddress,
+        to: [email],
+        subject,
+        html: htmlContent,
+        text: textContent
+      });
+
+      if (error) {
+        const sanitizedErrorCode = sanitizeEmailProviderError(error);
+        console.error(JSON.stringify({
+          event: 'RECOVERY_EMAIL_SEND_FAILED',
+          timestamp: new Date().toISOString(),
+          ...(correlationId ? { correlation_id: correlationId } : {}),
+          error_code: sanitizedErrorCode
+        }));
+        return {
+          success: false,
+          error: sanitizedErrorCode
+        };
+      }
+
+      console.log(JSON.stringify({
+        event: 'RECOVERY_EMAIL_SEND_SUCCESS',
+        timestamp: new Date().toISOString(),
+        ...(correlationId ? { correlation_id: correlationId } : {}),
+        message_id: data?.id || 'resend-ok'
+      }));
+
+      return {
+        success: true,
+        messageId: data?.id || 'resend-ok',
+        simulated: false
+      };
+    } catch (err: any) {
+      const sanitizedErrorCode = sanitizeEmailProviderError(err);
+      console.error(JSON.stringify({
+        event: 'RECOVERY_EMAIL_SEND_FAILED',
+        timestamp: new Date().toISOString(),
+        ...(correlationId ? { correlation_id: correlationId } : {}),
+        error_code: sanitizedErrorCode
+      }));
+      return {
+        success: false,
+        error: sanitizedErrorCode
+      };
+    }
+  }
+}
+
+/** Recuperação de acesso (RECOVERY): texto e HTML de antes (NORQVA-0023), sem mudança. */
+export function buildRecoveryAccessEmail(params: SendPurchaseAccessEmailParams): { subject: string; text: string; html: string } {
+    const { offerName, recoveryUrl } = params;
     const isPurchase = params.kind === 'PURCHASE';
     const validityDays = Math.max(1, Math.round((params.validityHours || 168) / 24));
     const subject = isPurchase
@@ -153,67 +224,8 @@ export class ResendEmailProvider implements IEmailProvider {
 </body>
 </html>
     `.trim();
-
-    const correlationId = params.correlationId;
-
-    try {
-      console.log(JSON.stringify({
-        event: 'RECOVERY_EMAIL_SEND_START',
-        timestamp: new Date().toISOString(),
-        ...(correlationId ? { correlation_id: correlationId } : {}),
-        from_configured: Boolean(fromAddress)
-      }));
-
-      const { data, error } = await this.resend.emails.send({
-        from: fromAddress,
-        to: [email],
-        subject,
-        html: htmlContent,
-        text: textContent
-      });
-
-      if (error) {
-        const sanitizedErrorCode = sanitizeEmailProviderError(error);
-        console.error(JSON.stringify({
-          event: 'RECOVERY_EMAIL_SEND_FAILED',
-          timestamp: new Date().toISOString(),
-          ...(correlationId ? { correlation_id: correlationId } : {}),
-          error_code: sanitizedErrorCode
-        }));
-        return {
-          success: false,
-          error: sanitizedErrorCode
-        };
-      }
-
-      console.log(JSON.stringify({
-        event: 'RECOVERY_EMAIL_SEND_SUCCESS',
-        timestamp: new Date().toISOString(),
-        ...(correlationId ? { correlation_id: correlationId } : {}),
-        message_id: data?.id || 'resend-ok'
-      }));
-
-      return {
-        success: true,
-        messageId: data?.id || 'resend-ok',
-        simulated: false
-      };
-    } catch (err: any) {
-      const sanitizedErrorCode = sanitizeEmailProviderError(err);
-      console.error(JSON.stringify({
-        event: 'RECOVERY_EMAIL_SEND_FAILED',
-        timestamp: new Date().toISOString(),
-        ...(correlationId ? { correlation_id: correlationId } : {}),
-        error_code: sanitizedErrorCode
-      }));
-      return {
-        success: false,
-        error: sanitizedErrorCode
-      };
-    }
-  }
+  return { subject, text: textContent, html: htmlContent };
 }
-
 
 /** NORQVA-0074: texto e HTML do lembrete de pagamento (exportado para os testes). */
 export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now: Date = new Date()): { subject: string; text: string; html: string } {
@@ -281,6 +293,92 @@ export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now
     </table>
   </td></tr></table>
 </body></html>`;
+  return { subject, text, html };
+}
+
+export const SPAM_HINT = 'Não achou este e-mail depois? Procure em Spam ou Lixo eletrônico e marque como “Não é spam”.';
+export const DOWNLOAD_REMINDER_INTRO = 'Vimos que você ainda não baixou o seu livro. O link abaixo é novo e já está liberado.';
+
+/**
+ * NORQVA-0107: e-mail de acesso da compra (PURCHASE) e lembrete de download (DOWNLOAD_REMINDER).
+ * Visual claro (creme, texto escuro, botão terracota) e o nome da marca no topo, para o comprador
+ * reconhecer o que comprou. Exportado para os testes.
+ */
+export function buildPurchaseAccessEmail(params: SendPurchaseAccessEmailParams): { subject: string; text: string; html: string } {
+  const brand = sanitizeSenderName(params.senderName) || DEFAULT_SENDER_NAME;
+  const offerName = params.offerName || 'sua compra';
+  const url = params.recoveryUrl;
+  const isReminder = params.kind === 'DOWNLOAD_REMINDER';
+  const validityDays = Math.max(1, Math.round((params.validityHours || 168) / 24));
+  const subject = isReminder ? `Você ainda não baixou ${offerName}` : `Seu acesso a ${offerName} está pronto`;
+  const intro = isReminder ? DOWNLOAD_REMINDER_INTRO : `Obrigado pela compra de ${offerName}! Seu pagamento foi confirmado.`;
+  const validity = `Guarde este e-mail: o link vale por ${validityDays} dias e pode ser aberto mais de uma vez.`;
+  const help = 'Se tiver dificuldade para abrir o link, fale com o nosso atendimento que enviamos o seu material.';
+
+  const text = [
+    'Olá!',
+    '',
+    intro,
+    '',
+    isReminder ? `Para baixar ${offerName}, use o link abaixo:` : 'Para baixar o seu livro, use o link abaixo:',
+    '',
+    url,
+    '',
+    validity,
+    '',
+    SPAM_HINT,
+    '',
+    help,
+    '',
+    'Com carinho,',
+    `Equipe ${brand}`
+  ].join('\n');
+
+  const ink = '#2B2B2B';
+  const muted = '#6B6158';
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #FBF7F0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: ${ink};">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FBF7F0; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; background-color: #FFFFFF; border: 1px solid #EADFD2; border-radius: 12px;">
+          <tr>
+            <td style="padding: 28px 28px 16px 28px; border-bottom: 1px solid #EADFD2; text-align: center;">
+              <p style="margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 22px; font-weight: 600; color: ${ink};">${escapeHtml(brand)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 28px;">
+              <p style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: ${ink};">Olá!</p>
+              <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: ${ink};">${escapeHtml(intro)}</p>
+              <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: ${ink};">Seu livro: <strong>${escapeHtml(offerName)}</strong></p>
+              <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin: 0 auto 16px auto;">
+                <tr>
+                  <td align="center" style="border-radius: 10px; background-color: #B5472B;">
+                    <a href="${escapeHtml(url)}" target="_blank" style="display: inline-block; padding: 16px 32px; font-size: 18px; font-weight: 700; color: #FFFFFF; text-decoration: none; border-radius: 10px;">Baixar meu livro</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 0 0 6px 0; font-size: 13px; color: ${muted}; text-align: center;">Se o botão não abrir, copie e cole este link no navegador:</p>
+              <p style="margin: 0 0 24px 0; font-size: 12px; color: #B5472B; word-break: break-all; text-align: center;">${escapeHtml(url)}</p>
+              <p style="margin: 0 0 12px 0; padding: 12px 14px; background-color: #FBF7F0; border-radius: 8px; font-size: 13px; line-height: 1.5; color: ${ink};">${escapeHtml(validity)}</p>
+              <p style="margin: 0 0 12px 0; font-size: 13px; line-height: 1.5; color: ${ink};">${escapeHtml(SPAM_HINT)}</p>
+              <p style="margin: 0 0 20px 0; font-size: 13px; line-height: 1.5; color: ${muted};">${escapeHtml(help)}</p>
+              <p style="margin: 0; font-size: 14px; color: ${ink};">Com carinho,<br>Equipe ${escapeHtml(brand)}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
   return { subject, text, html };
 }
 

@@ -4,6 +4,7 @@
  * 1. Webhooks confirmados que falharam: processa de novo (até 5 vezes).
  * 2. Pagamentos reais ainda pendentes nas últimas 48 h: consulta o Asaas (a confirmação vem dele).
  * 3. Pedidos pagos sem e-mail de acesso (ou com falha, até 3 tentativas): envia.
+ * 6. NORQVA-0107: lembrete de download para quem pagou e não baixou (3 h e 24 h depois do pagamento).
  *
  * Só pedidos reais (is_demo = false). Nada aqui marca pagamento sem a resposta do Asaas.
  * PAYMENT_SWEEP_ENABLED=false desliga.
@@ -14,12 +15,14 @@ import { sendPaidOrderAccessEmail, PURCHASE_ACCESS_MAX_ATTEMPTS } from './purcha
 import { shouldCheckProvider, withTimeout } from './paymentCheckThrottle';
 import { sweepWhatsAppDeliveries } from './whatsapp/whatsappDelivery';
 import { runPaymentReminders, PaymentReminderDeps } from './paymentReminderService';
+import { runDownloadReminders, DownloadReminderDeps } from './downloadReminderService';
 
 export interface PaymentSweepDeps {
   reconcile: (paymentId: string, pool: Pool) => Promise<any>;
   retryWebhookEvent: (pool: Pool, externalEventId: string, eventType: string, paymentId: string) => Promise<boolean | null>;
   sendAccessEmail?: (pool: Pool, orderId: string) => Promise<any>;
   reminders?: PaymentReminderDeps;
+  downloadReminders?: DownloadReminderDeps;
 }
 
 export interface PaymentSweepResult {
@@ -27,6 +30,7 @@ export interface PaymentSweepResult {
   paymentsChecked: number;
   emailsAttempted: number;
   remindersSent?: number;
+  downloadRemindersSent?: number;
 }
 
 const BATCH = 25;
@@ -112,6 +116,14 @@ export async function runPaymentSweep(pool: Pool, deps: PaymentSweepDeps): Promi
     console.warn('[PAYMENT SWEEP] payment reminder error', err?.message);
   }
 
+  // 6. NORQVA-0107: lembrete de download (link novo) para quem pagou e ainda não baixou
+  try {
+    const dl = await runDownloadReminders(pool, deps.downloadReminders || {});
+    result.downloadRemindersSent = dl.sent;
+  } catch (err: any) {
+    console.warn('[PAYMENT SWEEP] download reminder error', err?.message);
+  }
+
   return result;
 }
 
@@ -124,7 +136,7 @@ export function startPaymentSweepScheduler(pool: Pool, deps: PaymentSweepDeps): 
     running = true;
     try {
       const r = await runPaymentSweep(pool, deps);
-      if (r.webhooksRetried || r.paymentsChecked || r.emailsAttempted || r.remindersSent) {
+      if (r.webhooksRetried || r.paymentsChecked || r.emailsAttempted || r.remindersSent || r.downloadRemindersSent) {
         console.log('[PAYMENT SWEEP]', JSON.stringify(r));
       }
     } catch (err: any) {

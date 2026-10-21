@@ -13,6 +13,7 @@ import { campaignsForCreatives } from '../services/creative/creativeCampaigns';
 import https from 'https';
 import http from 'http';
 import { emailService } from '../services/emailService';
+import { brandSenderNameForOrder } from '../services/emailSender';
 import { validateFrontendUrl } from '../services/emailConfig';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { encryptData, decryptData, generateHmacHash } from '../utils/crypto';
@@ -4866,12 +4867,15 @@ export async function requestOrderRecovery(req: any, res: Response) {
         is_demo: Boolean(order.is_demo)
       }));
 
+      // NORQVA-0107: remetente com o nome da marca do produto (sem marca, "NORQVA")
+      const senderName = await brandSenderNameForOrder(pool, order.order_id);
       const emailResult = await emailService.sendPurchaseAccessEmail({
         email: order.customer_email,
         offerName: order.offer_name_snapshot || 'Trattoria em Casa — Edição Digital',
         recoveryUrl,
         correlationId,
-        isDemo: order.is_demo
+        isDemo: order.is_demo,
+        senderName
       });
 
       console.log(JSON.stringify({
