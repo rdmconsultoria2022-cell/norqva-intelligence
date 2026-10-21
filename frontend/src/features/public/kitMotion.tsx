@@ -223,7 +223,7 @@ export const Book3D: React.FC<{ src: string; alt: string; ry?: number; depth?: n
   <div className="b3" style={{ ['--ry' as any]: `${ry}deg`, ['--d' as any]: `${depth}px`, ['--ft' as any]: `${float}s`, ['--fd' as any]: `${delay}s`, ...style } as Css}>
     <div className="fl">
       <div className="bi">
-        <div className="f"><img src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} /></div>
+        <div className="f"><img src={src} alt={alt} width={663} height={936} loading={eager ? 'eager' : 'lazy'} decoding="async" /></div>
         <div className="sp" />
         <div className="pg" />
         <div className="bk" />

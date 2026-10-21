@@ -99,6 +99,24 @@ const CSS = `
 @media (max-width:720px){.kl .bk-list{padding:4px 20px}.kl .bk-row{grid-template-columns:minmax(0,1fr);justify-items:center;text-align:center;gap:16px;padding:28px 0}.kl .bk-cov{width:120px}.kl .bk-buy{align-items:stretch;text-align:center;width:100%}.kl .bk-buy .btn{width:100%}}
 @media (max-width:960px){.kl .hero3,.kl .two{grid-template-columns:minmax(0,1fr)!important;gap:40px!important}.kl .seals{grid-template-columns:repeat(2,minmax(0,1fr))!important}.kl .gal{grid-template-columns:repeat(2,minmax(0,1fr))}.kl .gal > :first-child{grid-column:span 2!important;grid-row:auto!important}.kl .nav{display:none!important}}
 @media (max-width:560px){.kl .wrap{padding:0 18px}.kl .price{font-size:58px!important}}
+/* NORQVA-0108: topo do kit completo. No celular cabe numa tela: capas, título, resumo, preço e botão. */
+.kl .hk-sum{margin:0;font-size:15px;font-weight:600;color:#5a5249;letter-spacing:.01em;text-wrap:balance}
+.kl .hk-price{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.kl .hk-cta{display:flex;flex-direction:column;align-items:flex-start;gap:14px}
+@media (min-width:961px){.kl .hero-kit .hero-art{order:2}}
+@media (max-width:960px){
+  .kl .hero-kit{padding-top:14px!important;padding-bottom:44px!important}
+  .kl .hero-kit .hero-grid{gap:10px!important}
+  .kl .hero-kit .hero-copy{gap:12px!important}
+  .kl .hero-kit .hero-art{width:100%;max-width:330px;margin:0 auto}
+  .kl .hero-kit .hk-desk{display:none}
+  .kl .hero-kit .hk-price,.kl .hero-kit .hk-cta{justify-content:center;align-items:center}
+  .kl .hero-kit .hk-cta{width:100%}
+  .kl .hero-kit .hk-cta .btn{width:100%;max-width:380px}
+  .kl .hero-kit h1{font-size:clamp(34px,9.4vw,44px)!important}
+  .kl .hero-kit .trust{margin-top:0!important}
+}
+@media (max-width:560px){.kl .hero-kit .stk{aspect-ratio:1.62/1}.kl .hero-kit .hk-sum{font-size:14px}}
 `;
 
 const PAGE_CSS = CSS + KIT_MOTION_CSS;
@@ -317,7 +335,10 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       <div className="prog" aria-hidden="true" />
 
       <div style={{ background: '#1f1b17', color: '#e9dfcf', textAlign: 'center', padding: '10px 16px', fontSize: 12, letterSpacing: '.14em', textTransform: 'uppercase' }}>
-        {minPrice !== null ? <strong style={{ color: '#f3c9a8' }} data-testid="kit-from-banner">Ofertas a partir de {brl(minPrice)}</strong> : 'Coleção Cozinha Italiana em Casa'}
+        {full ? (
+          // NORQVA-0108: no kit completo a faixa fala do kit (o "a partir de" dos avulsos fica abaixo do botão)
+          <strong style={{ color: '#f3c9a8' }} data-testid="kit-hero-banner">Kit completo · {KIT_BOOKS.length} livros por {brl(pix)}</strong>
+        ) : minPrice !== null ? <strong style={{ color: '#f3c9a8' }} data-testid="kit-from-banner">Ofertas a partir de {brl(minPrice)}</strong> : 'Coleção Cozinha Italiana em Casa'}
       </div>
 
       <div className={`hdr${scrolled ? ' on' : ''}`}>
@@ -338,6 +359,58 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       </div>
 
       {/* Topo */}
+      {full ? (
+        // NORQVA-0108: kit completo. Quem chega do anúncio do kit vê na primeira tela as capas, o kit e o preço do kit.
+        <section className="wrap hero-kit" style={{ paddingTop: 56, paddingBottom: 80 }} data-testid="kit-hero">
+          <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.14fr)', gap: 48, alignItems: 'center' }}>
+            <div className="hero-art up" style={{ position: 'relative', ['--d' as any]: '60ms' }}>
+              <BookStack eager books={stackBooks} ariaLabel="Os cinco livros do kit em leque" />
+              <div className="chip" style={{ width: '20%', aspectRatio: '1', left: '-1%', top: '4%', zIndex: 3, ['--ft' as any]: '7.5s' }}><img src={`${IMG}/trat_carbonara.jpg`} alt="Carbonara" loading="lazy" /></div>
+              <div className="chip" style={{ width: '17%', aspectRatio: '1', right: '1%', top: '0', zIndex: 3, ['--ft' as any]: '6.2s', ['--fd' as any]: '-2s' }}><img src={`${IMG}/dolci_tiramisu.jpg`} alt="Tiramisù" loading="lazy" /></div>
+            </div>
+            <div className="hero-copy" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 22 }}>
+              <div className="kicker up hk-desk">Livros digitais de receitas italianas</div>
+              <h1 className="serif up" style={{ margin: 0, fontWeight: 500, fontSize: 'clamp(40px,4.5vw,64px)', lineHeight: 0.98, ['--d' as any]: '90ms' }}>
+                A cozinha da <span style={{ fontStyle: 'italic', color: '#8a3a26' }}>nonna</span> em {KIT_BOOKS.length} livros
+              </h1>
+              <p className="hk-sum up" style={{ ['--d' as any]: '140ms' }} data-testid="kit-hero-summary">
+                {KIT_BOOKS.length} livros digitais · {FULL_KIT_RECIPES} receitas com foto e passo a passo
+              </p>
+              <p className="lead up hk-desk" style={{ maxWidth: 540, ['--d' as any]: '180ms' }}>
+                Massas, risotos, pães, antepastos, pizzas e os doces de família da Itália, com medidas precisas para dar certo já na primeira vez.
+              </p>
+              <div className="hk-price up" style={{ ['--d' as any]: '220ms' }} data-testid="kit-hero-price">
+                {strikeFrom !== null && strikeFrom > pix && (
+                  <span style={{ fontSize: 17, color: '#8d8377' }}>
+                    de <span className="strike">{brl(strikeFrom)}</span> por
+                  </span>
+                )}
+                <span className="serif" style={{ fontSize: 'clamp(44px,4.4vw,58px)', fontWeight: 600, lineHeight: 1, color: '#8a3a26' }}>{brl(pix)}</span>
+              </div>
+              <div className="hk-cta up" style={{ ['--d' as any]: '270ms' }}>
+                <BuyChoice available={!!offer.whatsapp?.available} offerHumanId={offer.human_id} onCheckout={openCheckout} testId="kit-buy-choice-top">
+                  <button className="btn shine" onClick={openCheckout} data-testid="kit-cta-top">Quero o kit completo</button>
+                </BuyChoice>
+              </div>
+              <ul className="trust up" style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', gap: '8px 22px', flexWrap: 'wrap', fontSize: 13, color: '#5a5249', ['--d' as any]: '320ms' }}>
+                {['Entrega imediata no e-mail', cardOn ? 'Pagamento seguro via Pix ou cartão' : 'Pagamento seguro via Pix'].map(t => (
+                  <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a3a26" strokeWidth="2"><path d="M4 12.5l5 5L20 6.5" /></svg>
+                    {t}
+                  </li>
+                ))}
+              </ul>
+              <div className="up" style={{ ['--d' as any]: '360ms' }}>
+                {minBookPrice !== null ? (
+                  <a className="link" href="#oferta" data-testid="kit-hero-books-link">ou veja os livros separados, a partir de {brl(minBookPrice)}</a>
+                ) : (
+                  <a className="link" href="#pratos">Conhecer os pratos</a>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : (
       <section className="wrap" style={{ paddingTop: 56, paddingBottom: 80 }}>
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.14fr)', gap: 48, alignItems: 'center' }}>
           <div className="hero-copy" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 24 }}>
@@ -377,13 +450,14 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           </div>
         </div>
       </section>
+      )}
 
       {/* Feito à mão */}
       <section id="pratos" className="wrap" style={{ paddingTop: 104, paddingBottom: 104 }}>
         <div className="strip" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,.85fr) minmax(0,1.15fr)', gap: 72, alignItems: 'center' }}>
           <div className="strip-arch rv fl-l" style={{ position: 'relative', width: '100%' }}>
             <div className="arch" style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', boxShadow: '0 40px 80px rgba(60,40,25,.22)' }}>
-              <img src={`${IMG}/nonna.jpg`} alt="Senhora abrindo massa fresca com rolo de madeira numa cozinha iluminada" style={{ objectPosition: 'center 18%' }} />
+              <img src={`${IMG}/nonna.jpg`} alt="Senhora abrindo massa fresca com rolo de madeira numa cozinha iluminada" loading="lazy" style={{ objectPosition: 'center 18%' }} />
             </div>
             <div className="frost" style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', padding: '14px 22px', borderRadius: 4, whiteSpace: 'nowrap' }}>
               <div className="serif" style={{ fontSize: 19, fontStyle: 'italic' }}>Feito à mão, como na Itália</div>
@@ -399,7 +473,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             ].map(([img, book, name, note], i) => (
               <div key={img} className="dish rv" style={{ display: 'flex', gap: 22, alignItems: 'center', ['--d' as any]: `${160 + i * 110}ms` }}>
                 <div className="plate" style={{ width: 112, height: 112, flex: '0 0 auto' }}>
-                  <img src={`${IMG}/${img}.jpg`} alt={name} />
+                  <img src={`${IMG}/${img}.jpg`} alt={name} loading="lazy" />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8a6b45' }}>{book}</div>
@@ -448,7 +522,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
           </div>
           <div className="gal">
             <figure className="rv zoom" style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-              <img src={`${IMG}/trat_ragu.jpg`} alt="Ragù alla bolognese" />
+              <img src={`${IMG}/trat_ragu.jpg`} alt="Ragù alla bolognese" loading="lazy" />
               <figcaption className="frost" style={{ fontSize: 20 }}>Ragù alla bolognese</figcaption>
             </figure>
             {[
@@ -458,7 +532,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
               ['dolci_pannacotta', 'Panna cotta']
             ].map(([img, name], i) => (
               <figure key={img} className="rv zoom" style={{ ['--d' as any]: `${(i + 1) * 90}ms` }}>
-                <img src={`${IMG}/${img}.jpg`} alt={name} />
+                <img src={`${IMG}/${img}.jpg`} alt={name} loading="lazy" />
                 <figcaption className="frost">{name}</figcaption>
               </figure>
             ))}
@@ -471,8 +545,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         <div className="wrap two" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: 80, alignItems: 'center' }}>
           <div className="spread-wrap rv fl-l">
           <div className="spread">
-            <div><img src={`${IMG}/trat_carbonara.jpg`} alt="Página de foto da receita de carbonara" /></div>
-            <div style={{ background: '#fffdf8' }}><img src={`${IMG}/pag_trat.jpg`} alt="Página da receita com ingredientes e modo de preparo" style={{ objectFit: 'contain' }} /></div>
+            <div><img src={`${IMG}/trat_carbonara.jpg`} alt="Página de foto da receita de carbonara" loading="lazy" /></div>
+            <div style={{ background: '#fffdf8' }}><img src={`${IMG}/pag_trat.jpg`} alt="Página da receita com ingredientes e modo de preparo" loading="lazy" style={{ objectFit: 'contain' }} /></div>
           </div>
           </div>
           <div className="rv fl-r" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -521,7 +595,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
             if (sale) {
               return (
                 <a key={name} href={`/p/${encodeURIComponent(sale.human_id)}`} style={{ display: 'flex', flexDirection: 'column', gap: 18, color: 'inherit', textDecoration: 'none' }} data-testid={`collection-${key}`}>
-                  <div className="cov"><img src={COLLECTION_COVERS[key]} alt={`Capa ${name}`} /></div>
+                  <div className="cov"><img src={COLLECTION_COVERS[key]} alt={`Capa ${name}`} loading="lazy" /></div>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2f5a3d' }}>
                       Disponível separadamente
@@ -696,7 +770,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
 
       <div id="fecho" style={{ position: 'relative', overflow: 'hidden', borderTop: '1px solid #e6dccd' }}>
         <div className="cta-bg" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-          <img src={`${IMG}/trat_focaccia.jpg`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={`${IMG}/trat_focaccia.jpg`} alt="" loading="lazy" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(250,247,242,.96) 0%,rgba(250,247,242,.88) 45%,rgba(250,247,242,.35) 100%)' }} />
         <div className="wrap" style={{ paddingTop: 112, paddingBottom: 112 }}>

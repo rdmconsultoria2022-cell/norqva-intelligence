@@ -58,18 +58,18 @@ describe('NORQVA-0076 — lista de livros, contagem e botão do kit', () => {
     expect(screen.getAllByText('Quero comprar somente esse exemplar')).toHaveLength(5);
   });
 
-  it('antes das ofertas só aparece "a partir de" com o menor preço; o parcelamento do kit fica só no fim', async () => {
+  it('antes das ofertas: o topo mostra o preço do kit (NORQVA-0108) e o "a partir de" dos avulsos só no link; sem parcelas', async () => {
     const { container } = renderKit(kit);
     await screen.findByTestId('kit-book-list');
-    expect(screen.getByTestId('kit-from-hero')).toHaveTextContent('Ofertas a partir de');
-    expect(screen.getByTestId('kit-from-hero')).toHaveTextContent('R$ 14,90');
-    expect(screen.getByTestId('kit-from-banner')).toHaveTextContent('Ofertas a partir de R$ 14,90');
+    expect(screen.getByTestId('kit-hero-banner')).toHaveTextContent('Kit completo · 5 livros por R$ 79,92');
+    expect(screen.getByTestId('kit-hero-books-link')).toHaveTextContent('ou veja os livros separados, a partir de R$ 14,90');
+    expect(screen.queryByTestId('kit-from-hero')).toBeNull();
     expect(screen.getByTestId('kit-sticky-bar')).toHaveTextContent('R$ 14,90');
     expect(screen.getByTestId('kit-sticky-bar')).not.toHaveTextContent('19,98');
-    // tudo o que vem antes da seção de ofertas não tem outro preço nem parcelas
+    // antes da seção de ofertas: faixa (kit), "de/por" do kit, preço do kit e o link dos avulsos; nenhuma parcela
     const html = container.innerHTML;
     const before = html.slice(0, html.indexOf('id="oferta"'));
-    expect(before.match(/R\$/g)).toHaveLength(2); // faixa do alto e topo, os dois com R$ 14,90
+    expect(before.match(/R\$/g)).toHaveLength(4);
     expect(before).not.toMatch(/\d+x/);
     // a seção de ofertas vem depois das dúvidas
     expect(html.indexOf('id="perguntas"')).toBeLessThan(html.indexOf('id="oferta"'));
