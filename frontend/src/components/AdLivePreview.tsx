@@ -100,7 +100,7 @@ export const FittedFrame: React.FC<{ src: string; w: number; h: number; title: s
     <div ref={box} className="w-full min-w-0" data-testid="ad-preview-box">
       <div
         className="mx-auto overflow-hidden rounded border border-slate-800 bg-white"
-        style={{ width: Math.floor(w * scale), height: Math.floor(h * scale) }}
+        style={{ width: Math.floor(w * scale), height: Math.ceil(h * scale) }}
       >
         <iframe
           title={title}

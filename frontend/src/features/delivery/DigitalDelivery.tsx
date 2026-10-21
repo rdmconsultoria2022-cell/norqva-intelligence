@@ -132,7 +132,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
       : `Seu livro ${orderName} está pronto!`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 antialiased">
+    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] antialiased">
       <div className={`border rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar font-sans ${
         isBolsoBlindado ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-[#FAF7F2] border-stone-200 text-stone-800'
       }`}>

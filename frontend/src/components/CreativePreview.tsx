@@ -105,7 +105,7 @@ export const CreativePreview: React.FC<{
     <div className={`${className} ${fill ? 'flex flex-col h-full' : ''}`}>
       <div
         data-testid={fill ? 'creative-preview-fill' : undefined}
-        className={`relative rounded overflow-hidden border border-slate-800 bg-black ${fill ? 'flex-1 min-h-[16rem]' : `w-full mx-auto ${ratio ? 'max-h-[70vh]' : 'aspect-[4/5] max-h-72'}`}`}
+        className={`relative rounded overflow-hidden border border-slate-800 bg-black ${fill ? 'flex-1 min-h-[16rem]' : `w-full mx-auto ${ratio ? 'max-h-[70vh] md:max-h-72' : 'aspect-[4/5] max-h-72'}`}`}
         style={!fill && ratio ? { aspectRatio: String(ratio) } : undefined}
       >
         {media(false)}

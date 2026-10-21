@@ -627,8 +627,10 @@ export class MetaClient {
     const m = body.match(/src=["']([^"']+)["']/i);
     if (!m) return null;
     const src = m[1].replace(/&amp;/g, '&');
+    const tag = body.replace(/src=["'][^"']*["']/i, '');
     const dim = (name: string) => {
-      const d = body.match(new RegExp(`\\b${name}=["']?(\\d{2,4})`, 'i'));
+      // só atributo do próprio iframe (com espaço antes), fora do endereço do src
+      const d = tag.match(new RegExp(`\\s${name}=["']?(\\d{2,4})`, 'i'));
       const n = d ? Number(d[1]) : NaN;
       return Number.isFinite(n) && n >= 100 && n <= 2000 ? n : null;
     };
