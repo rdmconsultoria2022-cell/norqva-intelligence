@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { emailService } from './emailService';
 import { accessUrlBase, issueAccessToken } from './purchaseAccessService';
+import { brandSenderNameForOrder } from './emailSender';
 import { writeAuditLog } from '../db/audit';
 import { getCommercialOrderClause } from '../utils/commercialTruthPolicy';
 
@@ -155,7 +156,7 @@ async function loadOrder(pool: Pool, orderId: string, isDemo: boolean) {
  * Deixa a entrega do pedido pago pronta para um link novo: cria a partir dos ativos da oferta se não
  * existir; reativa entrega vencida ou esgotada (zera a contagem). Entrega revogada não é reativada.
  */
-async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
+export async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
   const existing = await pool.query('SELECT id, status FROM order_deliveries WHERE order_id = $1', [orderId]);
   if (existing.rows.some(d => d.status === 'REVOKED')) throw new SalesError(409, 'A entrega deste pedido foi revogada.');
   // NORQVA-0032: cria a entrega só de item que ainda não tem nenhuma (o adicional de um pedido antigo, por
@@ -189,7 +190,7 @@ async function prepareDelivery(pool: Pool, orderId: string): Promise<void> {
 }
 
 /** Um link ativo por finalidade: o novo substitui o anterior. */
-async function revokePrevious(pool: Pool, orderId: string, purpose: 'MANUAL' | 'RESEND') {
+export async function revokePrevious(pool: Pool, orderId: string, purpose: 'MANUAL' | 'RESEND') {
   await pool.query(
     `UPDATE order_recovery_tokens SET status = 'REVOKED', revoked_at = NOW()
      WHERE order_id = $1 AND purpose = $2 AND status = 'ACTIVE'`,
@@ -224,6 +225,7 @@ export async function resendAccessEmail(pool: Pool, orderId: string, isDemo: boo
   if (!base) throw new SalesError(503, 'FRONTEND_URL não configurado: não é possível montar o link.');
   await revokePrevious(pool, orderId, 'RESEND');
   const t = await issueAccessToken(pool, orderId, 'RESEND');
+  const senderName = await brandSenderNameForOrder(pool, orderId);
   const result = await emailService.sendPurchaseAccessEmail({
     email: order.customer_email,
     offerName: order.offer_name || 'sua compra',
@@ -232,7 +234,8 @@ export async function resendAccessEmail(pool: Pool, orderId: string, isDemo: boo
     correlationId: crypto.randomUUID(),
     isDemo: order.is_demo,
     kind: 'PURCHASE',
-    validityHours: t.ttlHours
+    validityHours: t.ttlHours,
+    senderName
   });
   if (!result.success) {
     await pool.query(`UPDATE order_recovery_tokens SET status = 'REVOKED', revoked_at = NOW() WHERE id = $1`, [t.tokenId]);

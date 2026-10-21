@@ -14,9 +14,11 @@ export interface SendPurchaseAccessEmailParams {
   correlationId?: string;
   isDemo?: boolean;
   /** NORQVA-0023: PURCHASE = enviado ao confirmar o pagamento; RECOVERY (padrão) = pedido de recuperação. */
-  kind?: 'PURCHASE' | 'RECOVERY';
+  kind?: 'PURCHASE' | 'RECOVERY' | 'DOWNLOAD_REMINDER';
   /** Validade do link em horas (texto do e-mail de compra). */
   validityHours?: number;
+  /** NORQVA-0107: nome do remetente (marca do produto). Sem ele, vale o remetente configurado. */
+  senderName?: string;
 }
 
 export interface EmailServiceResult {
