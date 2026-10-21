@@ -16,7 +16,7 @@ export const ExitOfferScreen: React.FC<{
   const price = Number(offer.promotional_price ?? offer.price);
   const card = offer.card && Number(offer.card.max_installments) > 1 ? offer.card : null;
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 antialiased" data-testid="exit-offer">
+    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] antialiased" data-testid="exit-offer">
       <div className="bg-[#FAF7F2] border border-stone-200 rounded-2xl max-w-md w-full p-7 sm:p-9 text-center shadow-2xl text-stone-800 font-sans">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#B83B1E] text-white shadow-md">
           <Gift className="h-6 w-6" />

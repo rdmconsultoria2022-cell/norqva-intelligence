@@ -13,7 +13,7 @@ export const PREVIEW_FORMATS: Record<string, string> = {
 };
 const TTL_MS = 60 * 60 * 1000; // prévia gerada: 1 h
 const NULL_TTL_MS = 5 * 60 * 1000; // Meta não gerou: tenta de novo em 5 min
-const cache = new Map<string, { at: number; src: string | null }>();
+const cache = new Map<string, { at: number; src: string | null; width?: number | null; height?: number | null }>();
 const isFormat = (f: string) => Object.prototype.hasOwnProperty.call(PREVIEW_FORMATS, f);
 export const clearPreviewCache = () => cache.clear();
 
@@ -44,11 +44,17 @@ export async function getAdPreview(req: AuthenticatedRequest, res: Response) {
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at >= (hit.src ? TTL_MS : NULL_TTL_MS)) cache.delete(key);
     if (hit && cache.has(key)) {
-      return res.status(200).json({ ad_id: adId, format, src: hit.src, manager_url, cached: true });
+      return res.status(200).json({ ad_id: adId, format, src: hit.src, width: hit.width ?? null, height: hit.height ?? null, manager_url, cached: true });
     }
     let src: string | null = null;
+    let width: number | null = null;
+    let height: number | null = null;
     try {
-      src = await new MetaClient().getAdPreview(adId, format);
+      // NORQVA-0105: o tamanho do quadro vem da própria Meta (a tela reduz para caber, sem cortar)
+      const frame = await new MetaClient().getAdPreviewFrame(adId, format);
+      src = frame?.src || null;
+      width = frame?.width ?? null;
+      height = frame?.height ?? null;
     } catch (e: any) {
       console.warn('[META] prévia indisponível', adId, format, e?.message);
       // erro 100 da Meta aqui = o anúncio não tem esse posicionamento/identidade (ex.: sem conta do Instagram)
@@ -60,8 +66,8 @@ export async function getAdPreview(req: AuthenticatedRequest, res: Response) {
           : 'A Meta não gerou a prévia agora. Tente de novo em instantes ou abra no Gerenciador.'
       });
     }
-    cache.set(key, { at: Date.now(), src });
-    return res.status(200).json({ ad_id: adId, format, src, manager_url, cached: false });
+    cache.set(key, { at: Date.now(), src, width, height });
+    return res.status(200).json({ ad_id: adId, format, src, width, height, manager_url, cached: false });
   } catch (e: any) {
     console.error('ad preview', e?.message);
     return res.status(500).json({ error: 'Não foi possível buscar a prévia.' });

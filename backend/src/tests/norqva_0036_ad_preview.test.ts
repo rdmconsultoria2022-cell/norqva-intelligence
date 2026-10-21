@@ -55,10 +55,13 @@ describe.sequential('NORQVA-0036 — prévia do anúncio', () => {
   const get = (url: string) => request(app).get(url).set('Authorization', `Bearer ${token}`);
 
   it('devolve o endereço da prévia da Meta, o atalho do Gerenciador e guarda em cache', async () => {
-    const spy = vi.spyOn(MetaClient.prototype, 'getAdPreview').mockResolvedValue('https://www.facebook.com/ads/api/preview_iframe.php?d=abc&t=1');
+    const spy = vi.spyOn(MetaClient.prototype, 'getAdPreviewFrame').mockResolvedValue({ src: 'https://www.facebook.com/ads/api/preview_iframe.php?d=abc&t=1', width: 320, height: 580 });
     const r = await get(`/api/meta/ads/${adId}/preview?format=INSTAGRAM_STORY`);
     expect(r.status).toBe(200);
     expect(r.body.src).toBe('https://www.facebook.com/ads/api/preview_iframe.php?d=abc&t=1');
+    // NORQVA-0105: tamanho do quadro da Meta, para a tela reduzir sem cortar
+    expect(r.body.width).toBe(320);
+    expect(r.body.height).toBe(580);
     expect(r.body.manager_url).toBe(`https://adsmanager.facebook.com/adsmanager/manage/ads?act=${n}&selected_ad_ids=${adId}`);
     expect(spy).toHaveBeenCalledWith(adId, 'INSTAGRAM_STORY');
     const again = await get(`/api/meta/ads/${adId}/preview?format=INSTAGRAM_STORY`);
@@ -67,7 +70,7 @@ describe.sequential('NORQVA-0036 — prévia do anúncio', () => {
   });
 
   it('recusa formato inválido, id inválido e anúncio que não é da conta', async () => {
-    const spy = vi.spyOn(MetaClient.prototype, 'getAdPreview').mockResolvedValue('https://www.facebook.com/x');
+    const spy = vi.spyOn(MetaClient.prototype, 'getAdPreviewFrame').mockResolvedValue({ src: 'https://www.facebook.com/x', width: null, height: null });
     expect((await get(`/api/meta/ads/${adId}/preview?format=DESKTOP_RIGHT_COLUMN`)).status).toBe(400);
     expect((await get(`/api/meta/ads/abc/preview`)).status).toBe(400);
     expect((await get(`/api/meta/ads/${adId}/preview?format=constructor`)).status).toBe(400);
@@ -77,7 +80,7 @@ describe.sequential('NORQVA-0036 — prévia do anúncio', () => {
   });
 
   it('se a Meta falhar, responde com aviso (sem quebrar a tela)', async () => {
-    vi.spyOn(MetaClient.prototype, 'getAdPreview').mockRejectedValue(new Error('[META API ERROR 100]: x'));
+    vi.spyOn(MetaClient.prototype, 'getAdPreviewFrame').mockRejectedValue(new Error('[META API ERROR 100]: x'));
     const r = await get(`/api/meta/ads/${adId}/preview?format=MOBILE_FEED_STANDARD`);
     expect(r.status).toBe(200);
     expect(r.body.src).toBeNull();
@@ -110,6 +113,11 @@ describe('NORQVA-0036 — fontes de imagem do criativo', () => {
     expect(await c.getAdPreview('123', 'INSTAGRAM_STANDARD')).toBeNull();
     spy.mockResolvedValueOnce({ data: [] });
     expect(await c.getAdPreview('123', 'INSTAGRAM_STANDARD')).toBeNull();
+    // NORQVA-0105: largura e altura do próprio iframe da Meta
+    spy.mockResolvedValueOnce({ data: [{ body: '<iframe src="https://www.facebook.com/ads/api/preview_iframe.php?d=1" width="320" height="580" scrolling="yes" style="border: none;"></iframe>' }] });
+    expect(await c.getAdPreviewFrame('123', 'INSTAGRAM_STORY')).toEqual({ src: 'https://www.facebook.com/ads/api/preview_iframe.php?d=1', width: 320, height: 580 });
+    spy.mockResolvedValueOnce({ data: [{ body: '<iframe src="https://www.facebook.com/ads/api/preview_iframe.php?d=1"></iframe>' }] });
+    expect(await c.getAdPreviewFrame('123', 'INSTAGRAM_STORY')).toEqual({ src: 'https://www.facebook.com/ads/api/preview_iframe.php?d=1', width: null, height: null });
     vi.restoreAllMocks();
   });
 });
