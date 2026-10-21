@@ -6,7 +6,10 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link id="nq-manifest" rel="manifest" href="/manifest.webmanifest" />
     <meta id="nq-theme" name="theme-color" content="#02040F" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- NORQVA-0105: viewport-fit=cover deixa o app desenhar até a borda de baixo (atrás da barra do Android);
+         a barra de áreas compensa com env(safe-area-inset-bottom). color-scheme pede barras do sistema escuras. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta id="nq-scheme" name="color-scheme" content="dark" />
     <title>NORQVA Intelligence & Performance</title>
     <style>
       /* NORQVA-0099: antes do app carregar, o mesmo fundo e triângulo da abertura (nada de tela clara ou antiga) */
@@ -26,6 +29,7 @@
         var b = document.getElementById('nq-boot'); if (b) b.parentNode.removeChild(b);
         var m = document.getElementById('nq-manifest'); if (m) m.parentNode.removeChild(m);
         var t = document.getElementById('nq-theme'); if (t) t.setAttribute('content', '#FAF7F2');
+        var cs = document.getElementById('nq-scheme'); if (cs) cs.setAttribute('content', 'light');
         document.documentElement.style.background = '#FAF7F2';
       })();
     </script>

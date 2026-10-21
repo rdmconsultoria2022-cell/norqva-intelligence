@@ -8,6 +8,7 @@ import { NewCreativeForm, NewCreativeInput, CLAIM_TYPE_LABEL } from './NewCreati
 import { adDelivery, DeliveryBadge, MetaImage, AdPreviewButton } from '../../components/AdLivePreview';
 import { TrashAction } from '../products/CatalogTrash';
 import { CreativeTrash } from './CreativeTrash';
+import { useIsMobile } from '../../components/ui/premium';
 
 // NORQVA-0058: lembra se as claims ficam abertas (preferência só deste navegador)
 const CLAIMS_KEY = 'norqva.factory.showClaims';
@@ -99,6 +100,8 @@ export function CreativeFactoryView({
   onCreativeCreated
 }: CreativeFactoryViewProps) {
   const { globalPeriod } = useGlobalPeriod();
+  // NORQVA-0105: no celular o arquivo aparece na proporção dele (no computador acompanha a altura do card)
+  const isMobile = useIsMobile();
   const periodQs = periodQuery(globalPeriod);
   const mode = isDemoView ? 'demo' : 'real';
   const isAdmin = currentUser?.role === 'ADMIN';
@@ -440,7 +443,7 @@ export function CreativeFactoryView({
         key={`ad-${a.meta_ad_id}`}
         id={`factory-ad-${a.meta_ad_id}`}
         data-testid="meta-ad-card"
-        className={`rounded-nq bg-nq-surface p-4 flex gap-4 ${focusId === `ad-${a.meta_ad_id}` ? 'ring-2 ring-nq-positive' : ''}`}
+        className={`rounded-nq bg-nq-surface p-4 flex gap-4 min-w-0 [overflow-wrap:anywhere] ${focusId === `ad-${a.meta_ad_id}` ? 'ring-2 ring-nq-positive' : ''}`}
       >
         <MetaImage url={thumb} alt={a.name} className="w-24 h-24 rounded border border-nq-line shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5 text-xs">
@@ -484,7 +487,7 @@ export function CreativeFactoryView({
               key={c.id}
               id={`factory-card-${c.id}`}
               data-testid="factory-card"
-              className={`rounded-nq bg-nq-surface p-4 ${viewMode === 'list' ? 'flex flex-col-reverse md:flex-row gap-4' : 'space-y-3'} ${focusId === c.id ? 'ring-2 ring-nq-positive' : ''}`}
+              className={`rounded-nq bg-nq-surface p-4 min-w-0 [overflow-wrap:anywhere] ${viewMode === 'list' ? 'flex flex-col-reverse md:flex-row gap-4' : 'space-y-3'} ${focusId === c.id ? 'ring-2 ring-nq-positive' : ''}`}
             >
               {viewMode === 'grid' && hasFile(c) && <CreativePreview url={c.file_url} format={c.format} title={c.human_id} />}
               {viewMode === 'grid' && !hasFile(c) && metaImageOf(c) && (
@@ -492,7 +495,7 @@ export function CreativeFactoryView({
               )}
               <div className={viewMode === 'list' ? 'flex-1 min-w-0 space-y-3' : 'space-y-3'}>
               <header className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <div className="text-nq-body font-semibold text-nq-text flex flex-wrap items-center gap-1.5">
                     {c.human_id}
                     {ORIGIN_LABEL[c.origin] && (
@@ -962,7 +965,7 @@ export function CreativeFactoryView({
               {viewMode === 'list' && (
                 <div className="md:w-[38%] lg:w-[34%] shrink-0 md:self-stretch flex flex-col">
                   {hasFile(c) ? (
-                    <CreativePreview url={c.file_url} format={c.format} title={c.human_id} fill className="flex-1" />
+                    <CreativePreview url={c.file_url} format={c.format} title={c.human_id} fill={!isMobile} className={isMobile ? '' : 'flex-1'} />
                   ) : metaImageOf(c) ? (
                     <div className="flex-1 flex flex-col gap-1">
                       <MetaImage url={metaImageOf(c)} alt={c.human_id} className="flex-1 min-h-[16rem] w-full rounded border border-nq-line" />

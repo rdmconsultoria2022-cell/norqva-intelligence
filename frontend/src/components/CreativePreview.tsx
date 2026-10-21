@@ -42,11 +42,17 @@ export const CreativePreview: React.FC<{
 }> = ({ url, format, title, className = '', fill = false }) => {
   const [expanded, setExpanded] = useState(false);
   const [failed, setFailed] = useState(false);
+  // NORQVA-0105: proporção real do arquivo (9:16, 4:5, 1:1, 16:9...), lida quando ele carrega
+  const [ratio, setRatio] = useState<number | null>(null);
   const kind = previewKind(url, format);
 
   useEffect(() => {
     setFailed(false);
+    setRatio(null);
   }, [url]);
+  const keepRatio = (w: number, h: number) => {
+    if (w > 0 && h > 0) setRatio(w / h);
+  };
 
   useEffect(() => {
     if (!expanded) return;
@@ -79,6 +85,7 @@ export const CreativePreview: React.FC<{
         preload="metadata"
         autoPlay={big}
         onError={() => setFailed(true)}
+        onLoadedMetadata={big ? undefined : (e) => keepRatio(e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
         className={big ? 'max-h-[80vh] max-w-full rounded' : `w-full h-full object-contain bg-black ${fill ? 'absolute inset-0' : ''}`}
       />
     ) : (
@@ -88,6 +95,7 @@ export const CreativePreview: React.FC<{
         alt={title || 'Criativo'}
         loading="lazy"
         onError={() => setFailed(true)}
+        onLoad={big ? undefined : (e) => keepRatio(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
         onClick={big ? undefined : () => setExpanded(true)}
         className={big ? 'max-h-[80vh] max-w-full rounded' : `w-full h-full object-contain bg-black cursor-zoom-in ${fill ? 'absolute inset-0' : ''}`}
       />
@@ -97,7 +105,8 @@ export const CreativePreview: React.FC<{
     <div className={`${className} ${fill ? 'flex flex-col h-full' : ''}`}>
       <div
         data-testid={fill ? 'creative-preview-fill' : undefined}
-        className={`relative rounded overflow-hidden border border-slate-800 bg-black ${fill ? 'flex-1 min-h-[16rem]' : 'aspect-[4/5] max-h-72 mx-auto'}`}
+        className={`relative rounded overflow-hidden border border-slate-800 bg-black ${fill ? 'flex-1 min-h-[16rem]' : `w-full mx-auto ${ratio ? 'max-h-[70vh]' : 'aspect-[4/5] max-h-72'}`}`}
+        style={!fill && ratio ? { aspectRatio: String(ratio) } : undefined}
       >
         {media(false)}
         <button
@@ -119,7 +128,7 @@ export const CreativePreview: React.FC<{
           className="fixed inset-0 z-50 bg-slate-950/85 flex items-center justify-center p-4"
           onClick={() => setExpanded(false)}
         >
-          <div className="relative flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="relative flex max-w-full min-w-0 flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex w-full items-center justify-between gap-4 text-xs font-mono text-slate-300">
               <span className="truncate">{title}</span>
               <button type="button" onClick={() => setExpanded(false)} aria-label="Fechar prévia" className="p-1 rounded hover:bg-slate-800">

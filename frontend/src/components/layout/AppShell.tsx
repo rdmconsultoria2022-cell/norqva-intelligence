@@ -50,6 +50,27 @@ function useInterFont() {
   }, []);
 }
 
+// NORQVA-0105: dentro do painel, a barra do navegador/sistema e o fundo atrás do app usam a mesma cor do
+// topo e da barra de áreas (nq-bg), para não aparecer faixa clara nas bordas do celular.
+const SHELL_BG = '#101010';
+function useShellChrome() {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const prevBg = root.style.backgroundColor;
+    const prevTheme = meta?.getAttribute('content') ?? null;
+    root.style.backgroundColor = SHELL_BG;
+    document.body.style.backgroundColor = SHELL_BG;
+    meta?.setAttribute('content', SHELL_BG);
+    return () => {
+      root.style.backgroundColor = prevBg;
+      document.body.style.backgroundColor = '';
+      if (meta && prevTheme !== null) meta.setAttribute('content', prevTheme);
+    };
+  }, []);
+}
+
 export function AppShell({
   globalError,
   globalSuccess,
@@ -61,6 +82,7 @@ export function AppShell({
 }: AppShellProps) {
   const groups = visibleGroups(nav.currentUser?.role);
   useInterFont();
+  useShellChrome();
 
   // uma tela nova começa do topo
   const contentRef = useRef<HTMLElement>(null);

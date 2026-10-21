@@ -63,20 +63,71 @@ export const MetaImage: React.FC<{ url?: string | null; alt: string; className?:
       </div>
     );
   }
-  return <img src={url as string} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`${className} object-cover`} />;
+  // NORQVA-0105: imagem inteira (sem recorte); sobra de espaço fica em preto
+  return <img src={url as string} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`${className} object-contain bg-black`} />;
 };
 
+// Tamanho usado só quando a Meta não informa o do quadro (NORQVA-0105: o normal é vir na resposta).
 const FORMATS: { key: string; label: string; w: number; h: number }[] = [
   { key: 'INSTAGRAM_STANDARD', label: 'Instagram feed', w: 330, h: 600 },
-  { key: 'INSTAGRAM_STORY', label: 'Instagram Stories', w: 330, h: 600 },
+  { key: 'INSTAGRAM_STORY', label: 'Instagram Stories', w: 320, h: 580 },
   { key: 'MOBILE_FEED_STANDARD', label: 'Facebook feed', w: 330, h: 560 }
 ];
+
+/**
+ * NORQVA-0105: a prévia da Meta é uma página de tamanho fixo (não se adapta). Em vez de espremer o quadro
+ * (o que cortava o lado direito no celular), o quadro inteiro é mostrado no tamanho da Meta e reduzido por
+ * igual para caber na largura disponível: nada é cortado nem distorcido, e os controles continuam clicáveis.
+ */
+export const FittedFrame: React.FC<{ src: string; w: number; h: number; title: string }> = ({ src, w, h, title }) => {
+  const box = useRef<HTMLDivElement>(null);
+  const [avail, setAvail] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const update = () => setAvail(el.clientWidth);
+    update();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(update);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  const scale = avail > 0 ? Math.min(1, avail / w) : 1;
+  return (
+    <div ref={box} className="w-full min-w-0" data-testid="ad-preview-box">
+      <div
+        className="mx-auto overflow-hidden rounded border border-slate-800 bg-white"
+        style={{ width: Math.floor(w * scale), height: Math.floor(h * scale) }}
+      >
+        <iframe
+          title={title}
+          src={src}
+          width={w}
+          height={h}
+          loading="lazy"
+          data-testid="ad-preview-iframe"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          referrerPolicy="no-referrer"
+          style={{ border: 0, width: w, height: h, maxWidth: 'none', transform: scale < 1 ? `scale(${scale})` : undefined, transformOrigin: '0 0', display: 'block' }}
+        />
+      </div>
+      {scale < 1 && (
+        <p className="mt-1 text-center text-[11px] text-slate-500" data-testid="ad-preview-scaled">
+          Prévia inteira, reduzida para caber na tela ({Math.round(scale * 100)}%).
+        </p>
+      )}
+    </div>
+  );
+};
 
 /** Botão "Ver como aparece" + painel com a prévia oficial da Meta. */
 export const AdPreviewButton: React.FC<{ metaAdId: string; apiFetch: ApiFetch }> = ({ metaAdId, apiFetch }) => {
   const [open, setOpen] = useState(false);
   const [fmt, setFmt] = useState(FORMATS[0].key);
-  const [state, setState] = useState<Record<string, { src: string | null; error?: string | null; manager_url?: string | null } | 'loading'>>({});
+  const [state, setState] = useState<Record<string, { src: string | null; width?: number | null; height?: number | null; error?: string | null; manager_url?: string | null } | 'loading'>>({});
 
   // Cada formato é pedido uma vez só (o App recria apiFetch a cada render; o ref evita pedidos repetidos).
   const requested = useRef<Set<string>>(new Set());
@@ -86,7 +137,7 @@ export const AdPreviewButton: React.FC<{ metaAdId: string; apiFetch: ApiFetch }>
     requested.current.add(fmt);
     setState(s => ({ ...s, [fmt]: 'loading' }));
     apiFetch(`/meta/ads/${encodeURIComponent(metaAdId)}/preview?format=${fmt}`)
-      .then((r: any) => setState(s => ({ ...s, [fmt]: { src: r?.src || null, error: r?.error || null, manager_url: r?.manager_url || null } })))
+      .then((r: any) => setState(s => ({ ...s, [fmt]: { src: r?.src || null, width: Number(r?.width) || null, height: Number(r?.height) || null, error: r?.error || null, manager_url: r?.manager_url || null } })))
       .catch((e: any) => setState(s => ({ ...s, [fmt]: { src: null, error: e?.message || 'Não foi possível buscar a prévia.' } })));
   }, [open, fmt, metaAdId, apiFetch, attempt]);
 
@@ -115,7 +166,7 @@ export const AdPreviewButton: React.FC<{ metaAdId: string; apiFetch: ApiFetch }>
         <Eye className="h-3 w-3" /> {open ? 'Fechar prévia' : 'Ver como aparece'}
       </button>
       {open && (
-        <div className="mt-2 space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2" data-testid="ad-preview-panel">
+        <div className="mt-2 min-w-0 space-y-2 rounded border border-slate-800 bg-slate-950/60 p-2" data-testid="ad-preview-panel">
           <div className="flex flex-wrap gap-1" role="tablist">
             {FORMATS.map(x => (
               <button
@@ -133,18 +184,7 @@ export const AdPreviewButton: React.FC<{ metaAdId: string; apiFetch: ApiFetch }>
           {cur === 'loading' || !cur ? (
             <p className="text-slate-400">Gerando a prévia na Meta…</p>
           ) : cur.src ? (
-            <iframe
-              title={`Prévia ${f.label}`}
-              src={cur.src}
-              width={f.w}
-              height={f.h}
-              loading="lazy"
-              data-testid="ad-preview-iframe"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-              className="max-w-full rounded border border-slate-800 bg-white"
-              style={{ border: 0 }}
-            />
+            <FittedFrame src={cur.src} w={cur.width || f.w} h={cur.height || f.h} title={`Prévia ${f.label}`} />
           ) : (
             <div className="space-y-1">
               <p className="text-amber-300" data-testid="ad-preview-error">{cur.error || 'A Meta não gerou a prévia deste formato.'}</p>

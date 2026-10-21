@@ -614,15 +614,28 @@ export class MetaClient {
    * Devolve o endereço do iframe da Meta, ou null se ela não gerar a prévia.
    */
   public async getAdPreview(adId: string, format: string): Promise<string | null> {
+    return (await this.getAdPreviewFrame(adId, format))?.src || null;
+  }
+
+  /**
+   * NORQVA-0105: endereço do iframe e o tamanho fixo que a Meta desenhou para ele (width/height do próprio
+   * iframe devolvido). A tela reduz o quadro inteiro para caber no celular, sem cortar.
+   */
+  public async getAdPreviewFrame(adId: string, format: string): Promise<{ src: string; width: number | null; height: number | null } | null> {
     const res = await this.fetchGraphApi(`/${adId}/previews`, { ad_format: format });
     const body = String(res?.data?.[0]?.body || '');
     const m = body.match(/src=["']([^"']+)["']/i);
     if (!m) return null;
     const src = m[1].replace(/&amp;/g, '&');
+    const dim = (name: string) => {
+      const d = body.match(new RegExp(`\\b${name}=["']?(\\d{2,4})`, 'i'));
+      const n = d ? Number(d[1]) : NaN;
+      return Number.isFinite(n) && n >= 100 && n <= 2000 ? n : null;
+    };
     try {
       const u = new URL(src);
       if (u.protocol !== 'https:' || !/(^|\.)facebook\.com$/i.test(u.hostname)) return null;
-      return u.toString();
+      return { src: u.toString(), width: dim('width'), height: dim('height') };
     } catch {
       return null;
     }
