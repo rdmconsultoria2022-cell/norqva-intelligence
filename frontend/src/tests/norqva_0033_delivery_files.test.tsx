@@ -2,7 +2,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { DeliveryFiles, pickProblem, fmtSize, friendlyError } from '../features/products/DeliveryFiles';
+import { DeliveryFiles, pickProblem, fmtSize, friendlyError, titleFromFileName } from '../features/products/DeliveryFiles';
 import { OfferCard } from '../features/products/ProductsView';
 
 const off = { id: 'off-1', human_id: 'OFF-000001', name: 'Trattoria', status: 'ATIVA', price: '19.90', is_demo: false };
@@ -99,5 +99,41 @@ describe('NORQVA-0033 — PDF entregue ao comprador', () => {
     rerender(<OfferCard {...base} isAdmin={true} />);
     fireEvent.click(screen.getByTestId('toggle-delivery-files'));
     expect(screen.getByText('painel')).toBeInTheDocument();
+  });
+});
+
+// NORQVA-0113: vários PDFs de uma vez
+describe('NORQVA-0113 — vários PDFs de uma vez', () => {
+  it('título vem do nome do arquivo', () => {
+    expect(titleFromFileName('01_Guia_do_Desafio.pdf')).toBe('01 · Guia do Desafio');
+    expect(titleFromFileName('03_Cardapio_Lento_Padrao.pdf')).toBe('03 · Cardapio Lento Padrao');
+    expect(titleFromFileName('Bonus.pdf')).toBe('Bonus');
+  });
+
+  it('envia em ordem: o primeiro como arquivo principal (oferta vazia) e os outros como extras com título', async () => {
+    const apiFetch = vi.fn(async (url: string, opts?: any) => (opts?.method ? { ok: true } : { assets: [] }));
+    const showSuccess = vi.fn();
+    render(<DeliveryFiles off={off} apiFetch={apiFetch as any} showError={vi.fn()} showSuccess={showSuccess} />);
+    await screen.findByTestId('delivery-many');
+    const files = [pdfFile('02_Livro_de_Receitas.pdf'), pdfFile('01_Guia_do_Desafio.pdf')];
+    fireEvent.change(screen.getByLabelText('Adicionar vários PDFs'), { target: { files } });
+    expect(screen.getByTestId('delivery-many-list')).toHaveTextContent('01 · Guia do Desafio');
+    fireEvent.click(screen.getByTestId('delivery-many-send'));
+    await waitFor(() => expect(showSuccess).toHaveBeenCalled());
+    const posts = apiFetch.mock.calls.filter((c: any[]) => c[1]?.method === 'POST') as any[];
+    expect(posts).toHaveLength(2);
+    expect(posts[0][0]).toBe('/offers/off-1/delivery-files');
+    expect(decodeURIComponent(posts[0][1].headers['x-file-name'])).toBe('01_Guia_do_Desafio.pdf');
+    expect(posts[1][0]).toBe('/offers/off-1/delivery-files/extra?title=' + encodeURIComponent('02 · Livro de Receitas'));
+  });
+
+  it('com arquivo já ligado, todos vão como extras', async () => {
+    const apiFetch = vi.fn(async (url: string, opts?: any) => (opts?.method ? { ok: true } : { assets: [asset] }));
+    render(<DeliveryFiles off={off} apiFetch={apiFetch as any} showError={vi.fn()} showSuccess={vi.fn()} />);
+    await screen.findByTestId('delivery-many');
+    fireEvent.change(screen.getByLabelText('Adicionar vários PDFs'), { target: { files: [pdfFile('05_Bonus.pdf')] } });
+    fireEvent.click(screen.getByTestId('delivery-many-send'));
+    await waitFor(() => expect(apiFetch.mock.calls.some((c: any[]) => String(c[0]).includes('/extra?title='))).toBe(true));
+    expect(apiFetch.mock.calls.some((c: any[]) => c[0] === '/offers/off-1/delivery-files' && c[1]?.method === 'POST')).toBe(false);
   });
 });

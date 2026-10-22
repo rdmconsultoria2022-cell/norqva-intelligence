@@ -38,6 +38,13 @@ export const friendlyError = (e: any, fallback: string) => {
 };
 
 const NEW_KEY = '__new__';
+
+/** NORQVA-0113: nome que o comprador vê, tirado do nome do arquivo (01_Guia_do_Desafio.pdf → "01 · Guia do Desafio"). */
+export function titleFromFileName(name: string): string {
+  const base = name.replace(/\.pdf$/i, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const m = base.match(/^(\d{1,3})\s+(.*)$/);
+  return (m ? `${m[1]} · ${m[2]}` : base).slice(0, 120);
+}
 const LINK_TTL_MS = 4.5 * 60 * 1000;
 
 const FilePicker: React.FC<{ id: string; label: string; file: File | null; reset: number; onPick: (f: File | null) => void }> = ({ id, label, file, reset, onPick }) => (
@@ -78,6 +85,9 @@ export const DeliveryFiles: React.FC<{
   const [library, setLibrary] = useState<any[] | null>(null);
   const [chosen, setChosen] = useState('');
   const [linking, setLinking] = useState(false);
+  // NORQVA-0113: vários PDFs de uma vez (ex.: Seca Barriga entrega 10 arquivos)
+  const [many, setMany] = useState<File[]>([]);
+  const [manyDone, setManyDone] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -284,6 +294,54 @@ export const DeliveryFiles: React.FC<{
         );
       })}
 
+
+      <div className="space-y-1 border-t border-nq-line pt-2" data-testid="delivery-many">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[12px] text-nq-muted">Adicionar mais PDFs a esta oferta (pode escolher vários)</span>
+          <input
+            key={`many-${reset}`}
+            aria-label="Adicionar vários PDFs"
+            type="file"
+            multiple
+            accept="application/pdf,.pdf"
+            onChange={e => { setMany(Array.from(e.target.files || []).sort((a, b) => a.name.localeCompare(b.name))); setManyDone(0); }}
+            className="text-[12px] text-nq-text file:mr-2 file:rounded-nq file:border file:border-nq-line file:bg-nq-surface file:px-2 file:py-0.5 file:text-nq-text"
+          />
+        </label>
+        {many.length > 0 && (() => {
+          const bad = many.map(f => pickProblem(f)).find(Boolean) || null;
+          return (
+            <div className="space-y-1">
+              <ul className="text-[12px] text-nq-muted" data-testid="delivery-many-list">
+                {many.map(f => <li key={f.name}>{titleFromFileName(f.name)} · {fmtSize(f.size)}</li>)}
+              </ul>
+              {bad && <p className="text-[12px] text-nq-critical-text">{bad}</p>}
+              <button
+                disabled={busy || !!bad}
+                data-testid="delivery-many-send"
+                onClick={() =>
+                  run(async () => {
+                    let i = 0;
+                    for (const f of many) {
+                      const first = assets.length === 0 && i === 0;
+                      const url = first
+                        ? `/offers/${off.id}/delivery-files`
+                        : `/offers/${off.id}/delivery-files/extra?title=${encodeURIComponent(titleFromFileName(f.name))}`;
+                      await sendPdf(apiFetch, url, 'POST', f);
+                      i += 1;
+                      setManyDone(i);
+                    }
+                    setMany([]);
+                  }, `${many.length} PDFs enviados e ligados à oferta.`)
+                }
+                className="w-full rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]"
+              >
+                <Upload className="mr-1 inline h-3.5 w-3.5" /> {busy ? `Enviando ${manyDone + 1} de ${many.length}…` : `Enviar ${many.length} PDFs`}
+              </button>
+            </div>
+          );
+        })()}
+      </div>
       <div className="space-y-1 border-t border-nq-line pt-2" data-testid="delivery-link-existing">
         {library === null ? (
           <button onClick={openLibrary} className="rounded-nq bg-nq-surface px-2 py-0.5 text-[12px] text-nq-text min-h-[44px]" data-testid="delivery-link-open">
