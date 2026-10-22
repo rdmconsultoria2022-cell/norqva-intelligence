@@ -33,6 +33,7 @@ const PAYMENT_LABEL: Record<string, { text: string; tone: Tone }> = {
   EXPIRED: { text: 'Pix vencido', tone: 'neutral' },
   FAILED: { text: 'Falhou', tone: 'critical' },
   REFUNDED: { text: 'Estornado', tone: 'neutral' },
+  CHARGEBACK: { text: 'Contestado', tone: 'critical' },
   CREATED: { text: 'Sem Pix', tone: 'neutral' }
 };
 
@@ -176,7 +177,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
             <RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
-        <p className="text-[13px] leading-[18px] text-nq-muted">Pagamento confirmado só pelo Asaas. Toque num pedido para ver entrega e ações.</p>
+        <p className="text-[13px] leading-[18px] text-nq-muted">Pagamento confirmado só pelo Asaas (vendas da Kiwify: confirmadas pela Kiwify). Toque num pedido para ver entrega e ações.</p>
       </header>
 
       {summary && (
@@ -228,6 +229,8 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                 const dl = deliveryStatusLabel(o);
                 const em = accessEmailLabel(o.access_email_status);
                 const paid = o.status === 'PAID';
+                // NORQVA-0110: venda da Kiwify — pagamento e entrega são da Kiwify, sem ações aqui
+                const kiwify = o.source === 'KIWIFY';
                 const isOpen = open === o.id;
                 const contact = [o.customer?.email, o.customer?.phone].filter((v: any) => v && v !== '[REDACTED]');
                 const bumps = Array.isArray(o.items) ? o.items.filter((i: any) => i.is_bump) : [];
@@ -252,6 +255,7 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                         <span className={`block text-[15px] leading-[22px] font-semibold tabular-nums ${paid ? 'text-nq-text' : 'text-nq-muted'}`}>{brl(o.total_amount)}</span>
                         <span className="mt-0.5 flex flex-col items-end gap-0.5">
                           <span data-testid="sales-payment"><StatusPill tone={pay.tone}>{pay.text}</StatusPill></span>
+                          {kiwify && <span data-testid="sales-source"><StatusPill tone="info">Kiwify</StatusPill></span>}
                           {o.problem && <StatusPill tone="attention">Com problema</StatusPill>}
                         </span>
                       </span>
@@ -270,14 +274,15 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                               <div key={idx} className="text-nq-positive-text" data-testid="sale-bump">+ {i.name}</div>
                             ))}
                           </dd>
-                          {paid && (<><dt className="text-nq-muted">Entrega</dt><dd><span data-testid="sales-delivery"><StatusPill tone={TONE[dl.tone]}>{sentence(dl.text)}</StatusPill></span></dd></>)}
-                          {em && (<><dt className="text-nq-muted">E-mail de acesso</dt><dd><StatusPill tone={TONE[em.tone]}>{sentence(em.text)}</StatusPill></dd></>)}
+                          {kiwify && (<><dt className="text-nq-muted">Origem</dt><dd className="text-nq-text">Kiwify (pagamento e entrega feitos pela Kiwify)</dd></>)}
+                          {paid && !kiwify && (<><dt className="text-nq-muted">Entrega</dt><dd><span data-testid="sales-delivery"><StatusPill tone={TONE[dl.tone]}>{sentence(dl.text)}</StatusPill></span></dd></>)}
+                          {em && !kiwify && (<><dt className="text-nq-muted">E-mail de acesso</dt><dd><StatusPill tone={TONE[em.tone]}>{sentence(em.text)}</StatusPill></dd></>)}
                           <dt className="text-nq-muted">Data</dt>
                           <dd className="text-nq-text">{Number.isNaN(new Date(o.created_at).getTime()) ? '—' : new Date(o.created_at).toLocaleString('pt-BR', { timeZone: TZ })}</dd>
                           <dt className="text-nq-muted">Pedido</dt>
                           <dd className="font-mono text-[12px] text-nq-subtle break-all">{o.id}</dd>
                         </dl>
-                        {isAdmin && (
+                        {isAdmin && !kiwify && (
                           <div className="flex flex-wrap gap-2">
                             {!paid && o.payment_status && o.payment_status !== 'CREATED' && (
                               <button

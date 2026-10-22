@@ -175,6 +175,7 @@ import {
   getCloudWebhook, postCloudWebhook
 } from './controllers/whatsappController';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
+import { postKiwifyWebhook } from './controllers/kiwifyController';
 
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
@@ -219,7 +220,9 @@ app.use(structuredLogger());
 app.use(express.json({
   limit: '1mb',
   verify: (req: any, _res, buf) => {
-    if (String(req.originalUrl || req.url || '').startsWith('/api/whatsapp/cloud/webhook/')) req.rawBody = Buffer.from(buf);
+    const url = String(req.originalUrl || req.url || '');
+    // NORQVA-0110: a Kiwify assina o corpo ORIGINAL (HMAC-SHA1) também
+    if (url.startsWith('/api/whatsapp/cloud/webhook/') || url.startsWith('/api/webhooks/kiwify')) req.rawBody = Buffer.from(buf);
   }
 }));
 
@@ -404,6 +407,8 @@ app.get('/api/payments/:id', requireRole(['ADMIN', 'OPERATIONS']), getPaymentByI
 
 // Sprint 2.5D Webhook & Digital Deliveries endpoints
 app.post('/api/webhooks/asaas', webhookRateLimiter, webhookAsaas);
+// NORQVA-0110 (contrato aprovado 21/10/2026 20h52): vendas da Kiwify. Corpo que não veio como JSON fica bruto para a assinatura.
+app.post('/api/webhooks/kiwify', webhookRateLimiter, express.raw({ type: (r: any) => !r._body, limit: '1mb' }), postKiwifyWebhook);
 // NORQVA-0046: WhatsApp (contrato aprovado 10/10/2026 19h38). Números: ADMIN. Conversas: ADMIN e OPERATIONS.
 app.post('/api/whatsapp/webhook/:numberId/:secret', whatsappWebhookRateLimiter, postWhatsAppWebhook);
 app.get('/api/whatsapp/numbers', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppNumbers);

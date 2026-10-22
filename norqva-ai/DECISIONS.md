@@ -255,3 +255,7 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Decisão (Ricardo, "2 sim" em 21/10/2026 20h12):** o e-mail de acesso sai com o nome da marca do produto no remetente (mesmo endereço; sem marca, "NORQVA"), em visual claro com botão "Baixar meu livro" e a dica de procurar no spam.
 - **Lembrete de download:** quem pagou e não baixou recebe link novo 3 h e 24 h depois da confirmação do pagamento; no máximo dois por pedido (pedido antigo: só o de 24 h), pelo menos 12 h entre eles, até 30 dias depois do pagamento. Nunca para estorno, entrega bloqueada, teste ou demo. `DOWNLOAD_REMINDER_ENABLED=false` desliga.
 - **DNS:** registro DMARC `_dmarc.norqva.com.br` TXT `v=DMARC1; p=none; adkim=r; aspf=r`, criado pelo Ricardo no Registro.br.
+
+## D-0110 — Vendas da Kiwify no NORQVA (2026-10-21)
+
+- **Decisão (Ricardo, "Aprovado" em 21/10/2026 20h52):** vendas feitas na Kiwify entram no NORQVA pelo webhook assinado `POST /api/webhooks/kiwify` (HMAC-SHA1 do corpo com `KIWIFY_WEBHOOK_TOKEN`; sem token, nada é gravado) e ficam em `external_sales` (PAID, REFUNDED, CHARGEBACK), sem CPF, telefone, endereço ou cartão. Contam em Vendas (etiqueta "Kiwify", sem ações de entrega) e no Financeiro (receita, tarifa da Kiwify, campanha por `utm_campaign` = nome da campanha e criativo por `utm_content` = nome do anúncio). Pagamento e entrega dessas vendas são da Kiwify; o NORQVA só registra.
