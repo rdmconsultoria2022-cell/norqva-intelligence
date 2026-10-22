@@ -136,4 +136,37 @@ describe('NORQVA-0113 — vários PDFs de uma vez', () => {
     await waitFor(() => expect(apiFetch.mock.calls.some((c: any[]) => String(c[0]).includes('/extra?title='))).toBe(true));
     expect(apiFetch.mock.calls.some((c: any[]) => c[0] === '/offers/off-1/delivery-files' && c[1]?.method === 'POST')).toBe(false);
   });
+
+  it('falha no meio: diz quantos foram, recarrega e o reenvio manda só os que faltam', async () => {
+    let linked: any[] = [];
+    let failOnce = true;
+    const apiFetch = vi.fn(async (url: string, opts?: any) => {
+      if (!opts?.method) return { assets: linked };
+      if (url.includes('/extra') && failOnce) {
+        failOnce = false;
+        throw new Error('Arquivo maior que 50 MB.');
+      }
+      linked = [...linked, { ...asset, id: 'a' + linked.length }];
+      return { ok: true };
+    });
+    const showError = vi.fn();
+    const showSuccess = vi.fn();
+    render(<DeliveryFiles off={off} apiFetch={apiFetch as any} showError={showError} showSuccess={showSuccess} />);
+    await screen.findByTestId('delivery-many');
+    const files = [pdfFile('01_A.pdf'), pdfFile('02_B.pdf'), pdfFile('03_C.pdf')];
+    fireEvent.change(screen.getByLabelText('Adicionar vários PDFs'), { target: { files } });
+    fireEvent.click(screen.getByTestId('delivery-many-send'));
+    await waitFor(() => expect(showError).toHaveBeenCalled());
+    expect(showError.mock.calls[0][0]).toContain('1 de 3 PDFs enviados');
+    expect(showError.mock.calls[0][0]).toContain('02_B.pdf');
+    await waitFor(() => expect(screen.getByTestId('delivery-many-list')).not.toHaveTextContent('01 · A'));
+    fireEvent.click(screen.getByTestId('delivery-many-send'));
+    await waitFor(() => expect(showSuccess).toHaveBeenCalled());
+    const posts = apiFetch.mock.calls.filter((c: any[]) => c[1]?.method === 'POST').map((c: any[]) => c[0]);
+    expect(posts.filter((u: string) => u === '/offers/off-1/delivery-files')).toHaveLength(1);
+    expect(posts.slice(2)).toEqual([
+      '/offers/off-1/delivery-files/extra?title=' + encodeURIComponent('02 · B'),
+      '/offers/off-1/delivery-files/extra?title=' + encodeURIComponent('03 · C')
+    ]);
+  });
 });

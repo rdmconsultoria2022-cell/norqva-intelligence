@@ -309,11 +309,13 @@ export const DeliveryFiles: React.FC<{
           />
         </label>
         {many.length > 0 && (() => {
-          const bad = many.map(f => pickProblem(f)).find(Boolean) || null;
+          const bad =
+            many.map(f => pickProblem(f)).find(Boolean) ||
+            (assets.length + many.length > 20 ? `A oferta entrega no máximo 20 arquivos (já tem ${assets.length}).` : null);
           return (
             <div className="space-y-1">
               <ul className="text-[12px] text-nq-muted" data-testid="delivery-many-list">
-                {many.map(f => <li key={f.name}>{titleFromFileName(f.name)} · {fmtSize(f.size)}</li>)}
+                {many.map((f, k) => <li key={`${k}-${f.name}`}>{titleFromFileName(f.name)} · {fmtSize(f.size)}</li>)}
               </ul>
               {bad && <p className="text-[12px] text-nq-critical-text">{bad}</p>}
               <button
@@ -321,22 +323,35 @@ export const DeliveryFiles: React.FC<{
                 data-testid="delivery-many-send"
                 onClick={() =>
                   run(async () => {
+                    // Envia um por um. Se parar no meio, os que já foram saem da lista (nada é reenviado) e o
+                    // erro diz quantos foram; "Enviar" de novo manda só os que faltam.
+                    const total = many.length;
                     let i = 0;
-                    for (const f of many) {
-                      const first = assets.length === 0 && i === 0;
-                      const url = first
-                        ? `/offers/${off.id}/delivery-files`
-                        : `/offers/${off.id}/delivery-files/extra?title=${encodeURIComponent(titleFromFileName(f.name))}`;
-                      await sendPdf(apiFetch, url, 'POST', f);
-                      i += 1;
-                      setManyDone(i);
+                    try {
+                      for (const f of many) {
+                        const first = assets.length === 0 && i === 0;
+                        const url = first
+                          ? `/offers/${off.id}/delivery-files`
+                          : `/offers/${off.id}/delivery-files/extra?title=${encodeURIComponent(titleFromFileName(f.name))}`;
+                        await sendPdf(apiFetch, url, 'POST', f);
+                        i += 1;
+                        setManyDone(i);
+                      }
+                    } catch (e: any) {
+                      setMany(many.slice(i));
+                      setManyDone(0);
+                      await load();
+                      throw new Error(
+                        `${i} de ${total} PDFs enviados. Parou em "${many[i]?.name}": ${friendlyError(e, 'não deu certo.')} ` +
+                          'Clique em "Enviar" de novo para mandar só os que faltam.'
+                      );
                     }
                     setMany([]);
-                  }, `${many.length} PDFs enviados e ligados à oferta.`)
+                  }, `${many.length} ${many.length === 1 ? 'PDF enviado e ligado' : 'PDFs enviados e ligados'} à oferta.`)
                 }
                 className="w-full rounded-full border border-nq-positive/40 bg-nq-positive/10 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]"
               >
-                <Upload className="mr-1 inline h-3.5 w-3.5" /> {busy ? `Enviando ${manyDone + 1} de ${many.length}…` : `Enviar ${many.length} PDFs`}
+                <Upload className="mr-1 inline h-3.5 w-3.5" /> {busy ? `Enviando ${manyDone + 1} de ${many.length}…` : `Enviar ${many.length} ${many.length === 1 ? 'PDF' : 'PDFs'}`}
               </button>
             </div>
           );
