@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, 
@@ -34,6 +34,8 @@ import { BookComboOffer, comboMath } from './BookComboOffer';
 import type { CheckoutOffer } from '../checkout/checkoutTypes';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
+import { wantsDirectCheckout, prefillFromSearch, stripPrefillFromWindowUrl } from '../checkout/checkoutPrefill';
+import { lookForNames, FRESH_BUTTON_STYLE } from '../../lib/productLook';
 
 export interface PublicOfferData {
   id: string;
@@ -77,7 +79,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   // Commercial modal state flow
   const [showCheckout, setShowCheckout] = useState<boolean>(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState<boolean>(false);
-  const [customerDraft, setCustomerDraft] = useState<any | null>(null);
+  // NORQVA-0112: ?checkout=1 abre o pagamento direto; nome, e-mail e telefone do link preenchem o formulário
+  // e saem da barra de endereço antes de qualquer Pixel ou telemetria.
+  const [directCheckout] = useState<boolean>(() => wantsDirectCheckout(location.search));
+  const [customerDraft, setCustomerDraft] = useState<any | null>(() => {
+    const prefill = prefillFromSearch(location.search);
+    stripPrefillFromWindowUrl();
+    return prefill;
+  });
+  const autoOpenedRef = useRef(false);
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
   const [activeDeliveryOrder, setActiveDeliveryOrder] = useState<any | null>(null);
 
@@ -179,6 +189,15 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
       isMounted = false;
     };
   }, [humanId]);
+
+  // NORQVA-0112: com ?checkout=1, o pagamento abre assim que a oferta carrega (uma vez)
+  useEffect(() => {
+    if (!directCheckout || !offer || autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    openCheckout(false);
+  }, [directCheckout, offer]);
+
+  const offerLook = lookForNames(offer?.name);
 
   const activePrice = offer
     ? (offer.promotional_price !== null && offer.promotional_price !== undefined
@@ -716,6 +735,148 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
     );
   }
 
+  // Modais do pagamento (página do livro e página direta do pagamento)
+  const modals = (
+    <>
+      {/* Step 1: Checkout Form Modal */}
+      {showCheckout && (
+        <CheckoutView
+          offer={offer as any}
+          look={offerLook === 'fresh' ? 'fresh' : undefined}
+          initialWithBump={checkoutWithBump}
+          isDemo={offer.is_demo}
+          initialCustomer={customerDraft}
+          onCustomerChange={setCustomerDraft}
+          onOrderCreated={(order) => {
+            setShowCheckout(false);
+            if (order?.id && order?.checkout_token) {
+              savePurchaseSession({
+                orderId: order.id,
+                checkoutToken: order.checkout_token,
+                offerHumanId: offer?.human_id || 'OFF-000001',
+                status: 'PENDING',
+                offerName: offer?.name
+              });
+            }
+            setActivePaymentOrder(order);
+          }}
+          onCancel={() => setShowCheckout(false)}
+          showError={showError}
+          showSuccess={showSuccess}
+        />
+      )}
+
+      {/* Step 2: Payment / Pix Status Modal */}
+      {activePaymentOrder && !activeDeliveryOrder && (
+        <PaymentStatus
+          orderId={activePaymentOrder.id}
+          checkoutToken={activePaymentOrder.checkout_token}
+          amount={activePaymentOrder.total_amount || activePrice}
+          paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
+          installments={activePaymentOrder.installments}
+          look={offerLook === 'fresh' ? 'fresh' : 'light'}
+          isDemo={offer.is_demo}
+          onPaymentConfirmed={() => {
+            updatePurchaseSessionStatus(activePaymentOrder.id, 'PAID');
+            navigate(`/pedido/${activePaymentOrder.id}/entrega#token=${activePaymentOrder.checkout_token}`);
+          }}
+          onBackToCheckout={() => {
+            setActivePaymentOrder(null);
+            // NORQVA-0080: volta ao formulário sem remarcar o Dolci que a pessoa pode ter desmarcado
+            setCheckoutWithBump(false);
+            setShowCheckout(true);
+          }}
+          onClose={() => {
+            setActivePaymentOrder(null);
+          }}
+          showError={showError}
+          showSuccess={showSuccess}
+        />
+      )}
+
+      {/* Step 3: Digital Delivery View Modal */}
+      {activeDeliveryOrder && (
+        <DigitalDelivery
+          orderId={activeDeliveryOrder.id}
+          checkoutToken={activeDeliveryOrder.checkout_token}
+          isDemo={offer.is_demo}
+          onClose={() => {
+            setActiveDeliveryOrder(null);
+            setActivePaymentOrder(null);
+          }}
+          showError={showError}
+          showSuccess={showSuccess}
+        />
+      )}
+
+      {/* Recovery Request Modal */}
+      {showRecoveryModal && (
+        <RecoveryRequestModal
+          offerHumanId={offer?.human_id || humanId}
+          onClose={() => setShowRecoveryModal(false)}
+          showError={showError}
+          showSuccess={showSuccess}
+        />
+      )}
+    </>
+  );
+
+  // NORQVA-0112: link direto do pagamento (?checkout=1) e produtos que não são livros (Seca Barriga):
+  // fundo neutro com nome, preço e o botão que reabre o pagamento; nada do material de venda dos livros.
+  if (directCheckout || offerLook === 'fresh') {
+    const fresh = offerLook === 'fresh';
+    const paid = Boolean(existingSession && existingSession.status === 'PAID');
+    return (
+      <div
+        className={`min-h-screen flex flex-col items-center justify-center px-4 py-10 font-sans antialiased ${fresh ? 'bg-[#F7F8F4] text-[#18211C]' : 'bg-[#FAF7F2] text-stone-800'}`}
+        data-testid="direct-checkout-page"
+        data-look={fresh ? 'fresh' : 'light'}
+      >
+        <div className={`w-full max-w-md rounded-2xl border bg-white p-6 sm:p-8 text-center shadow-xl space-y-5 ${fresh ? 'border-[#E3E7DF]' : 'border-stone-200'}`}>
+          <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ${fresh ? 'bg-[#ECFDF5] text-[#059669]' : 'bg-stone-100 text-[#2B3D2B]'}`}>
+            <Lock className="h-3.5 w-3.5" />
+            <span>Pagamento seguro</span>
+          </div>
+          <h1 className={`text-2xl font-bold leading-tight ${fresh ? 'text-[#18211C]' : 'font-serif text-stone-900'}`} data-testid="direct-checkout-name">
+            {offer.name}
+          </h1>
+          <div>
+            <div className={`text-3xl font-extrabold ${fresh ? 'text-[#059669]' : 'font-serif text-[#B83B1E]'}`} data-testid="direct-checkout-price">
+              R$ {activePrice.toFixed(2).replace('.', ',')}
+            </div>
+            <div className={`mt-1 text-xs ${fresh ? 'text-[#5B665F]' : 'text-stone-500'}`}>
+              {offer.card ? 'Pix ou cartão de crédito • Pagamento único' : 'Pagamento único via Pix'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenCheckout}
+            data-testid="direct-checkout-open"
+            className={`w-full min-h-[48px] rounded-xl px-6 py-3.5 text-sm font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 ${fresh ? 'hover:brightness-95 shadow-emerald-600/20' : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-[#B83B1E]/20'}`}
+            style={fresh ? FRESH_BUTTON_STYLE : undefined}
+          >
+            {paid ? <CheckCircle2 className="h-4 w-4" /> : null}
+            <span>{paid ? 'Acessar minha compra' : 'Continuar para o pagamento'}</span>
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          {!paid && (
+            <button
+              type="button"
+              onClick={() => setShowRecoveryModal(true)}
+              className={`text-xs font-medium underline transition ${fresh ? 'text-[#5B665F] hover:text-[#059669]' : 'text-stone-500 hover:text-[#B83B1E]'}`}
+            >
+              Já comprou? Recuperar acesso
+            </button>
+          )}
+          <p className={`text-[11px] ${fresh ? 'text-[#5B665F]' : 'text-stone-400'}`}>
+            O acesso é liberado depois que o pagamento é confirmado.
+          </p>
+        </div>
+        {modals}
+      </div>
+    );
+  }
+
   // ==========================================
   // VIEW: TRATTORIA CULINARY OFFER EXPERIENCE (PRESERVED)
   // NORQVA-0061: o mesmo visual serve aos Volumes III, IV e V, com textos e imagens de cada livro
@@ -1034,85 +1195,7 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
         </div>
       </footer>
 
-      {/* Step 1: Checkout Form Modal */}
-      {showCheckout && (
-        <CheckoutView
-          offer={offer as any}
-          initialWithBump={checkoutWithBump}
-          isDemo={offer.is_demo}
-          initialCustomer={customerDraft}
-          onCustomerChange={setCustomerDraft}
-          onOrderCreated={(order) => {
-            setShowCheckout(false);
-            if (order?.id && order?.checkout_token) {
-              savePurchaseSession({
-                orderId: order.id,
-                checkoutToken: order.checkout_token,
-                offerHumanId: offer?.human_id || 'OFF-000001',
-                status: 'PENDING',
-                offerName: offer?.name
-              });
-            }
-            setActivePaymentOrder(order);
-          }}
-          onCancel={() => setShowCheckout(false)}
-          showError={showError}
-          showSuccess={showSuccess}
-        />
-      )}
-
-      {/* Step 2: Payment / Pix Status Modal */}
-      {activePaymentOrder && !activeDeliveryOrder && (
-        <PaymentStatus
-          orderId={activePaymentOrder.id}
-          checkoutToken={activePaymentOrder.checkout_token}
-          amount={activePaymentOrder.total_amount || activePrice}
-          paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
-          installments={activePaymentOrder.installments}
-          look="light"
-          isDemo={offer.is_demo}
-          onPaymentConfirmed={() => {
-            updatePurchaseSessionStatus(activePaymentOrder.id, 'PAID');
-            navigate(`/pedido/${activePaymentOrder.id}/entrega#token=${activePaymentOrder.checkout_token}`);
-          }}
-          onBackToCheckout={() => {
-            setActivePaymentOrder(null);
-            // NORQVA-0080: volta ao formulário sem remarcar o Dolci que a pessoa pode ter desmarcado
-            setCheckoutWithBump(false);
-            setShowCheckout(true);
-          }}
-          onClose={() => {
-            setActivePaymentOrder(null);
-          }}
-          showError={showError}
-          showSuccess={showSuccess}
-        />
-      )}
-
-      {/* Step 3: Digital Delivery View Modal */}
-      {activeDeliveryOrder && (
-        <DigitalDelivery
-          orderId={activeDeliveryOrder.id}
-          checkoutToken={activeDeliveryOrder.checkout_token}
-          isDemo={offer.is_demo}
-          onClose={() => {
-            setActiveDeliveryOrder(null);
-            setActivePaymentOrder(null);
-          }}
-          showError={showError}
-          showSuccess={showSuccess}
-        />
-      )}
-
-      {/* Recovery Request Modal */}
-      {showRecoveryModal && (
-        <RecoveryRequestModal
-          offerHumanId={offer?.human_id || humanId}
-          onClose={() => setShowRecoveryModal(false)}
-          showError={showError}
-          showSuccess={showSuccess}
-        />
-      )}
+      {modals}
 
     </div>
   );

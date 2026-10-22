@@ -60,6 +60,7 @@ import { CreativeFactoryView } from './features/creative-factory/CreativeFactory
 // NORQVA-0082: na Visão Geral o período fica na própria tela (botões logo abaixo da receita)
 const PERIOD_AWARE_TABS = ['campaigns', 'research', 'results', 'creative-factory', 'sales'];
 import { PublicOfferPage } from './features/public/PublicOfferPage';
+import { lookForNames } from './lib/productLook';
 import { KitLandingPage } from './features/public/KitLandingPage';
 
 import { apiFetch as apiFetchLib, API_BASE as API_BASE_LIB } from './lib/api';
@@ -1569,7 +1570,7 @@ export default function App() {
           amount={activePaymentOrder.total_amount}
           paymentMethod={activePaymentOrder.payment_method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX'}
           installments={activePaymentOrder.installments}
-          look={/bolso/i.test(String(activePaymentOrder.offer_name_for_look || '')) ? 'dark' : 'light'}
+          look={lookForNames(String(activePaymentOrder.offer_name_for_look || ''))}
           isDemo={isDemoView}
           onPaymentConfirmed={() => {
             const current = activePaymentOrder;

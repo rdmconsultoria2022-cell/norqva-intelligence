@@ -1,4 +1,5 @@
 import { UserObj } from '../../types';
+import type { ProductLook } from '../../lib/productLook';
 
 export interface CheckoutOffer {
   id: string;
@@ -95,6 +96,8 @@ export interface CheckoutViewProps {
   initialWithBump?: boolean;
   /** NORQVA-0075: resumo do produto quando o nome da oferta não diz quais livros são (oferta depois da compra). */
   summary?: { covers: string[]; label: string; subtitle: string } | null;
+  /** NORQVA-0112: visual do pagamento; sem valor, 'fresh' quando o nome da oferta é do Seca Barriga. */
+  look?: ProductLook;
 }
 
 

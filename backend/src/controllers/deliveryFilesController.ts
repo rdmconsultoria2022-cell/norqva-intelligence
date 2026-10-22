@@ -56,6 +56,20 @@ export async function createOfferDeliveryFile(req: AuthenticatedRequest, res: Re
   }
 }
 
+/**
+ * NORQVA-0112: mais um PDF na entrega da oferta (a oferta já tem arquivo). Corpo = PDF (application/pdf);
+ * cabeçalho X-File-Name = nome do arquivo; ?title= = nome que o comprador vê (opcional).
+ */
+export async function addOfferDeliveryFile(req: AuthenticatedRequest, res: Response) {
+  if (!adminOnly(req, res)) return;
+  try {
+    const r = await svc(req).addToOffer(req.params.id, req.body, req.headers['x-file-name'], req.query.title, req.user?.id || null);
+    return res.status(201).json(r);
+  } catch (e: any) {
+    return fail(res, e, 'Não foi possível adicionar o arquivo.');
+  }
+}
+
 export async function replaceDeliveryFile(req: AuthenticatedRequest, res: Response) {
   if (!adminOnly(req, res)) return;
   try {

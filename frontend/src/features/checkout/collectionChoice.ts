@@ -1,6 +1,7 @@
 // NORQVA-0063: livros da coleção que o checkout do kit oferece como avulsos.
 import { READY_BOOKS } from '../public/bookPages';
 import type { CollectionSaleBook } from './checkoutTypes';
+import { isFreshName } from '../../lib/productLook';
 // Nome, capa e número de receitas são fixos aqui; preço, oferta e cartão vêm sempre do servidor (/public/collection).
 
 export interface SaleBookInfo {
@@ -23,8 +24,12 @@ export const SALE_BOOK_ORDER = ['trattoria', 'risotos', 'antipasti', 'paes', 'do
 /** Total de receitas dos 5 livros (28 + 12 + 12 + 12 + 10). */
 export const FULL_KIT_RECIPES = 74;
 
-/** Kit com os 5 livros: a oferta entrega 5 PDFs ou mais. */
-export const isFullKit = (offer: { delivery_files?: number | null } | null | undefined) => Number(offer?.delivery_files) >= 5;
+/**
+ * Kit com os 5 livros: a oferta entrega 5 PDFs ou mais.
+ * NORQVA-0112: o Seca Barriga entrega 10 PDFs e não é o kit de livros (sem escolha de livros no pagamento).
+ */
+export const isFullKit = (offer: { delivery_files?: number | null; name?: string | null } | null | undefined) =>
+  Number(offer?.delivery_files) >= 5 && !isFreshName(offer?.name);
 
 /**
  * NORQVA-0064: livros da lista pública (/public/collection) que podem ser vendidos avulsos no checkout:

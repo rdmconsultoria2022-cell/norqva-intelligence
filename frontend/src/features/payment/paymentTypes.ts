@@ -36,8 +36,8 @@ export interface PaymentStatusProps {
   paymentMethod?: 'PIX' | 'CREDIT_CARD';
   /** NORQVA-0041: parcelas escolhidas pelo comprador no checkout (só cartão). */
   installments?: number;
-  /** NORQVA-0041: 'light' = visual do produto (creme e terracota); 'dark' = padrão. */
-  look?: 'dark' | 'light';
+  /** NORQVA-0041: 'light' = visual do produto (creme e terracota); 'dark' = padrão. NORQVA-0112: 'fresh' = Seca Barriga. */
+  look?: 'dark' | 'light' | 'fresh';
   /** NORQVA-0041: cor principal do produto no visual 'light' (padrão terracota #B83B1E). */
   accent?: string;
   onPaymentConfirmed?: () => void;
