@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Pool } from 'pg';
 import { kiwifySignatureValid, recordKiwifyEvent } from '../services/commerce/kiwifySales';
+import { writeAuditLog } from '../db/audit';
 
 /**
  * NORQVA-0110: POST /api/webhooks/kiwify?signature=<hex> — público, sem login.
@@ -43,5 +44,27 @@ export async function postKiwifyWebhook(req: Request, res: Response) {
   } catch (err: any) {
     console.error('[Kiwify] webhook falhou:', err?.message || err);
     return res.status(500).json({ error: 'webhook error' });
+  }
+}
+
+/**
+ * NORQVA-0111: POST /api/admin/external-sales/kiwify — só ADMIN (login do NORQVA).
+ * Registra uma venda da Kiwify que aconteceu antes de o aviso (webhook) existir.
+ * Recebe o mesmo formato do aviso da Kiwify e usa a mesma gravação (idempotente, sem CPF ou telefone).
+ */
+export async function importKiwifySale(req: Request, res: Response) {
+  const body: any = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'invalid payload' });
+  try {
+    const pool: Pool = req.app.get('db');
+    const r = await recordKiwifyEvent(pool, body);
+    if (r.ignored) return res.status(422).json({ error: r.reason });
+    const userId = (req as any).user?.id || null;
+    await writeAuditLog(pool, userId, 'KIWIFY_SALE_IMPORTED_MANUAL',
+      `Venda da Kiwify registrada à mão pelo administrador (venda ${r.id}).`, null, r.status);
+    return res.status(200).json({ ok: true, id: r.id, status: r.status, created: r.created });
+  } catch (err: any) {
+    console.error('[Kiwify] importação manual falhou:', err?.message || err);
+    return res.status(500).json({ error: 'import error' });
   }
 }

@@ -175,7 +175,7 @@ import {
   getCloudWebhook, postCloudWebhook
 } from './controllers/whatsappController';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
-import { postKiwifyWebhook } from './controllers/kiwifyController';
+import { postKiwifyWebhook, importKiwifySale } from './controllers/kiwifyController';
 
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
@@ -463,6 +463,7 @@ app.get('/api/admin/payments/validate-connection', requireRole(['ADMIN']), valid
 app.get('/api/admin/storage/test-sign', requireRole(['ADMIN']), testStorageSign);
 app.post('/api/admin/storage/upload', requireRole(['ADMIN']), uploadStorageAsset);
 app.post('/api/admin/orders/:orderId/reissue-delivery', requireRole(['ADMIN']), reissueOrderDelivery);
+app.post('/api/admin/external-sales/kiwify', requireRole(['ADMIN']), importKiwifySale);
 // NORQVA-0026: tela Vendas
 app.get('/api/sales/orders', requireRole(['ADMIN', 'OPERATIONS', 'PERFORMANCE', 'INTELLIGENCE']), getSales);
 app.post('/api/sales/orders/:id/access-link', requireRole(['ADMIN']), postSalesAccessLink);
