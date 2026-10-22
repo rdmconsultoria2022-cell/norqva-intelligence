@@ -199,7 +199,7 @@ export async function recordKiwifyEvent(pool: Pool, body: any): Promise<KiwifyRe
 
   await pool.query(
     `UPDATE external_sales SET
-       status = $2,
+       status = $2::varchar,
        product_name = COALESCE(product_name, $3),
        gross_amount = COALESCE(gross_amount, $4),
        net_amount = COALESCE(net_amount, $5),
@@ -213,9 +213,9 @@ export async function recordKiwifyEvent(pool: Pool, body: any): Promise<KiwifyRe
        utm_campaign = COALESCE(utm_campaign, $13),
        utm_content = COALESCE(utm_content, $14),
        utm_term = COALESCE(utm_term, $15),
-       approved_at = COALESCE(approved_at, $16),
-       refunded_at = CASE WHEN $2 = 'PAID' THEN refunded_at ELSE COALESCE(refunded_at, $17) END,
-       raw_event = CASE WHEN $2 <> status THEN $18::jsonb ELSE raw_event END,
+       approved_at = COALESCE(approved_at, $16::timestamptz),
+       refunded_at = CASE WHEN $2::varchar = 'PAID' THEN refunded_at ELSE COALESCE(refunded_at, $17::timestamptz) END,
+       raw_event = CASE WHEN $2::varchar <> status THEN $18::jsonb ELSE raw_event END,
        updated_at = NOW()
      WHERE id = $1`,
     [row.id, next, f.productName, f.gross, f.net, f.fee, f.currency, f.paymentMethod, f.customerName, f.customerEmail,
