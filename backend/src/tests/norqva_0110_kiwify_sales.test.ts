@@ -328,4 +328,29 @@ describe.sequential('NORQVA-0110 — vendas da Kiwify', () => {
     expect(res.body.ignored).toBe(true);
     expect(await sale(id)).toHaveLength(0);
   });
+
+  it('NORQVA-0111: administrador registra à mão uma venda antiga; outros perfis não', async () => {
+    delete process.env.KIWIFY_PRODUCT_IDS;
+    const id = `manual_${uid}`;
+    const denied = await request(app).post('/api/admin/external-sales/kiwify').set('Authorization', `Bearer ${perfToken}`).send(event(id));
+    expect(denied.status).toBe(403);
+    expect(await sale(id)).toHaveLength(0);
+
+    const ok = await request(app).post('/api/admin/external-sales/kiwify').set('Authorization', `Bearer ${adminToken}`).send(event(id));
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('PAID');
+    expect(ok.body.created).toBe(true);
+    const again = await request(app).post('/api/admin/external-sales/kiwify').set('Authorization', `Bearer ${adminToken}`).send(event(id));
+    expect(again.status).toBe(200);
+    expect(again.body.created).toBe(false);
+    const rows = await sale(id);
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].gross_amount)).toBe(47);
+    expect(JSON.stringify(rows[0].raw_event)).not.toContain('12345678909');
+
+    const ignored = await request(app).post('/api/admin/external-sales/kiwify').set('Authorization', `Bearer ${adminToken}`).send({ webhook_event_type: 'pix_created', order_id: `x_${uid}` });
+    expect(ignored.status).toBe(422);
+    const noAuth = await request(app).post('/api/admin/external-sales/kiwify').send(event(`na_${uid}`));
+    expect([401, 403]).toContain(noAuth.status);
+  });
 });
