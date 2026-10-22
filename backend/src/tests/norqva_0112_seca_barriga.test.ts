@@ -215,8 +215,8 @@ describe.sequential('NORQVA-0112 — Seca Barriga: cadastro pela API, vários PD
     const providerPaymentId = `pay_${crypto.randomUUID().slice(0, 10)}`;
     await pool.query(
       `INSERT INTO payments (id, human_id, order_id, provider, status, amount, idempotency_key, is_demo, external_reference, provider_payment_id)
-       VALUES ($1, $2, $3, 'ASAAS', 'PENDING', 37.00, $4, false, $1, $5)`,
-      [paymentId, `PMT-0112-${tag}`, orderId, crypto.randomUUID(), providerPaymentId]
+       VALUES ($1, $2, $3, 'ASAAS', 'PENDING', 37.00, $4, false, $5, $6)`,
+      [paymentId, `PMT-0112-${tag}`, orderId, crypto.randomUUID(), paymentId, providerPaymentId]
     );
     ids.payments.push(paymentId);
     const client = await pool.connect();
