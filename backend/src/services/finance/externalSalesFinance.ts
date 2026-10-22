@@ -111,6 +111,20 @@ export type ExternalAttribution =
   | { kind: 'AMBIGUOUS' }
   | { kind: 'UNATTRIBUTED' };
 
+/** Mesmo texto, sem diferença de espaços; aceita o valor ainda codificado de URL ("+" e "%20"). */
+function utmVariants(v: string): string[] {
+  const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+  const out = [norm(v)];
+  try {
+    const decoded = norm(decodeURIComponent(v.replace(/\+/g, ' ')));
+    if (!out.includes(decoded)) out.push(decoded);
+  } catch {
+    /* texto com % solto: fica só o original */
+  }
+  return out;
+}
+const sameName = (name: string | null, utm: string[]) => utm.includes((name || '').replace(/\s+/g, ' ').trim());
+
 /** utm_campaign = nome da campanha (um só resultado); utm_content = nome do anúncio dentro dela. */
 export function attributeExternalSale(
   row: ExternalFinanceRow,
@@ -118,13 +132,15 @@ export function attributeExternalSale(
   ads: { ad_id: string; ad_name: string | null; campaign_id: string }[]
 ): ExternalAttribution {
   if (!row.utmCampaign) return { kind: 'UNATTRIBUTED' };
-  const camps = campaigns.filter(c => (c.campaign_name || '').trim() === row.utmCampaign);
+  const campUtm = utmVariants(row.utmCampaign);
+  const camps = campaigns.filter(c => sameName(c.campaign_name, campUtm));
   if (camps.length === 0) return { kind: 'UNATTRIBUTED' };
   if (camps.length > 1) return { kind: 'AMBIGUOUS' };
   const campaignId = String(camps[0].campaign_id);
   let adId: string | null = null;
   if (row.utmContent) {
-    const matches = ads.filter(a => String(a.campaign_id) === campaignId && (a.ad_name || '').trim() === row.utmContent);
+    const adUtm = utmVariants(row.utmContent);
+    const matches = ads.filter(a => String(a.campaign_id) === campaignId && sameName(a.ad_name, adUtm));
     if (matches.length === 1) adId = String(matches[0].ad_id);
   }
   return { kind: 'ATTRIBUTED', campaignId, adId };

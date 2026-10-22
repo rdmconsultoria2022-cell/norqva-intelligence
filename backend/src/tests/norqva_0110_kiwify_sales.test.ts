@@ -10,6 +10,7 @@ import { runMigrations } from '../db/migrations';
 import { signSupabaseToken } from '../utils/token';
 import { resetAllRateLimits } from '../middleware/rateLimiter';
 import { stripKiwifyPii, centsToReais, parseKiwifyDate, kiwifyTargetStatus } from '../services/commerce/kiwifySales';
+import { attributeExternalSale } from '../services/finance/externalSalesFinance';
 
 const TOKEN = 'kiwify_test_token_0110';
 const uid = crypto.randomBytes(4).toString('hex');
@@ -126,6 +127,18 @@ describe.sequential('NORQVA-0110 — vendas da Kiwify', () => {
     expect(text).not.toContain('4242');
     expect(text).not.toContain('10.0.0.1');
     expect(clean.Customer.full_name).toBe('Ana Teste');
+  });
+
+  it('atribuição: nome igual (também codificado de URL), dois nomes iguais = conflito, sem nome = sem atribuição', () => {
+    const camps = [{ campaign_id: 'c1', campaign_name: 'NQ – Seca Barriga – Teste – Vendas' }, { campaign_id: 'c2', campaign_name: 'Dup' }, { campaign_id: 'c3', campaign_name: 'Dup' }];
+    const ads = [{ ad_id: 'a1', ad_name: 'SB AD 01', campaign_id: 'c1' }, { ad_id: 'a2', ad_name: 'SB AD 01', campaign_id: 'c2' }];
+    const row = (utmCampaign: string | null, utmContent: string | null = null) =>
+      ({ id: 'x', status: 'PAID' as const, gross: 47, fee: 4.7, productName: 'P', utmCampaign, utmContent, at: new Date() });
+    expect(attributeExternalSale(row('NQ – Seca Barriga – Teste – Vendas', 'SB AD 01'), camps, ads)).toEqual({ kind: 'ATTRIBUTED', campaignId: 'c1', adId: 'a1' });
+    expect(attributeExternalSale(row(encodeURIComponent('NQ – Seca Barriga – Teste – Vendas'), 'SB+AD+01'), camps, ads)).toEqual({ kind: 'ATTRIBUTED', campaignId: 'c1', adId: 'a1' });
+    expect(attributeExternalSale(row('Dup'), camps, ads)).toEqual({ kind: 'AMBIGUOUS' });
+    expect(attributeExternalSale(row('Outra'), camps, ads)).toEqual({ kind: 'UNATTRIBUTED' });
+    expect(attributeExternalSale(row(null), camps, ads)).toEqual({ kind: 'UNATTRIBUTED' });
   });
 
   it('sem KIWIFY_WEBHOOK_TOKEN: 503 e nada gravado', async () => {
