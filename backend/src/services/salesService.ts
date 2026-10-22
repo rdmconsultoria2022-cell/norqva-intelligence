@@ -94,8 +94,9 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
     [opts.startIso, opts.endIso]
   );
 
-  const orders = r.rows.map(row => ({
+  const asaasOrders = r.rows.map(row => ({
     id: row.id,
+    source: 'ASAAS' as 'ASAAS' | 'KIWIFY',
     status: row.status,
     total_amount: row.total_amount !== null ? Number(row.total_amount) : null,
     created_at: row.created_at,
@@ -127,6 +128,12 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
         row.access_email_status === 'FAILED')
   }));
 
+  // NORQVA-0110: vendas da Kiwify (a entrega e o pagamento são da Kiwify: sem ações do NORQVA)
+  const external = opts.filter === 'PENDING' || opts.filter === 'PROBLEM' ? [] : await listExternalSales(pool, opts);
+  const orders = [...asaasOrders, ...external]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 500);
+
   const summary = {
     total: orders.length,
     paid: orders.filter(o => o.status === 'PAID').length,
@@ -135,6 +142,53 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
     revenue: Math.round(orders.filter(o => o.status === 'PAID').reduce((s, o) => s + (o.total_amount || 0), 0) * 100) / 100
   };
   return { orders, summary };
+}
+
+const EXTERNAL_PAYMENT_STATUS: Record<string, string> = { PAID: 'CONFIRMED', REFUNDED: 'REFUNDED', CHARGEBACK: 'CHARGEBACK' };
+
+async function listExternalSales(pool: Pool, opts: ListSalesOptions) {
+  const where: string[] = [];
+  if (opts.includeTests) where.push(`e.is_demo = ${opts.isDemo ? 'TRUE' : 'FALSE'}`);
+  else where.push(getCommercialOrderClause('e', opts.isDemo));
+  where.push('($1::timestamptz IS NULL OR COALESCE(e.approved_at, e.created_at) >= $1::timestamptz)');
+  where.push('($2::timestamptz IS NULL OR COALESCE(e.approved_at, e.created_at) <= $2::timestamptz)');
+  if (opts.filter === 'PAID') where.push(`e.status = 'PAID'`);
+  const r = await pool.query(
+    `SELECT e.id, e.source, e.status, e.gross_amount, e.product_name, e.customer_name, e.customer_email,
+            e.approved_at, e.refunded_at, e.is_demo, e.data_provenance,
+            COALESCE(e.approved_at, e.created_at) AS sale_at
+     FROM external_sales e
+     WHERE ${where.join(' AND ')}
+     ORDER BY COALESCE(e.approved_at, e.created_at) DESC
+     LIMIT 500`,
+    [opts.startIso, opts.endIso]
+  );
+  return r.rows.map(row => ({
+    id: row.id,
+    source: 'KIWIFY' as 'ASAAS' | 'KIWIFY',
+    status: row.status,
+    total_amount: row.gross_amount !== null ? Number(row.gross_amount) : null,
+    created_at: row.sale_at,
+    is_test: row.data_provenance !== 'COMMERCIAL_PRODUCTION' || row.is_demo,
+    customer: {
+      name: opts.canSeeFullPII || opts.canSeeName ? row.customer_name : '[REDACTED]',
+      email: opts.canSeeFullPII ? row.customer_email : '[REDACTED]',
+      phone: null
+    },
+    offer_name: row.product_name,
+    offer_human_id: null,
+    items: [] as { name: string; is_bump: boolean; total: number | null }[],
+    payment_id: null,
+    payment_status: EXTERNAL_PAYMENT_STATUS[row.status] || row.status,
+    payment_human_id: null,
+    paid_at: row.approved_at,
+    download_count: 0,
+    delivery_status: null,
+    access_email_status: null,
+    access_email_sent_at: null,
+    refunded_at: row.refunded_at,
+    problem: false
+  }));
 }
 
 async function loadOrder(pool: Pool, orderId: string, isDemo: boolean) {

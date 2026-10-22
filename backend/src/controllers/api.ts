@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { resolveCampaignProducts, allocateSpendToProducts } from '../services/finance/productMediaAllocation';
 import { buildDailySeries, commercialDayOf } from '../services/finance/dailySeries';
+import { loadExternalSalesForFinance, summarizeExternalSales, mergeExternalIntoProductRows, attributeExternalSale, externalProductKey } from '../services/finance/externalSalesFinance';
 import { campaignsForCreatives } from '../services/creative/creativeCampaigns';
 import https from 'https';
 import http from 'http';
@@ -5761,7 +5762,11 @@ export async function getExecutiveDaily(req: AuthenticatedRequest, res: Response
     if (accountTotal === 0) spendRows = (await spendByDay('CAMPAIGN')).rows;
 
     const end = metaStop || commercialDayOf(new Date());
-    const days = buildDailySeries({ start: metaStart, end, paidOrders: ordersRes.rows, spendRows });
+    // NORQVA-0110: vendas pagas da Kiwify no dia da aprovação (mesma regra do Financeiro)
+    const externalPaid = (await loadExternalSalesForFinance(pool, isDemo, startIso, endIso))
+      .filter(r => r.status === 'PAID')
+      .map(r => ({ created_at: r.at, total_amount: r.gross }));
+    const days = buildDailySeries({ start: metaStart, end, paidOrders: [...ordersRes.rows, ...externalPaid], spendRows });
 
     const truncated = !!metaStart && days.length > 0 && days[0].date > metaStart;
     return res.status(200).json({
@@ -6348,16 +6353,20 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       [startDateParam, endDateParam]
     );
 
+    // NORQVA-0110: vendas da Kiwify (external_sales) entram como pedidos pagos/estornados
+    const externalRows = await loadExternalSalesForFinance(pool, isDemo, startDateParam, endDateParam);
+    const ext = summarizeExternalSales(externalRows);
+
     const orderRow = ordersAggRes.rows[0] || {};
-    const totalOrdersCount = parseInt(orderRow.total_orders || '0', 10);
-    const paidOrdersCount = parseInt(orderRow.paid_orders || '0', 10);
+    const totalOrdersCount = parseInt(orderRow.total_orders || '0', 10) + ext.total;
+    const paidOrdersCount = parseInt(orderRow.paid_orders || '0', 10) + ext.paidCount;
     const pendingOrdersCount = parseInt(orderRow.pending_orders || '0', 10);
     const failedOrdersCount = parseInt(orderRow.failed_orders || '0', 10);
     const cancelledOrdersCount = parseInt(orderRow.cancelled_orders || '0', 10);
-    const refundedOrdersCount = parseInt(orderRow.refunded_orders || '0', 10);
+    const refundedOrdersCount = parseInt(orderRow.refunded_orders || '0', 10) + ext.refundedCount;
 
-    const grossRevenue = Math.round(parseFloat(orderRow.gross_paid_revenue || '0') * 100) / 100;
-    const refundPrincipal = Math.round(parseFloat(orderRow.refund_principal || '0') * 100) / 100;
+    const grossRevenue = Math.round((parseFloat(orderRow.gross_paid_revenue || '0') + ext.grossPaid) * 100) / 100;
+    const refundPrincipal = Math.round((parseFloat(orderRow.refund_principal || '0') + ext.refundPrincipal) * 100) / 100;
     const cumulativeGrossRevenue = Math.round((grossRevenue + refundPrincipal) * 100) / 100;
     const netCommercialRevenue = grossRevenue;
 
@@ -6379,11 +6388,11 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     );
 
     const payRow = paymentsAggRes.rows[0] || {};
-    const totalConfirmedPayments = parseInt(payRow.total_confirmed_payments || '0', 10);
-    const knownFeeCount = parseInt(payRow.known_fee_count || '0', 10);
-    const nullFeeCount = parseInt(payRow.null_fee_count || '0', 10);
-    const zeroFeeCount = parseInt(payRow.zero_fee_count || '0', 10);
-    const totalKnownGatewayFees = Math.round(parseFloat(payRow.total_known_gateway_fees || '0') * 100) / 100;
+    const totalConfirmedPayments = parseInt(payRow.total_confirmed_payments || '0', 10) + ext.paidCount;
+    const knownFeeCount = parseInt(payRow.known_fee_count || '0', 10) + ext.knownFeeCount;
+    const nullFeeCount = parseInt(payRow.null_fee_count || '0', 10) + ext.nullFeeCount;
+    const zeroFeeCount = parseInt(payRow.zero_fee_count || '0', 10) + ext.zeroFeeCount;
+    const totalKnownGatewayFees = Math.round((parseFloat(payRow.total_known_gateway_fees || '0') + ext.fees) * 100) / 100;
 
     let costCoverage: 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' = 'COMPLETE';
     let gatewayCostState: 'KNOWN_VALUE' | 'KNOWN_ZERO' | 'PARTIAL' | 'UNKNOWN' = 'KNOWN_ZERO';
@@ -6546,6 +6555,9 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       [startDateParam, endDateParam]
     );
 
+    // NORQVA-0110: venda da Kiwify soma no produto de mesmo nome ou ganha a linha dela
+    const externalProductIds = mergeExternalIntoProductRows(productBreakdownRes.rows, externalRows);
+
     const byProduct = productBreakdownRes.rows.map(row => {
       const pRev = Math.round(parseFloat(row.gross_revenue || '0') * 100) / 100;
       const pFees = Math.round(parseFloat(row.gateway_fees || '0') * 100) / 100;
@@ -6612,6 +6624,20 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
     let campaignProductMap = new Map<string, string | null>();
     try {
       const campaignProduct = await resolveCampaignProducts(pool, isDemo);
+      // NORQVA-0110: campanha sem produto comprovado cujas vendas da Kiwify são todas de um só produto
+      const extByCampaign = new Map<string, Set<string>>();
+      for (const er of externalRows) {
+        if (er.status !== 'PAID') continue;
+        const a = attributeExternalSale(er, campaignsRes.rows, []);
+        const target = externalProductIds.get(externalProductKey(er));
+        if (a.kind !== 'ATTRIBUTED' || !target) continue;
+        const set = extByCampaign.get(a.campaignId) || new Set<string>();
+        set.add(target.productId);
+        extByCampaign.set(a.campaignId, set);
+      }
+      for (const [campaignId, set] of extByCampaign) {
+        if (!campaignProduct.has(campaignId) && set.size === 1) campaignProduct.set(campaignId, [...set][0]);
+      }
       campaignProductMap = campaignProduct;
       const alloc = allocateSpendToProducts({
         products: byProduct.map(p => ({ productId: String(p.productId), grossRevenue: p.grossRevenue })),
@@ -6753,10 +6779,35 @@ export async function getFinancialDashboard(req: AuthenticatedRequest, res: Resp
       }
     });
 
+    // NORQVA-0110: vendas pagas da Kiwify por utm_campaign (nome da campanha) e utm_content (nome do anúncio)
+    for (const er of externalRows) {
+      if (er.status !== 'PAID') continue;
+      const a = attributeExternalSale(er, campaignsRes.rows, adsRes.rows);
+      if (a.kind === 'AMBIGUOUS') {
+        conflictedOrdersCount += 1;
+        conflictedRevenue = Math.round((conflictedRevenue + er.gross) * 100) / 100;
+      } else if (a.kind === 'ATTRIBUTED') {
+        const currentCamp = campaignAttributionMap.get(a.campaignId) || { orders: 0, revenue: 0 };
+        currentCamp.orders += 1;
+        currentCamp.revenue = Math.round((currentCamp.revenue + er.gross) * 100) / 100;
+        campaignAttributionMap.set(a.campaignId, currentCamp);
+        if (a.adId) {
+          const currentAd = adAttributionMap.get(a.adId) || { orders: 0, revenue: 0 };
+          currentAd.orders += 1;
+          currentAd.revenue = Math.round((currentAd.revenue + er.gross) * 100) / 100;
+          adAttributionMap.set(a.adId, currentAd);
+        }
+      } else {
+        unattributedOrdersCount += 1;
+        unattributedRevenue = Math.round((unattributedRevenue + er.gross) * 100) / 100;
+      }
+    }
+
     // NORQVA-0082: nome do produto de cada campanha (só quando o vínculo é único e comprovado)
     const productNameById = new Map<string, string>();
+    for (const v of externalProductIds.values()) productNameById.set(v.productId, v.name);
     try {
-      const linkedIds = [...new Set([...campaignProductMap.values()].filter((v): v is string => !!v))];
+      const linkedIds = [...new Set([...campaignProductMap.values()].filter((v): v is string => !!v && !v.startsWith('kiwify:')))];
       if (linkedIds.length > 0) {
         const namesRes = await pool.query(`SELECT id, name FROM products WHERE id = ANY($1::uuid[])`, [linkedIds]);
         for (const r of namesRes.rows) productNameById.set(String(r.id), String(r.name));
