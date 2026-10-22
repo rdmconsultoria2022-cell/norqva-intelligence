@@ -27,6 +27,8 @@ export interface AttributionContext {
   ad_id: string | null;
   placement: string | null;
   site_source_name: string | null;
+  /** NORQVA-0112: origem própria do link (ex.: quiz externo do Seca Barriga), parâmetro `src`. */
+  src: string | null;
 }
 
 export type FunnelEventType = 'LANDING_PAGE_VIEW' | 'OFFER_VIEW' | 'CHECKOUT_MODAL_OPENED' | 'CHECKOUT_STARTED';
@@ -100,6 +102,7 @@ export function captureUrlAttribution(): Partial<AttributionContext & { fbclid_t
     const ad_id = params.get('ad_id');
     const placement = params.get('placement');
     const site_source_name = params.get('site_source_name');
+    const src = params.get('src');
 
     const ctx: Record<string, string> = {};
     const existing = JSON.parse(sessionStorage.getItem('norqva_attribution_ctx') || '{}');
@@ -120,6 +123,7 @@ export function captureUrlAttribution(): Partial<AttributionContext & { fbclid_t
     if (ad_id) ctx.ad_id = ad_id;
     if (placement) ctx.placement = placement;
     if (site_source_name) ctx.site_source_name = site_source_name;
+    if (src) ctx.src = src.slice(0, 100);
 
     if (Object.keys(ctx).length > 0) {
       sessionStorage.setItem('norqva_attribution_ctx', JSON.stringify({ ...existing, ...ctx }));
@@ -168,7 +172,8 @@ export function getAttributionContext(): AttributionContext {
     adset_id: merged.adset_id || null,
     ad_id: merged.ad_id || null,
     placement: merged.placement || null,
-    site_source_name: merged.site_source_name || null
+    site_source_name: merged.site_source_name || null,
+    src: merged.src || null
   };
 }
 
@@ -203,6 +208,7 @@ export async function sendFunnelEvent(
       ...(attr.ad_id ? { ad_id: attr.ad_id } : {}),
       ...(attr.placement ? { placement: attr.placement } : {}),
       ...(attr.site_source_name ? { site_source_name: attr.site_source_name } : {}),
+      ...(attr.src ? { src: attr.src } : {}),
       ...(metadata || {})
     };
 

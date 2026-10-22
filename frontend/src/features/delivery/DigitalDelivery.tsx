@@ -4,6 +4,7 @@ import { DigitalDeliveryProps, DeliveryTokenItem } from './deliveryTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
 import { PostPurchaseOffer } from './PostPurchaseOffer';
+import { isFreshName, FRESH_BUTTON_STYLE } from '../../lib/productLook';
 
 export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   orderId,
@@ -123,6 +124,12 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
     tokens.some(t => t.assetTitle?.toLowerCase().includes('bolso'))
   );
 
+  // NORQVA-0112: Seca Barriga (vários PDFs que não são livros de cozinha): visual 'fresh' e lista de materiais
+  const isFresh = !isBolsoBlindado && isFreshName(orderData?.offer_name_snapshot);
+  const freshTokens = isFresh
+    ? [...tokens].sort((a, b) => String(a.assetTitle || '').localeCompare(String(b.assetTitle || ''), 'pt-BR', { numeric: true }))
+    : tokens;
+
   // NORQVA-0061: livros da coleção vendidos separadamente têm título próprio no aviso de entrega
   const orderName = String(orderData?.offer_name_snapshot || '').trim();
   const readyTitle = !orderName || /trattoria/i.test(orderName)
@@ -134,21 +141,23 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] antialiased">
       <div className={`border rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar font-sans ${
-        isBolsoBlindado ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-[#FAF7F2] border-stone-200 text-stone-800'
-      }`}>
+        isBolsoBlindado ? 'bg-slate-900 border-slate-700 text-slate-100' : isFresh ? 'bg-[#F7F8F4] border-[#E3E7DF] text-[#18211C]' : 'bg-[#FAF7F2] border-stone-200 text-stone-800'
+      }`} data-look={isBolsoBlindado ? 'dark' : isFresh ? 'fresh' : 'light'}>
         
         {/* Header */}
         <div className={`flex items-center justify-between mb-6 pb-4 border-b ${
           isBolsoBlindado ? 'border-slate-800' : 'border-stone-200'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-md">
+            <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-md" style={isFresh ? FRESH_BUTTON_STYLE : undefined}>
               {isBolsoBlindado ? <ShieldCheck className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
             </div>
             <div>
-              <h3 className={`text-lg font-bold ${isBolsoBlindado ? 'text-white font-sans' : 'font-serif text-stone-900'}`}>
+              <h3 className={`text-lg font-bold ${isBolsoBlindado ? 'text-white font-sans' : isFresh ? 'font-sans text-[#18211C]' : 'font-serif text-stone-900'}`}>
                 {isBolsoBlindado 
                   ? 'Seu acesso ao Método Bolso Blindado está pronto!' 
+                  : isFresh
+                  ? 'Seus materiais estão prontos!'
                   : readyTitle}
               </h3>
               <p className={`text-xs font-medium ${isBolsoBlindado ? 'text-slate-400' : 'text-stone-500'}`}>
@@ -175,7 +184,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
           <div className={`py-12 flex flex-col items-center justify-center gap-3 text-xs ${
             isBolsoBlindado ? 'text-slate-400' : 'text-stone-600'
           }`}>
-            <Loader2 className={`h-8 w-8 animate-spin ${isBolsoBlindado ? 'text-emerald-500' : 'text-[#B83B1E]'}`} />
+            <Loader2 className={`h-8 w-8 animate-spin ${isBolsoBlindado || isFresh ? 'text-emerald-500' : 'text-[#B83B1E]'}`} />
             <p className="font-medium">Preparando seu acesso seguro...</p>
           </div>
         ) : fetchError ? (
@@ -293,6 +302,72 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
               </div>
             </div>
 
+          </div>
+        ) : isFresh ? (
+          // ==========================================
+          // NORQVA-0112: SECA BARRIGA (vários PDFs, visual 'fresh')
+          // ==========================================
+          <div className="space-y-5" data-testid="fresh-delivery">
+            <div className="text-sm text-[#18211C] leading-relaxed">
+              {freshTokens.length > 1
+                ? <>Seus <strong>{freshTokens.length} materiais</strong> já estão liberados. Cada arquivo tem o seu botão: ele abre em uma nova aba e esta página continua aberta para você baixar o próximo.</>
+                : <>Seu material já está liberado. Ele abre em uma nova aba.</>}
+            </div>
+            {freshTokens.length === 0 ? (
+              <p className="text-sm text-[#5B665F]">Nenhum arquivo disponível para este pedido.</p>
+            ) : (
+              <div className="space-y-2.5">
+                {freshTokens.map((item) => {
+                  const isExhausted = item.status === 'EXHAUSTED' || (item.downloadCount !== undefined && item.maxDownloads !== undefined && item.downloadCount >= item.maxDownloads);
+                  const isInactive = item.status === 'INACTIVE' || item.status === 'EXPIRED';
+                  const isUsable = (!item.status || item.status === 'ACTIVE') && Boolean(item.rawToken) && !isExhausted && !isInactive;
+                  return (
+                    <div key={item.assetId} className="p-4 rounded-2xl bg-white border border-[#E3E7DF] shadow-sm flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-xl bg-[#FDECE7] text-[#F0795B] flex items-center justify-center shrink-0">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-[#18211C] break-words">{item.assetTitle || 'Material em PDF'}</div>
+                          <div className="text-xs text-[#5B665F]">
+                            {isExhausted ? 'Limite de downloads atingido.' : isInactive ? 'Este arquivo não está mais disponível.' : 'PDF'}
+                          </div>
+                        </div>
+                      </div>
+                      {isUsable ? (
+                        <a
+                          href={`${API_BASE}/delivery/${item.rawToken}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Baixar ${item.assetTitle || 'arquivo'}`}
+                          className="px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 no-underline shadow-md transition active:scale-95"
+                          style={FRESH_BUTTON_STYLE}
+                        >
+                          <Download className="h-4 w-4" />
+                          <span>Baixar</span>
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-[#5B665F] shrink-0">Indisponível</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="p-4 rounded-xl bg-white border border-[#E3E7DF] space-y-2 text-xs text-[#5B665F]">
+              <div className="flex items-center gap-2 font-semibold text-[#18211C]" data-testid={accessEmailSent ? 'access-email-sent' : 'access-email-pending'}>
+                <Mail className="h-4 w-4 text-[#059669]" />
+                <span>{accessEmailSent ? 'Link de acesso enviado para o seu e-mail' : 'Baixe agora e guarde os arquivos'}</span>
+              </div>
+              <p>
+                {accessEmailSent
+                  ? 'Também mandamos um link de acesso para o e-mail da compra. Se fechar esta página, é só abrir esse e-mail para baixar de novo.'
+                  : 'Se fechar esta página, use "Recuperar acesso" na página da oferta com o e-mail da compra para receber um novo link.'}
+              </p>
+              <div className="pt-2 border-t border-[#E3E7DF] text-[11px]">
+                Dúvidas ou suporte: <strong className="text-[#18211C]">suporte@norqva.com</strong>
+              </div>
+            </div>
           </div>
         ) : tokens.length === 0 ? (
           // ==========================================

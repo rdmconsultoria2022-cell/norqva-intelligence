@@ -54,6 +54,23 @@ describe('NORQVA-0107 — remetente e e-mail de acesso', () => {
     expect(r.html).toContain('NORQVA</p>'); // sem marca: NORQVA no topo
   });
 
+  test('NORQVA-0112: Seca Barriga (não é livro) usa "arquivos"; livros seguem iguais', () => {
+    const url = 'https://app.test/acesso/sb1';
+    const p = buildPurchaseAccessEmail({ email: 'a@b.c', offerName: 'Desafio Seca Barriga 21 Dias', recoveryUrl: url, kind: 'PURCHASE' });
+    expect(p.html).toContain('Baixar meus arquivos');
+    expect(p.html).toContain('Seus arquivos: <strong>Desafio Seca Barriga 21 Dias</strong>');
+    expect(p.html).not.toMatch(/livro/i);
+    expect(p.text).toContain('Para baixar os seus arquivos');
+    expect(p.text).not.toMatch(/livro/i);
+    const r = buildPurchaseAccessEmail({ email: 'a@b.c', offerName: 'Desafio Seca Barriga 21 Dias', recoveryUrl: url, kind: 'DOWNLOAD_REMINDER' });
+    expect(r.html).toContain('ainda não baixou os seus arquivos');
+    expect(r.html).not.toMatch(/livro/i);
+    const b = buildPurchaseAccessEmail({ email: 'a@b.c', offerName: 'Trattoria em Casa', recoveryUrl: url, kind: 'PURCHASE' });
+    expect(b.html).toContain('Baixar meu livro');
+    expect(b.html).toContain('Seu livro: <strong>Trattoria em Casa</strong>');
+    expect(b.text).toContain('Para baixar o seu livro');
+  });
+
   test('recuperação continua com o texto de antes', () => {
     const e = buildRecoveryAccessEmail({ email: 'a@b.c', offerName: 'Trattoria', recoveryUrl: 'https://app.test/acesso/x' });
     expect(e.subject).toBe('Recupere seu acesso à sua compra NORQVA');

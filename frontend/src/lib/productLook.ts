@@ -1,0 +1,37 @@
+// NORQVA-0112: visual das telas do comprador (pagamento, Pix/cartão e entrega) escolhido pelo nome da oferta.
+// 'light' = livros de cozinha (creme e terracota, NORQVA-0041/0043); 'dark' = Bolso Blindado;
+// 'fresh' = Desafio Seca Barriga 21 Dias (fundo claro, verde e coral, Inter).
+
+export type ProductLook = 'dark' | 'light' | 'fresh';
+
+/** Cores do visual 'fresh' (Seca Barriga). */
+export const FRESH = {
+  bg: '#F7F8F4',
+  card: '#FFFFFF',
+  ink: '#18211C',
+  muted: '#5B665F',
+  line: '#E3E7DF',
+  from: '#10B981',
+  to: '#059669',
+  accent: '#F0795B'
+} as const;
+
+/** Botão principal do visual 'fresh': degradê verde com texto branco. */
+export const FRESH_BUTTON_STYLE = {
+  backgroundImage: `linear-gradient(135deg, ${FRESH.from}, ${FRESH.to})`,
+  color: '#FFFFFF'
+} as const;
+
+const FRESH_RE = /seca\s*barriga/i;
+
+/** Algum dos nomes (oferta, produto, item do pedido) é do Seca Barriga. */
+export function isFreshName(...names: Array<string | null | undefined>): boolean {
+  return names.some(n => FRESH_RE.test(String(n || '')));
+}
+
+/** Visual a partir dos nomes da oferta/produto. Livros de cozinha continuam 'light'. */
+export function lookForNames(...names: Array<string | null | undefined>): ProductLook {
+  if (isFreshName(...names)) return 'fresh';
+  if (names.some(n => /bolso/i.test(String(n || '')))) return 'dark';
+  return 'light';
+}

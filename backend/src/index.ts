@@ -186,7 +186,7 @@ import { getAdPreview } from './controllers/adPreviewController';
 import { createMetaChange, listMetaChanges, approveMetaChange, rejectMetaChange, cancelMetaChange, verifyMetaChange } from './controllers/metaChangeController';
 import { getTeam, inviteTeamMember, resendTeamInvite, updateTeamMember, deactivateTeamMember, reactivateTeamMember } from './controllers/teamController';
 import { getHiddenProducts, promoteHiddenProduct, getCatalogTrash, deleteOfferToTrash, restoreOfferFromTrash, deleteProductToTrash, restoreProductFromTrash } from './controllers/catalogVisibilityController';
-import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
+import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, addOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
 
@@ -454,6 +454,7 @@ app.delete('/api/offers/:id/digital-assets/:assetId', requireRole(['ADMIN']), un
 // NORQVA-0033: PDF entregue ao comprador, trocado pela tela (cópia de segurança antes de trocar)
 app.get('/api/offers/:id/delivery-files', requireRole(['ADMIN']), getOfferDeliveryFiles);
 app.post('/api/offers/:id/delivery-files', requireRole(['ADMIN']), pdfBody, createOfferDeliveryFile);
+app.post('/api/offers/:id/delivery-files/extra', requireRole(['ADMIN']), pdfBody, addOfferDeliveryFile);
 app.put('/api/digital-assets/:id/file', requireRole(['ADMIN']), pdfBody, replaceDeliveryFile);
 app.post('/api/digital-assets/:id/versions/:versionId/restore', requireRole(['ADMIN']), restoreDeliveryFileVersion);
 app.get('/api/digital-assets/:id/check-link', requireRole(['ADMIN']), getDeliveryFileCheckLink);

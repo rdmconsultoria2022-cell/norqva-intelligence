@@ -5,6 +5,7 @@ import { API_BASE } from '../../lib/api';
 import { DigitalDelivery } from './DigitalDelivery';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { getPurchaseSession, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
+import { lookForNames } from '../../lib/productLook';
 
 interface OrderDeliveryViewProps {
   showError: (msg: string) => void;
@@ -143,6 +144,10 @@ export const OrderDeliveryView: React.FC<OrderDeliveryViewProps> = ({
     order?.offer_name_snapshot?.toLowerCase().includes('bolso')
   );
 
+  // NORQVA-0112: visual pelo nome da oferta do pedido ('fresh' = Seca Barriga; livros seguem 'light')
+  const look = isBolsoBlindado ? 'dark' : lookForNames(order?.offer_name_snapshot);
+  const lightBg = look === 'fresh' ? 'bg-[#F7F8F4] text-[#18211C]' : 'bg-[#FAF7F2] text-stone-800';
+
   // Handle return to offer
   const handleReturnToOffer = () => {
     const offerId = order?.offer_human_id || (isBolsoBlindado ? 'OFF-BOLSO-BLINDADO-2990' : 'OFF-000001');
@@ -152,7 +157,7 @@ export const OrderDeliveryView: React.FC<OrderDeliveryViewProps> = ({
   if (loading) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-4 font-sans ${
-        isBolsoBlindado ? 'bg-[#0F172A] text-slate-200' : 'bg-[#FAF7F2] text-stone-800'
+        isBolsoBlindado ? 'bg-[#0F172A] text-slate-200' : lightBg
       }`}>
         <div className="flex flex-col items-center gap-3">
           <Loader2 className={`h-8 w-8 animate-spin ${isBolsoBlindado ? 'text-emerald-500' : 'text-[#B83B1E]'}`} />
@@ -165,7 +170,7 @@ export const OrderDeliveryView: React.FC<OrderDeliveryViewProps> = ({
   if (fetchError || !order) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-4 font-sans ${
-        isBolsoBlindado ? 'bg-[#0F172A] text-slate-200' : 'bg-[#FAF7F2] text-stone-800'
+        isBolsoBlindado ? 'bg-[#0F172A] text-slate-200' : lightBg
       }`}>
         <div className={`max-w-md w-full border rounded-2xl p-6 sm:p-8 shadow-xl text-center space-y-4 ${
           isBolsoBlindado ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-stone-200 text-stone-800'
@@ -209,7 +214,7 @@ export const OrderDeliveryView: React.FC<OrderDeliveryViewProps> = ({
   if (order.status === 'PAID') {
     return (
       <div className={`min-h-screen font-sans ${
-        isBolsoBlindado ? 'bg-[#0F172A] text-slate-100' : 'bg-[#FAF7F2] text-stone-800'
+        isBolsoBlindado ? 'bg-[#0F172A] text-slate-100' : lightBg
       }`}>
         {/* Underlay confirmation view */}
         <div className="max-w-3xl mx-auto px-4 py-12 text-center space-y-4">
@@ -241,14 +246,14 @@ export const OrderDeliveryView: React.FC<OrderDeliveryViewProps> = ({
   // If order is PENDING -> Render PaymentStatus in recovery/poll mode WITHOUT creating a new payment
   return (
     <div className={`min-h-screen font-sans p-4 ${
-      isBolsoBlindado ? 'bg-[#0F172A] text-slate-100' : 'bg-[#FAF7F2] text-stone-800'
+      isBolsoBlindado ? 'bg-[#0F172A] text-slate-100' : lightBg
     }`}>
       <PaymentStatus
         orderId={orderId}
         checkoutToken={checkoutToken}
         amount={order.total_amount || 29.90}
         isDemo={order.is_demo}
-        look={isBolsoBlindado ? 'dark' : 'light'}
+        look={look}
         onPaymentConfirmed={() => {
           updatePurchaseSessionStatus(orderId, 'PAID');
           setOrder((prev: any) => ({ ...prev, status: 'PAID' }));

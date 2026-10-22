@@ -298,6 +298,10 @@ export function buildPaymentReminderEmail(p: SendPaymentReminderEmailParams, now
 
 export const SPAM_HINT = 'Não achou este e-mail depois? Procure em Spam ou Lixo eletrônico e marque como “Não é spam”.';
 export const DOWNLOAD_REMINDER_INTRO = 'Vimos que você ainda não baixou o seu livro. O link abaixo é novo e já está liberado.';
+/** NORQVA-0112: lembrete neutro para o que não é livro (Seca Barriga). */
+export const DOWNLOAD_REMINDER_INTRO_FILES = 'Vimos que você ainda não baixou os seus arquivos. O link abaixo é novo e já está liberado.';
+/** NORQVA-0112: ofertas que não são livro (Seca Barriga) usam "arquivos" no e-mail. */
+export const isFilesOffer = (name: string | null | undefined) => /seca\s*barriga/i.test(String(name || ''));
 
 /**
  * NORQVA-0107: e-mail de acesso da compra (PURCHASE) e lembrete de download (DOWNLOAD_REMINDER).
@@ -309,9 +313,10 @@ export function buildPurchaseAccessEmail(params: SendPurchaseAccessEmailParams):
   const offerName = params.offerName || 'sua compra';
   const url = params.recoveryUrl;
   const isReminder = params.kind === 'DOWNLOAD_REMINDER';
+  const files = isFilesOffer(params.offerName);
   const validityDays = Math.max(1, Math.round((params.validityHours || 168) / 24));
   const subject = isReminder ? `Você ainda não baixou ${offerName}` : `Seu acesso a ${offerName} está pronto`;
-  const intro = isReminder ? DOWNLOAD_REMINDER_INTRO : `Obrigado pela compra de ${offerName}! Seu pagamento foi confirmado.`;
+  const intro = isReminder ? (files ? DOWNLOAD_REMINDER_INTRO_FILES : DOWNLOAD_REMINDER_INTRO) : `Obrigado pela compra de ${offerName}! Seu pagamento foi confirmado.`;
   const validity = `Guarde este e-mail: o link vale por ${validityDays} dias e pode ser aberto mais de uma vez.`;
   const help = 'Se tiver dificuldade para abrir o link, fale com o nosso atendimento que enviamos o seu material.';
 
@@ -320,7 +325,7 @@ export function buildPurchaseAccessEmail(params: SendPurchaseAccessEmailParams):
     '',
     intro,
     '',
-    isReminder ? `Para baixar ${offerName}, use o link abaixo:` : 'Para baixar o seu livro, use o link abaixo:',
+    isReminder ? `Para baixar ${offerName}, use o link abaixo:` : (files ? 'Para baixar os seus arquivos, use o link abaixo:' : 'Para baixar o seu livro, use o link abaixo:'),
     '',
     url,
     '',
@@ -357,11 +362,11 @@ export function buildPurchaseAccessEmail(params: SendPurchaseAccessEmailParams):
             <td style="padding: 28px;">
               <p style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600; color: ${ink};">Olá!</p>
               <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: ${ink};">${escapeHtml(intro)}</p>
-              <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: ${ink};">Seu livro: <strong>${escapeHtml(offerName)}</strong></p>
+              <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: ${ink};">${files ? 'Seus arquivos' : 'Seu livro'}: <strong>${escapeHtml(offerName)}</strong></p>
               <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin: 0 auto 16px auto;">
                 <tr>
                   <td align="center" style="border-radius: 10px; background-color: #B5472B;">
-                    <a href="${escapeHtml(url)}" target="_blank" style="display: inline-block; padding: 16px 32px; font-size: 18px; font-weight: 700; color: #FFFFFF; text-decoration: none; border-radius: 10px;">Baixar meu livro</a>
+                    <a href="${escapeHtml(url)}" target="_blank" style="display: inline-block; padding: 16px 32px; font-size: 18px; font-weight: 700; color: #FFFFFF; text-decoration: none; border-radius: 10px;">${files ? 'Baixar meus arquivos' : 'Baixar meu livro'}</a>
                   </td>
                 </tr>
               </table>

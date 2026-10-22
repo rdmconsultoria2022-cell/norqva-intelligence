@@ -259,3 +259,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 ## D-0110 — Vendas da Kiwify no NORQVA (2026-10-21)
 
 - **Decisão (Ricardo, "Aprovado" em 21/10/2026 20h52):** vendas feitas na Kiwify entram no NORQVA pelo webhook assinado `POST /api/webhooks/kiwify` (HMAC-SHA1 do corpo com `KIWIFY_WEBHOOK_TOKEN`; sem token, nada é gravado) e ficam em `external_sales` (PAID, REFUNDED, CHARGEBACK), sem CPF, telefone, endereço ou cartão. Contam em Vendas (etiqueta "Kiwify", sem ações de entrega) e no Financeiro (receita, tarifa da Kiwify, campanha por `utm_campaign` = nome da campanha e criativo por `utm_content` = nome do anúncio). Pagamento e entrega dessas vendas são da Kiwify; o NORQVA só registra.
+
+## D-0112 — Seca Barriga no checkout do NORQVA (2026-10-22)
+
+- **Decisão (Ricardo, "Aprovado" em 22/10/2026 15h22):** o "Desafio Seca Barriga 21 Dias" (R$ 37,00, 10 PDFs) passa a ser vendido pelo checkout do NORQVA (Asaas, Pix e cartão com as regras dos livros) no lugar da Kiwify. Entrega só com PAID confirmado pelo Asaas, como sempre.
+- **Link direto:** `/p/<oferta>?checkout=1` abre o pagamento já preenchido com `name`, `email` e `phone` do quiz; esses dados saem do endereço na hora (não vão para Pixel, telemetria nem para o endereço gravado no pedido). UTMs, `fbclid` e `src` seguem para o pedido.
+- **Visual por produto:** pelo nome da oferta. "Seca Barriga" = "fresh" (claro, verde #10B981→#059669, coral #F0795B, Inter); livros = "light"; Bolso Blindado = "dark". Quem compra pelo link direto não vê material de venda de outro produto.
+- **Vários PDFs:** qualquer oferta pode entregar vários arquivos; mais um PDF sobe por `POST /api/offers/:id/delivery-files/extra` (ADMIN, até 20 por oferta, sem repetir o mesmo arquivo).
+- **Risco registrado:** o repositório no GitHub é público e `backend/public/products/` tem os PDFs pagos do Trattoria. Nada foi apagado; a decisão (repositório privado ou tirar os arquivos do git) é do Ricardo.

@@ -149,6 +149,26 @@ export function cleanFileName(raw: any): string | null {
   return s || null;
 }
 
+/** NORQVA-0112: no máximo 20 arquivos entregues por oferta. */
+export const MAX_OFFER_FILES = 20;
+
+/** Nome do arquivo sem a extensão .pdf. */
+export function fileStem(fileName: string | null): string | null {
+  const s = String(fileName || '').replace(/\.pdf$/i, '').trim();
+  return s || null;
+}
+
+/**
+ * NORQVA-0112: nome que o comprador vê no botão de download. Usa o título enviado; sem título, o nome do
+ * arquivo com "_" virando espaço (ex.: "01_Guia_do_Desafio.pdf" vira "01 Guia do Desafio").
+ */
+export function deliveryTitle(rawTitle: any, fileName: string | null): string | null {
+  const t = cleanFileName(rawTitle);
+  if (t) return t.replace(/\s+/g, ' ').slice(0, 120);
+  const stem = fileStem(fileName);
+  return stem ? stem.replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || null : null;
+}
+
 const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 
 /** Endereço novo e único para uma versão, no mesmo lugar do original: NOME__AAAAMMDD-HHMMSS-sha8.pdf */
@@ -337,38 +357,66 @@ export class DeliveryFileService {
 
   /** Oferta sem arquivo: envia o PDF num endereço novo, cria o cadastro e liga à oferta. */
   async createForOffer(offerId: string, body: any, rawName: any, userId: string | null) {
+    return this.uploadAndLink(offerId, body, rawName, userId, null);
+  }
+
+  /**
+   * NORQVA-0112: mais um PDF na entrega de uma oferta que já tem arquivo (ex.: os 10 PDFs do Seca Barriga).
+   * Mesmo caminho seguro do primeiro arquivo (endereço novo, confere no armazenamento, liga numa transação).
+   * Vale para os próximos pedidos pagos; pedido já pago não ganha arquivo novo. Entrega continua só com PAID.
+   */
+  async addToOffer(offerId: string, body: any, rawName: any, rawTitle: any, userId: string | null) {
+    return this.uploadAndLink(offerId, body, rawName, userId, { title: rawTitle });
+  }
+
+  private async uploadAndLink(offerId: string, body: any, rawName: any, userId: string | null, extra: { title: any } | null) {
     const offer = await this.loadOffer(offerId);
     const data = validatePdf(body);
-    const already = await this.pool.query('SELECT 1 FROM offer_digital_assets WHERE offer_id = $1 LIMIT 1', [offer.id]);
-    if (already.rows.length > 0) throw new DeliveryFileError(409, 'Esta oferta já tem arquivo de entrega. Use "Trocar arquivo".');
-
     const sha = sha256(data);
+    const fileName = cleanFileName(rawName);
+    const linked = async (q: Pool | PoolClient) =>
+      (
+        await q.query(
+          `SELECT a.file_sha256 FROM offer_digital_assets oda JOIN digital_assets a ON a.id = oda.asset_id WHERE oda.offer_id = $1`,
+          [offer.id]
+        )
+      ).rows;
+    const check = (rows: any[]) => {
+      if (!extra) {
+        if (rows.length > 0) throw new DeliveryFileError(409, 'Esta oferta já tem arquivo de entrega. Use "Trocar arquivo".');
+        return;
+      }
+      if (rows.length >= MAX_OFFER_FILES) throw new DeliveryFileError(409, `Esta oferta já entrega ${MAX_OFFER_FILES} arquivos (o máximo).`);
+      if (rows.some(r => r.file_sha256 && r.file_sha256 === sha)) throw new DeliveryFileError(409, 'Esse arquivo já está na entrega desta oferta. Nada foi adicionado.');
+    };
+    check(await linked(this.pool));
+
+    const title = extra ? deliveryTitle(extra.title, fileName) : null;
     const bucket = await this.bucketFor(Boolean(offer.is_demo));
-    const path = versionedPath(newAssetBase(offer.name, offer.human_id), new Date(), sha);
+    const base = extra ? newAssetBase(`${offer.name} ${fileStem(fileName) || ''}`.trim(), offer.human_id) : newAssetBase(offer.name, offer.human_id);
+    const path = versionedPath(base, new Date(), sha);
     await storage.upload(bucket, path, data);
     if (!(await storage.exists(bucket, path))) throw new DeliveryFileError(502, 'O arquivo não apareceu no armazenamento. Nada foi ligado.');
 
-    const fileName = cleanFileName(rawName);
     userId = await this.actor(userId);
     const client = await this.pool.connect();
     let assetId: string;
     try {
       await client.query('BEGIN');
       await client.query('SELECT id FROM offers WHERE id = $1 FOR NO KEY UPDATE', [offer.id]);
-      const again = await client.query('SELECT 1 FROM offer_digital_assets WHERE offer_id = $1 LIMIT 1', [offer.id]);
-      if (again.rows.length > 0) throw new DeliveryFileError(409, 'Esta oferta já tem arquivo de entrega. Use "Trocar arquivo".');
+      check(await linked(client));
       const ins = await client.query(
         `INSERT INTO digital_assets (name, storage_provider, storage_bucket, storage_path, is_demo, file_size_bytes, file_sha256, file_original_name, file_updated_at, file_updated_by)
          VALUES ($1, 'SUPABASE', $2, $3, $4, $5, $6, $7, NOW(), $8) RETURNING id`,
-        [`${offer.name} — PDF`.slice(0, 255), bucket, path, Boolean(offer.is_demo), data.length, sha, fileName, userId]
+        [(title || `${offer.name} — PDF`).slice(0, 255), bucket, path, Boolean(offer.is_demo), data.length, sha, fileName, userId]
       );
       assetId = ins.rows[0].id;
       await client.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [offer.id, assetId]);
       await writeAuditLog(
         client,
         userId,
-        'DELIVERY_FILE_CREATED',
-        `${offer.human_id}: arquivo de entrega enviado pela tela em ${bucket}/${path} (${data.length} bytes) e ligado à oferta`,
+        extra ? 'DELIVERY_FILE_ADDED' : 'DELIVERY_FILE_CREATED',
+        `${offer.human_id}: ${extra ? 'mais um arquivo de entrega' : 'arquivo de entrega'} enviado pela tela em ${bucket}/${path} (${data.length} bytes) e ligado à oferta`,
         null,
         JSON.stringify({ asset_id: assetId, sha256: sha, size: data.length, file_name: fileName }),
         Boolean(offer.is_demo),
@@ -381,6 +429,6 @@ export class DeliveryFileService {
     } finally {
       client.release();
     }
-    return { asset_id: assetId, storage_bucket: bucket, storage_path: path, size_bytes: data.length };
+    return { asset_id: assetId, storage_bucket: bucket, storage_path: path, size_bytes: data.length, ...(extra ? { name: title } : {}) };
   }
 }

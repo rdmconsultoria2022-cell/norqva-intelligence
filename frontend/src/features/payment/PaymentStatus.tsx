@@ -4,6 +4,7 @@ import { PaymentStatusProps, PaymentInfo, PaymentStatusEnum } from './paymentTyp
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
 import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
+import { FRESH, FRESH_BUTTON_STYLE } from '../../lib/productLook';
 
 const brl = (v: any) => `R$ ${(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -293,11 +294,15 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
     : 'à vista no cartão';
 
   // NORQVA-0041: visual do produto (creme, terracota, títulos com serifa), no mesmo tom do checkout.
-  if (look === 'light') {
-    const accentStyle = { ['--pay-accent' as any]: accent } as React.CSSProperties;
+  // NORQVA-0112: 'fresh' (Seca Barriga) usa a mesma tela, com fundo claro, verde e Inter.
+  if (look === 'light' || look === 'fresh') {
+    const fresh = look === 'fresh';
+    const serif = fresh ? '' : 'font-serif';
+    const accentStyle = { ['--pay-accent' as any]: fresh ? FRESH.to : accent } as React.CSSProperties;
+    const btnStyle: React.CSSProperties | undefined = fresh ? { ...FRESH_BUTTON_STYLE } : undefined;
     // O link fica branco por estilo direto: a página do kit pinta todo link de terracota (`.kl a`) e o texto sumia no botão terracota.
     const btn = 'w-full py-3.5 px-4 rounded-xl bg-[var(--pay-accent)] text-white hover:brightness-90 font-semibold text-sm tracking-wide flex items-center justify-center gap-2 transition shadow-md';
-    const box = 'p-5 rounded-2xl bg-white border border-stone-200 text-center';
+    const box = fresh ? 'p-5 rounded-2xl bg-white border border-[#E3E7DF] text-center' : 'p-5 rounded-2xl bg-white border border-stone-200 text-center';
     const waiting = (
       <div className="flex items-center justify-center gap-2 text-xs text-stone-500">
         <span className="relative flex h-2 w-2">
@@ -308,15 +313,15 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
       </div>
     );
     return (
-      <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4" style={accentStyle} data-testid="payment-look-light">
-        <div className="bg-[#FAF7F2] border border-stone-200 rounded-2xl max-w-md w-full p-6 text-sm text-stone-800 shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar">
+      <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4" style={accentStyle} data-testid={fresh ? 'payment-look-fresh' : 'payment-look-light'}>
+        <div className={`${fresh ? 'bg-[#F7F8F4] border-[#E3E7DF] text-[#18211C] font-sans' : 'bg-[#FAF7F2] border-stone-200 text-stone-800'} border rounded-2xl max-w-md w-full p-6 text-sm shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar`}>
           <div className="flex items-start justify-between mb-5 pb-4 border-b border-stone-200">
             <div className="flex items-center gap-3">
-              <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white shadow ${isConfirmed ? 'bg-[#2B5D3A]' : isFailed ? 'bg-stone-500' : 'bg-[var(--pay-accent)]'}`}>
+              <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white shadow ${isConfirmed ? 'bg-[#2B5D3A]' : isFailed ? 'bg-stone-500' : 'bg-[var(--pay-accent)]'}`} style={!isConfirmed && !isFailed ? btnStyle : undefined}>
                 {isConfirmed ? <Check className="h-5 w-5" /> : isFailed ? <AlertCircle className="h-5 w-5" /> : isCard ? <CreditCard className="h-5 w-5" /> : <QrCode className="h-5 w-5" />}
               </div>
               <div>
-                <h3 className="text-lg font-serif font-bold text-stone-900 leading-tight">
+                <h3 className={`text-lg ${serif} font-bold text-stone-900 leading-tight`}>
                   {isConfirmed ? 'Pagamento confirmado' : isFailed ? 'Pagamento não concluído' : isCard ? 'Aguardando pagamento com cartão' : 'Aguardando pagamento Pix'}
                 </h3>
                 <p className="text-[11px] text-stone-500 mt-0.5">Pedido #{orderId.substring(0, 8)}</p>
@@ -337,23 +342,23 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
           ) : isConfirmed ? (
             <div className="py-4 text-center space-y-4">
               <div>
-                <h4 className="text-xl font-serif font-bold text-stone-900">Tudo certo, obrigado!</h4>
-                <p className="text-sm text-stone-600 mt-1">Seu pagamento foi confirmado e o acesso aos livros está sendo liberado.</p>
+                <h4 className={`text-xl ${serif} font-bold text-stone-900`}>Tudo certo, obrigado!</h4>
+                <p className="text-sm text-stone-600 mt-1">Seu pagamento foi confirmado e o acesso {fresh ? 'aos materiais' : 'aos livros'} está sendo liberado.</p>
               </div>
               <div className={box}>
                 <div className="text-[11px] uppercase tracking-widest text-stone-500">Valor pago</div>
-                <div className="text-2xl font-serif font-bold text-[var(--pay-accent)] mt-1">{brl(shownAmount)}</div>
+                <div className={`text-2xl ${serif} font-bold text-[var(--pay-accent)] mt-1`}>{brl(shownAmount)}</div>
               </div>
             </div>
           ) : isFailed ? (
             <div className="py-4 text-center space-y-4">
               <div>
-                <h4 className="text-lg font-serif font-bold text-stone-900">{isCard ? 'Não foi possível concluir o pagamento com cartão' : 'Não foi possível gerar o Pix'}</h4>
+                <h4 className={`text-lg ${serif} font-bold text-stone-900`}>{isCard ? 'Não foi possível concluir o pagamento com cartão' : 'Não foi possível gerar o Pix'}</h4>
                 <p className="text-sm text-stone-600 mt-1">{errorMessage || 'O prazo para pagar terminou ou o pagamento não foi aprovado. Você pode tentar de novo.'}</p>
               </div>
               <div className="flex items-center justify-center gap-2">
                 {onBackToCheckout && (
-                  <button type="button" onClick={onBackToCheckout} className="px-5 py-2.5 rounded-xl bg-[var(--pay-accent)] text-white hover:brightness-90 text-sm font-semibold transition shadow">
+                  <button type="button" onClick={onBackToCheckout} style={btnStyle} className="px-5 py-2.5 rounded-xl bg-[var(--pay-accent)] text-white hover:brightness-90 text-sm font-semibold transition shadow">
                     Tentar novamente
                   </button>
                 )}
@@ -368,11 +373,11 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             <div className="space-y-4" data-testid="card-payment">
               <div className={box}>
                 <div className="text-[11px] uppercase tracking-widest text-stone-500">No cartão de crédito</div>
-                <div className="text-3xl font-serif font-bold text-[var(--pay-accent)] mt-1">{cardHeadline}</div>
+                <div className={`text-3xl ${serif} font-bold text-[var(--pay-accent)] mt-1`}>{cardHeadline}</div>
                 <div className="text-xs text-stone-600 mt-1" data-testid="card-terms">{cardSubline}</div>
               </div>
               {payment?.invoice_url ? (
-                <a href={payment.invoice_url} target="_blank" rel="noopener noreferrer" data-testid="card-invoice-link" className={btn} style={{ color: '#fff' }}>
+                <a href={payment.invoice_url} target="_blank" rel="noopener noreferrer" data-testid="card-invoice-link" className={btn} style={{ ...(btnStyle || {}), color: '#fff' }}>
                   <CreditCard className="h-4 w-4" />
                   Pagar com cartão em ambiente seguro
                   <ExternalLink className="h-4 w-4" />
@@ -390,7 +395,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
             <div className="space-y-4">
               <div className={box}>
                 <div className="text-[11px] uppercase tracking-widest text-stone-500">Valor a pagar</div>
-                <div className="text-3xl font-serif font-bold text-[var(--pay-accent)] mt-1">{brl(amount)}</div>
+                <div className={`text-3xl ${serif} font-bold text-[var(--pay-accent)] mt-1`}>{brl(amount)}</div>
               </div>
               {payment?.pix_qr_image && (
                 <div className="flex flex-col items-center gap-2" data-testid="pix-qr-code">
@@ -404,7 +409,7 @@ export const PaymentStatus: React.FC<PaymentStatusProps> = ({
                   <div className="p-3 rounded-xl bg-white border border-stone-200 text-xs text-stone-600 break-all max-h-24 overflow-y-auto custom-scrollbar select-all">
                     {payment.pix_copy_paste}
                   </div>
-                  <button onClick={handleCopyPix} className={`mt-2 ${btn}`}>
+                  <button onClick={handleCopyPix} className={`mt-2 ${btn}`} style={btnStyle}>
                     {copied ? (<><Check className="h-4 w-4" />Código copiado!</>) : (<><Copy className="h-4 w-4" />Copiar código Pix</>)}
                   </button>
                 </div>

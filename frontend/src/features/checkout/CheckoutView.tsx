@@ -10,6 +10,7 @@ import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallme
 import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit, toSaleBooks } from './collectionChoice';
 import type { CollectionSaleBook, CheckoutOffer } from './checkoutTypes';
 import { ExitOfferScreen } from './ExitOfferScreen';
+import { isFreshName, FRESH_BUTTON_STYLE } from '../../lib/productLook';
 
 type CheckoutFormProps = CheckoutViewProps & { onBack?: () => void };
 
@@ -27,8 +28,32 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   collectionBooks,
   initialBook = null,
   initialWithBump = false,
-  summary = null
+  summary = null,
+  look
 }) => {
+  // NORQVA-0112: visual 'fresh' (Seca Barriga); sem look explícito, vale o nome da oferta. Livros seguem iguais.
+  const fresh = look ? look === 'fresh' : isFreshName(offer.name, offer.product_name);
+  const tone = fresh
+    ? {
+        panel: 'bg-[#F7F8F4] border-[#E3E7DF] text-[#18211C]',
+        heading: 'font-sans text-[#18211C]',
+        accentText: 'text-[#F0795B]',
+        price: 'font-sans text-[#059669]',
+        focus: 'border-stone-300 focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]',
+        picked: 'border-[#10B981] bg-white',
+        radio: 'h-4 w-4 accent-[#059669]',
+        safe: 'text-[#059669]'
+      }
+    : {
+        panel: 'bg-[#FAF7F2] border-stone-200 text-stone-800',
+        heading: 'font-serif text-stone-900',
+        accentText: 'text-[#B83B1E]',
+        price: 'font-serif text-[#B83B1E]',
+        focus: 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]',
+        picked: 'border-[#B83B1E] bg-white',
+        radio: 'h-4 w-4 accent-[#B83B1E]',
+        safe: 'text-[#2B3D2B]'
+      };
   const [customerName, setCustomerName] = useState(initialCustomer?.name || currentUser?.name || '');
   const [customerEmail, setCustomerEmail] = useState(initialCustomer?.email || currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState(initialCustomer?.phone ? maskPhone(initialCustomer.phone) : '');
@@ -130,6 +155,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const phoneValid = phoneClean.length === 0 || phoneClean.length === 10 || phoneClean.length === 11;
 
   const isFormValid = nameValid && emailValid && cpfValid && phoneValid;
+  const submitBlocked = isSubmitting || noBookChosen || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid);
 
   const handleNameChange = (val: string) => {
     setCustomerName(val);
@@ -237,7 +263,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
         ...(attrCtx.adset_id ? { adset_id: attrCtx.adset_id } : {}),
         ...(attrCtx.ad_id ? { ad_id: attrCtx.ad_id } : {}),
         ...(attrCtx.placement ? { placement: attrCtx.placement } : {}),
-        ...(attrCtx.site_source_name ? { site_source_name: attrCtx.site_source_name } : {})
+        ...(attrCtx.site_source_name ? { site_source_name: attrCtx.site_source_name } : {}),
+        // NORQVA-0112: origem própria do link (quiz externo)
+        ...(attrCtx.src ? { src: attrCtx.src } : {})
       };
 
       // NORQVA-0063: avulsos = pedido do primeiro livro escolhido + os outros pelo código (o servidor confere e cobra)
@@ -315,16 +343,16 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] antialiased">
-      <div className="bg-[#FAF7F2] border border-stone-200 rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar text-stone-800 font-sans">
+      <div className={`${tone.panel} border rounded-2xl max-w-lg w-full p-6 sm:p-8 text-sm shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar font-sans`} data-look={fresh ? 'fresh' : 'light'} data-testid="checkout-panel">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-stone-200">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-full bg-[#B83B1E] text-white shadow-md">
+            <div className={`p-2.5 rounded-full text-white shadow-md ${fresh ? '' : 'bg-[#B83B1E]'}`} style={fresh ? FRESH_BUTTON_STYLE : undefined}>
               <Lock className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-lg font-serif font-bold text-stone-900">
+              <h3 className={`text-lg font-bold ${tone.heading}`}>
                 Checkout Seguro
               </h3>
               <p className="text-xs text-stone-500 font-medium">
@@ -473,6 +501,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
             offer.human_id?.toUpperCase().includes('BOLSO') ||
             offer.name?.toLowerCase().includes('bolso')
           );
+          const nFiles = Number(offer.delivery_files) || 0;
           // Capa e descrição de acordo com o livro comprado
           const lname = String(offer.name || '').toLowerCase();
           const isKit = lname.includes('kit');
@@ -488,7 +517,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
             <div className="p-4 rounded-xl bg-white border border-stone-200/90 mb-6 shadow-sm space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3.5">
-                  {!isBolso && (
+                  {!isBolso && !fresh && (
                     <div className="flex shrink-0" data-testid="checkout-covers">
                       {covers.map((src, i) => (
                         <div key={src} className={`h-14 w-10 rounded-sm overflow-hidden bg-stone-200 border border-stone-300 shadow-sm ${i > 0 ? '-ml-3' : ''}`}>
@@ -503,19 +532,19 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     </div>
                   )}
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#B83B1E] block">
-                      {isBolso ? 'Método & Aplicativo Web' : summary ? summary.label : isKit ? 'Kit de livros digitais' : 'Livro digital'}
+                    <span className={`text-[10px] font-bold uppercase tracking-wider block ${tone.accentText}`}>
+                      {isBolso ? 'Método & Aplicativo Web' : fresh ? 'Programa digital' : summary ? summary.label : isKit ? 'Kit de livros digitais' : 'Livro digital'}
                     </span>
-                    <h4 className="text-sm font-serif font-bold text-stone-900 leading-tight">
+                    <h4 className={`text-sm font-bold leading-tight ${tone.heading}`}>
                       {offer.name}
                     </h4>
                     <p className="text-xs text-stone-500 mt-0.5">
-                      {isBolso ? 'Acesso ao Web App + Planilha + Guia Prático' : subtitle}
+                      {isBolso ? 'Acesso ao Web App + Planilha + Guia Prático' : fresh ? (nFiles > 1 ? `${nFiles} materiais em PDF • Acesso após a confirmação` : 'Materiais em PDF • Acesso após a confirmação') : subtitle}
                     </p>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-xl font-serif font-bold text-[#B83B1E]">
+                  <div className={`text-xl font-bold ${tone.price}`} data-testid="checkout-summary-price">
                     R${basePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
@@ -547,7 +576,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
                   touched.name && !nameValid
                     ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
-                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                    : tone.focus
                 } disabled:opacity-50`}
               />
             </div>
@@ -579,7 +608,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
                   touched.email && !emailValid
                     ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
-                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                    : tone.focus
                 } disabled:opacity-50`}
               />
             </div>
@@ -592,6 +621,8 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
               <span className="text-[11px] text-stone-500 mt-1 block">
                 {offer.human_id?.toUpperCase().includes('BOLSO') || offer.name?.toLowerCase().includes('bolso')
                   ? 'Você receberá os links e dados de acesso neste e-mail.'
+                  : fresh
+                    ? 'Os materiais em PDF chegam neste e-mail logo após o pagamento.'
                   : hasChoice || Number(offer.delivery_files) > 1 || String(offer.name || '').toLowerCase().includes('kit')
                     ? 'Os livros em PDF chegam neste e-mail logo após o pagamento.'
                     : 'O livro em PDF chega neste e-mail logo após o pagamento.'}
@@ -620,7 +651,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
                   touched.cpf && !cpfValid
                     ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
-                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                    : tone.focus
                 } disabled:opacity-50`}
               />
             </div>
@@ -656,7 +687,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 className={`w-full pl-9 pr-3 py-2.5 bg-white border rounded-lg text-stone-800 text-sm focus:outline-none transition ${
                   touched.phone && !phoneValid
                     ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
-                    : 'border-stone-300 focus:border-[#B83B1E] focus:ring-1 focus:ring-[#B83B1E]'
+                    : tone.focus
                 } disabled:opacity-50`}
               />
             </div>
@@ -697,14 +728,14 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
           {card && (
             <fieldset className="space-y-2" data-testid="checkout-method">
               <legend className="block text-xs font-semibold text-stone-700 mb-1">Forma de pagamento</legend>
-              <label className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer ${method === 'PIX' ? 'border-[#B83B1E] bg-white' : 'border-stone-300 bg-white/60'}`}>
-                <input type="radio" name="pay-method" value="PIX" checked={method === 'PIX'} onChange={() => setPayMethod('PIX')} disabled={isSubmitting} className="h-4 w-4 accent-[#B83B1E]" />
+              <label className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer ${method === 'PIX' ? tone.picked : 'border-stone-300 bg-white/60'}`}>
+                <input type="radio" name="pay-method" value="PIX" checked={method === 'PIX'} onChange={() => setPayMethod('PIX')} disabled={isSubmitting} className={tone.radio} />
                 <QrCode className="h-4 w-4 text-stone-500" />
                 <span className="flex-1 text-sm text-stone-800">Pix</span>
                 <span className="text-sm font-bold text-stone-900">R$ {displayPrice.toFixed(2).replace('.', ',')}</span>
               </label>
-              <label className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer ${method === 'CREDIT_CARD' ? 'border-[#B83B1E] bg-white' : 'border-stone-300 bg-white/60'}`}>
-                <input type="radio" name="pay-method" value="CREDIT_CARD" checked={method === 'CREDIT_CARD'} onChange={() => setPayMethod('CREDIT_CARD')} disabled={isSubmitting} className="h-4 w-4 accent-[#B83B1E]" />
+              <label className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer ${method === 'CREDIT_CARD' ? tone.picked : 'border-stone-300 bg-white/60'}`}>
+                <input type="radio" name="pay-method" value="CREDIT_CARD" checked={method === 'CREDIT_CARD'} onChange={() => setPayMethod('CREDIT_CARD')} disabled={isSubmitting} className={tone.radio} />
                 <CreditCard className="h-4 w-4 text-stone-500" />
                 <span className="flex-1 text-sm text-stone-800">Cartão de crédito</span>
                 <span className="text-sm font-bold text-stone-900" data-testid="checkout-card-label">{cardLabel}</span>
@@ -718,7 +749,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     value={selectedOpt ? selectedOpt.n : ''}
                     onChange={e => setChosenN(Number(e.target.value))}
                     disabled={isSubmitting}
-                    className="w-full px-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none focus:border-[#B83B1E]"
+                    className={`w-full px-3 py-2.5 bg-white border border-stone-300 rounded-lg text-stone-800 text-sm focus:outline-none ${fresh ? 'focus:border-[#10B981]' : 'focus:border-[#B83B1E]'}`}
                   >
                     {cardOpts.map(o => (
                       <option key={o.n} value={o.n}>{optLabel(o)}</option>
@@ -738,8 +769,8 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
           )}
 
           <div className="pt-3 flex items-center justify-between border-t border-stone-200 text-xs text-stone-500">
-            <span className="flex items-center gap-1.5 text-[#2B3D2B] font-medium">
-              <ShieldCheck className="h-4 w-4 text-[#2B3D2B]" />
+            <span className={`flex items-center gap-1.5 font-medium ${tone.safe}`}>
+              <ShieldCheck className={`h-4 w-4 ${tone.safe}`} />
               Pagamento seguro
             </span>
             <span data-testid="checkout-total">Total: R$ {method === 'CREDIT_CARD' ? fmt(cardTotalCents) : displayPrice.toFixed(2).replace('.', ',')}</span>
@@ -756,13 +787,17 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || noBookChosen || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)}
+              disabled={submitBlocked}
               aria-label={method === 'CREDIT_CARD' ? `Continuar para o cartão: ${cardLabel}` : `Pagar R$ ${displayPrice.toFixed(2).replace('.', ',')} com Pix — Gerar Pedido & Pagamento`}
               className={`px-6 py-3 rounded-xl text-white text-sm font-bold flex items-center gap-2 transition active:scale-95 ${
-                isSubmitting || noBookChosen || (touched.cpf && !cpfValid) || (touched.name && !nameValid) || (touched.email && !emailValid)
+                submitBlocked
                   ? 'bg-stone-400 cursor-not-allowed shadow-none'
-                  : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-lg shadow-[#B83B1E]/20'
+                  : fresh
+                    ? 'hover:brightness-95 shadow-lg shadow-emerald-600/20'
+                    : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-lg shadow-[#B83B1E]/20'
               }`}
+              style={fresh && !submitBlocked ? FRESH_BUTTON_STYLE : undefined}
+              data-testid="checkout-submit"
             >
               {isSubmitting ? (
                 <>
