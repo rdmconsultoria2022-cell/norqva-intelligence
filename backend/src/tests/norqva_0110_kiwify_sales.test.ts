@@ -157,6 +157,17 @@ describe.sequential('NORQVA-0110 — vendas da Kiwify', () => {
     expect(await sale(id)).toHaveLength(0);
   });
 
+  it('corpo enviado formatado: assinatura sobre JSON.stringify(corpo) também vale (forma da documentação da Kiwify)', async () => {
+    const id = `pretty_${uid}`;
+    const body = event(id);
+    const raw = JSON.stringify(body, null, 2);
+    const res = await post(null, { raw, sig: sign(JSON.stringify(body)) });
+    expect(res.status).toBe(200);
+    expect(await sale(id)).toHaveLength(1);
+    const forged = await post(null, { raw: JSON.stringify(event(`pretty2_${uid}`), null, 2), sig: sign(JSON.stringify(body)) });
+    expect(forged.status).toBe(401);
+  });
+
   it('JSON quebrado: 400 (nunca 500)', async () => {
     const raw = '{"order_id": "quebrado"';
     const res = await post(null, { raw, sig: sign(raw) });

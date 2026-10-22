@@ -13,7 +13,13 @@ export async function postKiwifyWebhook(req: Request, res: Response) {
 
   const parsedByJson = (req as any).rawBody as Buffer | undefined;
   const raw: Buffer | undefined = parsedByJson || (Buffer.isBuffer(req.body) ? req.body : undefined);
-  if (!kiwifySignatureValid(raw, req.query.signature, token)) {
+  // A documentação da Kiwify confere com JSON.stringify(corpo); aceita também essa forma (mesmo segredo, mesmo conteúdo)
+  const reserialized = raw && !Buffer.isBuffer(req.body) && req.body && typeof req.body === 'object'
+    ? Buffer.from(JSON.stringify(req.body), 'utf8')
+    : undefined;
+  const signed = kiwifySignatureValid(raw, req.query.signature, token)
+    || (!!reserialized && !reserialized.equals(raw as Buffer) && kiwifySignatureValid(reserialized, req.query.signature, token));
+  if (!signed) {
     console.warn('[Kiwify] assinatura ausente ou inválida recusada');
     return res.status(401).json({ error: 'invalid signature' });
   }
