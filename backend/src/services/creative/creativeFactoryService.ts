@@ -266,11 +266,10 @@ export class CreativeFactoryService {
               c.batch_code, c.hook_family, c.mechanism, c.duration_seconds, c.primary_text, c.headline,
               c.script, c.generation_source, c.parent_creative_id, c.root_creative_id, c.version,
               c.lineage_code, c.utm_content_key, c.content_hash, c.approval_status, c.created_at,
-              c.concept, c.copy,
+              c.concept, c.copy, c.reference_id,
               o.human_id AS offer_human_id, o.name AS offer_name, o.price AS offer_price,
               p.name AS product_name,
               CASE
-                WHEN c.reference_id IS NOT NULL THEN 'REFERENCE'
                 WHEN c.batch_code IS NULL THEN 'MANUAL'
                 WHEN c.batch_code = 'META_EXTERNO' THEN 'META'
                 WHEN EXISTS (SELECT 1 FROM creative_batches cb WHERE cb.code = c.batch_code AND cb.source = 'AI' AND cb.is_demo = c.is_demo) THEN 'AI_TEAM'
@@ -394,6 +393,8 @@ export class CreativeFactoryService {
       const claims = claimsByCreative.get(c.id) || [];
       return {
         ...c,
+        // NORQVA-0116: gerado a partir de uma referência
+        origin: c.reference_id ? 'REFERENCE' : c.origin,
         claims,
         claims_all_verified: claims.length > 0 && claims.every(cl => cl.status === 'VERIFIED' && (!cl.valid_until || new Date(cl.valid_until) > new Date())),
         reviews: reviewsByCreative.get(c.id) || [],
