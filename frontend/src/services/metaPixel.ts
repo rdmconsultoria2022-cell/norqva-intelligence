@@ -91,6 +91,7 @@ export function isPublicCommercialRoute(pathname: string): boolean {
     pathname.startsWith('/pedido/') ||
     pathname.startsWith('/acesso/') ||
     pathname.startsWith('/kit/') ||
+    pathname.startsWith('/v/') ||
     pathname === '/p' ||
     pathname === '/pedido' ||
     pathname === '/acesso'

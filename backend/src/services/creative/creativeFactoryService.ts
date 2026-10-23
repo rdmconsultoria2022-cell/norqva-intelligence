@@ -27,6 +27,22 @@ export const REJECTION_REASONS = [
   'OTHER'
 ] as const;
 
+/**
+ * NORQVA-0116 (D-0116): anúncio gerado de uma referência (ele, ou a versão raiz, ligado à referência/página) só é
+ * aprovado depois de a checagem anticópia/números/promessas/preço rodar de novo, na hora, sobre o texto atual.
+ * A checagem é registrada pelo generationService (evita import circular). Sem checagem registrada: bloqueia.
+ */
+export type GeneratedAdChecker = (pool: Pool, creative: any) => Promise<{ blocked: boolean; message: string }>;
+let generatedAdChecker: GeneratedAdChecker | null = null;
+export function setGeneratedAdChecker(fn: GeneratedAdChecker | null) {
+  generatedAdChecker = fn;
+}
+
+/** Marca de checagem vencida (o texto mudou fora da tela de geração; a aprovação confere de novo). */
+export const STALE_COPY_CHECK = JSON.stringify({ stale: true });
+
+const isGeneratedAd = (c: any) => !!(c && (c.reference_id || c.generated_page_id));
+
 export class CreativeFactoryError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -266,7 +282,7 @@ export class CreativeFactoryService {
               c.batch_code, c.hook_family, c.mechanism, c.duration_seconds, c.primary_text, c.headline,
               c.script, c.generation_source, c.parent_creative_id, c.root_creative_id, c.version,
               c.lineage_code, c.utm_content_key, c.content_hash, c.approval_status, c.created_at,
-              c.concept, c.copy,
+              c.concept, c.copy, c.reference_id,
               o.human_id AS offer_human_id, o.name AS offer_name, o.price AS offer_price,
               p.name AS product_name,
               CASE
@@ -393,6 +409,8 @@ export class CreativeFactoryService {
       const claims = claimsByCreative.get(c.id) || [];
       return {
         ...c,
+        // NORQVA-0116: gerado a partir de uma referência
+        origin: c.reference_id ? 'REFERENCE' : c.origin,
         claims,
         claims_all_verified: claims.length > 0 && claims.every(cl => cl.status === 'VERIFIED' && (!cl.valid_until || new Date(cl.valid_until) > new Date())),
         reviews: reviewsByCreative.get(c.id) || [],
@@ -573,6 +591,17 @@ export class CreativeFactoryService {
     }
 
     if (decision === 'APPROVED') {
+      // NORQVA-0116 (D-0116): anúncio gerado de referência: a checagem roda de novo agora, sobre o texto atual
+      let generated = isGeneratedAd(creative);
+      if (!generated && creative.root_creative_id) {
+        const root = await pool.query('SELECT reference_id, generated_page_id FROM creatives WHERE id = $1', [creative.root_creative_id]);
+        generated = isGeneratedAd(root.rows[0]);
+      }
+      if (generated) {
+        if (!generatedAdChecker) throw new CreativeFactoryError(409, 'Aprovação bloqueada: a checagem do anúncio gerado não está disponível.');
+        const chk = await generatedAdChecker(pool, creative);
+        if (chk.blocked) throw new CreativeFactoryError(409, `Aprovação bloqueada: ${chk.message}`);
+      }
       // NORQVA-0053 (D-0053): anúncio sem preço (texto do criativo)
       const priceHits = findPriceInFields({
         hook: creative.hook,
@@ -640,7 +669,8 @@ export class CreativeFactoryService {
     changes: { hook?: string; primary_text?: string; headline?: string; cta?: string; script?: string; file_url?: string | null; mechanism?: string | null },
     userId: string | null,
     isDemo: boolean,
-    options: { forceNewVersion?: boolean } = {}
+    // NORQVA-0116: anúncio gerado grava a checagem e a descrição na MESMA operação da edição
+    options: { forceNewVersion?: boolean; copyCheck?: any; adDescription?: string | null } = {}
   ) {
     const cRes = await pool.query(
       'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
@@ -696,18 +726,22 @@ export class CreativeFactoryService {
       return { mode: 'FILE_ATTACHED', creative: attached };
     }
 
+    // NORQVA-0116: anúncio gerado leva a ligação com a referência/página; a checagem vem da tela ou fica vencida
+    const linked = isGeneratedAd(cur);
+    const nextCheck = options.copyCheck !== undefined ? JSON.stringify(options.copyCheck) : linked ? STALE_COPY_CHECK : null;
+    const nextDescription = options.adDescription !== undefined ? options.adDescription : cur.ad_description ?? null;
     const reviewed = await pool.query('SELECT 1 FROM creative_reviews WHERE creative_id = $1 LIMIT 1', [creativeId]);
     if (!options.forceNewVersion && reviewed.rows.length === 0 && cur.approval_status === 'DRAFT') {
       // Never reviewed: edit in place (no review is bound to the old content)
       const upd = await pool.query(
         `UPDATE creatives SET hook = $1, primary_text = $2, copy = $2, headline = $3, cta = $4, script = $5,
-                file_url = $6, content_hash = $7, mechanism = $9, updated_at = NOW()
+                file_url = $6, content_hash = $7, mechanism = $9, copy_check = $10::jsonb, ad_description = $11, updated_at = NOW()
          WHERE id = $8 RETURNING id, human_id, version, approval_status`,
-        [next.hook, next.primary_text, next.headline, next.cta, next.script, next.file_url, hash, creativeId, next.mechanism]
+        [next.hook, next.primary_text, next.headline, next.cta, next.script, next.file_url, hash, creativeId, next.mechanism, nextCheck, nextDescription]
       );
       // NORQVA-0053: promessa de preço não vale para anúncio; a edição já a desliga do criativo
       await pool.query(
-        `DELETE FROM creative_claims cc USING claims_registry cr WHERE cc.claim_id = cr.id AND cc.creative_id = $1 AND cr.claim_type = 'PRICE'`,
+        `DELETE FROM creative_claims WHERE creative_id = $1 AND claim_id IN (SELECT id FROM claims_registry WHERE claim_type = 'PRICE')`,
         [creativeId]
       );
       return { mode: 'EDITED_IN_PLACE', creative: upd.rows[0] };
@@ -731,18 +765,21 @@ export class CreativeFactoryService {
            human_id, product_id, offer_id, hook, concept, copy, cta, format, file_url, responsible_id, status, is_demo,
            batch_code, hook_family, angle, pain, desire, mechanism, proof_type, audience, duration_seconds,
            primary_text, headline, script, generation_source, parent_creative_id, root_creative_id, version,
-           lineage_code, utm_content_key, content_hash, approval_status
+           lineage_code, utm_content_key, content_hash, approval_status,
+           reference_id, generated_page_id, ad_description, copy_check
          ) VALUES (
            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'IDEIA', $11,
            $12, $13, $14, $15, $16, $17, $18, $19, $20,
            $6, $21, $22, $23, $24, $25, $26,
-           $27, $1, $28, 'DRAFT'
+           $27, $1, $28, 'DRAFT',
+           $29, $30, $31, $32::jsonb
          ) RETURNING id, human_id, version, approval_status`,
         [
           newKey, cur.product_id, cur.offer_id, next.hook, cur.concept, next.primary_text, next.cta, cur.format, next.file_url, userId, isDemo,
           cur.batch_code, cur.hook_family, cur.angle, cur.pain, cur.desire, next.mechanism, cur.proof_type, cur.audience, cur.duration_seconds,
           next.headline, next.script, 'HUMAN', cur.id, rootId, version,
-          `${cur.lineage_code || rootKey}>V${version}`, hash
+          `${cur.lineage_code || rootKey}>V${version}`, hash,
+          cur.reference_id || null, cur.generated_page_id || null, nextDescription, nextCheck
         ]
       );
       const newId = ins.rows[0].id;
@@ -802,6 +839,11 @@ export class CreativeFactoryService {
     try {
       await client.query('BEGIN');
       await client.query('UPDATE creatives SET product_id = $1, offer_id = $2, updated_at = NOW() WHERE id = $3', [offer.product_id, offer.id, creativeId]);
+      // NORQVA-0116: anúncio gerado mudou de oferta: os fatos mudaram, a checagem fica vencida
+      await client.query(
+        `UPDATE creatives SET copy_check = $2::jsonb WHERE id = $1 AND (reference_id IS NOT NULL OR generated_page_id IS NOT NULL)`,
+        [creativeId, STALE_COPY_CHECK]
+      );
       if (String(cur.product_id || '') !== String(offer.product_id)) {
         const claims = await client.query(
           `SELECT cr.id, cr.claim_text, cr.claim_type, cr.product_id, cur_p.name AS product_name

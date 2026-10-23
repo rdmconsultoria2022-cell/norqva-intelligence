@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Image as ImageIcon, Video, MousePointerClick, Link2, Upload, RefreshCw, Trash2 } from 'lucide-react';
-import { Section, Surface, RowGroup, Row, StatusPill, Disclosure, useIsMobile } from '../../components/ui/premium';
+import { ArrowLeft, Image as ImageIcon, Video, MousePointerClick, Link2, Upload, RefreshCw, Trash2, Wand2 } from 'lucide-react';
+import { Section, Surface, RowGroup, Row, StatusPill, Disclosure, useIsMobile, Tone } from '../../components/ui/premium';
+import { GenerationView } from './GenerationView';
 
 // NORQVA-0115 (D-0115): Referências. O NORQVA guarda só a estrutura (esqueleto) de uma página de venda
 // ou anúncio de referência. Textos, imagens e nomes da referência não são salvos.
@@ -87,12 +88,22 @@ export const CreativeReferences: React.FC<{
   showError: (m: string) => void;
   showSuccess: (m: string) => void;
   products: any[];
+  /** NORQVA-0116: ofertas (para escolher a oferta da página gerada). */
+  offers?: any[];
   isAdmin: boolean;
   canCreate: boolean;
   /** Servidor respondeu que a trava está desligada: a tela volta para Criativos e esconde a aba. */
   onDisabled?: () => void;
-}> = ({ apiFetch, showError, showSuccess, products, isAdmin, canCreate, onDisabled }) => {
+}> = ({ apiFetch, showError, showSuccess, products, offers = [], isAdmin, canCreate, onDisabled }) => {
   const isMobile = useIsMobile();
+  // NORQVA-0116: geração aberta e se há imagens novas (KIE) no servidor
+  const [genId, setGenId] = useState<string | null>(null);
+  const [kie, setKie] = useState(false);
+  useEffect(() => {
+    Promise.resolve(apiFetch('/creative-references/status'))
+      .then((r: any) => setKie(r?.kie === true))
+      .catch(() => setKie(false));
+  }, [apiFetch]);
   const [items, setItems] = useState<any[]>([]);
   const [trash, setTrash] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,8 +237,33 @@ export const CreativeReferences: React.FC<{
     }
   };
 
+  if (genId) {
+    return (
+      <GenerationView
+        apiFetch={apiFetch}
+        pageId={genId}
+        isAdmin={isAdmin}
+        canEdit={canCreate}
+        showError={showError}
+        showSuccess={showSuccess}
+        onBack={() => setGenId(null)}
+      />
+    );
+  }
+
   const open = items.find(i => i.id === openId) || null;
-  if (open) return <ReferenceDetail item={open} isAdmin={isAdmin} busy={busy} onBack={() => setOpenId(null)} onDelete={() => trashAction(open.id, 'delete')} />;
+  if (open) {
+    return (
+      <ReferenceDetail
+        item={open}
+        isAdmin={isAdmin}
+        busy={busy}
+        onBack={() => setOpenId(null)}
+        onDelete={() => trashAction(open.id, 'delete')}
+        generation={{ apiFetch, products, offers, canCreate, kie, showError, showSuccess, onOpen: setGenId }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6" data-testid="creative-references">
@@ -422,7 +458,200 @@ function Fact({ name, value }: { name: string; value: React.ReactNode }) {
   );
 }
 
-function ReferenceDetail({ item, isAdmin, busy, onBack, onDelete }: { item: any; isAdmin: boolean; busy: boolean; onBack: () => void; onDelete: () => void }) {
+const GEN_STATUS: Record<string, { label: string; tone: Tone }> = {
+  DRAFT: { label: 'Rascunho', tone: 'neutral' },
+  APPROVED: { label: 'Aprovada', tone: 'info' },
+  PUBLISHED: { label: 'No ar', tone: 'positive' },
+  UNPUBLISHED: { label: 'Fora do ar', tone: 'attention' }
+};
+
+interface GenerationProps {
+  apiFetch: ApiFetch;
+  products: any[];
+  offers: any[];
+  canCreate: boolean;
+  kie: boolean;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+  onOpen: (id: string) => void;
+}
+
+/** NORQVA-0116: "Gerar página e anúncios" numa referência pronta + as gerações já feitas. */
+function GenerationPanel({ item, g }: { item: any; g: GenerationProps }) {
+  const [pages, setPages] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [productId, setProductId] = useState<string>(item.product_id || '');
+  const [offerId, setOfferId] = useState('');
+  const [adCount, setAdCount] = useState(3);
+  const [newImages, setNewImages] = useState(true);
+  const [working, setWorking] = useState(false);
+  const productOffers = g.offers.filter(o => String(o.product_id) === String(productId) && !o.is_deleted && o.status !== 'ARQUIVADA');
+  const { apiFetch } = g;
+
+  const loadPages = useCallback(async () => {
+    try {
+      const r = await apiFetch(`/generated-pages?reference_id=${encodeURIComponent(item.id)}`);
+      setPages(Array.isArray(r?.pages) ? r.pages : []);
+    } catch {
+      setPages([]);
+    }
+  }, [apiFetch, item.id]);
+
+  useEffect(() => {
+    loadPages();
+  }, [loadPages]);
+
+  useEffect(() => {
+    if (!productOffers.some(o => o.id === offerId)) {
+      const best = productOffers.find(o => o.status === 'ATIVA') || productOffers[0];
+      setOfferId(best ? best.id : '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId, g.offers]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productId) return g.showError('Escolha o produto.');
+    if (!offerId) return g.showError('Escolha a oferta.');
+    setWorking(true);
+    try {
+      const r = await apiFetch(`/creative-references/${item.id}/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ product_id: productId, offer_id: offerId, ad_count: adCount, new_images: g.kie && newImages })
+      });
+      g.showSuccess(`Página ${r?.page?.human_id || ''} e anúncios gerados (rascunho).`);
+      if (r?.page?.id) g.onOpen(r.page.id);
+    } catch (err: any) {
+      g.showError(err?.message || 'Não foi possível gerar.');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return (
+    <Section title="Página e anúncios gerados" testId="generation-panel">
+      {g.canCreate && !open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          data-testid="open-generate"
+          className="inline-flex items-center gap-1.5 px-5 rounded-full bg-nq-positive text-nq-on-positive font-semibold min-h-[44px] w-full sm:w-auto justify-center"
+        >
+          <Wand2 className="h-4 w-4" /> Gerar página e anúncios
+        </button>
+      )}
+      {g.canCreate && open && (
+        <Surface className="p-4">
+          <form onSubmit={submit} className="space-y-4 text-nq-body" data-testid="generate-form">
+            <p className="text-nq-aux text-nq-muted">
+              O NORQVA escreve uma página e anúncios novos, só com os dados do nosso produto, seguindo a ordem e a função das partes da referência.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={label} htmlFor="gen-product">Produto nosso</label>
+                <select id="gen-product" value={productId} onChange={e => setProductId(e.target.value)} className={input}>
+                  <option value="">Selecione...</option>
+                  {g.products.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={label} htmlFor="gen-offer">Oferta (preço e pagamento da página)</label>
+                <select id="gen-offer" value={offerId} onChange={e => setOfferId(e.target.value)} className={input}>
+                  <option value="">Selecione...</option>
+                  {productOffers.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {o.human_id} · {o.name}
+                      {o.status !== 'ATIVA' ? ` (${String(o.status).toLowerCase()})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={label} htmlFor="gen-ads">Quantos anúncios</label>
+                <select id="gen-ads" value={adCount} onChange={e => setAdCount(Number(e.target.value))} className={input}>
+                  {[3, 4, 5].map(n => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                {g.kie ? (
+                  <label className="inline-flex items-center gap-2 text-nq-aux text-nq-text min-h-[44px]">
+                    <input type="checkbox" checked={newImages} onChange={e => setNewImages(e.target.checked)} />
+                    Fazer imagens novas na KIE (cerca de 4 créditos cada, até 4)
+                  </label>
+                ) : (
+                  <p className="text-nq-aux text-nq-attention" data-testid="kie-off">
+                    Imagens novas desligadas (falta KIE_API_KEY). A página usa as imagens que o produto já tem.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <button type="button" onClick={() => setOpen(false)} className="px-4 rounded-full bg-nq-raised text-nq-text font-semibold min-h-[44px]">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={working}
+                data-testid="generate-submit"
+                className="px-5 rounded-full bg-nq-positive text-nq-on-positive font-semibold hover:brightness-110 disabled:opacity-50 min-h-[44px]"
+              >
+                {working ? 'Gerando (pode levar 1 minuto)...' : 'Gerar'}
+              </button>
+            </div>
+          </form>
+        </Surface>
+      )}
+      {pages.length > 0 ? (
+        <RowGroup>
+          {pages.map(p => {
+            const st = GEN_STATUS[p.status] || GEN_STATUS.DRAFT;
+            return (
+              <Row
+                key={p.id}
+                testId="generated-row"
+                onClick={() => g.onOpen(p.id)}
+                chevron
+                left={
+                  <span>
+                    <strong>{p.human_id}</strong> · {p.product_name || 'Produto'}
+                  </span>
+                }
+                sub={`Oferta ${p.offer_human_id || '—'} · ${when(p.created_at)}`}
+                right={<StatusPill tone={st.tone}>{st.label}</StatusPill>}
+              />
+            );
+          })}
+        </RowGroup>
+      ) : (
+        <p className="px-1 text-nq-aux text-nq-muted">Nenhuma geração ainda.</p>
+      )}
+    </Section>
+  );
+}
+
+function ReferenceDetail({
+  item,
+  isAdmin,
+  busy,
+  onBack,
+  onDelete,
+  generation
+}: {
+  item: any;
+  isAdmin: boolean;
+  busy: boolean;
+  onBack: () => void;
+  onDelete: () => void;
+  generation?: GenerationProps;
+}) {
   const s = item.structure;
   return (
     <div className="space-y-4" data-testid="reference-detail">
@@ -537,6 +766,8 @@ function ReferenceDetail({ item, isAdmin, busy, onBack, onDelete }: { item: any;
           </ol>
         </>
       )}
+
+      {generation && item.status === 'READY' && s && <GenerationPanel item={item} g={generation} />}
     </div>
   );
 }

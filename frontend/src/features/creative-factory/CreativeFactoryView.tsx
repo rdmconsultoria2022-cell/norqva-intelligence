@@ -42,7 +42,8 @@ const ORIGIN_LABEL: Record<string, { label: string; cls: string }> = {
   BATCH: { label: 'Lote', cls: 'border-nq-line text-nq-text' },
   AI_TEAM: { label: 'Time de IAs', cls: 'border-nq-info/40 text-nq-info' },
   MANUAL: { label: 'Manual', cls: 'border-nq-positive/40 text-nq-positive-text' },
-  META: { label: 'Meta', cls: 'border-indigo-700/60 text-indigo-300' }
+  META: { label: 'Meta', cls: 'border-indigo-700/60 text-indigo-300' },
+  REFERENCE: { label: 'Referência', cls: 'border-nq-attention/40 text-nq-attention' }
 };
 
 const APPROVAL_LABEL: Record<string, { label: string; cls: string }> = {
@@ -1065,6 +1066,7 @@ export function CreativeFactoryView({
           showError={showError}
           showSuccess={showSuccess}
           products={products}
+          offers={offers}
           isAdmin={isAdmin}
           canCreate={canRevise}
           onDisabled={disableReferences}

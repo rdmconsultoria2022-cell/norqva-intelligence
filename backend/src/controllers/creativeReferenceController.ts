@@ -9,6 +9,7 @@ import {
   REFERENCES_DISABLED_MESSAGE,
   MAX_SCREENSHOTS
 } from '../services/creative/referenceService';
+import { kieConfigured } from '../services/creative/generatedImages';
 
 // NORQVA-0115 (D-0115): Referências. Só a estrutura é guardada; texto e imagens da referência nunca.
 // Trava CREATIVE_REFERENCES_ENABLED: desligada, todas as rotas (menos /status) respondem 404.
@@ -44,7 +45,8 @@ export function screenshotsBody(req: AuthenticatedRequest, res: Response, next: 
 }
 
 export async function getReferencesStatus(_req: AuthenticatedRequest, res: Response) {
-  return res.status(200).json({ enabled: referencesEnabled(), ai: referencesEnabled() ? referenceAiConfigured() : false });
+  // NORQVA-0116: kie = imagens novas disponíveis (KIE_API_KEY no servidor)
+  return res.status(200).json({ enabled: referencesEnabled(), ai: referencesEnabled() ? referenceAiConfigured() : false, kie: referencesEnabled() ? kieConfigured() : false });
 }
 
 export async function postReferenceFromUrl(req: AuthenticatedRequest, res: Response) {
