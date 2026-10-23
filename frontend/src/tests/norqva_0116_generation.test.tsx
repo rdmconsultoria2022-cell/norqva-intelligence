@@ -16,7 +16,12 @@ const publicPage = {
   meta_pixel_id: null,
   sections: [
     { order: 1, role: 'HERO_HOOK', headline: 'Massa fresca na sua cozinha', body: 'Receitas italianas passo a passo.\n\nPara fazer em casa.', bullets: [], cta_label: 'Quero o meu', image_url: '/images/kit/capa_trat.jpg' },
-    { order: 2, role: 'CONTENTS', headline: 'O que vem dentro', body: '', bullets: ['Massas', 'Molhos'], cta_label: '', image_url: null }
+    { order: 2, role: 'CONTENTS', headline: 'O que vem dentro', body: '', bullets: ['Massas', 'Molhos'], cta_label: '', image_url: null },
+    {
+      order: 3, role: 'OFFER_PRICE', headline: 'Leve hoje', body: '', bullets: [], cta_label: '', image_url: null,
+      price: { price_text: 'R$ 19,90', installments_text: 'ou 3x de R$ 6,63 sem juros no cartão' }, note: null
+    },
+    { order: 4, role: 'GUARANTEE', headline: 'Compra segura', body: '', bullets: [], cta_label: '', image_url: null, note: 'Pela lei, você pode desistir em até 7 dias.' }
   ]
 };
 
@@ -44,12 +49,16 @@ describe('NORQVA-0116 — página pública /v/:slug', () => {
       '/p/OFF-000001?checkout=1&utm_source=meta&utm_campaign=x&fbclid=abc'
     );
     expect(checkoutHref('OFF-000001', '')).toBe('/p/OFF-000001?checkout=1');
+    // nunca nome, e-mail ou telefone (nem outros parâmetros)
+    expect(checkoutHref('OFF-000001', '?name=Ana&email=a%40b.com&phone=31999&nome=Ana&utm_term=x&gclid=g&ref=r&src=s&foo=1')).toBe(
+      '/p/OFF-000001?checkout=1&utm_term=x&gclid=g&ref=r&src=s'
+    );
   });
 
   it('mostra as seções e os botões levam ao pagamento com os parâmetros de origem', async () => {
     const f = mockFetch(200, publicPage);
     render(
-      <MemoryRouter initialEntries={['/v/livro-abc123?utm_source=meta&fbclid=abc']}>
+      <MemoryRouter initialEntries={['/v/livro-abc123?utm_source=meta&fbclid=abc&email=a%40b.com&name=Ana&phone=31999']}>
         <GeneratedPage />
       </MemoryRouter>
     );
@@ -57,11 +66,15 @@ describe('NORQVA-0116 — página pública /v/:slug', () => {
     expect(String(f.mock.calls[0][0])).toContain('/public/generated-pages/livro-abc123');
     expect(screen.getByText('Para fazer em casa.')).toBeInTheDocument();
     expect(screen.getByText('Molhos')).toBeInTheDocument();
-    expect(screen.getAllByTestId('generated-section')).toHaveLength(2);
+    expect(screen.getAllByTestId('generated-section')).toHaveLength(4);
     expect(screen.getByTestId('generated-cta')).toHaveAttribute('href', '/p/OFF-000001?checkout=1&utm_source=meta&fbclid=abc');
     expect(screen.getByTestId('generated-cta-sticky')).toHaveTextContent('Quero o meu');
     expect(screen.getByTestId('generated-page')).toHaveAttribute('data-look', 'light');
     expect(document.title).toBe('Trattoria em Casa');
+    // preço e parcelas vêm da oferta (campo price da seção), e a frase fixa da garantia aparece
+    expect(screen.getByTestId('generated-price')).toHaveTextContent('R$ 19,90');
+    expect(screen.getByTestId('generated-price')).toHaveTextContent('ou 3x de R$ 6,63 sem juros no cartão');
+    expect(screen.getByText('Pela lei, você pode desistir em até 7 dias.')).toBeInTheDocument();
   });
 
   it('página fora do ar ou inexistente: aviso simples', async () => {
@@ -191,6 +204,46 @@ describe('NORQVA-0116 — tela de geração', () => {
     expect(await screen.findByTestId('public-link')).toHaveTextContent('/v/livro-abc123');
     expect(screen.getByText('Tirar do ar')).toBeInTheDocument();
     expect(screen.queryByText('Aprovar página')).toBeNull();
+  });
+});
+
+describe('NORQVA-0116 — revisão: preço da oferta, seção fixa, roteiro e checagem vencida', () => {
+  it('mostra o preço vindo da oferta, a seção de promessas sem edição, o roteiro editável e o aviso de checagem vencida', async () => {
+    const base = genData();
+    const data = {
+      ...base,
+      page: {
+        ...base.page,
+        sections: [
+          ...base.page.sections,
+          { order: 3, ref_order: null, role: 'TESTIMONIALS', fixed: true, headline: 'O que dizem de nós', body: '', bullets: ['Aprovado pela leitora Carla'], cta_label: '', image_status: 'NONE', removed_fields: [] },
+          { order: 4, ref_order: null, role: 'OFFER_PRICE', headline: 'Leve hoje', body: 'Chamada', bullets: [], cta_label: 'Quero', image_status: 'NONE', removed_fields: [], price: { price_text: 'R$ 19,90', installments_text: 'ou 3x de R$ 6,63 sem juros no cartão' } }
+        ]
+      },
+      ads: [{ ...base.ads[0], copy_check: { stale: true } }]
+    };
+    const apiFetch = vi.fn().mockResolvedValue(data);
+    render(<GenerationView apiFetch={apiFetch} pageId="g1" isAdmin canEdit showError={vi.fn()} showSuccess={vi.fn()} onBack={vi.fn()} />);
+    expect(await screen.findByTestId('section-price-4')).toHaveTextContent('R$ 19,90');
+    expect(screen.getByTestId('section-price-4')).toHaveTextContent('a IA não escreve preço');
+    expect(screen.getByTestId('fixed-section-3')).toHaveTextContent('Aprovado pela leitora Carla');
+    expect(screen.queryByDisplayValue('O que dizem de nós')).toBeNull(); // sem campo de edição
+    expect(screen.getByTestId('ad-check-stale')).toHaveTextContent('roda de novo na hora de aprovar');
+    const script = screen.getByDisplayValue('Gancho: Abertura');
+    fireEvent.change(script, { target: { value: 'Gancho: Abertura nova' } });
+    fireEvent.click(within(screen.getByTestId('generation-ad')).getByText('Salvar'));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/generated-pages/g1/ads/c1', expect.objectContaining({ method: 'PATCH' })));
+    const call = apiFetch.mock.calls.find((c: any[]) => c[0] === '/generated-pages/g1/ads/c1');
+    expect(JSON.parse(call![1].body).script).toBe('Gancho: Abertura nova');
+  });
+
+  it('link com endereço inválido (%) mostra "não disponível" sem quebrar', async () => {
+    render(
+      <MemoryRouter initialEntries={['/v/%E0%A4%A']}>
+        <GeneratedPage />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('Esta página não está disponível.')).toBeInTheDocument();
   });
 });
 
