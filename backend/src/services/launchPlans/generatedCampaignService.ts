@@ -1,0 +1,409 @@
+// NORQVA-0117 (D-0117): campanha PAUSADA a partir de uma página gerada e publicada (NORQVA-0116).
+// Reaproveita o plano de lançamento de sempre (launch_plans, LaunchPlanService.createOnMeta): o plano nasce em
+// RASCUNHO, ligado à página (um plano só por página), e a criação na Meta faz campanha, conjunto e anúncios de
+// imagem, tudo PAUSADO. Ativar e gastar continua só com o dono, pelo "Sim" do plano (com o código, NORQVA-0094).
+// Travas próprias: toda chamada à Graph API desta criação passa por assertOnlyPausedPayload; antes de criar,
+// a página tem que estar no ar, a oferta à venda, e cada anúncio aprovado, igual ao aprovado, com a checagem
+// (cópia, números, promessas, preço) refeita na hora e sem preço no texto.
+import crypto from 'crypto';
+import { Pool } from 'pg';
+import { writeAuditLog } from '../../db/audit';
+import { LaunchPlanError, validateLaunchPlanInput, normalizeMetaIds, serializeLaunchPlan, generatedSlugFromUrl } from './launchPlanService';
+import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, META_MIN_DAILY_BUDGET_BRL, getMaxDailyBudgetBRL, getGeneratedPageHosts } from '../meta/metaMutatingClient';
+import { checkGeneratedAd } from '../creative/creativeFactoryService';
+import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
+import { resolveImageUrl, STORAGE_PREFIX } from '../creative/generatedImages';
+import { livePriceBlock, GenerationService } from '../creative/generationService';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const DEFAULT_DAILY_BUDGET_BRL = 30;
+export const DEFAULT_CAP_DAYS = 7;
+export const GENERATED_CTA = 'LEARN_MORE';
+export const MUTATION_DISABLED_MESSAGE = 'Cadastro na Meta desligado (META_MUTATION_ENABLED): o plano ficou só em rascunho no NORQVA.';
+const CREATED_STATUSES = ['CREATED_PAUSED', 'AWAITING_OPERATOR', 'APPROVED', 'ACTIVE', 'REJECTED'];
+
+// ---------------------------------------------------------------------------------------------
+// Trava: nada além de PAUSED vai para a Meta nesta criação
+// ---------------------------------------------------------------------------------------------
+
+const STATUS_KEYS = new Set(['status', 'configured_status', 'effective_status']);
+
+/**
+ * Lança se o POST levaria qualquer situação diferente de PAUSED, se criar campanha/conjunto/anúncio sem
+ * PAUSED explícito, ou se tentar mudar um objeto que já existe (POST em /<id>).
+ */
+export function assertOnlyPausedPayload(endpoint: string, payload: Record<string, any>): void {
+  const fail = (why: string) => {
+    throw new Error(`[SECURITY EXCEPTION]: NORQVA-0117 só cria PAUSADO: ${why} (${endpoint}).`);
+  };
+  const walk = (v: unknown, path: string) => {
+    if (Array.isArray(v)) return v.forEach((x, i) => walk(x, `${path}[${i}]`));
+    if (!v || typeof v !== 'object') return;
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (STATUS_KEYS.has(k.toLowerCase()) && String(val).toUpperCase() !== 'PAUSED') fail(`${path}${k} = ${String(val)}`);
+      walk(val, `${path}${k}.`);
+    }
+  };
+  walk(payload, '');
+  const ep = String(endpoint || '');
+  if (/\/(campaigns|adsets|ads)$/.test(ep) && String(payload?.status || '').toUpperCase() !== 'PAUSED') fail('criação sem status PAUSED');
+  if (/^\/?\d+$/.test(ep)) fail('alteração de objeto existente');
+}
+
+/** O cliente da Meta com a trava acima em todos os POSTs. */
+export function pausedOnlyClient(client: MetaMutatingClient): MetaMutatingClient {
+  return client.addPayloadGuard(assertOnlyPausedPayload);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Endereços e UTMs
+// ---------------------------------------------------------------------------------------------
+
+/** Site do comprador (onde está /v/:slug). PUBLIC_SITE_URL tem que ser https num host permitido. */
+export function publicSiteUrl(): string {
+  const hosts = getGeneratedPageHosts();
+  const raw = String(process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '');
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'https:' && hosts.includes(u.hostname.toLowerCase())) return `https://${u.hostname.toLowerCase()}`;
+  } catch {
+    /* usa o padrão */
+  }
+  return `https://${hosts[0] || 'acesso.norqva.com.br'}`;
+}
+
+export const pageUrl = (slug: string) => `${publicSiteUrl()}/v/${slug}`;
+
+/** UTMs do anúncio: origem meta, mídia paga, campanha = código do plano, conteúdo = código do criativo. */
+export function utmTags(planCode: string, contentKey: string): string {
+  const q = new URLSearchParams();
+  q.set('utm_source', 'meta');
+  q.set('utm_medium', 'paid');
+  q.set('utm_campaign', planCode);
+  q.set('utm_content', contentKey);
+  return q.toString();
+}
+
+/** Imagens da página em https (as do site viram endereço completo; as novas, link assinado). */
+export async function pageImageUrls(sections: any[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const s of sections || []) {
+    const raw = String(s?.image_url || '').trim();
+    if (!raw) continue;
+    if (raw.startsWith('/images/')) out.push(`${publicSiteUrl()}${raw}`);
+    else if (raw.startsWith(STORAGE_PREFIX)) {
+      const url = await resolveImageUrl(raw, 24 * 3600);
+      if (url && url.startsWith('https://')) out.push(url);
+    }
+  }
+  return Array.from(new Set(out));
+}
+
+const parseJson = (v: any, fb: any) => {
+  if (v === null || v === undefined) return fb;
+  if (typeof v !== 'string') return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return fb;
+  }
+};
+
+const isMutationEnabled = () => process.env.META_MUTATION_ENABLED === 'true';
+
+// ---------------------------------------------------------------------------------------------
+// Conferência antes de criar (também chamada pela rota genérica de criação do plano)
+// ---------------------------------------------------------------------------------------------
+
+async function pageRow(pool: Pool, pageId: string) {
+  if (!UUID_RE.test(String(pageId || ''))) throw new LaunchPlanError(404, 'Página gerada não encontrada.');
+  const r = (await pool.query('SELECT * FROM generated_pages WHERE id = $1', [pageId])).rows[0];
+  if (!r || r.deleted_at) throw new LaunchPlanError(404, 'Página gerada não encontrada.');
+  r.sections = parseJson(r.sections, []);
+  return r;
+}
+
+async function liveOffer(pool: Pool, offerId: string) {
+  return (
+    await pool.query(
+      `SELECT id, human_id, name, status, price, promotional_price, card_enabled, card_max_installments, card_free_installments,
+              card_interest_monthly, card_total_price
+       FROM offers WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE AND is_demo = FALSE`,
+      [offerId]
+    )
+  ).rows[0] || null;
+}
+
+async function assertPageLive(pool: Pool, page: any) {
+  if (page.status !== 'PUBLISHED') throw new LaunchPlanError(409, 'A página precisa estar no ar (publicada) para criar a campanha.');
+  const offer = await liveOffer(pool, page.offer_id);
+  if (!offer || (offer.status !== 'ATIVA' && offer.status !== 'TESTE')) throw new LaunchPlanError(409, 'A oferta da página não está à venda (ativa ou em teste).');
+  if (!(livePriceBlock(offer).value > 0)) throw new LaunchPlanError(409, 'A oferta da página está sem preço.');
+  return offer;
+}
+
+/** Último criativo (não substituído) com este código. */
+async function creativeByKey(pool: Pool, key: string) {
+  return (
+    await pool.query(
+      `SELECT * FROM creatives WHERE is_deleted = FALSE AND is_demo = FALSE AND approval_status <> 'SUPERSEDED'
+         AND (utm_content_key = $1 OR human_id = $1) ORDER BY version DESC LIMIT 1`,
+      [key]
+    )
+  ).rows[0] || null;
+}
+
+/** Aprovado, igual ao aprovado, checagem refeita agora e sem preço. Devolve o motivo do bloqueio ou null. */
+export async function adBlockReason(pool: Pool, c: any): Promise<string | null> {
+  if (!c) return 'anúncio não encontrado.';
+  if (c.approval_status !== 'APPROVED') return 'ainda não foi aprovado.';
+  const review = await pool.query(
+    `SELECT content_hash FROM creative_reviews WHERE creative_id = $1 AND decision = 'APPROVED' ORDER BY created_at DESC LIMIT 1`,
+    [c.id]
+  );
+  if (!review.rows[0] || review.rows[0].content_hash !== c.content_hash) return 'o texto mudou depois da aprovação: aprove de novo.';
+  const chk = await checkGeneratedAd(pool, c);
+  if (chk.blocked) return chk.message || 'bloqueado pela checagem.';
+  const hits = findPriceInFields({
+    hook: c.hook, primary_text: c.primary_text || c.copy, headline: c.headline, description: c.ad_description, cta: c.cta, script: c.script
+  });
+  if (hits.length) return priceErrorMessage(hits, 'preço no texto');
+  return null;
+}
+
+const headlineOf = (c: any) => String(c.headline || c.hook || '').trim().slice(0, 255);
+
+/** Conferência completa do plano de uma página gerada, logo antes de criar na Meta. Lança se algo falhar. */
+export async function assertGeneratedPlanReady(pool: Pool, planId: string): Promise<void> {
+  const row = (await pool.query('SELECT * FROM launch_plans WHERE id = $1', [planId])).rows[0];
+  if (!row) throw new LaunchPlanError(404, 'Plano não encontrado.');
+  if (!row.generated_page_id) return;
+  if (!['DRAFT', 'FAILED', 'CREATING'].includes(row.status)) return; // já criado: nada novo vai para a Meta
+  const page = await pageRow(pool, row.generated_page_id);
+  const offer = await assertPageLive(pool, page);
+  if (String(offer.human_id) !== String(row.offer_human_id)) throw new LaunchPlanError(409, 'A oferta da página mudou depois de montar a campanha. Monte de novo.');
+  const spec = parseJson(row.spec, {});
+  const ads: any[] = Array.isArray(spec.ads) ? spec.ads : [];
+  if (!ads.length) throw new LaunchPlanError(409, 'O plano não tem anúncios.');
+  const url = pageUrl(page.slug);
+  for (const ad of ads) {
+    const label = `Anúncio ${ad.name}`;
+    if (!ad.image_url) throw new LaunchPlanError(409, `${label}: sem imagem.`);
+    if (generatedSlugFromUrl(ad.destination_url) !== page.slug || String(ad.destination_url) !== url) throw new LaunchPlanError(409, `${label}: o destino não é a página ${url}.`);
+    const c = await creativeByKey(pool, ad.name);
+    const why = await adBlockReason(pool, c);
+    if (why) throw new LaunchPlanError(409, `${label}: ${why}`);
+    if (String(c.generated_page_id || '') !== String(page.id) && !(await rootLinked(pool, c, page.id))) {
+      throw new LaunchPlanError(409, `${label}: não é um anúncio desta página.`);
+    }
+    if (String(ad.primary_text) !== String(c.primary_text || c.copy || '').trim() || String(ad.headline) !== headlineOf(c) || String(ad.description || '') !== String(c.ad_description || '').trim().slice(0, 255)) {
+      throw new LaunchPlanError(409, `${label}: o texto do anúncio mudou depois de montar a campanha. Monte de novo.`);
+    }
+    const hits = findPriceInFields({ primary_text: ad.primary_text, headline: ad.headline, description: ad.description });
+    if (hits.length) throw new LaunchPlanError(409, priceErrorMessage(hits, label));
+  }
+}
+
+async function rootLinked(pool: Pool, c: any, pageId: string) {
+  if (!c?.root_creative_id) return false;
+  const r = (await pool.query('SELECT generated_page_id FROM creatives WHERE id = $1', [c.root_creative_id])).rows[0];
+  return String(r?.generated_page_id || '') === String(pageId);
+}
+
+/** Depois de criar: liga cada criativo ao anúncio da Meta (o placar dos criativos passa a contar). */
+export async function linkGeneratedPlanAds(pool: Pool, planId: string, userId: string | null) {
+  const row = (await pool.query('SELECT * FROM launch_plans WHERE id = $1', [planId])).rows[0];
+  if (!row?.generated_page_id) return;
+  const ids = normalizeMetaIds(row.meta_ids);
+  for (const [name, metaAdId] of Object.entries(ids.ads)) {
+    const c = await creativeByKey(pool, name);
+    if (!c) continue;
+    await pool.query(
+      `INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method, linked_by) VALUES ($1, $2, 'API_PUBLISH', $3) ON CONFLICT (creative_id, meta_ad_id) DO NOTHING`,
+      [c.id, metaAdId, userId && UUID_RE.test(userId) ? userId : null]
+    ).catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Serviço
+// ---------------------------------------------------------------------------------------------
+
+export interface GeneratedCampaignInput {
+  campaign_name?: unknown;
+  daily_budget_brl?: unknown;
+  max_spend_brl?: unknown;
+  age_min?: unknown;
+  age_max?: unknown;
+  creative_ids?: unknown;
+}
+
+export class GeneratedCampaignService {
+  constructor(private pool: Pool) {}
+
+  async planForPage(pageId: string) {
+    const r = (await this.pool.query('SELECT * FROM launch_plans WHERE generated_page_id = $1', [pageId])).rows[0];
+    return r ? serializeLaunchPlan(r) : null;
+  }
+
+  private async names(page: any) {
+    const r = (
+      await this.pool.query(
+        `SELECT p.name AS product_name, p.brand_id, ref.human_id AS ref_human_id
+         FROM products p LEFT JOIN creative_references ref ON ref.id = $2 WHERE p.id = $1`,
+        [page.product_id, page.reference_id]
+      )
+    ).rows[0] || {};
+    return { product: String(r.product_name || 'Produto'), brandId: r.brand_id || null, ref: String(r.ref_human_id || page.human_id) };
+  }
+
+  /** Anúncios da página com a situação de cada um (pode ir para a campanha ou o motivo). */
+  async adsWithReasons(page: any) {
+    const ads = await new GenerationService(this.pool).ads(page.id);
+    const out: any[] = [];
+    for (const a of ads) {
+      const full = (await this.pool.query('SELECT * FROM creatives WHERE id = $1', [a.id])).rows[0];
+      const reason = await adBlockReason(this.pool, full);
+      out.push({ id: a.id, human_id: a.human_id, headline: a.headline, approval_status: a.approval_status, ready: !reason, reason });
+    }
+    return out;
+  }
+
+  /** Para a tela: plano existente, sugestões e anúncios que podem ir. */
+  async overview(pageId: string) {
+    const page = await pageRow(this.pool, pageId);
+    const plan = await this.planForPage(page.id);
+    const n = await this.names(page);
+    const images = await pageImageUrls(page.sections);
+    const max = getMaxDailyBudgetBRL();
+    const daily = Math.min(DEFAULT_DAILY_BUDGET_BRL, max);
+    return {
+      plan,
+      page: { id: page.id, human_id: page.human_id, status: page.status, url: pageUrl(page.slug) },
+      mutation_enabled: isMutationEnabled(),
+      images: images.length,
+      ads: plan ? [] : await this.adsWithReasons(page),
+      defaults: {
+        campaign_name: `NQ – ${n.product} – Ref ${n.ref} – Vendas`.slice(0, 200),
+        daily_budget_brl: daily,
+        max_spend_brl: daily * DEFAULT_CAP_DAYS,
+        age_min: 25,
+        age_max: 65,
+        min_daily_budget_brl: META_MIN_DAILY_BUDGET_BRL,
+        max_daily_budget_brl: max
+      }
+    };
+  }
+
+  /**
+   * Monta (ou devolve) o plano RASCUNHO da página. Um plano só por página: segundo clique devolve o mesmo.
+   */
+  async draft(pageId: string, body: GeneratedCampaignInput, userId: string | null): Promise<{ plan: any; existing: boolean }> {
+    const page = await pageRow(this.pool, pageId);
+    const existing = await this.planForPage(page.id);
+    if (existing) return { plan: existing, existing: true };
+    const offer = await assertPageLive(this.pool, page);
+    const n = await this.names(page);
+
+    const max = getMaxDailyBudgetBRL();
+    const daily = body.daily_budget_brl === undefined || body.daily_budget_brl === null || body.daily_budget_brl === '' ? Math.min(DEFAULT_DAILY_BUDGET_BRL, max) : Number(body.daily_budget_brl);
+    if (!Number.isFinite(daily) || daily < META_MIN_DAILY_BUDGET_BRL || daily > max) {
+      throw new LaunchPlanError(400, `Orçamento diário entre R$ ${META_MIN_DAILY_BUDGET_BRL.toFixed(2)} e R$ ${max.toFixed(2)}.`);
+    }
+    const cap = body.max_spend_brl === undefined || body.max_spend_brl === null || body.max_spend_brl === '' ? daily * DEFAULT_CAP_DAYS : Number(body.max_spend_brl);
+    const ageMin = body.age_min === undefined ? 25 : Number(body.age_min);
+    const ageMax = body.age_max === undefined ? 65 : Number(body.age_max);
+    const name = String(body.campaign_name || '').trim().slice(0, 200) || `NQ – ${n.product} – Ref ${n.ref} – Vendas`.slice(0, 200);
+
+    // anúncios: os aprovados e liberados (ou os escolhidos, que também precisam estar liberados)
+    const all = await this.adsWithReasons(page);
+    const chosen = Array.isArray(body.creative_ids) ? body.creative_ids.map(String) : null;
+    const picked = chosen ? all.filter(a => chosen.includes(a.id)) : all.filter(a => a.ready);
+    if (chosen) {
+      const bad = picked.find(a => !a.ready);
+      if (bad) throw new LaunchPlanError(409, `Anúncio ${bad.human_id}: ${bad.reason}`);
+    }
+    if (!picked.length) throw new LaunchPlanError(409, 'Nenhum anúncio aprovado e liberado pela checagem para esta página.');
+    if (picked.length > 10) throw new LaunchPlanError(400, 'No máximo 10 anúncios por campanha.');
+
+    const images = await pageImageUrls(page.sections);
+    const code = `CMP-${page.human_id}`.toUpperCase().slice(0, 40);
+    const adsetName = `${code}_AS01`;
+    const ads = [];
+    for (let i = 0; i < picked.length; i++) {
+      const c = (await this.pool.query('SELECT * FROM creatives WHERE id = $1', [picked[i].id])).rows[0];
+      const image = images.length ? images[i % images.length] : null;
+      if (!image) throw new LaunchPlanError(409, `Anúncio ${c.human_id} sem imagem: a página não tem imagem. Use as imagens do produto ou gere imagens novas.`);
+      const key = String(c.utm_content_key || c.human_id);
+      ads.push({
+        name: key,
+        adset_name: adsetName,
+        image_url: image,
+        thumbnail_url: null,
+        primary_text: String(c.primary_text || c.copy || '').trim(),
+        headline: headlineOf(c),
+        description: String(c.ad_description || '').trim().slice(0, 255) || undefined,
+        cta: GENERATED_CTA,
+        destination_url: pageUrl(page.slug),
+        url_tags: utmTags(code, key)
+      });
+    }
+    const spec = {
+      campaign: { name, objective: 'OUTCOME_SALES' },
+      pixel_id: OFFICIAL_NORQVA_PIXEL_ID,
+      custom_event_type: 'PURCHASE',
+      optimization_goal: 'OFFSITE_CONVERSIONS',
+      adsets: [{
+        name: adsetName,
+        daily_budget_brl: daily,
+        targeting: { countries: ['BR'], age_min: ageMin, age_max: ageMax, advantage_audience: true },
+        targeting_summary: `Brasil, ${ageMin}–${ageMax}, público Advantage`
+      }],
+      ads,
+      pause_rules: ['Pausar anúncio com 2× o CPA de equilíbrio gasto sem venda.', 'Pausar tudo ao atingir o teto de gasto do plano.'],
+      hypothesis: `Página gerada ${page.human_id} (referência ${n.ref}) com ${ads.length} anúncio(s) de imagem.`
+    };
+    const input = validateLaunchPlanInput({
+      code,
+      offer_human_id: offer.human_id,
+      max_spend_brl: cap,
+      question_text: `Ativar a campanha ${name} com R$ ${daily.toFixed(2)}/dia e teto de R$ ${Number(cap).toFixed(2)}?`,
+      spec
+    });
+    const clash = await this.pool.query('SELECT 1 FROM meta_campaigns WHERE name = $1 AND is_demo = FALSE LIMIT 1', [input.spec.campaign.name]);
+    if (clash.rows.length) throw new LaunchPlanError(409, `Já existe na conta uma campanha chamada "${input.spec.campaign.name}". Use outro nome.`);
+    try {
+      const ins = await this.pool.query(
+        `INSERT INTO launch_plans (id, code, brand_id, offer_human_id, status, spec, meta_ids, daily_budget_brl, max_spend_brl, question_text, created_by, generated_page_id)
+         VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        [
+          crypto.randomUUID(), input.code, n.brandId, input.offer_human_id, JSON.stringify(input.spec), JSON.stringify(normalizeMetaIds({})),
+          input.daily_budget_brl, input.max_spend_brl, input.question_text, userId && UUID_RE.test(userId) ? userId : null, page.id
+        ]
+      );
+      await writeAuditLog(
+        this.pool, userId && UUID_RE.test(userId) ? userId : null, 'GENERATED_CAMPAIGN_DRAFTED',
+        `Campanha ${input.code} montada em rascunho a partir da página ${page.human_id} (${ads.length} anúncio(s), R$ ${input.daily_budget_brl.toFixed(2)}/dia, teto R$ ${input.max_spend_brl.toFixed(2)}).`,
+        null, JSON.stringify({ plan_id: ins.rows[0].id, page_id: page.id }), false, false
+      );
+      return { plan: serializeLaunchPlan(ins.rows[0]), existing: false };
+    } catch (err: any) {
+      // segundo clique ao mesmo tempo: o índice único deixa um plano só; devolve o que ficou
+      if (err?.code === '23505') {
+        const again = await this.planForPage(page.id);
+        if (again) return { plan: again, existing: true };
+        throw new LaunchPlanError(409, `Já existe um plano com o código ${input.code}.`);
+      }
+      throw err;
+    }
+  }
+
+  /** O plano já foi criado na Meta (ou respondido)? */
+  static alreadyCreated(plan: any): boolean {
+    return CREATED_STATUSES.includes(String(plan?.status));
+  }
+
+  static mutationEnabled(): boolean {
+    return isMutationEnabled();
+  }
+}

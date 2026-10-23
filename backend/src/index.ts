@@ -195,6 +195,7 @@ import {
   regenerateGeneratedAd, approveGeneratedPage, publishGeneratedPage, unpublishGeneratedPage, deleteGeneratedPage,
   restoreGeneratedPage, getPublicGeneratedPage
 } from './controllers/generationController';
+import { getGeneratedCampaign, postGeneratedCampaign } from './controllers/generatedCampaignController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, addOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
@@ -654,6 +655,9 @@ app.post('/api/generated-pages/:id/publish', requireRole(['ADMIN']), referencesF
 app.post('/api/generated-pages/:id/unpublish', requireRole(['ADMIN']), referencesFlag, unpublishGeneratedPage);
 app.delete('/api/generated-pages/:id', requireRole(['ADMIN']), referencesFlag, deleteGeneratedPage);
 app.post('/api/generated-pages/:id/restore', requireRole(['ADMIN']), referencesFlag, restoreGeneratedPage);
+// NORQVA-0117 (D-0117): campanha PAUSADA a partir da página gerada (só ADMIN; ativar continua pelo Sim do plano)
+app.get('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, getGeneratedCampaign);
+app.post('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, postGeneratedCampaign);
 app.get('/api/automation/adjustments/:id', automationGetAdjustment);
 app.post('/api/automation/adjustments/:id/status', automationReportAdjustment);
 app.post('/api/automation/adjustments/:id/version', automationDeliverAdjustment);

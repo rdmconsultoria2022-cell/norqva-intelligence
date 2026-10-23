@@ -7,7 +7,8 @@ import {
   MetaMutatingSecurityContext,
   OFFICIAL_NORQVA_PIXEL_ID,
   META_MIN_DAILY_BUDGET_BRL,
-  getMaxDailyBudgetBRL
+  getMaxDailyBudgetBRL,
+  isGeneratedPageUrl
 } from '../meta/metaMutatingClient';
 
 // NORQVA-0019 (D-0010): o Claude prepara a campanha inteira na Meta, sempre PAUSADA; só a resposta
@@ -110,6 +111,10 @@ export interface LaunchPlanAdSpec {
   cta: string;
   destination_url: string;
   url_tags: string;
+  /** NORQVA-0117: anúncio de imagem (https). Com imagem, video_url fica vazio. */
+  image_url?: string | null;
+  /** NORQVA-0117: descrição do anúncio (link_data.description). */
+  description?: string | null;
 }
 
 export interface LaunchPlanSpec {
@@ -142,6 +147,8 @@ export interface LaunchPlanMetaIds {
   videos: Record<string, string>;
   creatives: Record<string, string>;
   ads: Record<string, string>;
+  /** NORQVA-0117: hash das imagens enviadas (por nome do anúncio). */
+  images: Record<string, string>;
 }
 
 export interface LaunchPlanUser {
@@ -206,6 +213,16 @@ export function toMetaTargeting(t: LaunchPlanTargeting): Record<string, any> {
   out.targeting_automation = { advantage_audience: t.advantage_audience ? 1 : 0 };
   return out;
 }
+
+/** NORQVA-0117: slug da página gerada (/v/:slug) ou null. */
+export const generatedSlugFromUrl = (url: string): string | null => {
+  try {
+    const m = new URL(url).pathname.match(/^\/v\/([a-z0-9-]{3,120})$/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+};
 
 export const humanIdFromUrl = (url: string): string | null => {
   try {
@@ -288,8 +305,14 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
     const adsetName = str(a.adset_name, 200);
     if (!adsetName || !adsetNames.has(adsetName)) throw new LaunchPlanError(400, `Anúncio "${name}": conjunto "${adsetName || ''}" não está no plano.`);
 
-    const videoUrl = String(a.video_url || '').trim();
-    if (videoUrl === VIDEO_URL_PLACEHOLDER) {
+    // NORQVA-0117: anúncio de imagem (image_url https) em vez de vídeo
+    const imageUrl = a.image_url === undefined || a.image_url === null || a.image_url === '' ? null : String(a.image_url).trim();
+    if (imageUrl !== null && !httpsUrl(imageUrl)) throw new LaunchPlanError(400, `Anúncio "${name}": image_url deve ser https.`);
+    const videoUrl = imageUrl !== null ? '' : String(a.video_url || '').trim();
+    if (imageUrl !== null && String(a.video_url || '').trim()) throw new LaunchPlanError(400, `Anúncio "${name}": use vídeo ou imagem, não os dois.`);
+    if (imageUrl !== null) {
+      // imagem: nada de vídeo a conferir
+    } else if (videoUrl === VIDEO_URL_PLACEHOLDER) {
       if (opts.forCreation) throw new LaunchPlanError(400, `Anúncio "${name}": preencha video_url (está "${VIDEO_URL_PLACEHOLDER}") antes de criar na Meta.`);
     } else if (!httpsUrl(videoUrl)) {
       throw new LaunchPlanError(400, `Anúncio "${name}": video_url deve ser uma URL https pública (ou "${VIDEO_URL_PLACEHOLDER}" no rascunho).`);
@@ -325,18 +348,31 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
       headline,
       cta,
       destination_url: destination,
-      url_tags: urlTags
+      url_tags: urlTags,
+      ...(imageUrl !== null ? { image_url: imageUrl } : {}),
+      ...(str(a.description, 255) ? { description: str(a.description, 255) } : {})
     };
   });
   for (const s of adsets) {
     if (!ads.some((a) => a.adset_name === s.name)) throw new LaunchPlanError(400, `Conjunto "${s.name}" não tem anúncio.`);
   }
 
-  const destHumanIds = Array.from(new Set(ads.map((a) => humanIdFromUrl(a.destination_url))));
-  const offerHumanId = str(b.offer_human_id, 50) || (destHumanIds.length === 1 ? destHumanIds[0] : null);
-  if (!offerHumanId || destHumanIds.length !== 1 || destHumanIds[0] !== offerHumanId) {
-    throw new LaunchPlanError(400, 'Todos os anúncios devem levar à página da mesma oferta (offer_human_id).');
+  // NORQVA-0117: página gerada (/v/:slug): todos os anúncios na mesma página e offer_human_id informado
+  const generated = ads.map((a) => (isGeneratedPageUrl(a.destination_url) ? generatedSlugFromUrl(a.destination_url) : null));
+  if (generated.some(Boolean)) {
+    const slugs = Array.from(new Set(generated));
+    const given = str(b.offer_human_id, 50);
+    if (slugs.length !== 1 || !slugs[0] || !given) {
+      throw new LaunchPlanError(400, 'Todos os anúncios devem levar à mesma página gerada, com a oferta informada (offer_human_id).');
+    }
+  } else {
+    const destHumanIds = Array.from(new Set(ads.map((a) => humanIdFromUrl(a.destination_url))));
+    const offerFromUrl = str(b.offer_human_id, 50) || (destHumanIds.length === 1 ? destHumanIds[0] : null);
+    if (!offerFromUrl || destHumanIds.length !== 1 || destHumanIds[0] !== offerFromUrl) {
+      throw new LaunchPlanError(400, 'Todos os anúncios devem levar à página da mesma oferta (offer_human_id).');
+    }
   }
+  const offerHumanId = str(b.offer_human_id, 50) || (humanIdFromUrl(ads[0].destination_url) as string);
 
   const dailyTotal = money(adsets.reduce((s, a) => s + a.daily_budget_brl, 0));
   const maxSpend = money(Number(b.max_spend_brl));
@@ -375,7 +411,7 @@ export function normalizeMetaIds(raw: unknown): LaunchPlanMetaIds {
     if (isObj(v)) for (const [k, val] of Object.entries(v)) if (val !== null && val !== undefined && String(val)) out[k] = String(val);
     return out;
   };
-  return { campaign: m(r.campaign), adsets: m(r.adsets), videos: m(r.videos), creatives: m(r.creatives), ads: m(r.ads) };
+  return { campaign: m(r.campaign), adsets: m(r.adsets), videos: m(r.videos), creatives: m(r.creatives), ads: m(r.ads), images: m(r.images) };
 }
 
 const parseJson = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
@@ -613,6 +649,32 @@ export class LaunchPlanService {
           await save();
           await audit(pool, user.id, 'LAUNCH_PLAN_OBJECT_ADOPTED', `Plano ${plan.code}: anúncio "${ad.name}" já existia PAUSADO (${adoptedAd}); adotado sem novo POST.`, { id, ad: adoptedAd });
           continue;
+        }
+        if (!ids.creatives[ad.name] && ad.image_url) {
+          // NORQVA-0117: anúncio de imagem: envia a imagem (uma vez) e cria a peça com o hash
+          if (!ids.images[ad.name]) {
+            const up = await client.uploadImageFromUrl(pool, { fileUrl: ad.image_url, name: `${plan.code}_${ad.name}` }, ctx);
+            ids.images[ad.name] = up.hash;
+            await save();
+          }
+          const creative = await client.createAdCreative(
+            pool,
+            {
+              name: `${ad.name}_CREATIVE`,
+              title: ad.headline,
+              body: ad.primary_text,
+              destinationUrl: ad.destination_url,
+              callToAction: ad.cta,
+              imageHash: ids.images[ad.name],
+              pageId,
+              instagramUserId: instagramId || undefined,
+              urlTags: ad.url_tags,
+              description: ad.description || undefined
+            },
+            ctx
+          );
+          ids.creatives[ad.name] = creative.externalId;
+          await save();
         }
         if (!ids.creatives[ad.name]) {
           if (!ids.videos[ad.name]) {

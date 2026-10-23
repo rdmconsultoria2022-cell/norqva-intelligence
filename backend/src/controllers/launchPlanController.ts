@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
 import { LaunchPlanService, LaunchPlanError } from '../services/launchPlans/launchPlanService';
 import { assertAdsReadyForMeta } from '../services/launchPlans/campaignEditorService';
+import { pausedOnlyClient, linkGeneratedPlanAds } from '../services/launchPlans/generatedCampaignService';
 import { translateMetaControlError } from './metaControlController';
 import { beginDecision, decisionContextFromRequest, DecisionAuditError, DecisionHandle, metaIdsOfPlan } from '../db/decisionEvents';
 
@@ -90,28 +91,40 @@ export async function createLaunchPlan(req: AuthenticatedRequest, res: Response)
 }
 
 export async function createLaunchPlanOnMeta(req: AuthenticatedRequest, res: Response) {
-  const pool: Pool = req.app.get('db');
   if (req.query.mode === 'demo') return res.status(400).json({ error: 'Planos de lançamento só existem na conta REAL.' });
-  const id = String(req.params.id);
+  const out = await createPlanOnMetaAudited(req, String(req.params.id));
+  return res.status(out.status).json(out.body);
+}
+
+/**
+ * Criação na Meta com o registro de decisão (H1) e a conferência dos anúncios. Usada pela rota do plano e pela
+ * campanha da página gerada (NORQVA-0117). Plano de página gerada: o cliente ganha a trava "só PAUSED" e, no fim,
+ * cada criativo é ligado ao anúncio criado.
+ */
+export async function createPlanOnMetaAudited(req: AuthenticatedRequest, id: string): Promise<{ status: number; body: any }> {
+  const pool: Pool = req.app.get('db');
   let decision: DecisionHandle;
   try {
     decision = await beginDecision(pool, decisionContextFromRequest(req), { action: 'LAUNCH_PLAN_CREATE_ON_META', decision: 'CREATE_PAUSED', ...(await planRef(pool, id)) });
   } catch (err) {
-    if (err instanceof DecisionAuditError) return AUDIT_UNAVAILABLE(res, err);
+    if (err instanceof DecisionAuditError) return { status: 503, body: { error: err.message } };
     console.error('[DECISION AUDIT] unexpected error before execution — nothing executed', err);
-    return res.status(500).json({ error: 'Falha ao registrar a decisão. Nada foi executado.' });
+    return { status: 500, body: { error: 'Falha ao registrar a decisão. Nada foi executado.' } };
   }
   try {
     // NORQVA-0027: só criativo aprovado (e igual ao aprovado) vai para a Meta
     await assertAdsReadyForMeta(pool, id);
-    const result: any = await service.createOnMeta(pool, id, userOf(req), clientFactory());
+    const generated = !!(await pool.query('SELECT generated_page_id FROM launch_plans WHERE id = $1', [id])).rows[0]?.generated_page_id;
+    const client = generated ? pausedOnlyClient(clientFactory()) : clientFactory();
+    const result: any = await service.createOnMeta(pool, id, userOf(req), client);
+    if (generated) await linkGeneratedPlanAds(pool, id, userOf(req).id);
     const recorded = await decision.finish('EXECUTED', { metaIds: metaIdsOfPlan(result?.plan?.meta_ids), result: planOutcome(result?.plan) });
-    return res.status(200).json(recorded ? result : { ...result, audit_incomplete: true });
+    return { status: 200, body: recorded ? result : { ...result, audit_incomplete: true } };
   } catch (err) {
     const r = errorResponse(err, 'create on Meta');
     const after = await planRef(pool, id);
     await decision.finish(r.status >= 500 ? 'FAILED' : 'REJECTED', { metaIds: after.metaIds, result: { http_status: r.status }, error: (err as any)?.message || r.error });
-    return res.status(r.status).json({ error: r.error });
+    return { status: r.status, body: { error: r.error } };
   }
 }
 

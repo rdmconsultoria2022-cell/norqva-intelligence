@@ -38,6 +38,12 @@ export function setGeneratedAdChecker(fn: GeneratedAdChecker | null) {
   generatedAdChecker = fn;
 }
 
+/** NORQVA-0117: roda a checagem registrada agora (sem checagem registrada: bloqueia). */
+export async function checkGeneratedAd(pool: Pool, creative: any): Promise<{ blocked: boolean; message: string }> {
+  if (!generatedAdChecker) return { blocked: true, message: 'a checagem do anúncio gerado não está disponível.' };
+  return generatedAdChecker(pool, creative);
+}
+
 /** Marca de checagem vencida (o texto mudou fora da tela de geração; a aprovação confere de novo). */
 export const STALE_COPY_CHECK = JSON.stringify({ stale: true });
 
