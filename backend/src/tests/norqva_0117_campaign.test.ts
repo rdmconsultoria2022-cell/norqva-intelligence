@@ -11,7 +11,9 @@ import { signSupabaseToken } from '../utils/token';
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, resetMetaPreflightCacheForTesting, isGeneratedPageUrl } from '../services/meta/metaMutatingClient';
 import { setLaunchPlanClientFactoryForTesting } from '../controllers/launchPlanController';
 import { validateLaunchPlanInput } from '../services/launchPlans/launchPlanService';
-import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient } from '../services/launchPlans/generatedCampaignService';
+import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageRefs } from '../services/launchPlans/generatedCampaignService';
+import { setImageStorageForTests, resolveImageUrl, freshSignedUrl } from '../services/creative/generatedImages';
+import { metaIdsOfPlan } from '../db/decisionEvents';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
@@ -25,18 +27,88 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
     expect(() => assertOnlyPausedPayload('/act_1/ads', { name: 'x', creative: { status: 'ACTIVE' }, status: 'PAUSED' })).toThrow(/PAUSADO/);
     expect(() => assertOnlyPausedPayload('/act_1/adsets', { name: 'x' })).toThrow(/sem status PAUSED/);
     expect(() => assertOnlyPausedPayload('/act_1/ads', { name: 'x', configured_status: 'ACTIVE', status: 'PAUSED' })).toThrow();
-    expect(() => assertOnlyPausedPayload('/120000000001', { status: 'PAUSED' })).toThrow(/objeto existente/);
+    // lista fechada: só criação na conta
+    expect(() => assertOnlyPausedPayload('/120000000001', { status: 'PAUSED' })).toThrow(/fora da lista/);
+    expect(() => assertOnlyPausedPayload('/act_1/advideos', { file_url: 'https://x' })).toThrow(/fora da lista/);
+    expect(() => assertOnlyPausedPayload('/act_1/campaigns/extra', { status: 'PAUSED' })).toThrow(/fora da lista/);
   });
 
-  it('o cliente com a trava não manda nada ACTIVE (nem pela Graph simulada)', async () => {
+  it('o cliente com a trava não manda nada ACTIVE; o cliente original (ativação pelo Sim) continua sem a trava', async () => {
     const post = vi.fn(async () => ({ id: '1' }));
-    const client = pausedOnlyClient(new MetaMutatingClient(post as any));
+    const original = new MetaMutatingClient(post as any);
+    const client = pausedOnlyClient(original);
+    expect(client).not.toBe(original);
     await expect((client as any).callTransportPost('/act_1/campaigns', { status: 'ACTIVE' })).rejects.toThrow(/PAUSADO/);
     expect(post).not.toHaveBeenCalled();
+    await (original as any).callTransportPost('/120000000001', { status: 'ACTIVE' });
+    expect(post).toHaveBeenCalledTimes(1);
   });
 
-  it('UTMs: origem meta, mídia paga, campanha = código do plano, conteúdo = código do criativo', () => {
-    expect(utmTags('CMP-GEN-000001', 'GEN-000001-A1')).toBe('utm_source=meta&utm_medium=paid&utm_campaign=CMP-GEN-000001&utm_content=GEN-000001-A1');
+  it('imagens dos anúncios: abertura e produto primeiro, nunca a seção de preço; as novas ficam como storage:', () => {
+    const refs = pageImageRefs([
+      { role: 'OFFER_PRICE', image_url: '/images/kit/oferta.jpg' },
+      { role: 'CONTENTS', image_url: 'storage:creative-images/generated/p/2.png' },
+      { role: 'HERO_HOOK', image_url: '/images/kit/capa_trat.jpg' }
+    ]);
+    expect(refs).toEqual(['https://acesso.norqva.com.br/images/kit/capa_trat.jpg', 'storage:creative-images/generated/p/2.png']);
+  });
+
+  it('link assinado: o guardado só serve se ainda valer pelo tempo pedido; para a Meta, sempre um novo', async () => {
+    let n = 0;
+    setImageStorageForTests({ upload: async () => {}, bucketExists: async () => true, signedUrl: async (b, p, ttl) => `https://mock.supabase.co/sign/${b}/${p}?ttl=${ttl}&n=${++n}` });
+    try {
+      const ref = 'storage:creative-images/generated/p/1.png';
+      const a = await resolveImageUrl(ref, 3600);
+      expect(await resolveImageUrl(ref, 3600)).toBe(a);
+      const long = await resolveImageUrl(ref, 24 * 3600);
+      expect(long).not.toBe(a);
+      expect(long).toContain('ttl=86400');
+      const fresh1 = await freshSignedUrl(ref);
+      const fresh2 = await freshSignedUrl(ref);
+      expect(fresh1).not.toBe(fresh2);
+    } finally {
+      setImageStorageForTests(null);
+    }
+  });
+
+  it('hashes de imagem não entram na lista de objetos da Meta do plano', () => {
+    expect(metaIdsOfPlan({ campaign: { c: '1' }, ads: { a: '2' }, images: { x: 'hash1' } }).sort()).toEqual(['1', '2']);
+  });
+
+  it('download da imagem: tamanho declarado acima de 8 MB é recusado; sem seguir redirecionamento', async () => {
+    const prev = { m: process.env.META_MUTATION_ENABLED, a: process.env.META_AD_ACCOUNT_ID };
+    process.env.META_MUTATION_ENABLED = 'true';
+    process.env.META_AD_ACCOUNT_ID = 'act_117000000009';
+    resetMetaPreflightCacheForTesting();
+    try {
+      const get = vi.fn(async (endpoint: string) => {
+        if (endpoint === '/me') return { id: 'u1' };
+        if (endpoint === '/me/permissions') return { data: [{ permission: 'ads_management', status: 'granted' }] };
+        return { id: endpoint.slice(1) };
+      });
+      const post = vi.fn(async () => ({ images: { a: { hash: 'h' } } }));
+      const inits: any[] = [];
+      const client = new MetaMutatingClient(post as any, undefined, get as any).setImageFetcherForTesting(async (_u, init) => {
+        inits.push(init);
+        return { ok: true, status: 200, headers: { get: (h: string) => (h === 'content-length' ? String(9 * 1024 * 1024) : null) }, arrayBuffer: async () => new ArrayBuffer(1) };
+      });
+      const fakePool: any = { query: async () => ({ rows: [] }) };
+      const ctx = { userId: 'u', userRole: 'ADMIN', isDemo: false };
+      await expect(client.uploadImageFromUrl(fakePool, { fileUrl: 'https://acesso.norqva.com.br/images/kit/capa_trat.jpg', name: 'x' }, ctx)).rejects.toThrow(/8 MB/);
+      expect(inits[0].redirect).toBe('error');
+      expect(post).not.toHaveBeenCalled();
+      await expect(client.uploadImageFromUrl(fakePool, { fileUrl: 'https://evil.example.com/a.png', name: 'x' }, ctx)).rejects.toThrow(/NORQVA site or storage/);
+    } finally {
+      if (prev.m === undefined) delete process.env.META_MUTATION_ENABLED; else process.env.META_MUTATION_ENABLED = prev.m;
+      if (prev.a === undefined) delete process.env.META_AD_ACCOUNT_ID; else process.env.META_AD_ACCOUNT_ID = prev.a;
+      resetMetaPreflightCacheForTesting();
+    }
+  });
+
+  it('UTMs iguais às de todo plano (urlTagsFor): campanha = código do plano, conteúdo = código do criativo, ids da Meta', () => {
+    expect(utmTags('CMP-GEN-000001', 'GEN-000001-A1')).toBe(
+      'utm_source=meta&utm_medium=paid_social&utm_campaign=CMP-GEN-000001&utm_content=GEN-000001-A1&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}'
+    );
     expect(pageUrl('livro-abc123')).toBe('https://acesso.norqva.com.br/v/livro-abc123');
   });
 
@@ -64,10 +136,16 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
       adsets: [{ name: 'S1', daily_budget_brl: 30, targeting: { countries: ['BR'], age_min: 25, age_max: 65 } }],
       ads: [{ name: 'GEN-1-A1', adset_name: 'S1', image_url: 'https://acesso.norqva.com.br/images/kit/capa_trat.jpg', primary_text: 'P', headline: 'H', description: 'D', cta: 'LEARN_MORE', destination_url: 'https://acesso.norqva.com.br/v/livro-abc123', url_tags: 'utm_source=meta' }]
     };
-    const ok = validateLaunchPlanInput({ code: 'CMP-GEN-1', offer_human_id: 'OFF-1', max_spend_brl: 210, question_text: 'Ativar?', spec }, { forCreation: true });
+    const gen = { allowGeneratedPage: true };
+    const ok = validateLaunchPlanInput({ code: 'CMP-GEN-1', offer_human_id: 'OFF-1', max_spend_brl: 210, question_text: 'Ativar?', spec }, { forCreation: true, ...gen });
     expect(ok.spec.ads[0]).toMatchObject({ image_url: 'https://acesso.norqva.com.br/images/kit/capa_trat.jpg', video_url: '', description: 'D' });
-    expect(() => validateLaunchPlanInput({ code: 'CMP-GEN-1', max_spend_brl: 210, question_text: 'Ativar?', spec })).toThrow(/oferta informada/);
-    expect(() => validateLaunchPlanInput({ code: 'CMP-GEN-1', offer_human_id: 'OFF-1', max_spend_brl: 210, question_text: 'Ativar?', spec: { ...spec, ads: [{ ...spec.ads[0], video_url: 'https://x.com/v.mp4' }] } })).toThrow(/não os dois/);
+    expect(() => validateLaunchPlanInput({ code: 'CMP-GEN-1', max_spend_brl: 210, question_text: 'Ativar?', spec }, gen)).toThrow(/oferta informada/);
+    expect(() => validateLaunchPlanInput({ code: 'CMP-GEN-1', offer_human_id: 'OFF-1', max_spend_brl: 210, question_text: 'Ativar?', spec: { ...spec, ads: [{ ...spec.ads[0], video_url: 'https://x.com/v.mp4' }] } }, gen)).toThrow(/não os dois/);
+    // imagem nova do armazenamento: guardada como storage: (assinada só na hora de enviar)
+    const stored = validateLaunchPlanInput({ code: 'CMP-GEN-1', offer_human_id: 'OFF-1', max_spend_brl: 210, question_text: 'Ativar?', spec: { ...spec, ads: [{ ...spec.ads[0], image_url: 'storage:creative-images/generated/p/1.png', factory_creative: '0e2b1a40-6a39-4c84-9d4b-3a7a0d1f8f11' }] } }, gen);
+    expect(stored.spec.ads[0]).toMatchObject({ image_url: 'storage:creative-images/generated/p/1.png', factory_creative: '0e2b1a40-6a39-4c84-9d4b-3a7a0d1f8f11' });
+    // plano comum nunca leva à página gerada
+    expect(() => validateLaunchPlanInput({ code: 'CMP-X-1', offer_human_id: 'OFF-1', max_spend_brl: 210, question_text: 'Ativar?', spec })).toThrow(/só vale para campanha criada na tela de geração/);
   });
 });
 
@@ -77,13 +155,19 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
 
 const ACT = 'act_117000000001';
 
-function makeGraph() {
-  const calls: { endpoint: string; payload: any }[] = [];
+function makeGraph(opts: { failOnFirst?: string } = {}) {
+  const calls: { endpoint: string; payload: any; failed?: boolean }[] = [];
+  let failed = false;
   const registry: { parent: string; edge: string; id: string; name: string; status: string }[] = [];
   let n = 0;
   const post = vi.fn(async (endpoint: string, payload: any) => {
-    calls.push({ endpoint, payload });
     n++;
+    if (opts.failOnFirst && !failed && endpoint.endsWith(opts.failOnFirst)) {
+      failed = true;
+      calls.push({ endpoint, payload, failed: true });
+      throw new Error('[META GRAPH API ERROR]: simulated failure');
+    }
+    calls.push({ endpoint, payload });
     if (endpoint.endsWith('/adimages')) return { images: { img: { hash: `hash_${n}` } } };
     const id = `117${String(Date.now()).slice(-6)}${String(n).padStart(3, '0')}`;
     const edge = endpoint.endsWith('/campaigns') ? 'campaigns' : endpoint.endsWith('/adsets') ? 'adsets' : endpoint.endsWith('/ads') ? 'ads' : '';
@@ -111,7 +195,7 @@ function makeGraph() {
     return { ok: true, status: 200, arrayBuffer: async () => PNG.buffer.slice(PNG.byteOffset, PNG.byteOffset + PNG.length) as ArrayBuffer };
   });
   setLaunchPlanClientFactoryForTesting(() => client);
-  return { post, calls, fetched };
+  return { post, calls, fetched, client };
 }
 
 describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página gerada', () => {
@@ -129,13 +213,13 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
   const get = (url: string, token = admin) => request(app).get(url).set('Authorization', `Bearer ${token}`);
 
   /** Página publicada com 2 anúncios aprovados pela fábrica. */
-  async function mkPage(opts: { status?: string; image?: boolean } = {}) {
+  async function mkPage(opts: { status?: string; image?: boolean; imageUrl?: string } = {}) {
     seq++;
     const pageId = crypto.randomUUID();
     const hid = `GEN-T117${tag}${seq}`;
     const slug = `trattoria-t117-${tag.toLowerCase()}${seq}`;
     const sections = [
-      { order: 1, ref_order: 1, role: 'HERO_HOOK', fixed: false, fixed_note: null, headline: 'Massa fresca em casa', body: 'Receitas italianas para fazer em casa.', bullets: [], cta_label: 'Quero o meu', image_url: opts.image === false ? null : '/images/kit/capa_trat.jpg', image_status: opts.image === false ? 'NONE' : 'PRODUCT', image_prompt: '', image_started_at: null, image_error: null, removed_fields: [], retries: 0 },
+      { order: 1, ref_order: 1, role: 'HERO_HOOK', fixed: false, fixed_note: null, headline: 'Massa fresca em casa', body: 'Receitas italianas para fazer em casa.', bullets: [], cta_label: 'Quero o meu', image_url: opts.image === false ? null : opts.imageUrl || '/images/kit/capa_trat.jpg', image_status: opts.image === false ? 'NONE' : 'PRODUCT', image_prompt: '', image_started_at: null, image_error: null, removed_fields: [], retries: 0 },
       { order: 2, ref_order: null, role: 'OFFER_PRICE', fixed: false, fixed_note: null, headline: 'Leve hoje', body: 'O livro inteiro no seu e-mail.', bullets: [], cta_label: 'Comprar', image_url: null, image_status: 'NONE', image_prompt: '', image_started_at: null, image_error: null, removed_fields: [], retries: 0 }
     ];
     await pool.query(
@@ -271,7 +355,8 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect(JSON.stringify(g.calls)).not.toContain('ACTIVE');
     expect(g.calls.some(c => /^\/\d+$/.test(c.endpoint))).toBe(false);
     // imagens enviadas e peças com o hash, a página e as UTMs
-    expect(g.calls.filter(c => c.endpoint.endsWith('/adimages'))).toHaveLength(2);
+    // os dois anúncios usam a mesma imagem (só a abertura tem imagem): enviada uma vez só
+    expect(g.calls.filter(c => c.endpoint.endsWith('/adimages'))).toHaveLength(1);
     expect(g.fetched[0]).toBe('https://acesso.norqva.com.br/images/kit/capa_trat.jpg');
     const creatives = g.calls.filter(c => c.endpoint.endsWith('/adcreatives'));
     expect(creatives).toHaveLength(2);
@@ -279,7 +364,10 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect(ld.link).toBe(`https://acesso.norqva.com.br/v/${p.slug}`);
     expect(ld.image_hash).toMatch(/^hash_/);
     expect(ld.description).toBe('Livro digital de receitas');
-    expect(creatives[0].payload.url_tags).toBe(`utm_source=meta&utm_medium=paid&utm_campaign=${plan.code}&utm_content=${p.ads[0].key}`);
+    expect(creatives[0].payload.url_tags).toBe(
+      `utm_source=meta&utm_medium=paid_social&utm_campaign=${plan.code}&utm_content=${p.ads[0].key}&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}`
+    );
+    expect(creatives[1].payload.object_story_spec.link_data.image_hash).toBe(ld.image_hash);
     const adset = g.calls.find(c => c.endpoint.endsWith('/adsets'))!.payload;
     expect(adset).toMatchObject({ daily_budget: 3000, promoted_object: { pixel_id: OFFICIAL_NORQVA_PIXEL_ID, custom_event_type: 'PURCHASE' } });
     expect(adset.targeting).toMatchObject({ geo_locations: { countries: ['BR'] }, age_min: 25, age_max: 65 });
@@ -316,9 +404,16 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect((await post(`/api/creative-factory/creatives/${stale.ads[0].id}/review`, { decision: 'REVISION_REQUESTED', notes: 'x' })).status).toBe(200);
     expect((await post(`/api/creative-factory/creatives/${stale.ads[0].id}/revise`, { primary_text: 'Receitas com passo a passo, agora mais claras.' })).status).toBe(200);
     process.env.META_MUTATION_ENABLED = 'true';
-    const r3 = await post(`/api/generated-pages/${stale.pageId}/campaign`, {});
+    // criação do plano já montado (sem montar de novo): a conferência na hora barra
+    const stalePlan = (await pool.query('SELECT id FROM launch_plans WHERE generated_page_id = $1', [stale.pageId])).rows[0];
+    const r3 = await post(`/api/launch-plans/${stalePlan.id}/create`, {});
     expect(r3.status).toBe(409);
-    expect(r3.body.plan.status).toBe('DRAFT');
+    expect(r3.body.error).toContain('Montar de novo');
+    expect((await pool.query('SELECT status FROM launch_plans WHERE id = $1', [stalePlan.id])).rows[0].status).toBe('DRAFT');
+    // montar de novo: o anúncio que mudou (sem aprovação) fica de fora; o outro segue
+    const rebuilt = await post(`/api/generated-pages/${stale.pageId}/campaign`, {});
+    expect(rebuilt.status, JSON.stringify(rebuilt.body)).toBe(200);
+    expect(rebuilt.body.plan.spec.ads.map((a: any) => a.name)).toEqual([stale.ads[1].key]);
 
     // preço enfiado no texto direto no banco (fora da tela): a checagem refeita barra
     delete process.env.META_MUTATION_ENABLED;
@@ -326,14 +421,15 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect((await post(`/api/generated-pages/${priced.pageId}/campaign`, {})).body.plan.status).toBe('DRAFT');
     await pool.query(`UPDATE creatives SET hook = 'Só hoje por R$ 19,90' WHERE id = $1`, [priced.ads[1].id]);
     process.env.META_MUTATION_ENABLED = 'true';
-    const r4 = await post(`/api/generated-pages/${priced.pageId}/campaign`, {});
+    const pricedPlan = (await pool.query('SELECT id FROM launch_plans WHERE generated_page_id = $1', [priced.pageId])).rows[0];
+    const before = g.calls.length;
+    const r4 = await post(`/api/launch-plans/${pricedPlan.id}/create`, {});
     expect(r4.status).toBe(409);
     expect(String(r4.body.error)).toMatch(/Pre[cç]o|preço/i);
-
-    expect(g.calls.filter(c => /\/(campaigns|adsets|ads|adcreatives|adimages)$/.test(c.endpoint))).toHaveLength(0);
+    expect(g.calls.slice(before).filter(c => /\/(campaigns|adsets|ads|adcreatives|adimages)$/.test(c.endpoint))).toHaveLength(0);
   });
 
-  it('a rota genérica de criação do plano também usa a trava "só PAUSED" e a conferência da página', async () => {
+  it('a rota genérica de criação do plano também usa a conferência da página', async () => {
     delete process.env.META_MUTATION_ENABLED;
     const p = await mkPage();
     const plan = (await post(`/api/generated-pages/${p.pageId}/campaign`, {})).body.plan;
@@ -346,4 +442,123 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     // a troca de criativos da tela Campanhas não mexe em anúncio de página gerada
     expect((await post(`/api/campaigns/${plan.id}/fill?mode=real`, {})).status).toBe(409);
   });
+
+  it('rota genérica com página no ar e uma Graph que aceitaria ACTIVE: a trava bloqueia antes de enviar', async () => {
+    delete process.env.META_MUTATION_ENABLED;
+    const p = await mkPage();
+    const plan = (await post(`/api/generated-pages/${p.pageId}/campaign`, {})).body.plan;
+    process.env.META_MUTATION_ENABLED = 'true';
+    const g = makeGraph();
+    const tampered = g.client;
+    // simula um defeito que tentasse criar a campanha ACTIVE
+    (tampered as any).createPausedCampaign = async function (this: any) {
+      return { externalId: (await this.callTransportPost(`/${ACT}/campaigns`, { name: 'x', objective: 'OUTCOME_SALES', status: 'ACTIVE' })).id };
+    };
+    setLaunchPlanClientFactoryForTesting(() => tampered);
+    const r = await post(`/api/launch-plans/${plan.id}/create`, {});
+    expect(r.status).not.toBe(200);
+    expect(String(r.body.error)).toMatch(/PAUSADO/);
+    expect(g.calls.filter(c => c.endpoint.endsWith('/campaigns'))).toHaveLength(0);
+    const row = (await pool.query('SELECT status FROM launch_plans WHERE id = $1', [plan.id])).rows[0];
+    expect(row.status).toBe('FAILED');
+  });
+
+  it('imagem nova (armazenamento): o rascunho guarda storage: e a criação usa um link assinado novo', async () => {
+    let n = 0;
+    setImageStorageForTests({
+      upload: async () => {},
+      bucketExists: async () => true,
+      signedUrl: async (b, path) => `https://mock.supabase.co/storage/v1/object/sign/${b}/${path}?token=t${++n}`
+    });
+    try {
+      delete process.env.META_MUTATION_ENABLED;
+      const p = await mkPage({ imageUrl: 'storage:creative-images/generated/t117/1.png' });
+      const drafted = (await post(`/api/generated-pages/${p.pageId}/campaign`, {})).body.plan;
+      expect(drafted.spec.ads[0].image_url).toBe('storage:creative-images/generated/t117/1.png');
+      const before = n;
+      process.env.META_MUTATION_ENABLED = 'true';
+      const g = makeGraph();
+      const r = await post(`/api/generated-pages/${p.pageId}/campaign`, {});
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      expect(n).toBeGreaterThan(before);
+      expect(g.fetched[0]).toBe(`https://mock.supabase.co/storage/v1/object/sign/creative-images/generated/t117/1.png?token=t${n}`);
+    } finally {
+      setImageStorageForTests(null);
+    }
+  });
+
+  it('montar de novo: rascunho e recusado sem nada na Meta são montados na mesma linha; com objetos na Meta, não', async () => {
+    delete process.env.META_MUTATION_ENABLED;
+    const p = await mkPage();
+    const first = (await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30 })).body.plan;
+    const again = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 45 });
+    expect(again.body.plan.id).toBe(first.id);
+    expect(again.body.plan.code).toBe(first.code);
+    expect(again.body.rebuilt).toBe(true);
+    expect(again.body.plan.daily_budget_brl).toBe(45);
+    // recusado sem nada na Meta: volta a rascunho, mesma linha
+    await pool.query(`UPDATE launch_plans SET status = 'REJECTED', answer = 'NO' WHERE id = $1`, [first.id]);
+    const ov = await get(`/api/generated-pages/${p.pageId}/campaign`);
+    expect(ov.body.rebuildable).toBe(true);
+    const rebuilt = await post(`/api/generated-pages/${p.pageId}/campaign`, {});
+    expect(rebuilt.body.plan.id).toBe(first.id);
+    expect(rebuilt.body.plan.status).toBe('DRAFT');
+    expect(rebuilt.body.plan.answer).toBeNull();
+    // com objetos na Meta: devolve o plano como está e avisa
+    await pool.query(`UPDATE launch_plans SET status = 'REJECTED', meta_ids = $2 WHERE id = $1`, [first.id, JSON.stringify({ campaign: { x: '1170001' }, adsets: {}, videos: {}, creatives: {}, ads: {}, images: {} })]);
+    const kept = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 50 });
+    expect(kept.status).toBe(200);
+    expect(kept.body.plan.status).toBe('REJECTED');
+    expect(kept.body.message).toContain('na Meta');
+    expect((await get(`/api/generated-pages/${p.pageId}/campaign`)).body.rebuildable).toBe(false);
+  });
+
+  it('falha no meio e retomada: nada é criado duas vezes', async () => {
+    const p = await mkPage();
+    const g = makeGraph({ failOnFirst: '/ads' });
+    const r1 = await post(`/api/generated-pages/${p.pageId}/campaign`, {});
+    expect(r1.status).not.toBe(200);
+    expect(r1.body.plan.status).toBe('FAILED');
+    expect((await get(`/api/generated-pages/${p.pageId}/campaign`)).body.rebuildable).toBe(false);
+    const r2 = await post(`/api/generated-pages/${p.pageId}/campaign`, {});
+    expect(r2.status, JSON.stringify(r2.body)).toBe(200);
+    expect(r2.body.plan.status).toBe('AWAITING_OPERATOR');
+    const ok = (suffix: string) => g.calls.filter(c => c.endpoint.endsWith(suffix) && !c.failed).length;
+    expect(ok('/campaigns')).toBe(1);
+    expect(ok('/adsets')).toBe(1);
+    expect(ok('/adimages')).toBe(1);
+    expect(ok('/adcreatives')).toBe(2);
+    expect(ok('/ads')).toBe(2);
+  });
+
+  it('plano de página gerada respondido com Sim ativa normalmente (a ativação não tem a trava de criação)', async () => {
+    const p = await mkPage();
+    const g = makeGraph();
+    const created = await post(`/api/generated-pages/${p.pageId}/campaign`, {});
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const before = g.calls.length;
+    const r = await post(`/api/launch-plans/${created.body.plan.id}/answer`, { answer: 'YES' });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.plan.status).toBe('ACTIVE');
+    const activations = g.calls.slice(before).filter(c => c.payload?.status === 'ACTIVE');
+    expect(activations.length).toBeGreaterThan(0);
+  });
+
+  it('plano comum com destino /v/ é recusado', async () => {
+    const r = await post('/api/launch-plans', {
+      code: `T117V${tag}`,
+      offer_human_id: `OFF-T117${tag}`,
+      max_spend_brl: 210,
+      question_text: 'Ativar?',
+      spec: {
+        campaign: { name: `T117 V ${tag}`, objective: 'OUTCOME_SALES' },
+        pixel_id: OFFICIAL_NORQVA_PIXEL_ID,
+        adsets: [{ name: 'S1', daily_budget_brl: 30, targeting: { countries: ['BR'], age_min: 25, age_max: 65 } }],
+        ads: [{ name: 'A1', adset_name: 'S1', image_url: 'https://acesso.norqva.com.br/images/kit/capa_trat.jpg', primary_text: 'P', headline: 'H', cta: 'LEARN_MORE', destination_url: 'https://acesso.norqva.com.br/v/qualquer-pagina', url_tags: 'utm_source=meta' }]
+      }
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toContain('só vale para campanha criada na tela de geração');
+  });
+
 });
