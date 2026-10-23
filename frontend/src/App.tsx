@@ -250,6 +250,18 @@ export default function App() {
   const [alertCenter, setAlertCenter] = useState<AlertCenterData | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [campaignFocus, setCampaignFocus] = useState<CampaignFocus | null>(null);
+  // NORQVA-0117: "Abrir em Gerenciar campanha" a partir da tela de geração (evento com o código do plano)
+  useEffect(() => {
+    const open = (e: Event) => {
+      const code = String((e as CustomEvent).detail?.planCode || '');
+      if (!code) return;
+      setActiveTab('campaigns');
+      setCampaignFocus({ metaCampaignId: null, planCode: code, tab: 'results', nonce: Date.now() });
+    };
+    window.addEventListener('nq:open-campaign', open);
+    return () => window.removeEventListener('nq:open-campaign', open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const alertsFetchRef = React.useRef(apiFetch);
   alertsFetchRef.current = apiFetch;
   const alertsSeq = React.useRef(0);

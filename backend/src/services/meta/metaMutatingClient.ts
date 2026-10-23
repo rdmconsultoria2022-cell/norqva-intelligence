@@ -29,6 +29,40 @@ export function isBrandDestinationUrl(url: string): boolean {
   );
 }
 
+// NORQVA-0117 (D-0117): página de venda gerada e publicada (https://<site do comprador>/v/:slug).
+// Lista configurável em META_GENERATED_PAGE_HOSTS; só hosts exatos.
+export const DEFAULT_GENERATED_PAGE_HOSTS = ['acesso.norqva.com.br'];
+export function getGeneratedPageHosts(): string[] {
+  const raw = process.env.META_GENERATED_PAGE_HOSTS;
+  const list = (raw === undefined || raw.trim() === '' ? DEFAULT_GENERATED_PAGE_HOSTS : raw.split(','))
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h));
+  return Array.from(new Set(list));
+}
+export function isGeneratedPageUrl(url: string): boolean {
+  return getGeneratedPageHosts().some((host) =>
+    new RegExp(`^https:\\/\\/${host.replace(/[.-]/g, (c) => `\\${c}`)}\\/v\\/[a-z0-9-]{3,120}(\\?.*)?$`).test(url)
+  );
+}
+
+/** Trava de payload: chamada antes de cada POST na Graph API (ex.: só PAUSED). Lança para bloquear. */
+export type MetaPayloadGuard = (endpoint: string, payload: Record<string, any>) => void;
+
+/** Baixa a imagem do anúncio (testes trocam por um simulado). */
+export type MetaImageFetcher = (
+  url: string,
+  init: { signal: AbortSignal; redirect: 'error' }
+) => Promise<{
+  ok: boolean;
+  status: number;
+  headers?: { get(name: string): string | null };
+  body?: any;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}>;
+export const MAX_AD_IMAGE_BYTES = 8 * 1024 * 1024;
+export const AD_IMAGE_FETCH_TIMEOUT_MS = 15000;
+export const AD_IMAGE_UPLOAD_TIMEOUT_MS = 60000;
+
 export interface MetaPreflightStatus {
   tokenValid: boolean;
   adsRead: boolean;
@@ -168,6 +202,24 @@ export class MetaMutatingClient {
   private adAccountId?: string;
   private transportPost?: MetaTransportPostFunction;
   private transportGet?: MetaTransportGetFunction;
+  private payloadGuards: MetaPayloadGuard[] = [];
+  private imageFetcher: MetaImageFetcher | null = null;
+
+  /**
+   * NORQVA-0117: cópia deste cliente com uma trava extra em cada POST (ex.: tudo PAUSED). O cliente original
+   * continua como estava (a ativação pelo "Sim" usa outro cliente, sem esta trava).
+   */
+  public withPayloadGuard(guard: MetaPayloadGuard): MetaMutatingClient {
+    const copy: MetaMutatingClient = Object.assign(Object.create(Object.getPrototypeOf(this)), this);
+    copy.payloadGuards = [...this.payloadGuards, guard];
+    return copy;
+  }
+
+  /** Só para testes: baixar imagem sem rede. */
+  public setImageFetcherForTesting(fetcher: MetaImageFetcher | null): this {
+    this.imageFetcher = fetcher;
+    return this;
+  }
 
   constructor(customTransport?: MetaTransportPostFunction, explicitVersion?: string, customGet?: MetaTransportGetFunction) {
     this.apiVersion = explicitVersion || process.env.META_API_VERSION || 'v26.0';
@@ -380,7 +432,7 @@ export class MetaMutatingClient {
       throw new Error('[SECURITY EXCEPTION]: Missing or invalid destination URL.');
     }
 
-    if (!PUBLIC_COMMERCE_URL_REGEX.test(url) && !isBrandDestinationUrl(url)) {
+    if (!PUBLIC_COMMERCE_URL_REGEX.test(url) && !isBrandDestinationUrl(url) && !isGeneratedPageUrl(url)) {
       throw new Error(
         `[SECURITY EXCEPTION]: Blocked non-whitelisted destination URL: "${url}". Destination URLs must strictly match public offer entry pattern "https://norqva-intelligence-frontend.vercel.app/p/:humanId" (or /kit/:humanId) or "https://<verified brand domain>/p/:humanId" (or /kit/:humanId) (META_BRAND_DESTINATION_HOSTS).`
       );
@@ -738,12 +790,16 @@ export class MetaMutatingClient {
       if (params.description) videoData.link_description = params.description;
       objectStorySpec.video_data = videoData;
     } else {
-      objectStorySpec.link_data = {
+      const linkData: Record<string, any> = {
         message: params.body,
         link: params.destinationUrl,
         name: params.title,
         call_to_action: callToAction
       };
+      // NORQVA-0117: anúncio de imagem (hash da imagem enviada em /adimages) e descrição
+      if (params.imageHash) linkData.image_hash = params.imageHash;
+      if (params.description) linkData.description = params.description;
+      objectStorySpec.link_data = linkData;
     }
 
     const payload: Record<string, any> = { name: params.name, object_story_spec: objectStorySpec };
@@ -1472,6 +1528,88 @@ export class MetaMutatingClient {
   }
 
   /**
+   * NORQVA-0117: envia uma imagem para a conta (POST /act_X/adimages {bytes, name}) e devolve o hash.
+   * Só baixa de hosts nossos (site do comprador ou o Supabase do NORQVA), https, até 8 MB, PNG/JPEG.
+   */
+  public async uploadImageFromUrl(
+    pool: Pool,
+    params: { fileUrl: string; name: string },
+    context: MetaMutatingSecurityContext
+  ): Promise<{ hash: string }> {
+    await this.assertFeatureFlagAndPreflight(context, { requirePixel: false });
+    const actId = this.realLaunchActId(context);
+    let parsed: URL;
+    try {
+      parsed = new URL(String(params.fileUrl || ''));
+    } catch {
+      throw new Error('[VALIDATION EXCEPTION]: Image url must be a public https URL.');
+    }
+    const supabaseHost = (() => {
+      try {
+        return new URL(String(process.env.SUPABASE_URL || '')).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    })();
+    const allowedHosts = new Set([...getGeneratedPageHosts(), ...(supabaseHost ? [supabaseHost] : [])]);
+    if (parsed.protocol !== 'https:' || !allowedHosts.has(parsed.hostname.toLowerCase())) {
+      throw new Error(`[VALIDATION EXCEPTION]: Image url must be https on the NORQVA site or storage (got ${parsed.hostname}).`);
+    }
+    const fetcher: MetaImageFetcher | null =
+      this.imageFetcher || (process.env.NODE_ENV === 'test' ? null : ((u: string, init: any) => fetch(u, { method: 'GET', ...init }) as any));
+    if (!fetcher) throw new Error('[VALIDATION EXCEPTION]: No image fetcher in tests.');
+    // prazo de 15 s, sem seguir redirecionamento (o host foi conferido acima), até 8 MB (também lendo aos pedaços)
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AD_IMAGE_FETCH_TIMEOUT_MS);
+    let data: Buffer;
+    try {
+      const res = await fetcher(parsed.toString(), { signal: controller.signal, redirect: 'error' });
+      if (!res.ok) throw new Error(`[VALIDATION EXCEPTION]: Could not download the ad image (HTTP ${res.status}).`);
+      const declared = Number(res.headers?.get('content-length') || 0);
+      if (declared > MAX_AD_IMAGE_BYTES) throw new Error('[VALIDATION EXCEPTION]: Ad image must be a PNG or JPEG up to 8 MB.');
+      if (res.body && typeof res.body.getReader === 'function') {
+        const reader = res.body.getReader();
+        const parts: Buffer[] = [];
+        let total = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          total += value.length;
+          if (total > MAX_AD_IMAGE_BYTES) {
+            await reader.cancel().catch(() => {});
+            throw new Error('[VALIDATION EXCEPTION]: Ad image must be a PNG or JPEG up to 8 MB.');
+          }
+          parts.push(Buffer.from(value));
+        }
+        data = Buffer.concat(parts);
+      } else {
+        data = Buffer.from(await res.arrayBuffer());
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('[VALIDATION EXCEPTION]: Ad image download timed out (15 s).');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+    const isPng = data.length >= 8 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47;
+    const isJpg = data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+    if (!data.length || data.length > MAX_AD_IMAGE_BYTES || (!isPng && !isJpg)) {
+      throw new Error('[VALIDATION EXCEPTION]: Ad image must be a PNG or JPEG up to 8 MB.');
+    }
+    try {
+      const out: any = await this.callTransportPost(`/${actId}/adimages`, { bytes: data.toString('base64'), name: String(params.name || '').slice(0, 200) }, AD_IMAGE_UPLOAD_TIMEOUT_MS);
+      const images = out && typeof out.images === 'object' && out.images ? Object.values(out.images) : [];
+      const hash = String((images[0] as any)?.hash || out?.hash || '').trim();
+      if (!hash) throw new Error('[META GRAPH API ERROR]: Image upload returned no hash.');
+      await writeAuditLog(pool, context.userId || null, 'META_IMAGE_UPLOADED', `Uploaded image '${params.name}' to ${actId} (hash ${hash}).`, null, JSON.stringify({ hash, name: params.name, host: parsed.host }), false, false);
+      return { hash };
+    } catch (err: any) {
+      await this.auditLaunchFailure(pool, context, `image '${params.name}'`, err);
+      throw err;
+    }
+  }
+
+  /**
    * NORQVA-0019: poll GET /{video_id}?fields=status,picture until status.video_status === 'ready'.
    * Bounded by timeoutMs (META_VIDEO_READY_TIMEOUT_MS, default 120 s). Returns the thumbnail Meta
    * generated (picture), used when the plan has no thumbnail of its own.
@@ -1696,7 +1834,8 @@ export class MetaMutatingClient {
     }
   }
 
-  private async callTransportPost(endpoint: string, payload: Record<string, any>): Promise<{ id: string }> {
+  private async callTransportPost(endpoint: string, payload: Record<string, any>, timeoutMs = 15000): Promise<{ id: string }> {
+    for (const guard of this.payloadGuards) guard(endpoint, payload);
     if (this.transportPost) {
       return this.transportPost(endpoint, payload);
     }
@@ -1709,7 +1848,7 @@ export class MetaMutatingClient {
     url.searchParams.append('access_token', this.accessToken);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const res = await fetch(url.toString(), {
@@ -1732,7 +1871,7 @@ export class MetaMutatingClient {
       return data;
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        throw new Error('[META TIMEOUT EXCEPTION]: Mutating request timed out after 15000ms.');
+        throw new Error(`[META TIMEOUT EXCEPTION]: Mutating request timed out after ${timeoutMs}ms.`);
       }
       const sanitized = err.message ? err.message.replace(new RegExp(this.accessToken, 'g'), '[REDACTED]') : 'Unknown error';
       throw new Error(sanitized);

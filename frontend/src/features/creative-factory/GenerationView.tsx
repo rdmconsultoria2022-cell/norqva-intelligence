@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCw, ExternalLink, Image as ImageIcon, Wand2 } from 'lucide-react';
 import { Section, Surface, StatusPill, useIsMobile, Tone } from '../../components/ui/premium';
 import { ROLE_LABEL } from './CreativeReferences';
+import { GeneratedCampaignPanel } from './GeneratedCampaignPanel';
 
 // NORQVA-0116 (D-0116): tela de geração. À esquerda, o esqueleto da referência (só função e forma); à direita,
 // a NOSSA seção, editável. No celular as duas ficam uma embaixo da outra. Cada campo mostra o selo da checagem
@@ -532,6 +533,10 @@ export const GenerationView: React.FC<{
           })}
         </ul>
       </Section>
+
+      {isAdmin && (
+        <GeneratedCampaignPanel apiFetch={apiFetch} pageId={page.id} pageStatus={page.status} ads={ads || []} showError={showError} showSuccess={showSuccess} />
+      )}
     </div>
   );
 };

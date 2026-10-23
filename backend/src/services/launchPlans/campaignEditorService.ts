@@ -10,7 +10,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
 import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
-import { OFFICIAL_NORQVA_PIXEL_ID } from '../meta/metaMutatingClient';
+import { OFFICIAL_NORQVA_PIXEL_ID, isGeneratedPageUrl } from '../meta/metaMutatingClient';
 import {
   LaunchPlanError,
   ALLOWED_CTA_TYPES,
@@ -21,6 +21,7 @@ import {
   refreshQuestionText
 } from './launchPlanService';
 import { urlTagsFor, DEFAULT_OFFER_BASE_URL } from '../aiTeam/launchSheet';
+import { assertGeneratedPlanReady } from './generatedCampaignService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -58,6 +59,13 @@ function assertEditable(row: any) {
   const created = Object.values(ids).some(m => Object.keys(m).length > 0);
   if (!['DRAFT', 'FAILED'].includes(row.status) || created) {
     throw new LaunchPlanError(409, 'Esta campanha já existe na Meta: só dá para pausar, mudar orçamento e teto pela tela de controle.');
+  }
+}
+
+/** NORQVA-0117: campanha de página gerada: os anúncios vêm da página (não da troca de criativos daqui). */
+function assertNotGeneratedAds(row: any) {
+  if (row?.generated_page_id) {
+    throw new LaunchPlanError(409, 'Campanha de página gerada: os anúncios vêm da página e da fábrica. Mude o anúncio na tela de geração e monte a campanha de novo.');
   }
 }
 
@@ -158,7 +166,7 @@ async function saveSpec(pool: Pool, row: any, spec: any, maxSpend: number, extra
     // NORQVA-0052: a pergunta de ativação acompanha o teto atual
     question_text: Number(row.max_spend_brl) === Number(maxSpend) ? row.question_text : refreshQuestionText(row.question_text, maxSpend),
     spec
-  });
+  }, { allowGeneratedPage: !!row.generated_page_id });
   const upd = await pool.query(
     `UPDATE launch_plans
      SET spec = $2, daily_budget_brl = $3, max_spend_brl = $4, question_text = $8,
@@ -270,6 +278,7 @@ export class CampaignEditorService {
    */
   async fillFromCreatives(pool: Pool, id: string, userId: string | null) {
     const row = await loadPlanRow(pool, id);
+    assertNotGeneratedAds(row);
     assertEditable(row);
     const offer = await offerOf(pool, row.offer_human_id);
     if (!offer) throw new LaunchPlanError(409, `Oferta ${row.offer_human_id} não encontrada.`);
@@ -311,6 +320,7 @@ export class CampaignEditorService {
   /** Edição manual: grava os campos e marca cada um como manual (o automático não sobrescreve mais). */
   async saveFields(pool: Pool, id: string, fields: Record<string, unknown>, userId: string | null) {
     const row = await loadPlanRow(pool, id);
+    if (fields && Object.keys(fields).some(k => k.startsWith('ads.'))) assertNotGeneratedAds(row);
     assertEditable(row);
     if (!isObj(fields) || Object.keys(fields).length === 0) throw new LaunchPlanError(400, 'Nenhum campo para salvar.');
     const spec = obj(row.spec);
@@ -364,6 +374,7 @@ export class CampaignEditorService {
   /** Escolhe à mão o criativo de um anúncio (null = volta a escolher pelo nome do anúncio). */
   async chooseCreative(pool: Pool, id: string, adIndex: number, creativeId: string | null, userId: string | null) {
     const row = await loadPlanRow(pool, id);
+    assertNotGeneratedAds(row);
     assertEditable(row);
     const spec = obj(row.spec);
     if (!Array.isArray(spec.ads) || !spec.ads[adIndex]) throw new LaunchPlanError(400, 'Anúncio não existe.');
@@ -407,6 +418,7 @@ export class CampaignEditorService {
   /** Voltar ao automático: desfaz as edições manuais e preenche de novo com os criativos aprovados. */
   async resetToAuto(pool: Pool, id: string, userId: string | null) {
     const row = await loadPlanRow(pool, id);
+    assertNotGeneratedAds(row);
     assertEditable(row);
     const spec = obj(row.spec);
     spec.ads = Array.isArray(spec.ads) ? spec.ads.map((a: any) => ({ ...a })) : [];
@@ -513,6 +525,15 @@ export class CampaignEditorService {
 export async function assertAdsReadyForMeta(pool: Pool, planId: string): Promise<void> {
   const row = await loadPlanRow(pool, planId);
   if (!['DRAFT', 'FAILED', 'CREATING'].includes(row.status)) return; // já criado: nada novo vai para a Meta
+  // NORQVA-0117: campanha de página gerada (anúncios de imagem) tem a conferência própria
+  if (row.generated_page_id) return assertGeneratedPlanReady(pool, planId);
+  // NORQVA-0117: plano comum nunca leva à página gerada (/v/)
+  const destSpec = obj(row.spec);
+  for (const a of Array.isArray(destSpec.ads) ? destSpec.ads : []) {
+    if (isGeneratedPageUrl(String(a?.destination_url || ''))) {
+      throw new LaunchPlanError(409, `Anúncio ${a?.name || ''}: o destino /v/ (página gerada) só vale para campanha criada na tela de geração.`);
+    }
+  }
   const offer = await offerOf(pool, row.offer_human_id);
   if (!offer) throw new LaunchPlanError(409, `Oferta ${row.offer_human_id} não encontrada.`);
   const spec = obj(row.spec);

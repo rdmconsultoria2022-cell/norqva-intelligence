@@ -9,7 +9,7 @@ import { FRESH, FRESH_BUTTON_STYLE } from '../../lib/productLook';
 // NORQVA-0116 (D-0116): página de venda gerada (texto 100% nosso) e publicada pelo dono em /v/:slug.
 // Visual das páginas do comprador ('light' creme e terracota, ou 'fresh' do Seca Barriga). Preço e parcelas vêm da
 // oferta, na hora (mesma conta do pagamento). Os botões levam ao pagamento do NORQVA (/p/<oferta>?checkout=1) e só
-// repassam os parâmetros de origem (utm_*, fbclid, gclid, ref, src): nunca nome, e-mail ou telefone.
+// repassam os parâmetros de origem (utm_*, fbclid, gclid, ref, src e os códigos campaign_id/adset_id/ad_id da Meta): nunca nome, e-mail ou telefone.
 // PageView da Meta sai pelo App (rota pública do comprador); ViewContent vai ao pixel da marca, como em /p e /kit.
 
 export interface PublicGeneratedSection {
@@ -33,9 +33,9 @@ export interface PublicGeneratedPage {
   meta_pixel_id?: string | null;
 }
 
-const PASS_PARAM = /^(utm_[a-z0-9_]+|fbclid|gclid|ref|src)$/i;
+const PASS_PARAM = /^(utm_[a-z0-9_]+|fbclid|gclid|ref|src|campaign_id|adset_id|ad_id)$/i;
 
-/** Link do pagamento: ?checkout=1 + só os parâmetros de origem permitidos (utm_*, fbclid, gclid, ref, src). */
+/** Link do pagamento: ?checkout=1 + só os parâmetros de origem permitidos (utm_*, fbclid, gclid, ref, src e os códigos campaign_id/adset_id/ad_id da Meta). */
 export function checkoutHref(offerHumanId: string, search: string): string {
   const incoming = new URLSearchParams(search || '');
   const out = new URLSearchParams();
