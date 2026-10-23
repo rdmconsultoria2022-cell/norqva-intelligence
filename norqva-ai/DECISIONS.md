@@ -293,3 +293,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Limite de uso:** 10 gerações e 30 "Gerar de novo" por pessoa por hora (em memória).
 - **Imagens:** com `KIE_API_KEY` e o bucket `CREATIVE_IMAGES_BUCKET` (padrão `creative-images`) criado no Supabase, imagens novas na KIE a partir só dos nossos dados (link assinado guardado por 50 minutos); sem a chave ou sem o bucket, as imagens que o produto já tem, com o aviso. Imagem da referência nunca. Vídeo fica para depois.
 - **Trava:** a mesma `CREATIVE_REFERENCES_ENABLED` das rotas internas. A página pública já publicada continua no ar mesmo com a trava desligada (tirar do ar é uma ação do ADMIN), para um anúncio rodando não cair sem aviso.
+
+## D-0117 — Campanha pausada a partir da página gerada (2026-10-23)
+
+- **Decisão (contrato aprovado pelo Ricardo):** de uma página gerada PUBLICADA (D-0116) e dos anúncios dela APROVADOS, o NORQVA monta o plano de lançamento de sempre e cria campanha, conjunto e anúncios de imagem na Meta, **tudo PAUSADO**. Ativar e gastar fica só com o dono, pelo "Sim" do plano com o código (D-0094). Esta etapa nunca ativa.
+- **Mesmo caminho do plano de lançamento:** sem rotina paralela. O plano aceita anúncio de imagem (imagem enviada em `adimages`, peça com o hash) e o destino `/v/<slug>` no site do comprador (`META_GENERATED_PAGE_HOSTS`). Criação pela mesma rotina com registro de decisão; segundo clique devolve o plano que já existe (um plano por página, índice único).
+- **Trava extra "só PAUSED":** todo POST desta criação passa por `assertOnlyPausedPayload` (qualquer situação diferente de PAUSED, criação sem PAUSED ou mudança de objeto existente = bloqueio), também quando criada pela rota genérica do plano.
+- **Conferência na hora:** página no ar, oferta à venda com preço, anúncio aprovado e igual ao aprovado, checagem da 0116 refeita, sem preço no texto e texto do plano igual ao do criativo. Sem imagem, bloqueia.
+- **Padrões:** "NQ – <produto> – Ref <REF> – Vendas", R$ 30/dia, teto de 7 dias (editável pela D-0052), Brasil 25–65, Advantage, pixel oficial, Compra; UTMs `utm_source=meta`, `utm_medium=paid`, `utm_campaign=<plano>`, `utm_content=<criativo>`.
+- **Trava geral:** `META_MUTATION_ENABLED` desligada = só o rascunho, com "Cadastro na Meta desligado".

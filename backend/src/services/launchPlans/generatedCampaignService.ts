@@ -257,6 +257,19 @@ export class GeneratedCampaignService {
     return { product: String(r.product_name || 'Produto'), brandId: r.brand_id || null, ref: String(r.ref_human_id || page.human_id) };
   }
 
+  private async nameTaken(name: string): Promise<boolean> {
+    const a = await this.pool.query('SELECT 1 FROM meta_campaigns WHERE name = $1 AND is_demo = FALSE LIMIT 1', [name]);
+    if (a.rows.length) return true;
+    const b = await this.pool.query(`SELECT 1 FROM launch_plans WHERE spec->'campaign'->>'name' = $1 LIMIT 1`, [name]);
+    return b.rows.length > 0;
+  }
+
+  /** Nome sugerido; se já existir (outra página da mesma referência), leva o código da página no fim. */
+  private async defaultName(page: any, n: { product: string; ref: string }): Promise<string> {
+    const base = `NQ – ${n.product} – Ref ${n.ref} – Vendas`.slice(0, 180);
+    return (await this.nameTaken(base)) ? `${base} – ${page.human_id}`.slice(0, 200) : base;
+  }
+
   /** Anúncios da página com a situação de cada um (pode ir para a campanha ou o motivo). */
   async adsWithReasons(page: any) {
     const ads = await new GenerationService(this.pool).ads(page.id);
@@ -284,7 +297,7 @@ export class GeneratedCampaignService {
       images: images.length,
       ads: plan ? [] : await this.adsWithReasons(page),
       defaults: {
-        campaign_name: `NQ – ${n.product} – Ref ${n.ref} – Vendas`.slice(0, 200),
+        campaign_name: await this.defaultName(page, n),
         daily_budget_brl: daily,
         max_spend_brl: daily * DEFAULT_CAP_DAYS,
         age_min: 25,
@@ -313,7 +326,7 @@ export class GeneratedCampaignService {
     const cap = body.max_spend_brl === undefined || body.max_spend_brl === null || body.max_spend_brl === '' ? daily * DEFAULT_CAP_DAYS : Number(body.max_spend_brl);
     const ageMin = body.age_min === undefined ? 25 : Number(body.age_min);
     const ageMax = body.age_max === undefined ? 65 : Number(body.age_max);
-    const name = String(body.campaign_name || '').trim().slice(0, 200) || `NQ – ${n.product} – Ref ${n.ref} – Vendas`.slice(0, 200);
+    const name = String(body.campaign_name || '').trim().slice(0, 200) || (await this.defaultName(page, n));
 
     // anúncios: os aprovados e liberados (ou os escolhidos, que também precisam estar liberados)
     const all = await this.adsWithReasons(page);
@@ -370,8 +383,7 @@ export class GeneratedCampaignService {
       question_text: `Ativar a campanha ${name} com R$ ${daily.toFixed(2)}/dia e teto de R$ ${Number(cap).toFixed(2)}?`,
       spec
     });
-    const clash = await this.pool.query('SELECT 1 FROM meta_campaigns WHERE name = $1 AND is_demo = FALSE LIMIT 1', [input.spec.campaign.name]);
-    if (clash.rows.length) throw new LaunchPlanError(409, `Já existe na conta uma campanha chamada "${input.spec.campaign.name}". Use outro nome.`);
+    if (await this.nameTaken(input.spec.campaign.name)) throw new LaunchPlanError(409, `Já existe na conta uma campanha chamada "${input.spec.campaign.name}". Use outro nome.`);
     try {
       const ins = await this.pool.query(
         `INSERT INTO launch_plans (id, code, brand_id, offer_human_id, status, spec, meta_ids, daily_budget_brl, max_spend_brl, question_text, created_by, generated_page_id)
