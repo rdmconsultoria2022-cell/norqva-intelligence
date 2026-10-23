@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCw, ExternalLink, Image as ImageIcon, Wand2 } from 'lucide-react';
-import { Section, Surface, StatusPill, Disclosure, useIsMobile, Tone } from '../../components/ui/premium';
+import { Section, Surface, StatusPill, useIsMobile, Tone } from '../../components/ui/premium';
 import { ROLE_LABEL } from './CreativeReferences';
 
 // NORQVA-0116 (D-0116): tela de geração. À esquerda, o esqueleto da referência (só função e forma); à direita,
@@ -70,10 +70,12 @@ export function CheckBadge({ check, testId }: { check?: FieldCheck | null; testI
 }
 
 type SectionDraft = { headline: string; body: string; bullets: string; cta_label: string };
-type AdDraft = { hook: string; primary_text: string; headline: string; description: string; cta: string };
+type AdDraft = { hook: string; primary_text: string; headline: string; description: string; cta: string; script: string };
 
 const sectionDraft = (s: any): SectionDraft => ({ headline: s.headline || '', body: s.body || '', bullets: (s.bullets || []).join('\n'), cta_label: s.cta_label || '' });
-const adDraft = (a: any): AdDraft => ({ hook: a.hook || '', primary_text: a.primary_text || '', headline: a.headline || '', description: a.ad_description || '', cta: a.cta || '' });
+const adDraft = (a: any): AdDraft => ({
+  hook: a.hook || '', primary_text: a.primary_text || '', headline: a.headline || '', description: a.ad_description || '', cta: a.cta || '', script: a.script || ''
+});
 
 export const GenerationView: React.FC<{
   apiFetch: ApiFetch;
@@ -199,6 +201,32 @@ export const GenerationView: React.FC<{
     const set = (k: keyof SectionDraft, v: string) => setDrafts(cur => ({ ...cur, [s.order]: { ...d, [k]: v } }));
     const changed = JSON.stringify(d) !== JSON.stringify(sectionDraft(s));
     const f = (name: string) => fields[`${s.order}.${name}`];
+    const extras = (
+      <>
+        {s.price && (
+          <div className="rounded bg-nq-raised p-3" data-testid={`section-price-${s.order}`}>
+            <div className="text-nq-caption text-nq-subtle">Preço (vem da oferta, na hora; a IA não escreve preço)</div>
+            <div className="text-nq-body font-semibold text-nq-text">{s.price.price_text}</div>
+            {s.price.installments_text && <div className="text-nq-aux text-nq-muted">{s.price.installments_text}</div>}
+          </div>
+        )}
+        {s.fixed_note && <p className="text-nq-aux text-nq-muted">Texto fixo: {s.fixed_note}</p>}
+      </>
+    );
+    if (s.fixed) {
+      return (
+        <Surface className="p-4 space-y-2" as="div">
+          <div className="text-nq-caption text-nq-subtle">Nossa seção {s.order} · texto das promessas aprovadas</div>
+          <div className="text-nq-body font-semibold text-nq-text">{s.headline}</div>
+          <ul className="list-disc pl-5 text-nq-aux text-nq-text space-y-1" data-testid={`fixed-section-${s.order}`}>
+            {(s.bullets || []).map((b: string, k: number) => (
+              <li key={k}>{b}</li>
+            ))}
+          </ul>
+          <p className="text-nq-caption text-nq-subtle">Não é escrito pela IA. Para mudar, mude a promessa na fábrica.</p>
+        </Surface>
+      );
+    }
     return (
       <Surface className="p-4 space-y-3" as="div">
         <div className="flex items-center justify-between gap-2">
@@ -211,6 +239,7 @@ export const GenerationView: React.FC<{
         </div>
         {s.image_preview_url && <img src={s.image_preview_url} alt="" className="w-full rounded aspect-[3/2] object-cover" />}
         {s.image_error && <p className="text-nq-caption text-nq-attention break-words">{s.image_error}</p>}
+        {extras}
         <label className="block space-y-1">
           <span className="flex flex-wrap items-center justify-between gap-2 text-nq-aux text-nq-muted">
             Título <CheckBadge check={f('headline')} testId={`check-${s.order}-headline`} />
@@ -404,18 +433,20 @@ export const GenerationView: React.FC<{
                   {a.copy_check?.blocked && (
                     <p className="text-nq-aux text-nq-critical-text">Bloqueado pela checagem: edite ou gere de novo antes de aprovar.</p>
                   )}
+                  {a.copy_check?.stale && (
+                    <p className="text-nq-aux text-nq-attention" data-testid="ad-check-stale">
+                      O texto mudou fora desta tela: a checagem roda de novo na hora de aprovar.
+                    </p>
+                  )}
                   {field('hook', 'Gancho')}
                   {field('primary_text', 'Texto principal', true)}
                   {field('headline', 'Título')}
                   {field('description', 'Descrição')}
                   {field('cta', 'Chamada do botão')}
-                  {a.script && (
-                    <Disclosure summary="Roteiro (trechos)">
-                      <pre className="whitespace-pre-wrap text-nq-aux text-nq-text font-sans">{a.script}</pre>
-                    </Disclosure>
-                  )}
+                  {field('script', 'Roteiro (um trecho por linha)', true)}
                   <p className="text-nq-caption text-nq-muted">
-                    Promessas: {(a.claims || []).length ? a.claims.map((c: any) => c.text).join('; ') : 'nenhuma ligada (cadastre uma na fábrica para poder aprovar)'}
+                    Promessas (ligadas quando o texto aprovado aparece inteiro no anúncio):{' '}
+                    {(a.claims || []).length ? a.claims.map((c: any) => c.text).join('; ') : 'nenhuma ligada (cadastre uma na fábrica para poder aprovar)'}
                   </p>
                   <div className="flex flex-wrap gap-2 justify-end">
                     {canEdit && (

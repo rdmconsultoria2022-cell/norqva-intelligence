@@ -2,12 +2,12 @@
 // De uma referência PRONTA (só o esqueleto, D-0115) + um produto NOSSO (+ a oferta), o NORQVA escreve:
 //   (a) uma página de venda original seguindo o esqueleto da página;
 //   (b) de 3 a 5 anúncios seguindo o esqueleto do anúncio, gravados na fábrica de criativos (aprovação pelo fluxo dela).
-// Todo o conteúdo é nosso: a IA recebe só o esqueleto e os FATOS do nosso produto (banco). Cada texto passa pela
-// checagem anticópia (janelas de 6 palavras com o mesmo hash da etapa 1), por números que não vêm dos nossos fatos,
-// por promessas de saúde não aprovadas e, no anúncio, por preço. Falhou: gera de novo aquela parte (até 2 vezes);
-// continuou falhando: bloqueia com aviso na tela. Nada aqui fala com a Meta.
+// A IA nunca vê o texto da referência: recebe só o esqueleto e os FATOS do nosso produto (banco). Cada texto passa pela
+// checagem: janelas de 6 palavras iguais à referência (mesmo hash da etapa 1), números que não são fatos do produto,
+// preço (em qualquer lugar: o preço da página vem da oferta, na hora) e promessas de saúde não aprovadas. Falhou: gera
+// de novo aquela parte (até 2 vezes); continuou falhando: bloqueia com aviso na tela. Nada aqui fala com a Meta.
 import crypto from 'crypto';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { writeAuditLog } from '../../db/audit';
 import {
   shingleHashes,
@@ -21,12 +21,15 @@ import {
   referencesEnabled
 } from './referenceService';
 import { findPriceInText } from './priceInCopy';
-import { CreativeFactoryService, CreativeFactoryError, computeContentHash } from './creativeFactoryService';
+import { CreativeFactoryService, CreativeFactoryError, computeContentHash, setGeneratedAdChecker } from './creativeFactoryService';
+import { publicCardTerms } from '../commerce/cardTerms';
 import {
   kieConfigured,
   generateKieImage,
   imageStorage,
   imagesBucket,
+  imagesBucketReady,
+  bucketMissingMessage,
   productImages,
   imageStyle,
   resolveImageUrl,
@@ -44,7 +47,7 @@ export class GenerationError extends Error {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Checagem: cópia, números, promessas de saúde e preço
+// Checagem: cópia, números, preço e promessas de saúde
 // ---------------------------------------------------------------------------------------------
 
 export type IssueCode = 'COPY' | 'DIGIT' | 'HEALTH' | 'PRICE' | 'EMPTY';
@@ -55,32 +58,75 @@ export interface FieldIssue {
 
 export const ISSUE_LABEL: Record<IssueCode, string> = {
   COPY: 'Parecido com a referência (6 palavras seguidas iguais)',
-  DIGIT: 'Número que não vem dos dados do produto',
+  DIGIT: 'Número que não é dado do produto',
   HEALTH: 'Promessa de saúde ou resultado não aprovada',
-  PRICE: 'Preço no anúncio',
+  PRICE: 'Preço ou parcela escrito no texto (o preço vem da oferta)',
   EMPTY: 'Texto vazio'
 };
 
 export interface CheckContext {
   /** Impressões de 6 palavras da referência (source_shingles da etapa 1). */
   shingles: Set<string>;
-  /** Números que aparecem nos nossos fatos (preço, parcelas, títulos, promessas aprovadas...). */
-  allowedDigits: Set<string>;
-  /** Textos das promessas aprovadas (VERIFIED). */
+  /** Números (como escritos: "28", "4x", "19,90") e números por extenso que são fatos do produto. */
+  allowedNumbers: Set<string>;
+  /** Textos das promessas aprovadas (VERIFIED). Uma promessa de saúde só passa se o texto aprovado aparecer INTEIRO. */
   approvedClaims: string[];
-  /** Anúncio: preço é proibido. */
-  ad: boolean;
+  /** Nomes nossos (produto, oferta, arquivos): não contam como promessa ("Desafio Seca Barriga" é nome). */
+  ownNames: string[];
 }
 
-const HEALTH_PATTERNS: RegExp[] = [
-  /\bperc(?:a|er|am|e)\s+(?:at[eé]\s+)?\d[\d.,]*\s*(?:kg|quilos?)\b/i,
-  /\bemagre[cç](?:a|er|am|e)\s+(?:at[eé]\s+)?\d/i,
-  /\bgarantid[oa]s?\b/i,
-  /\bcura[mrs]?\b/i,
-  /\bsem\s+esfor[cç]os?\b/i
+/** Texto sem acento, minúsculo, só letras/números/%, com espaço nas pontas. */
+export const plain = (s: string) =>
+  ` ${String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9%]+/g, ' ')
+    .trim()} `;
+
+// promessas de saúde/emagrecimento (sobre o texto já sem acento)
+export const HEALTH_PATTERNS: RegExp[] = [
+  /\bper[cd]\w*\s+(?:ate\s+)?\d+\s*(?:kg|quilos?)\b/,
+  /\bper[cd]\w*\s+(?:\w+\s+)?medidas\b/,
+  /\bemagre\w*\s+(?:ate\s+)?\d+/,
+  /\bemagre\w*\s+(?:muito\s+|bem\s+)?rapid\w*/,
+  /\brapid\w*\s+emagre\w*/,
+  /\b(?:elimin|queim|derret)\w*\s+(?:(?:a|de|da|sua|toda|essa|aquela)\s+)*gordura/,
+  /\bsec(?:a|ar|ue|ando|am)\s+(?:(?:a|sua)\s+)?barriga\b/,
+  /\bbarriga\s+(?:chapada|negativa|lisinha|zerada|sequinha)\b/,
+  /\bresultados?\s+em\s+(?:ate\s+)?\d+\s+dias\b/,
+  /\bsem\s+dietas?\b/,
+  /\bsem\s+(?:fazer\s+)?exercicios?\b/,
+  /\bsem\s+esforcos?\b/,
+  /\bgarantid[oa]s?\b/,
+  /\bgarantia\s+de\s+resultados?\b/,
+  /\bcur(?:a|am|ar|ou|ando)\b/,
+  /\btrat(?:a|am|ar)\b(?!\s+se\b)/,
+  /\btratamentos?\b/,
+  /\bdetox\b/
 ];
 
-const normPhrase = (s: string) => ` ${normalizeWords(s).join(' ')} `;
+// números por extenso ("um/uma" ficam de fora: são artigos em português)
+export const NUMBER_WORDS = new Set([
+  'dois', 'duas', 'tres', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'quinze', 'vinte', 'trinta',
+  'quarenta', 'cinquenta', 'cem', 'cento', 'centenas', 'dezenas', 'mil', 'milhares', 'milhao', 'milhoes'
+]);
+
+const NUM_RE = /\d+(?:[.,]\d+)*(?:\s?(?:x|%|kg|g|ml|h|min)(?![a-z]))?/gi;
+
+/** Números como escritos ("19,90", "4x", "28") e números por extenso. */
+export function numberTokens(text: string): string[] {
+  const out: string[] = [];
+  for (const m of String(text || '').match(NUM_RE) || []) out.push(m.toLowerCase().replace(/\s+/g, ''));
+  for (const w of plain(text).trim().split(' ')) if (NUMBER_WORDS.has(w)) out.push(w);
+  return out;
+}
+
+export function numbersOf(lines: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const l of lines) for (const t of numberTokens(l)) out.add(t);
+  return out;
+}
 
 /** Problemas de UM texto. Vazio = pode seguir. */
 export function checkText(text: string, ctx: CheckContext): FieldIssue[] {
@@ -88,33 +134,28 @@ export function checkText(text: string, ctx: CheckContext): FieldIssue[] {
   if (!s) return [];
   const issues: FieldIssue[] = [];
   if (shingleHashes(s).some(h => ctx.shingles.has(h))) issues.push({ code: 'COPY', detail: ISSUE_LABEL.COPY });
-  const digits = s.match(/\d+/g) || [];
-  const bad = digits.filter(d => !ctx.allowedDigits.has(d.replace(/^0+(?=\d)/, '')));
+  const price = findPriceInText(s);
+  if (price) issues.push({ code: 'PRICE', detail: `${ISSUE_LABEL.PRICE}: "${price.match}"` });
+  const bad = numberTokens(s).filter(t => !ctx.allowedNumbers.has(t));
   if (bad.length) issues.push({ code: 'DIGIT', detail: `${ISSUE_LABEL.DIGIT}: ${Array.from(new Set(bad)).slice(0, 5).join(', ')}` });
-  const claims = ctx.approvedClaims.map(normPhrase);
-  for (const re of HEALTH_PATTERNS) {
-    const m = s.match(re);
-    if (!m) continue;
-    const phrase = normPhrase(m[0]);
-    if (phrase.trim() && claims.some(c => c.includes(phrase))) continue;
-    issues.push({ code: 'HEALTH', detail: `${ISSUE_LABEL.HEALTH}: "${m[0].trim()}"` });
-    break;
+  // promessa aprovada (inteira) e nossos nomes saem do texto antes de procurar promessa de saúde
+  let t = plain(s);
+  for (const ex of [...ctx.approvedClaims, ...ctx.ownNames]) {
+    const e = plain(ex).trim();
+    if (e) t = t.split(` ${e} `).join('  ');
   }
-  if (ctx.ad) {
-    const p = findPriceInText(s);
-    if (p) issues.push({ code: 'PRICE', detail: `${ISSUE_LABEL.PRICE}: "${p.match}" (${p.label})` });
+  for (const re of HEALTH_PATTERNS) {
+    const m = t.match(re);
+    if (m) {
+      issues.push({ code: 'HEALTH', detail: `${ISSUE_LABEL.HEALTH}: "${m[0].trim()}"` });
+      break;
+    }
   }
   return issues;
 }
 
-export function digitsOf(lines: string[]): Set<string> {
-  const out = new Set<string>();
-  for (const l of lines) for (const d of String(l || '').match(/\d+/g) || []) out.add(d.replace(/^0+(?=\d)/, ''));
-  return out;
-}
-
 // ---------------------------------------------------------------------------------------------
-// Fatos do NOSSO produto (só do banco)
+// Fatos do NOSSO produto (só do banco). Preço e parcelas NUNCA vão para a IA.
 // ---------------------------------------------------------------------------------------------
 
 export interface ApprovedClaim {
@@ -126,26 +167,15 @@ export interface ApprovedClaim {
 
 export interface ProductFacts {
   product: { id: string; name: string; description: string; category: string; collection_key: string | null };
-  offer: {
-    id: string;
-    human_id: string;
-    name: string;
-    description: string;
-    bonus: string | null;
-    status: string;
-    price: number;
-    cardEnabled: boolean;
-    cardMax: number;
-    cardFree: number;
-  };
+  offer: { id: string; human_id: string; name: string; description: string; bonus: string | null; status: string };
   deliveryTitles: string[];
   claims: ApprovedClaim[];
 }
 
 export const brl = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`;
 
-/** Linhas de fatos dadas à IA. Página: com preço e parcelas. Anúncio: sem preço nem parcelas (D-0053). */
-export function factLines(f: ProductFacts, forAd: boolean, withGuarantee = false): string[] {
+/** Linhas de fatos dadas à IA (página e anúncio). Sem preço, sem parcelas, sem prazos legais. */
+export function factLines(f: ProductFacts): string[] {
   const lines = [`Produto: ${f.product.name}`, `Categoria: ${f.product.category}`, `Descrição do produto: ${f.product.description}`];
   if (f.offer.description && f.offer.description.trim() && f.offer.description.trim() !== f.product.description.trim()) {
     lines.push(`Descrição da oferta: ${f.offer.description}`);
@@ -153,16 +183,27 @@ export function factLines(f: ProductFacts, forAd: boolean, withGuarantee = false
   if (f.deliveryTitles.length) lines.push(`O que a pessoa recebe (arquivos entregues): ${f.deliveryTitles.join('; ')}`);
   lines.push('Entrega: digital, com o acesso enviado por e-mail depois do pagamento confirmado.');
   if (f.offer.bonus && f.offer.bonus.trim()) lines.push(`Bônus da oferta: ${f.offer.bonus.trim()}`);
-  if (!forAd) {
-    lines.push(`Preço: ${brl(f.offer.price)} (Pix ou cartão)`);
-    if (f.offer.cardEnabled && f.offer.cardMax > 1) {
-      lines.push(`Cartão de crédito: até ${f.offer.cardMax}x`);
-      if (f.offer.cardFree > 1) lines.push(`Sem juros: até ${f.offer.cardFree}x de ${brl(Math.round((f.offer.price / f.offer.cardFree) * 100) / 100)}`);
-    }
-    if (withGuarantee) lines.push('Direito de arrependimento: 7 dias depois da compra pela internet (Código de Defesa do Consumidor).');
-  }
   return lines;
 }
+
+/** Textos de onde vêm os números permitidos (fatos do produto; nunca o preço). */
+const numberSources = (f: ProductFacts) => [
+  f.product.name, f.product.description, f.product.category, f.offer.name, f.offer.description, f.offer.bonus || '',
+  ...f.deliveryTitles, ...f.claims.map(c => c.text)
+];
+
+/** Preço e parcelas da página: sempre da oferta, na hora, com a mesma conta do pagamento (publicCardTerms). */
+export function livePriceBlock(offer: any): { price_text: string; installments_text: string | null; value: number } {
+  const pix = offer.promotional_price !== null && offer.promotional_price !== undefined ? parseFloat(offer.promotional_price) : parseFloat(offer.price);
+  const card = publicCardTerms(offer);
+  let installments: string | null = null;
+  if (card && card.max_installments > 1) installments = `ou ${card.max_installments}x de ${brl(card.installment_value)} sem juros no cartão`;
+  else if (card) installments = 'ou no cartão de crédito';
+  return { price_text: brl(Number.isFinite(pix) ? pix : 0), installments_text: installments, value: Number.isFinite(pix) ? pix : 0 };
+}
+
+/** Frase fixa da seção de garantia (não passa pela IA). */
+export const CDC_NOTE = 'Pela lei (Código de Defesa do Consumidor, art. 49), você pode desistir da compra feita pela internet em até 7 dias.';
 
 // ---------------------------------------------------------------------------------------------
 // Plano (esqueleto seguido) da página e do anúncio
@@ -177,6 +218,8 @@ export interface PlanItem {
   has_image: boolean;
   cta: boolean;
   replaced_from: SectionRole | null;
+  /** Seção com texto fixo do NORQVA (promessas aprovadas, sem IA). */
+  fixed: { headline: string; bullets: string[] } | null;
 }
 
 const DEFAULT_PAGE: Array<[SectionRole, boolean, boolean, number]> = [
@@ -190,64 +233,68 @@ const DEFAULT_PAGE: Array<[SectionRole, boolean, boolean, number]> = [
   ['CTA', false, true, 25]
 ];
 
-const PROOF_TYPES = ['TESTIMONIAL', 'SOCIAL_PROOF', 'RESULT'];
+/** Seções que só existem com promessas aprovadas (texto da promessa, nunca da IA). */
+const CLAIM_SECTIONS: Partial<Record<SectionRole, { types: string[]; headline: string }>> = {
+  TESTIMONIALS: { types: ['TESTIMONIAL', 'SOCIAL_PROOF'], headline: 'O que dizem de nós' },
+  PROOF_RESULTS: { types: ['RESULT', 'SOCIAL_PROOF'], headline: 'Resultados' },
+  AUTHORITY: { types: ['AUTHORITY'], headline: 'Quem está por trás' }
+};
+
 export const MAX_PAGE_SECTIONS = 16;
 
-/** Esqueleto da página a seguir. Seções que pediriam prova, depoimento, autoridade ou urgência que não temos viram prévia do conteúdo ou saem. */
-export function buildPagePlan(structure: ReferenceStructure | null, f: ProductFacts): { plan: PlanItem[]; notes: string[]; usesGuarantee: boolean } {
+const item = (role: SectionRole, over: Partial<PlanItem> = {}): PlanItem => ({
+  ref_order: null, role, purpose: ROLE_PURPOSE[role], headline_style: 'STATEMENT', approx_words: 50, has_image: false, cta: false, replaced_from: null, fixed: null, ...over
+});
+
+/** Esqueleto da página a seguir. Nada de depoimento, autoridade ou urgência inventados. Sempre há preço e botão. */
+export function buildPagePlan(structure: ReferenceStructure | null, f: ProductFacts): { plan: PlanItem[]; notes: string[] } {
   const notes: string[] = [];
-  const has = (types: string[]) => f.claims.some(c => types.includes(c.type));
   let base: PlanItem[];
   if (structure && structure.kind === 'SALES_PAGE') {
-    base = structure.sections.map(s => ({
-      ref_order: s.order,
-      role: s.role,
-      purpose: s.purpose || ROLE_PURPOSE[s.role],
-      headline_style: s.headline_style,
-      approx_words: s.approx_words,
-      has_image: s.has_image,
-      cta: s.cta_count > 0,
-      replaced_from: null
-    }));
+    base = structure.sections.map(s =>
+      item(s.role, { ref_order: s.order, purpose: s.purpose || ROLE_PURPOSE[s.role], headline_style: s.headline_style, approx_words: s.approx_words, has_image: s.has_image, cta: s.cta_count > 0 })
+    );
   } else {
     notes.push('A referência é um anúncio: a página segue o modelo padrão do NORQVA.');
-    base = DEFAULT_PAGE.map(([role, img, cta, words]) => ({
-      ref_order: null, role, purpose: ROLE_PURPOSE[role], headline_style: 'STATEMENT', approx_words: words, has_image: img, cta, replaced_from: null
-    }));
+    base = DEFAULT_PAGE.map(([role, img, cta, words]) => item(role, { has_image: img, cta, approx_words: words }));
   }
   const plan: PlanItem[] = [];
-  for (const item of base) {
-    if (item.role === 'TESTIMONIALS' || item.role === 'PROOF_RESULTS') {
-      if (has(PROOF_TYPES)) {
-        plan.push(item);
-      } else if (f.deliveryTitles.length) {
-        plan.push({ ...item, role: 'CONTENTS', purpose: 'Prévia honesta do conteúdo (no lugar de depoimentos, que não temos aprovados)', replaced_from: item.role });
+  for (const it of base) {
+    const cs = CLAIM_SECTIONS[it.role];
+    if (cs) {
+      const claims = f.claims.filter(c => cs.types.includes(c.type)).map(c => c.text);
+      if (claims.length) {
+        plan.push({ ...it, fixed: { headline: cs.headline, bullets: claims.slice(0, 8) } });
+        notes.push(`Seção "${cs.headline}": usa só as promessas aprovadas, com o texto delas.`);
+      } else if (it.role !== 'AUTHORITY' && f.deliveryTitles.length) {
+        plan.push({ ...it, role: 'CONTENTS', purpose: 'Prévia honesta do conteúdo (no lugar de depoimentos ou provas, que não temos aprovados)', replaced_from: it.role });
         notes.push('Seção de depoimentos/provas virou uma prévia do conteúdo: não há depoimentos ou resultados aprovados.');
       } else {
-        notes.push('Seção de depoimentos/provas ficou de fora: não há depoimentos ou resultados aprovados.');
+        notes.push(it.role === 'AUTHORITY' ? 'Seção "quem está por trás" ficou de fora: não há informação aprovada de autoria.' : 'Seção de depoimentos/provas ficou de fora: não há depoimentos ou resultados aprovados.');
       }
       continue;
     }
-    if (item.role === 'AUTHORITY' && !has(['AUTHORITY'])) {
-      notes.push('Seção "quem está por trás" ficou de fora: não há informação aprovada de autoria.');
-      continue;
-    }
-    if (item.role === 'URGENCY' && !has(['SCARCITY'])) {
+    if (it.role === 'URGENCY') {
       notes.push('Seção de urgência ficou de fora: nada de urgência inventada.');
       continue;
     }
-    if (item.role === 'BONUS' && !(f.offer.bonus && f.offer.bonus.trim())) {
+    if (it.role === 'BONUS' && !(f.offer.bonus && f.offer.bonus.trim())) {
       notes.push('Seção de bônus ficou de fora: a oferta não tem bônus.');
       continue;
     }
-    plan.push(item);
+    plan.push(it);
   }
-  const trimmed = plan.slice(0, MAX_PAGE_SECTIONS);
-  if (!trimmed.length) trimmed.push({ ref_order: null, role: 'HERO_HOOK', purpose: ROLE_PURPOSE.HERO_HOOK, headline_style: 'STATEMENT', approx_words: 60, has_image: true, cta: true, replaced_from: null });
-  if (!trimmed.some(p => p.cta)) {
-    trimmed.push({ ref_order: null, role: 'CTA', purpose: ROLE_PURPOSE.CTA, headline_style: 'STATEMENT', approx_words: 25, has_image: false, cta: true, replaced_from: null });
+  let trimmed = plan.slice(0, MAX_PAGE_SECTIONS);
+  if (!trimmed.length) trimmed.push(item('HERO_HOOK', { has_image: true, cta: true, approx_words: 60 }));
+  if (!trimmed.some(p => p.role === 'OFFER_PRICE')) {
+    // o preço precisa aparecer: entra uma seção de oferta antes da última chamada (ou no fim)
+    const lastCta = trimmed.map(p => p.role).lastIndexOf('CTA');
+    const at = lastCta > 0 ? lastCta : trimmed.length;
+    trimmed = [...trimmed.slice(0, at), item('OFFER_PRICE', { cta: true }), ...trimmed.slice(at)];
+    notes.push('Entrou uma seção de oferta: o preço da página vem da oferta, na hora.');
   }
-  return { plan: trimmed, notes, usesGuarantee: trimmed.some(p => p.role === 'GUARANTEE') };
+  if (!trimmed.some(p => p.cta)) trimmed.push(item('CTA', { cta: true, approx_words: 25 }));
+  return { plan: trimmed.slice(0, MAX_PAGE_SECTIONS + 2), notes };
 }
 
 export interface AdPlan {
@@ -341,9 +388,9 @@ function ai(): ReferenceAiClient {
 
 function parseJson(content: string | null): any {
   if (!content) return null;
-  const clean = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  const c = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   try {
-    return JSON.parse(clean);
+    return JSON.parse(c);
   } catch {
     return null;
   }
@@ -372,8 +419,7 @@ const adProps = {
   primary_text: str,
   headline: str,
   description: str,
-  cta: str,
-  claim_ids: strList
+  cta: str
 };
 export const adsSchema = () => ({ name: 'generated_ads', schema: obj({ variants: { type: 'array', items: obj(adProps) } }) });
 
@@ -383,16 +429,17 @@ export const GENERATION_SYSTEM_PROMPT = [
   'Regras obrigatórias:',
   '- escreva com as suas palavras, em linguagem simples, direta e honesta, sem exagero;',
   '- use SOMENTE os fatos fornecidos; não invente nada sobre o produto, a entrega ou a oferta;',
-  '- não escreva números, preços, porcentagens, prazos ou quantidades que não estejam nos fatos;',
+  '- NUNCA escreva preço, valor, parcelas, desconto ou a palavra "preço": o preço aparece sozinho na página, vindo da oferta;',
+  '- não escreva números (nem por extenso) que não estejam nos fatos;',
   '- não invente depoimentos, nomes de clientes, avaliações, resultados, estatísticas, prêmios ou autoridade;',
-  '- promessa de resultado ou de saúde só se estiver nas PROMESSAS APROVADAS, com as mesmas palavras;',
-  '- nunca use "garantido", "cura", "sem esforço", "perca X kg" ou "emagreça X";',
-  '- não crie urgência ou escassez que não esteja nos fatos;',
+  '- promessa de resultado ou de saúde só se for uma PROMESSA APROVADA, com o texto dela inteiro;',
+  '- nunca use "garantido", "cura", "sem esforço", "sem dieta", "detox", "perca X kg", "emagreça X" ou "seque a barriga";',
+  '- não crie urgência ou escassez;',
   '- não cite marcas, pessoas, empresas ou produtos de terceiros.',
   'Responda somente com o JSON do esquema.'
 ].join('\n');
 
-const claimsForPrompt = (f: ProductFacts) => f.claims.map((c, i) => ({ codigo: `C${i + 1}`, tipo: c.type, texto: c.text }));
+const claimsForPrompt = (f: ProductFacts) => f.claims.map(c => ({ tipo: c.type, texto: c.text }));
 
 function planForPrompt(p: PlanItem, i: number) {
   return {
@@ -411,50 +458,39 @@ const PAGE_RULES = [
   'headline: título da seção (pode ficar vazio quando o item não pede título). body: texto da seção (parágrafos separados por linha em branco).',
   'bullets: lista curta quando ajudar (ou vazia). cta_label: texto curto do botão quando tem_botao = true; senão vazio.',
   'image_prompt: quando tem_imagem = true, descreva em poucas palavras uma foto do NOSSO produto para esta seção (sem texto, marca ou pessoas na foto); senão vazio.',
-  'Na seção OFFER_PRICE use o preço e as parcelas exatamente como nos fatos.'
+  'Na seção OFFER_PRICE escreva só a chamada para a oferta: o preço e as parcelas aparecem logo abaixo, vindos da oferta.'
 ].join('\n');
 
 const ISSUE_FEEDBACK: Record<IssueCode, string> = {
   COPY: 'a versão anterior repetiu frases de outra página: escreva tudo de novo com palavras bem diferentes',
   DIGIT: 'a versão anterior tinha números que não estão nos fatos: não use números fora dos fatos',
   HEALTH: 'a versão anterior tinha promessa de saúde/resultado não aprovada: tire a promessa',
-  PRICE: 'a versão anterior tinha preço no anúncio: anúncio nunca fala de preço, valor, parcelas ou desconto',
+  PRICE: 'a versão anterior falava de preço, valor ou parcelas: nunca escreva preço',
   EMPTY: 'a versão anterior veio vazia: escreva o texto'
 };
 
 const feedbackText = (codes: IssueCode[]) =>
   codes.length ? `\nAtenção: ${Array.from(new Set(codes)).map(c => ISSUE_FEEDBACK[c]).join('; ')}.` : '';
 
-export function pageMessages(plan: PlanItem[], f: ProductFacts, usesGuarantee: boolean) {
+export function pageMessages(items: PlanItem[], f: ProductFacts) {
   return [
     { role: 'system', content: `${GENERATION_SYSTEM_PROMPT}\n${PAGE_RULES}` },
-    {
-      role: 'user',
-      content: JSON.stringify({
-        esqueleto: plan.map(planForPrompt),
-        fatos: factLines(f, false, usesGuarantee),
-        promessas_aprovadas: claimsForPrompt(f)
-      })
-    }
+    { role: 'user', content: JSON.stringify({ esqueleto: items.map(planForPrompt), fatos: factLines(f), promessas_aprovadas: claimsForPrompt(f) }) }
   ];
 }
 
-export function sectionMessages(item: PlanItem, index: number, f: ProductFacts, usesGuarantee: boolean, codes: IssueCode[]) {
+export function sectionMessages(it: PlanItem, index: number, f: ProductFacts, codes: IssueCode[]) {
   return [
     { role: 'system', content: `${GENERATION_SYSTEM_PROMPT}\n${PAGE_RULES}\nAgora escreva só UMA seção (o item pedido).${feedbackText(codes)}` },
-    {
-      role: 'user',
-      content: JSON.stringify({ item: planForPrompt(item, index), fatos: factLines(f, false, usesGuarantee), promessas_aprovadas: claimsForPrompt(f) })
-    }
+    { role: 'user', content: JSON.stringify({ item: planForPrompt(it, index), fatos: factLines(f), promessas_aprovadas: claimsForPrompt(f) }) }
   ];
 }
 
 const AD_RULES = [
   'Escreva variações de anúncio para a Meta seguindo o esqueleto do anúncio (tipo de gancho, ângulo, formato e trechos na ordem).',
-  'NUNCA ponha preço, valor, parcelas, desconto, cupom ou a palavra "preço" no anúncio: o preço aparece só na página.',
   'hook: frase de abertura. beats: um texto curto para cada trecho do esqueleto, na ordem. primary_text: texto principal (até 600 caracteres).',
   'headline: título curto (até 60 caracteres). description: descrição curta (até 90 caracteres). cta: chamada curta do botão (ex.: "Saiba mais").',
-  'claim_ids: códigos das promessas aprovadas (C1, C2...) que o anúncio usa; vazio se não usar nenhuma.',
+  'Se usar uma promessa aprovada, escreva o texto dela inteiro, igual.',
   'Cada variação deve ter um gancho e um ângulo diferentes das outras.'
 ].join('\n');
 
@@ -472,10 +508,7 @@ function adPlanForPrompt(p: AdPlan) {
 export function adsMessages(p: AdPlan, f: ProductFacts, count: number, codes: IssueCode[] = []) {
   return [
     { role: 'system', content: `${GENERATION_SYSTEM_PROMPT}\n${AD_RULES}\nEscreva ${count} variação(ões).${feedbackText(codes)}` },
-    {
-      role: 'user',
-      content: JSON.stringify({ esqueleto_do_anuncio: adPlanForPrompt(p), fatos: factLines(f, true), promessas_aprovadas: claimsForPrompt(f) })
-    }
+    { role: 'user', content: JSON.stringify({ esqueleto_do_anuncio: adPlanForPrompt(p), fatos: factLines(f), promessas_aprovadas: claimsForPrompt(f) }) }
   ];
 }
 
@@ -495,7 +528,7 @@ export interface WrittenSection {
   image_prompt: string;
 }
 
-export const LIMITS = { headline: 160, body: 2500, bullet: 200, bullets: 8, cta: 60, imagePrompt: 400, hook: 200, primary: 1500, adHeadline: 100, description: 150, beat: 300 };
+export const LIMITS = { headline: 160, body: 2500, bullet: 200, bullets: 8, cta: 60, imagePrompt: 400, hook: 200, primary: 1500, adHeadline: 100, description: 150, beat: 300, script: 3000 };
 
 export function validateSection(raw: any): WrittenSection | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -511,7 +544,7 @@ export function validateSection(raw: any): WrittenSection | null {
 /** Confere o JSON da página: precisa ter a lista de seções; cada uma é limpa e cortada. Sem nenhuma seção = inválido. */
 export function validateGeneratedPage(raw: any): WrittenSection[] | null {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.sections)) return null;
-  const out = raw.sections.slice(0, MAX_PAGE_SECTIONS).map(validateSection).filter((s: WrittenSection | null): s is WrittenSection => !!s);
+  const out = raw.sections.slice(0, MAX_PAGE_SECTIONS + 2).map(validateSection).filter((s: WrittenSection | null): s is WrittenSection => !!s);
   return out.length ? out : null;
 }
 
@@ -522,7 +555,6 @@ export interface WrittenAd {
   headline: string;
   description: string;
   cta: string;
-  claim_ids: string[];
 }
 
 export function validateAd(raw: any): WrittenAd | null {
@@ -540,8 +572,7 @@ export function validateAd(raw: any): WrittenAd | null {
     primary_text: clean(raw.primary_text, LIMITS.primary),
     headline: clean(raw.headline, LIMITS.adHeadline),
     description: clean(raw.description, LIMITS.description),
-    cta: clean(raw.cta, LIMITS.cta),
-    claim_ids: cleanList(raw.claim_ids, 10, 10)
+    cta: clean(raw.cta, LIMITS.cta)
   };
 }
 
@@ -565,6 +596,10 @@ export interface GeneratedSection {
   ref_order: number | null;
   role: SectionRole;
   replaced_from: SectionRole | null;
+  /** Texto fixo do NORQVA (promessas aprovadas): não vem da IA, não é editável aqui. */
+  fixed: boolean;
+  /** Frase fixa mostrada na seção (garantia: direito de arrependimento). */
+  fixed_note: string | null;
   headline: string;
   body: string;
   bullets: string[];
@@ -583,20 +618,26 @@ export interface GeneratedSection {
 export const SECTION_FIELDS = ['headline', 'body', 'bullets', 'cta_label'] as const;
 type SectionField = (typeof SECTION_FIELDS)[number];
 
-function sectionFieldTexts(s: Pick<GeneratedSection, SectionField>): Record<SectionField, string[]> {
-  return { headline: [s.headline], body: [s.body], bullets: s.bullets, cta_label: [s.cta_label] };
-}
+const REMOVED_DETAIL = 'Texto removido: continuou parecido com a referência. Escreva de novo ou gere de novo.';
 
-/** Problemas por campo de uma seção (sem contar o que foi removido). */
-export function sectionIssues(s: Pick<GeneratedSection, SectionField> & { removed_fields?: string[] }, ctx: CheckContext, needsCta = false): Record<string, FieldIssue[]> {
-  const out: Record<string, FieldIssue[]> = {};
-  const texts = sectionFieldTexts(s);
+/** Problemas por campo de uma seção. A lista também é conferida inteira (itens juntos), para a cópia não escapar entre itens. */
+export function sectionIssues(
+  s: Pick<GeneratedSection, SectionField> & { removed_fields?: string[]; fixed?: boolean },
+  ctx: CheckContext,
+  needsCta = false
+): Record<string, FieldIssue[]> {
+  const out: Record<string, FieldIssue[]> = { headline: [], body: [], bullets: [], cta_label: [] };
+  if (s.fixed) return out;
+  const texts: Record<SectionField, string[]> = {
+    headline: [s.headline],
+    body: [s.body],
+    bullets: s.bullets.length > 1 ? [...s.bullets, s.bullets.join(' ')] : s.bullets,
+    cta_label: [s.cta_label]
+  };
   for (const field of SECTION_FIELDS) {
     const list: FieldIssue[] = [];
     for (const t of texts[field]) for (const i of checkText(t, ctx)) if (!list.some(x => x.code === i.code)) list.push(i);
-    if ((s.removed_fields || []).includes(field) && !texts[field].some(t => t.trim())) {
-      list.push({ code: 'COPY', detail: 'Texto removido: continuou parecido com a referência. Escreva de novo ou gere de novo.' });
-    }
+    if ((s.removed_fields || []).includes(field) && !texts[field].some(t => t.trim())) list.push({ code: 'COPY', detail: REMOVED_DETAIL });
     out[field] = list;
   }
   if (!s.headline.trim() && !s.body.trim() && !s.bullets.length && !s.cta_label.trim() && !(s.removed_fields || []).length) out.body.push({ code: 'EMPTY', detail: ISSUE_LABEL.EMPTY });
@@ -619,7 +660,7 @@ export function pageCopyCheck(sections: GeneratedSection[], ctx: CheckContext, p
 }
 
 export const AD_FIELDS = ['hook', 'primary_text', 'headline', 'description', 'cta', 'script'] as const;
-type AdField = (typeof AD_FIELDS)[number];
+export type AdField = (typeof AD_FIELDS)[number];
 
 const BEAT_PT: Record<string, string> = {
   HOOK: 'Gancho', PROBLEM: 'Problema', DEMONSTRATION: 'Demonstração', BENEFIT: 'Benefício', PROOF: 'Prova', OFFER: 'Oferta', CTA: 'Chamada', OTHER: 'Trecho'
@@ -632,7 +673,7 @@ export function adIssues(a: Record<AdField, string>, ctx: CheckContext, removed:
   const out: Record<string, FieldIssue[]> = {};
   for (const f of AD_FIELDS) {
     const list = checkText(a[f] || '', ctx);
-    if (removed.includes(f) && !String(a[f] || '').trim()) list.push({ code: 'COPY', detail: 'Texto removido: continuou parecido com a referência. Escreva de novo ou gere de novo.' });
+    if (removed.includes(f) && !String(a[f] || '').trim()) list.push({ code: 'COPY', detail: REMOVED_DETAIL });
     else if ((f === 'hook' || f === 'primary_text' || f === 'cta') && !String(a[f] || '').trim()) list.push({ code: 'EMPTY', detail: ISSUE_LABEL.EMPTY });
     out[f] = list;
   }
@@ -654,20 +695,38 @@ const hasIssues = (m: Record<string, FieldIssue[]>) => Object.values(m).some(l =
 const codesOf = (m: Record<string, FieldIssue[]>) => Object.values(m).flatMap(l => l.map(i => i.code));
 
 export const MAX_RETRIES = 2;
+const RETRY_CONCURRENCY = 3;
+
+/** Roda as tarefas com no máximo `limit` ao mesmo tempo, mantendo a ordem do resultado. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (it: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Escrita com novas tentativas
 // ---------------------------------------------------------------------------------------------
 
-function emptySection(item: PlanItem, order: number): GeneratedSection {
+function emptySection(it: PlanItem, order: number): GeneratedSection {
   return {
     order,
-    ref_order: item.ref_order,
-    role: item.role,
-    replaced_from: item.replaced_from,
-    headline: '',
+    ref_order: it.ref_order,
+    role: it.role,
+    replaced_from: it.replaced_from,
+    fixed: !!it.fixed,
+    fixed_note: it.role === 'GUARANTEE' ? CDC_NOTE : null,
+    headline: it.fixed ? it.fixed.headline : '',
     body: '',
-    bullets: [],
+    bullets: it.fixed ? [...it.fixed.bullets] : [],
     cta_label: '',
     image_url: null,
     image_status: 'NONE',
@@ -679,9 +738,9 @@ function emptySection(item: PlanItem, order: number): GeneratedSection {
   };
 }
 
-function applyWritten(s: GeneratedSection, w: WrittenSection | null, item: PlanItem): GeneratedSection {
-  if (!w) return s;
-  return { ...s, headline: w.headline, body: w.body, bullets: w.bullets, cta_label: item.cta ? w.cta_label : '', image_prompt: w.image_prompt };
+function applyWritten(s: GeneratedSection, w: WrittenSection | null, it: PlanItem): GeneratedSection {
+  if (!w || s.fixed) return s;
+  return { ...s, headline: w.headline, body: w.body, bullets: w.bullets, cta_label: it.cta ? w.cta_label : '', image_prompt: w.image_prompt };
 }
 
 /** Esvazia o que continuou parecido com a referência (nada copiado é gravado). */
@@ -697,41 +756,33 @@ function removeCopied(s: GeneratedSection, issues: Record<string, FieldIssue[]>)
 }
 
 /** Escreve (ou reescreve) uma seção até passar na checagem ou acabar as tentativas. */
-async function writeSectionWithRetries(
-  start: GeneratedSection,
-  item: PlanItem,
-  index: number,
-  f: ProductFacts,
-  ctx: CheckContext,
-  usesGuarantee: boolean,
-  forceFirst: boolean
-): Promise<GeneratedSection> {
+async function writeSectionWithRetries(start: GeneratedSection, it: PlanItem, index: number, f: ProductFacts, ctx: CheckContext, forceFirst: boolean): Promise<GeneratedSection> {
+  if (start.fixed) return start;
   let s = start;
-  let issues = sectionIssues(s, ctx, item.cta);
+  let issues = sectionIssues(s, ctx, it.cta);
   let attempts = 0;
   while ((forceFirst && attempts === 0) || (hasIssues(issues) && attempts < MAX_RETRIES)) {
-    const codes = codesOf(issues);
-    const raw = await askAi(sectionMessages(item, index, f, usesGuarantee, forceFirst && attempts === 0 ? [] : codes), sectionSchema());
+    const codes = forceFirst && attempts === 0 ? [] : codesOf(issues);
+    const w = validateSection(await askAi(sectionMessages(it, index, f, codes), sectionSchema()));
     attempts++;
-    const w = validateSection(raw);
-    if (w) s = applyWritten({ ...s, removed_fields: [] }, w, item);
-    issues = sectionIssues(s, ctx, item.cta);
+    if (w) s = applyWritten({ ...s, removed_fields: [] }, w, it);
+    issues = sectionIssues(s, ctx, it.cta);
     if (forceFirst && attempts === 1 && !hasIssues(issues)) break;
   }
   s = { ...s, retries: s.retries + attempts };
   return hasIssues(issues) ? removeCopied(s, issues) : s;
 }
 
-export async function writePage(plan: PlanItem[], f: ProductFacts, ctx: CheckContext, usesGuarantee: boolean): Promise<GeneratedSection[]> {
-  const raw = await askAi(pageMessages(plan, f, usesGuarantee), pageSchema());
-  const written = validateGeneratedPage(raw);
+export async function writePage(plan: PlanItem[], f: ProductFacts, ctx: CheckContext): Promise<GeneratedSection[]> {
+  // a IA escreve só as seções sem texto fixo
+  const modelIdx = plan.map((p, i) => (p.fixed ? -1 : i)).filter(i => i >= 0);
+  const written = modelIdx.length ? validateGeneratedPage(await askAi(pageMessages(modelIdx.map(i => plan[i]), f), pageSchema())) : [];
   if (!written) throw new GenerationError(502, 'A IA não devolveu uma página válida. Tente de novo.');
-  const out: GeneratedSection[] = [];
-  for (let i = 0; i < plan.length; i++) {
-    const s = applyWritten(emptySection(plan[i], i + 1), written[i] || null, plan[i]);
-    out.push(await writeSectionWithRetries(s, plan[i], i, f, ctx, usesGuarantee, false));
-  }
-  return out;
+  const first = plan.map((p, i) => {
+    const k = modelIdx.indexOf(i);
+    return applyWritten(emptySection(p, i + 1), k >= 0 ? written[k] || null : null, p);
+  });
+  return mapLimit(first, RETRY_CONCURRENCY, (s, i) => writeSectionWithRetries(s, plan[i], i, f, ctx, false));
 }
 
 export interface GeneratedAd extends WrittenAd {
@@ -764,7 +815,7 @@ async function writeOneAdWithRetries(start: WrittenAd | null, p: AdPlan, f: Prod
   let issues = a ? adIssues(adFields(a), ctx) : null;
   let attempts = 0;
   while ((!a || (issues && hasIssues(issues))) && attempts < MAX_RETRIES) {
-    const raw = await askAi(adsMessages(p, f, 1, issues ? codesOf(issues) : ['EMPTY']), adsSchema());
+    const raw = await askAi(adsMessages(p, f, 1, issues ? (codesOf(issues) as IssueCode[]) : ['EMPTY']), adsSchema());
     attempts++;
     const v = validateAdVariants(raw);
     if (v && v[0]) {
@@ -778,15 +829,43 @@ async function writeOneAdWithRetries(start: WrittenAd | null, p: AdPlan, f: Prod
 }
 
 export async function writeAds(p: AdPlan, f: ProductFacts, ctx: CheckContext, count: number): Promise<GeneratedAd[]> {
-  const raw = await askAi(adsMessages(p, f, count), adsSchema());
-  const variants = validateAdVariants(raw) || [];
-  const out: GeneratedAd[] = [];
-  for (let i = 0; i < count; i++) {
-    const g = await writeOneAdWithRetries(variants[i] || null, p, f, ctx);
-    if (g) out.push(g);
+  const variants = validateAdVariants(await askAi(adsMessages(p, f, count), adsSchema())) || [];
+  const out = await mapLimit(Array.from({ length: count }, (_, i) => variants[i] || null), RETRY_CONCURRENCY, v => writeOneAdWithRetries(v, p, f, ctx));
+  const ok = out.filter((g): g is GeneratedAd => !!g);
+  if (!ok.length) throw new GenerationError(502, 'A IA não devolveu anúncios válidos. Tente de novo.');
+  return ok;
+}
+
+/** Promessas aprovadas cujo texto aparece inteiro no anúncio (só essas são ligadas ao criativo). */
+export function claimsUsedIn(fields: Record<string, string>, claims: ApprovedClaim[]): ApprovedClaim[] {
+  const text = plain(Object.values(fields).join(' \n '));
+  return claims.filter(c => {
+    const t = plain(c.text).trim();
+    return !!t && text.includes(` ${t} `);
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Limite de uso (por pessoa, por hora)
+// ---------------------------------------------------------------------------------------------
+
+export const RATE_LIMITS = { generate: 10, regenerate: 30 } as const;
+const HOUR_MS = 60 * 60 * 1000;
+const usage = new Map<string, number[]>();
+
+export function resetGenerationRateLimitsForTests() {
+  usage.clear();
+}
+
+function takeRate(userId: string | null, kind: keyof typeof RATE_LIMITS) {
+  const key = `${kind}:${userId || 'anon'}`;
+  const now = Date.now();
+  const list = (usage.get(key) || []).filter(t => now - t < HOUR_MS);
+  if (list.length >= RATE_LIMITS[kind]) {
+    throw new GenerationError(429, kind === 'generate' ? `Limite de ${RATE_LIMITS.generate} gerações por hora. Tente mais tarde.` : `Limite de ${RATE_LIMITS.regenerate} "Gerar de novo" por hora. Tente mais tarde.`);
   }
-  if (!out.length) throw new GenerationError(502, 'A IA não devolveu anúncios válidos. Tente de novo.');
-  return out;
+  list.push(now);
+  usage.set(key, list);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -822,16 +901,16 @@ export function slugify(name: string): string {
 
 export const themeFor = (...names: Array<string | null | undefined>) => (names.some(n => /seca\s*barriga/i.test(String(n || ''))) ? 'fresh' : 'light');
 
-async function nextHumanId(pool: Pool): Promise<string> {
+async function nextHumanId(db: Pool | PoolClient): Promise<string> {
   try {
     for (;;) {
-      const res = await pool.query(`SELECT nextval('seq_generated_pages_human_id') AS num`);
+      const res = await db.query(`SELECT nextval('seq_generated_pages_human_id') AS num`);
       const candidate = `GEN-${String(parseInt(res.rows[0].num, 10)).padStart(6, '0')}`;
-      const taken = await pool.query('SELECT 1 FROM generated_pages WHERE human_id = $1 LIMIT 1', [candidate]);
+      const taken = await db.query('SELECT 1 FROM generated_pages WHERE human_id = $1 LIMIT 1', [candidate]);
       if (taken.rows.length === 0) return candidate;
     }
   } catch {
-    const res = await pool.query(`SELECT human_id FROM generated_pages WHERE human_id LIKE 'GEN-%' ORDER BY human_id DESC LIMIT 1`);
+    const res = await db.query(`SELECT human_id FROM generated_pages WHERE human_id LIKE 'GEN-%' ORDER BY human_id DESC LIMIT 1`);
     const last = res.rows[0]?.human_id;
     const n = last ? parseInt(String(last).replace('GEN-', ''), 10) : 0;
     return `GEN-${String((Number.isFinite(n) ? n : 0) + 1).padStart(6, '0')}`;
@@ -843,28 +922,25 @@ async function actorId(pool: Pool, userId: string | null) {
   return (await pool.query('SELECT id FROM users WHERE id = $1', [userId])).rows[0]?.id || null;
 }
 
+const OFFER_COLS = `id, human_id, name, description, bonus, status, price, promotional_price, product_id,
+  card_enabled, card_max_installments, card_free_installments, card_interest_monthly, card_total_price`;
+
 export async function loadFacts(pool: Pool, productId: string, offerId: string): Promise<ProductFacts> {
   if (!UUID_RE.test(productId)) throw new GenerationError(400, 'Escolha um produto.');
   if (!UUID_RE.test(offerId)) throw new GenerationError(400, 'Escolha a oferta.');
   const p = (
     await pool.query(
-      'SELECT id, name, description, category, collection_key FROM products WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE',
+      `SELECT id, name, description, category, collection_key FROM products
+       WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE AND is_demo = FALSE`,
       [productId]
     )
   ).rows[0];
   if (!p) throw new GenerationError(400, 'Produto não encontrado.');
   const o = (
-    await pool.query(
-      `SELECT id, human_id, name, description, bonus, status, price, promotional_price, product_id,
-              card_enabled, card_max_installments, card_free_installments
-       FROM offers WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE`,
-      [offerId]
-    )
+    await pool.query(`SELECT ${OFFER_COLS} FROM offers WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE AND is_demo = FALSE`, [offerId])
   ).rows[0];
   if (!o) throw new GenerationError(400, 'Oferta não encontrada.');
   if (String(o.product_id) !== String(p.id)) throw new GenerationError(400, 'Esta oferta é de outro produto.');
-  const promo = o.promotional_price !== null && o.promotional_price !== undefined ? parseFloat(o.promotional_price) : null;
-  const price = promo && promo > 0 ? promo : parseFloat(o.price);
   const files = await pool.query(
     `SELECT a.name FROM offer_digital_assets oda JOIN digital_assets a ON a.id = oda.asset_id WHERE oda.offer_id = $1 ORDER BY a.name`,
     [offerId]
@@ -878,46 +954,39 @@ export async function loadFacts(pool: Pool, productId: string, offerId: string):
   );
   return {
     product: { id: p.id, name: String(p.name || ''), description: String(p.description || ''), category: String(p.category || ''), collection_key: p.collection_key || null },
-    offer: {
-      id: o.id,
-      human_id: String(o.human_id),
-      name: String(o.name || ''),
-      description: String(o.description || ''),
-      bonus: o.bonus || null,
-      status: String(o.status),
-      price: Number.isFinite(price) ? price : 0,
-      cardEnabled: !!o.card_enabled,
-      cardMax: Number(o.card_max_installments) || 1,
-      cardFree: Number(o.card_free_installments) || 0
-    },
+    offer: { id: o.id, human_id: String(o.human_id), name: String(o.name || ''), description: String(o.description || ''), bonus: o.bonus || null, status: String(o.status) },
     deliveryTitles: files.rows.map((r: any) => String(r.name || '').trim()).filter(Boolean).slice(0, 20),
     claims: claims.rows.map((r: any) => ({ id: r.id, human_id: r.human_id, text: String(r.claim_text || ''), type: String(r.claim_type) }))
   };
 }
 
-export function checkContexts(shingles: string[], f: ProductFacts, usesGuarantee: boolean) {
-  const set = new Set(shingles || []);
-  const approved = f.claims.map(c => c.text);
+export function checkContext(shingles: string[], f: ProductFacts): CheckContext {
   return {
-    page: { shingles: set, allowedDigits: digitsOf([...factLines(f, false, usesGuarantee), ...approved]), approvedClaims: approved, ad: false } as CheckContext,
-    ad: { shingles: set, allowedDigits: digitsOf([...factLines(f, true), ...approved]), approvedClaims: approved, ad: true } as CheckContext
+    shingles: new Set(shingles || []),
+    allowedNumbers: numbersOf(numberSources(f)),
+    approvedClaims: f.claims.map(c => c.text),
+    ownNames: [f.product.name, f.offer.name, ...f.deliveryTitles].filter(Boolean)
   };
 }
 
 /** Escolhe as seções que levam imagem (as que o esqueleto marca, até 4; sem nenhuma, a abertura). */
-export function imageSlots(plan: Array<{ has_image: boolean }>): number[] {
-  const idx = plan.map((p, i) => (p.has_image ? i : -1)).filter(i => i >= 0);
+export function imageSlots(plan: Array<{ has_image: boolean; fixed?: any }>): number[] {
+  const idx = plan.map((p, i) => (p.has_image && !p.fixed ? i : -1)).filter(i => i >= 0);
   return (idx.length ? idx : [0]).slice(0, MAX_NEW_IMAGES);
 }
 
-const PUBLIC_SECTION = (s: GeneratedSection, image: string | null) => ({
+type PriceBlock = ReturnType<typeof livePriceBlock>;
+
+const PUBLIC_SECTION = (s: GeneratedSection, image: string | null, price: PriceBlock | null) => ({
   order: s.order,
   role: s.role,
   headline: s.headline,
   body: s.body,
   bullets: s.bullets,
   cta_label: s.cta_label,
-  image_url: image
+  image_url: image,
+  note: s.fixed_note || null,
+  price: s.role === 'OFFER_PRICE' && price ? { price_text: price.price_text, installments_text: price.installments_text } : null
 });
 
 export class GenerationService {
@@ -946,65 +1015,76 @@ export class GenerationService {
     const ref = await this.reference(String(input.referenceId || ''));
     const f = await loadFacts(this.pool, String(input.productId || ''), String(input.offerId || ''));
     if (!generationAiConfigured()) throw new GenerationError(503, 'IA não configurada (OPENAI_API_KEY): não dá para gerar agora.');
+    takeRate(userId, 'generate');
     const count = Math.min(AD_COUNT_MAX, Math.max(AD_COUNT_MIN, Math.round(Number(input.adCount) || AD_COUNT_MIN)));
-    const { plan, notes, usesGuarantee } = buildPagePlan(ref.structure, f);
+    const { plan, notes } = buildPagePlan(ref.structure, f);
     const adPlan = buildAdPlan(ref.structure);
-    const ctx = checkContexts(ref.shingles, f, usesGuarantee);
+    const ctx = checkContext(ref.shingles, f);
 
-    const sections = await writePage(plan, f, ctx.page, usesGuarantee);
-    const ads = await writeAds(adPlan, f, ctx.ad, count);
+    const [sections, ads] = await Promise.all([writePage(plan, f, ctx), writeAds(adPlan, f, ctx, count)]);
 
-    // imagens: as que o produto já tem; com a KIE, imagens novas depois (em segundo plano)
+    // imagens: as que o produto já tem; com a KIE (e o bucket criado), imagens novas depois, em segundo plano
     const fallback = productImages({ name: f.product.name, collection_key: f.product.collection_key });
     const wantNew = input.newImages === true || input.newImages === 'true';
     const kie = kieConfigured();
-    const mode: 'KIE' | 'PRODUCT' | 'NONE' = wantNew && kie ? 'KIE' : fallback.length ? 'PRODUCT' : 'NONE';
+    const bucketOk = wantNew && kie ? await imagesBucketReady() : false;
+    const mode: 'KIE' | 'PRODUCT' | 'NONE' = wantNew && kie && bucketOk ? 'KIE' : fallback.length ? 'PRODUCT' : 'NONE';
     const now = new Date().toISOString();
     imageSlots(plan).forEach((i, n) => {
       const img = fallback.length ? fallback[n % fallback.length] : null;
-      sections[i] = {
-        ...sections[i],
-        image_url: img,
-        image_status: mode === 'KIE' ? 'PENDING' : img ? 'PRODUCT' : 'NONE',
-        image_started_at: mode === 'KIE' ? now : null
-      };
+      sections[i] = { ...sections[i], image_url: img, image_status: mode === 'KIE' ? 'PENDING' : img ? 'PRODUCT' : 'NONE', image_started_at: mode === 'KIE' ? now : null };
     });
-    const imageNote = !kie ? KIE_MISSING_MESSAGE : wantNew ? 'Imagens novas sendo feitas na KIE (alguns minutos).' : 'Imagens novas não pedidas: usando as imagens do produto.';
-    const check = pageCopyCheck(sections, ctx.page, plan);
-
+    const imageNote = !kie
+      ? KIE_MISSING_MESSAGE
+      : wantNew && !bucketOk
+        ? bucketMissingMessage(imagesBucket())
+        : wantNew
+          ? 'Imagens novas sendo feitas na KIE (alguns minutos).'
+          : 'Imagens novas não pedidas: usando as imagens do produto.';
+    const check = pageCopyCheck(sections, ctx, plan);
     const actor = await actorId(this.pool, userId);
-    const hid = await nextHumanId(this.pool);
-    const slug = slugify(f.product.name);
     const copyCheck = { checked_at: now, ...check, notes, images: { mode, message: imageNote }, plan: plan.map(p => ({ cta: p.cta })) };
-    const ins = await this.pool.query(
-      `INSERT INTO generated_pages (human_id, reference_id, product_id, offer_id, slug, status, sections, theme, copy_check, images_mode, generation_method, data_provenance, created_by)
-       VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6::jsonb, $7, $8::jsonb, $9, 'AI', 'COMMERCIAL_PRODUCTION', $10) RETURNING id`,
-      [hid, ref.id, f.product.id, f.offer.id, slug, JSON.stringify(sections), themeFor(f.product.name, f.offer.name), JSON.stringify(copyCheck), mode, actor]
-    );
-    const pageId = ins.rows[0].id as string;
 
-    let n = 0;
-    for (const a of ads) {
-      n++;
-      await this.insertAd(pageId, hid, n, a, adPlan, ref, f, ctx.ad, actor);
+    // página + anúncios numa transação só; slug repetido (raro) tenta de novo com outro
+    for (let attempt = 1; ; attempt++) {
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+        const hid = await nextHumanId(client);
+        const ins = await client.query(
+          `INSERT INTO generated_pages (human_id, reference_id, product_id, offer_id, slug, status, sections, theme, copy_check, images_mode, generation_method, data_provenance, created_by)
+           VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6::jsonb, $7, $8::jsonb, $9, 'AI', 'COMMERCIAL_PRODUCTION', $10) RETURNING id`,
+          [hid, ref.id, f.product.id, f.offer.id, slugify(f.product.name), JSON.stringify(sections), themeFor(f.product.name, f.offer.name), JSON.stringify(copyCheck), mode, actor]
+        );
+        const pageId = ins.rows[0].id as string;
+        let n = 0;
+        for (const a of ads) await this.insertAd(client, pageId, hid, ++n, a, adPlan, ref, f, ctx, actor);
+        await client.query('COMMIT');
+        await writeAuditLog(
+          this.pool, actor, 'GENERATED_PAGE_CREATED',
+          `Página ${hid} e ${ads.length} anúncio(s) gerados da referência ${ref.human_id} para ${f.product.name} (rascunho).`,
+          null, JSON.stringify({ sections: sections.length, ads: ads.length, blocked: check.blocked_count, images: mode }), false, false
+        );
+        return { id: pageId, imagesPending: mode === 'KIE' };
+      } catch (err: any) {
+        await client.query('ROLLBACK').catch(() => {});
+        const slugClash = err?.code === '23505' && /slug/i.test(String(err?.constraint || err?.detail || err?.message || ''));
+        if (!slugClash || attempt >= 3) throw err;
+      } finally {
+        client.release();
+      }
     }
-    await writeAuditLog(
-      this.pool, actor, 'GENERATED_PAGE_CREATED',
-      `Página ${hid} e ${ads.length} anúncio(s) gerados da referência ${ref.human_id} para ${f.product.name} (rascunho).`,
-      null, JSON.stringify({ sections: sections.length, ads: ads.length, blocked: check.blocked_count, images: mode }), false, false
-    );
-    return { id: pageId, imagesPending: mode === 'KIE' };
   }
 
   private async insertAd(
-    pageId: string, pageHid: string, n: number, a: GeneratedAd, p: AdPlan,
+    db: PoolClient, pageId: string, pageHid: string, n: number, a: GeneratedAd, p: AdPlan,
     ref: { id: string; human_id: string }, f: ProductFacts, ctx: CheckContext, actor: string | null
   ) {
     const key = `${pageHid}-A${n}`;
     const fields = adFields(a);
     const check = adCopyCheck(fields, ctx, a.removed_fields, a.retries);
     const hash = computeContentHash({ hook: a.hook, mechanism: null, cta: a.cta, format: p.format, script: fields.script, primary_text: a.primary_text, headline: a.headline, file_url: null });
-    const ins = await this.pool.query(
+    const ins = await db.query(
       `INSERT INTO creatives (
          human_id, product_id, offer_id, hook, concept, copy, cta, format, file_url, responsible_id, status, is_demo,
          batch_code, hook_family, angle, duration_seconds, primary_text, headline, script, generation_source, version,
@@ -1019,17 +1099,14 @@ export class GenerationService {
         p.hook_type, p.angle.slice(0, 500) || null, p.duration_s, a.headline, fields.script, hash, ref.id, pageId, a.description, JSON.stringify(check)
       ]
     );
-    await this.linkClaims(ins.rows[0].id, a.claim_ids, f);
+    await this.linkClaims(db, ins.rows[0].id, fields, f);
     return ins.rows[0].id as string;
   }
 
-  /** Liga ao criativo só as promessas aprovadas que o anúncio diz usar (C1, C2...). */
-  private async linkClaims(creativeId: string, codes: string[], f: ProductFacts) {
-    for (const code of codes) {
-      const m = /^C(\d{1,2})$/i.exec(String(code).trim());
-      const claim = m ? f.claims[Number(m[1]) - 1] : undefined;
-      if (!claim) continue;
-      await this.pool.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [creativeId, claim.id]);
+  /** Liga ao criativo só as promessas aprovadas cujo texto aparece inteiro no anúncio. */
+  private async linkClaims(db: Pool | PoolClient, creativeId: string, fields: Record<string, string>, f: ProductFacts) {
+    for (const c of claimsUsedIn(fields, f.claims)) {
+      await db.query('INSERT INTO creative_claims (creative_id, claim_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [creativeId, c.id]);
     }
   }
 
@@ -1039,31 +1116,46 @@ export class GenerationService {
     if (!r || (!includeDeleted && r.deleted_at)) throw new GenerationError(404, 'Página gerada não encontrada.');
     r.sections = parseJsonCol(r.sections, []) as GeneratedSection[];
     r.copy_check = parseJsonCol(r.copy_check, {});
+    r.version = Number(r.version) || 0;
     return r;
+  }
+
+  /** Grava as seções só se ninguém gravou antes (versão); tenta de novo com a página relida. */
+  private async updateSections(pageId: string, change: (sections: GeneratedSection[]) => GeneratedSection[] | null) {
+    for (let i = 0; i < 5; i++) {
+      const r = await this.row(pageId, true);
+      const next = change(r.sections as GeneratedSection[]);
+      if (!next) return;
+      const upd = await this.pool.query(
+        'UPDATE generated_pages SET sections = $1::jsonb, version = version + 1, updated_at = NOW() WHERE id = $2 AND version = $3 RETURNING id',
+        [JSON.stringify(next), pageId, r.version]
+      );
+      if (upd.rows.length) return;
+    }
+    throw new Error('A página mudou várias vezes seguidas; a imagem não foi gravada.');
   }
 
   /** Imagem nova que ficou presa (servidor reiniciou no meio): vira "falhou" e fica a do produto. */
   private async settleStaleImages(r: any) {
-    let changed = false;
-    const sections = (r.sections as GeneratedSection[]).map(s => {
-      if (s.image_status === 'PENDING' && s.image_started_at && Date.now() - new Date(s.image_started_at).getTime() > STALE_IMAGE_MS) {
-        changed = true;
-        return { ...s, image_status: 'FAILED' as GeneratedSection['image_status'], image_error: 'A imagem nova não ficou pronta a tempo.' };
-      }
-      return s;
-    });
-    if (changed) {
-      await this.pool.query('UPDATE generated_pages SET sections = $1::jsonb, updated_at = NOW() WHERE id = $2', [JSON.stringify(sections), r.id]);
-      r.sections = sections;
-    }
+    const stale = (s: GeneratedSection) =>
+      s.image_status === 'PENDING' && !!s.image_started_at && Date.now() - new Date(s.image_started_at).getTime() > STALE_IMAGE_MS;
+    if (!(r.sections as GeneratedSection[]).some(stale)) return;
+    await this.updateSections(r.id, secs =>
+      secs.some(stale) ? secs.map(s => (stale(s) ? { ...s, image_status: 'FAILED' as const, image_error: 'A imagem nova não ficou pronta a tempo.' } : s)) : null
+    );
+    const fresh = await this.row(r.id, true);
+    r.sections = fresh.sections;
   }
 
   private async contextFor(r: any) {
-    const ref = (await this.pool.query('SELECT source_shingles FROM creative_references WHERE id = $1', [r.reference_id])).rows[0];
+    const ref = r.reference_id ? (await this.pool.query('SELECT source_shingles FROM creative_references WHERE id = $1', [r.reference_id])).rows[0] : null;
     const shingles = ref ? (Array.isArray(ref.source_shingles) ? ref.source_shingles.map(String) : parseJsonCol(ref.source_shingles, [])) : [];
     const f = await loadFacts(this.pool, String(r.product_id), String(r.offer_id));
-    const usesGuarantee = (r.sections as GeneratedSection[]).some(s => s.role === 'GUARANTEE');
-    return { f, usesGuarantee, ctx: checkContexts(shingles, f, usesGuarantee) };
+    return { f, ctx: checkContext(shingles, f) };
+  }
+
+  private async liveOffer(offerId: string) {
+    return (await this.pool.query(`SELECT ${OFFER_COLS} FROM offers WHERE id = $1`, [offerId])).rows[0] || null;
   }
 
   async list(referenceId?: unknown) {
@@ -1097,8 +1189,14 @@ export class GenerationService {
         [id]
       )
     ).rows[0] || {};
+    const offer = r.offer_id ? await this.liveOffer(r.offer_id) : null;
+    const price = offer ? livePriceBlock(offer) : null;
     const sections = await Promise.all(
-      (r.sections as GeneratedSection[]).map(async s => ({ ...s, image_preview_url: await resolveImageUrl(s.image_url, 3600) }))
+      (r.sections as GeneratedSection[]).map(async s => ({
+        ...s,
+        image_preview_url: await resolveImageUrl(s.image_url, 3600),
+        price: s.role === 'OFFER_PRICE' && price ? { price_text: price.price_text, installments_text: price.installments_text } : null
+      }))
     );
     return {
       page: {
@@ -1168,20 +1266,29 @@ export class GenerationService {
     const plan = Array.isArray(prev.plan) ? prev.plan : null;
     const check = pageCopyCheck(sections, ctx, plan);
     const copyCheck = { ...prev, checked_at: new Date().toISOString(), fields: check.fields, blocked_count: check.blocked_count };
-    // mudou o conteúdo: volta para rascunho (precisa aprovar de novo)
-    await this.pool.query(
-      `UPDATE generated_pages SET sections = $1::jsonb, copy_check = $2::jsonb, status = 'DRAFT', approved_by = NULL, approved_at = NULL, updated_at = NOW() WHERE id = $3`,
-      [JSON.stringify(sections), JSON.stringify(copyCheck), r.id]
+    // mudou o conteúdo: volta para rascunho (precisa aprovar de novo). Só grava se ninguém gravou antes.
+    const upd = await this.pool.query(
+      `UPDATE generated_pages SET sections = $1::jsonb, copy_check = $2::jsonb, status = 'DRAFT', approved_by = NULL, approved_at = NULL,
+              version = version + 1, updated_at = NOW()
+       WHERE id = $3 AND version = $4 AND status <> 'PUBLISHED' RETURNING id`,
+      [JSON.stringify(sections), JSON.stringify(copyCheck), r.id, r.version]
     );
+    if (!upd.rows.length) throw new GenerationError(409, 'A página mudou enquanto você editava (ou foi publicada). Recarregue e tente de novo.');
     await writeAuditLog(this.pool, actor, 'GENERATED_PAGE_EDITED', `Página ${r.human_id}: ${what}.`, r.status, 'DRAFT', false, false);
+  }
+
+  private sectionAt(r: any, order: number) {
+    const idx = (r.sections as GeneratedSection[]).findIndex(s => s.order === Number(order));
+    if (idx === -1) throw new GenerationError(404, 'Seção não encontrada.');
+    const cur = r.sections[idx] as GeneratedSection;
+    if (cur.fixed) throw new GenerationError(409, 'Esta seção usa o texto das promessas aprovadas e não é editada aqui (mude a promessa na fábrica).');
+    return { idx, cur };
   }
 
   async editSection(id: string, order: number, changes: { headline?: unknown; body?: unknown; bullets?: unknown; cta_label?: unknown }, userId: string | null) {
     const r = await this.row(id);
     this.assertEditable(r);
-    const idx = (r.sections as GeneratedSection[]).findIndex(s => s.order === Number(order));
-    if (idx === -1) throw new GenerationError(404, 'Seção não encontrada.');
-    const cur = r.sections[idx] as GeneratedSection;
+    const { idx, cur } = this.sectionAt(r, order);
     const next: GeneratedSection = { ...cur, removed_fields: [...(cur.removed_fields || [])] };
     const take = (v: unknown, max: number, label: string) => {
       const s = String(v ?? '');
@@ -1203,7 +1310,7 @@ export class GenerationService {
     });
     const { ctx } = await this.contextFor(r);
     // só os campos que o dono mudou (o resto continua com o selo que já tinha)
-    const issues = sectionIssues({ ...next, removed_fields: [] }, ctx.page);
+    const issues = sectionIssues({ ...next, removed_fields: [] }, ctx);
     const touched = (Object.keys(changes) as Array<keyof typeof changes>).filter(k => changes[k] !== undefined).map(String);
     const list = Object.entries(issues)
       .filter(([k]) => touched.includes(k))
@@ -1212,7 +1319,7 @@ export class GenerationService {
     if (list.length) throw new GenerationError(422, `Não dá para salvar: ${list.map(i => i.detail).join('; ')}.`, list);
     const sections = [...r.sections];
     sections[idx] = next;
-    await this.saveSections(r, sections, ctx.page, await actorId(this.pool, userId), `seção ${order} editada`);
+    await this.saveSections(r, sections, ctx, await actorId(this.pool, userId), `seção ${order} editada`);
     return this.get(id);
   }
 
@@ -1220,28 +1327,26 @@ export class GenerationService {
     const r = await this.row(id);
     this.assertEditable(r);
     if (!generationAiConfigured()) throw new GenerationError(503, 'IA não configurada (OPENAI_API_KEY): não dá para gerar agora.');
-    const idx = (r.sections as GeneratedSection[]).findIndex(s => s.order === Number(order));
-    if (idx === -1) throw new GenerationError(404, 'Seção não encontrada.');
-    const cur = r.sections[idx] as GeneratedSection;
-    const { f, usesGuarantee, ctx } = await this.contextFor(r);
+    const { idx, cur } = this.sectionAt(r, order);
+    takeRate(userId, 'regenerate');
+    const { f, ctx } = await this.contextFor(r);
     const plan = Array.isArray(r.copy_check?.plan) ? r.copy_check.plan : [];
     const ref = r.reference_id ? (await this.pool.query('SELECT structure FROM creative_references WHERE id = $1', [r.reference_id])).rows[0] : null;
     const structure = ref ? (parseJsonCol(ref.structure, null) as ReferenceStructure | null) : null;
     const refSec = structure && structure.kind === 'SALES_PAGE' ? structure.sections.find(s => s.order === cur.ref_order) : undefined;
-    const item: PlanItem = {
+    const it = item(cur.role, {
       ref_order: cur.ref_order,
-      role: cur.role,
       purpose: refSec?.purpose || ROLE_PURPOSE[cur.role],
       headline_style: refSec?.headline_style || 'STATEMENT',
       approx_words: refSec?.approx_words || 60,
       has_image: cur.image_status !== 'NONE',
       cta: plan[idx] ? !!plan[idx].cta : !!cur.cta_label,
       replaced_from: cur.replaced_from
-    };
-    const next = await writeSectionWithRetries(cur, item, idx, f, ctx.page, usesGuarantee, true);
+    });
+    const next = await writeSectionWithRetries(cur, it, idx, f, ctx, true);
     const sections = [...r.sections];
     sections[idx] = { ...next, image_url: cur.image_url, image_status: cur.image_status, image_started_at: cur.image_started_at, image_error: cur.image_error };
-    await this.saveSections(r, sections, ctx.page, await actorId(this.pool, userId), `seção ${order} gerada de novo`);
+    await this.saveSections(r, sections, ctx, await actorId(this.pool, userId), `seção ${order} gerada de novo`);
     return this.get(id);
   }
 
@@ -1258,11 +1363,16 @@ export class GenerationService {
     if (r.status !== 'DRAFT') throw new GenerationError(409, r.status === 'PUBLISHED' ? 'A página já está no ar.' : 'A página já está aprovada.');
     if ((r.sections as GeneratedSection[]).some(s => s.image_status === 'PENDING')) throw new GenerationError(409, 'Espere as imagens novas ficarem prontas.');
     const { ctx } = await this.contextFor(r);
-    const blocked = this.blockedNow(r, ctx.page);
+    const blocked = this.blockedNow(r, ctx);
     if (blocked.length) throw new GenerationError(409, `Aprovação bloqueada: ${blocked.slice(0, 5).join('; ')}.`);
     if (!(r.sections as GeneratedSection[]).some(s => s.cta_label.trim())) throw new GenerationError(409, 'A página precisa de pelo menos um botão de compra.');
     const actor = await actorId(this.pool, userId);
-    await this.pool.query(`UPDATE generated_pages SET status = 'APPROVED', approved_by = $2, approved_at = NOW(), updated_at = NOW() WHERE id = $1`, [id, actor]);
+    const upd = await this.pool.query(
+      `UPDATE generated_pages SET status = 'APPROVED', approved_by = $2, approved_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND version = $3 AND status = 'DRAFT' RETURNING id`,
+      [id, actor, r.version]
+    );
+    if (!upd.rows.length) throw new GenerationError(409, 'A página mudou enquanto você aprovava. Recarregue e confira de novo.');
     await writeAuditLog(this.pool, actor, 'GENERATED_PAGE_APPROVED', `Página ${r.human_id} aprovada.`, 'DRAFT', 'APPROVED', false, false);
     return this.get(id);
   }
@@ -1272,18 +1382,20 @@ export class GenerationService {
     if (r.status === 'PUBLISHED') throw new GenerationError(409, 'A página já está no ar.');
     if (!r.approved_at || (r.status !== 'APPROVED' && r.status !== 'UNPUBLISHED')) throw new GenerationError(409, 'Aprove a página antes de publicar.');
     if ((r.sections as GeneratedSection[]).some(s => s.image_status === 'PENDING')) throw new GenerationError(409, 'Espere as imagens novas ficarem prontas.');
-    const offer = (await this.pool.query('SELECT status FROM offers WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE', [r.offer_id])).rows[0];
+    const offer = (await this.pool.query('SELECT status FROM offers WHERE id = $1 AND deleted_at IS NULL AND COALESCE(is_deleted, FALSE) = FALSE AND is_demo = FALSE', [r.offer_id])).rows[0];
     if (!offer || (offer.status !== 'ATIVA' && offer.status !== 'TESTE')) {
       throw new GenerationError(409, 'A oferta desta página não está à venda (precisa estar ativa ou em teste).');
     }
     const { ctx } = await this.contextFor(r);
-    const blocked = this.blockedNow(r, ctx.page);
+    const blocked = this.blockedNow(r, ctx);
     if (blocked.length) throw new GenerationError(409, `Publicação bloqueada: ${blocked.slice(0, 5).join('; ')}.`);
     const actor = await actorId(this.pool, userId);
-    await this.pool.query(
-      `UPDATE generated_pages SET status = 'PUBLISHED', published_by = $2, published_at = NOW(), unpublished_at = NULL, updated_at = NOW() WHERE id = $1`,
-      [id, actor]
+    const upd = await this.pool.query(
+      `UPDATE generated_pages SET status = 'PUBLISHED', published_by = $2, published_at = NOW(), unpublished_at = NULL, version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND version = $3 RETURNING id`,
+      [id, actor, r.version]
     );
+    if (!upd.rows.length) throw new GenerationError(409, 'A página mudou enquanto você publicava. Recarregue e confira de novo.');
     await writeAuditLog(this.pool, actor, 'GENERATED_PAGE_PUBLISHED', `Página ${r.human_id} publicada em /v/${r.slug}.`, r.status, 'PUBLISHED', false, false);
     return this.get(id);
   }
@@ -1292,7 +1404,7 @@ export class GenerationService {
     const r = await this.row(id);
     if (r.status !== 'PUBLISHED') throw new GenerationError(409, 'A página não está no ar.');
     const actor = await actorId(this.pool, userId);
-    await this.pool.query(`UPDATE generated_pages SET status = 'UNPUBLISHED', unpublished_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
+    await this.pool.query(`UPDATE generated_pages SET status = 'UNPUBLISHED', unpublished_at = NOW(), version = version + 1, updated_at = NOW() WHERE id = $1`, [id]);
     await writeAuditLog(this.pool, actor, 'GENERATED_PAGE_UNPUBLISHED', `Página ${r.human_id} tirada do ar.`, 'PUBLISHED', 'UNPUBLISHED', false, false);
     return this.get(id);
   }
@@ -1325,59 +1437,54 @@ export class GenerationService {
     return c;
   }
 
-  /** Grava a mudança pela fábrica (versão nova quando já foi revisado) e liga a versão à página. */
-  private async reviseAd(r: any, cur: any, next: Record<AdField, string>, check: any, claimCodes: string[] | null, f: ProductFacts, userId: string | null) {
-    const factory = new CreativeFactoryService();
-    let out: any;
-    const changes = { hook: next.hook, primary_text: next.primary_text, headline: next.headline, cta: next.cta, script: next.script };
+  /** Grava a mudança pela fábrica, com a checagem e a descrição na MESMA operação (versão nova quando já foi revisado). */
+  private async reviseAd(cur: any, next: Record<AdField, string>, check: any, f: ProductFacts, userId: string | null) {
     const sameCopy =
       (cur.hook || '') === next.hook && (cur.primary_text || '') === next.primary_text && (cur.headline || '') === next.headline &&
       (cur.cta || '') === next.cta && (cur.script || '') === next.script;
+    let newId: string = cur.id;
     if (sameCopy) {
       if ((cur.ad_description || '') === next.description) throw new GenerationError(400, 'Nenhuma alteração no anúncio.');
       if (cur.approval_status === 'APPROVED') {
         throw new GenerationError(409, 'Anúncio aprovado: para mudar só a descrição, mude também o texto ou gere de novo (vira uma versão nova para aprovar).');
       }
-      out = { creative: { id: cur.id } };
+      await this.pool.query('UPDATE creatives SET ad_description = $2, copy_check = $3::jsonb, updated_at = NOW() WHERE id = $1', [cur.id, next.description, JSON.stringify(check)]);
     } else {
       try {
-        out = await factory.reviseCreative(this.pool, cur.id, changes, await actorId(this.pool, userId), false);
+        const out = await new CreativeFactoryService().reviseCreative(
+          this.pool,
+          cur.id,
+          { hook: next.hook, primary_text: next.primary_text, headline: next.headline, cta: next.cta, script: next.script },
+          await actorId(this.pool, userId),
+          false,
+          { copyCheck: check, adDescription: next.description }
+        );
+        newId = (out as any)?.creative?.id || cur.id;
       } catch (e: any) {
         if (e instanceof CreativeFactoryError) throw new GenerationError(e.status, e.message);
         throw e;
       }
     }
-    const newId = out?.creative?.id || cur.id;
-    await this.pool.query(
-      'UPDATE creatives SET reference_id = $2, generated_page_id = $3, ad_description = $4, copy_check = $5::jsonb, updated_at = NOW() WHERE id = $1',
-      [newId, r.reference_id, r.id, next.description, JSON.stringify(check)]
-    );
-    if (claimCodes) await this.linkClaims(newId, claimCodes, f);
-    return newId as string;
+    await this.linkClaims(this.pool, newId, next, f);
+    return newId;
   }
 
   async editAd(pageId: string, creativeId: string, changes: Record<string, unknown>, userId: string | null) {
     const r = await this.row(pageId);
     const cur = await this.adOfPage(pageId, creativeId);
-    const next: Record<AdField, string> = {
-      hook: changes.hook !== undefined ? String(changes.hook ?? '').trim() : cur.hook || '',
-      primary_text: changes.primary_text !== undefined ? String(changes.primary_text ?? '').trim() : cur.primary_text || '',
-      headline: changes.headline !== undefined ? String(changes.headline ?? '').trim() : cur.headline || '',
-      description: changes.description !== undefined ? String(changes.description ?? '').trim() : cur.ad_description || '',
-      cta: changes.cta !== undefined ? String(changes.cta ?? '').trim() : cur.cta || '',
-      script: changes.script !== undefined ? String(changes.script ?? '').trim() : cur.script || ''
-    };
-    const lim: Record<AdField, number> = { hook: LIMITS.hook, primary_text: LIMITS.primary, headline: LIMITS.adHeadline, description: LIMITS.description, cta: LIMITS.cta, script: 3000 };
-    for (const k of AD_FIELDS) if (next[k].length > lim[k]) throw new GenerationError(400, `Texto longo demais (${k}: até ${lim[k]} caracteres).`);
-    const { f, ctx } = await this.contextFor(r);
-    // só os campos que mudaram (os outros continuam com o selo que já tinham)
     const before: Record<AdField, string> = {
       hook: cur.hook || '', primary_text: cur.primary_text || '', headline: cur.headline || '', description: cur.ad_description || '', cta: cur.cta || '', script: cur.script || ''
     };
-    const issues = adIssues(next, ctx.ad);
+    const next = { ...before };
+    for (const k of AD_FIELDS) if (changes[k] !== undefined) next[k] = String(changes[k] ?? '').trim();
+    const lim: Record<AdField, number> = { hook: LIMITS.hook, primary_text: LIMITS.primary, headline: LIMITS.adHeadline, description: LIMITS.description, cta: LIMITS.cta, script: LIMITS.script };
+    for (const k of AD_FIELDS) if (next[k].length > lim[k]) throw new GenerationError(400, `Texto longo demais (${k}: até ${lim[k]} caracteres).`);
+    const { f, ctx } = await this.contextFor(r);
+    // só os campos que mudaram (os outros continuam com o selo que já tinham)
+    const issues = adIssues(next, ctx);
     const list = AD_FIELDS.filter(k => next[k] !== before[k]).flatMap(k => issues[k]);
     if (list.length) throw new GenerationError(422, `Não dá para salvar: ${list.map(i => i.detail).join('; ')}.`, list);
-    await this.reviseAd(r, cur, next, adCopyCheck(next, ctx.ad), null, f, userId);
+    await this.reviseAd(cur, next, adCopyCheck(next, ctx), f, userId);
     return this.get(pageId);
   }
 
@@ -1385,32 +1492,57 @@ export class GenerationService {
     const r = await this.row(pageId);
     if (!generationAiConfigured()) throw new GenerationError(503, 'IA não configurada (OPENAI_API_KEY): não dá para gerar agora.');
     const cur = await this.adOfPage(pageId, creativeId);
+    takeRate(userId, 'regenerate');
     const { f, ctx } = await this.contextFor(r);
     const ref = r.reference_id ? (await this.pool.query('SELECT structure FROM creative_references WHERE id = $1', [r.reference_id])).rows[0] : null;
     const adPlan = buildAdPlan(ref ? (parseJsonCol(ref.structure, null) as ReferenceStructure | null) : null);
-    const g = await writeOneAdWithRetries(null, adPlan, f, ctx.ad);
+    const g = await writeOneAdWithRetries(null, adPlan, f, ctx);
     if (!g) throw new GenerationError(502, 'A IA não devolveu um anúncio válido. Tente de novo.');
     if (g.removed_fields.some(x => x === 'hook' || x === 'primary_text' || x === 'cta')) {
       throw new GenerationError(409, 'Não deu para gerar um anúncio diferente da referência agora. Tente de novo ou escreva à mão.');
     }
     const fields = adFields(g);
-    await this.reviseAd(r, cur, fields, adCopyCheck(fields, ctx.ad, g.removed_fields, g.retries), g.claim_ids, f, userId);
+    await this.reviseAd(cur, fields, adCopyCheck(fields, ctx, g.removed_fields, g.retries), f, userId);
     return this.get(pageId);
+  }
+
+  /**
+   * Checagem na hora da aprovação pela fábrica (registrada em setGeneratedAdChecker): roda de novo sobre o texto atual
+   * do criativo e grava o resultado. Qualquer erro bloqueia.
+   */
+  async checkCreative(c: any): Promise<{ blocked: boolean; message: string }> {
+    try {
+      let pageId = c.generated_page_id || null;
+      if (!pageId && c.root_creative_id) {
+        pageId = (await this.pool.query('SELECT generated_page_id FROM creatives WHERE id = $1', [c.root_creative_id])).rows[0]?.generated_page_id || null;
+      }
+      if (!pageId) return { blocked: true, message: 'anúncio gerado sem a página de origem.' };
+      const r = await this.row(String(pageId), true);
+      const { ctx } = await this.contextFor(r);
+      const fields: Record<AdField, string> = {
+        hook: c.hook || '', primary_text: c.primary_text ?? c.copy ?? '', headline: c.headline || '', description: c.ad_description || '', cta: c.cta || '', script: c.script || ''
+      };
+      const check = adCopyCheck(fields, ctx);
+      await this.pool.query('UPDATE creatives SET copy_check = $2::jsonb WHERE id = $1', [c.id, JSON.stringify(check)]);
+      if (!check.blocked) return { blocked: false, message: '' };
+      const parts = AD_FIELDS.filter(k => !check.fields[k].ok).map(k => `${k}: ${check.fields[k].issues.map(i => i.detail).join(', ')}`);
+      return { blocked: true, message: `o texto do anúncio não passou na checagem (${parts.join('; ')}). Edite ou gere de novo.` };
+    } catch (err: any) {
+      return { blocked: true, message: `não foi possível conferir o anúncio gerado (${err?.message || 'erro'}).` };
+    }
   }
 
   // ----- imagens novas (KIE), em segundo plano -----
 
   async runImageJob(pageId: string): Promise<void> {
     const r = await this.row(pageId, true);
-    const style = imageStyle(
-      (await this.pool.query('SELECT name, collection_key, category FROM products WHERE id = $1', [r.product_id])).rows[0] || {}
-    );
-    const productName = (await this.pool.query('SELECT name FROM products WHERE id = $1', [r.product_id])).rows[0]?.name || '';
+    const prod = (await this.pool.query('SELECT name, collection_key, category FROM products WHERE id = $1', [r.product_id])).rows[0] || {};
+    const style = imageStyle(prod);
     const pending = (r.sections as GeneratedSection[]).filter(s => s.image_status === 'PENDING');
     for (const s of pending) {
       let patch: Partial<GeneratedSection>;
       try {
-        const scene = s.image_prompt || `${productName}: ${ROLE_PURPOSE[s.role]}`;
+        const scene = s.image_prompt || `${prod.name || ''}: ${ROLE_PURPOSE[s.role]}`;
         const img = await generateKieImage(`${scene}. ${style}`, '3:2');
         const ext = img.mime === 'image/jpeg' ? 'jpg' : img.mime === 'image/webp' ? 'webp' : 'png';
         const path = `generated/${r.id}/${s.order}-${Date.now()}.${ext}`;
@@ -1420,37 +1552,48 @@ export class GenerationService {
       } catch (err: any) {
         patch = { image_status: 'FAILED', image_error: String(err?.message || 'A imagem nova falhou.').slice(0, 300) };
       }
-      // relê a página: o dono pode ter editado enquanto a imagem era feita
-      const fresh = await this.row(pageId, true);
-      const sections = (fresh.sections as GeneratedSection[]).map(x => (x.order === s.order && x.image_status === 'PENDING' ? { ...x, ...patch } : x));
-      await this.pool.query('UPDATE generated_pages SET sections = $1::jsonb, updated_at = NOW() WHERE id = $2', [JSON.stringify(sections), pageId]);
+      // só esta vaga, e só se ela ainda é a mesma imagem pedida (o dono pode ter editado enquanto isso)
+      await this.updateSections(pageId, secs => {
+        const i = secs.findIndex(x => x.order === s.order && x.image_status === 'PENDING' && x.image_started_at === s.image_started_at);
+        if (i === -1) return null;
+        const out = [...secs];
+        out[i] = { ...secs[i], ...patch };
+        return out;
+      });
     }
   }
 
   // ----- página pública -----
 
-  /** Só páginas PUBLICADAS, só campos seguros (sem verificação, sem referência, sem quem fez). */
+  /** Só páginas PUBLICADAS, só campos seguros. Preço e parcelas vêm da oferta agora (mesma conta do pagamento). */
   async publicPage(slug: string) {
     const s = String(slug || '').trim().toLowerCase();
     if (!/^[a-z0-9-]{3,120}$/.test(s)) throw new GenerationError(404, 'Página não encontrada.');
     const r = (
       await this.pool.query(
-        `SELECT g.id, g.slug, g.theme, g.sections, g.offer_id, o.human_id AS offer_human_id, o.status AS offer_status, p.name AS product_name
-         FROM generated_pages g JOIN offers o ON o.id = g.offer_id LEFT JOIN products p ON p.id = g.product_id
-         WHERE g.slug = $1 AND g.status = 'PUBLISHED' AND g.deleted_at IS NULL AND o.deleted_at IS NULL AND COALESCE(o.is_deleted, FALSE) = FALSE`,
+        `SELECT g.id, g.slug, g.theme, g.sections, g.offer_id, p.name AS product_name
+         FROM generated_pages g JOIN offers o ON o.id = g.offer_id JOIN products p ON p.id = g.product_id
+         WHERE g.slug = $1 AND g.status = 'PUBLISHED' AND g.deleted_at IS NULL
+           AND o.deleted_at IS NULL AND COALESCE(o.is_deleted, FALSE) = FALSE AND o.is_demo = FALSE AND o.status IN ('ATIVA', 'TESTE')
+           AND p.deleted_at IS NULL AND COALESCE(p.is_deleted, FALSE) = FALSE AND p.is_demo = FALSE`,
         [s]
       )
     ).rows[0];
-    if (!r || (r.offer_status !== 'ATIVA' && r.offer_status !== 'TESTE')) throw new GenerationError(404, 'Página não encontrada.');
+    if (!r) throw new GenerationError(404, 'Página não encontrada.');
+    const offer = await this.liveOffer(r.offer_id);
+    if (!offer) throw new GenerationError(404, 'Página não encontrada.');
+    const price = livePriceBlock(offer);
     const sections = parseJsonCol(r.sections, []) as GeneratedSection[];
     return {
       slug: r.slug,
       theme: r.theme === 'fresh' ? 'fresh' : 'light',
       title: r.product_name || '',
-      offer: { human_id: r.offer_human_id },
+      offer: { human_id: String(offer.human_id), value: price.value },
       offer_id: r.offer_id as string,
-      sections: await Promise.all(sections.map(async x => PUBLIC_SECTION(x, await resolveImageUrl(x.image_url))))
+      sections: await Promise.all(sections.map(async x => PUBLIC_SECTION(x, await resolveImageUrl(x.image_url), price)))
     };
   }
 }
 
+// a fábrica de criativos confere o anúncio gerado de novo na hora de aprovar (sem import circular)
+setGeneratedAdChecker((pool, creative) => new GenerationService(pool).checkCreative(creative));

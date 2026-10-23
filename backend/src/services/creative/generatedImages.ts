@@ -110,7 +110,11 @@ export function sniffImage(buf: Buffer): string | null {
 export interface ImageStorage {
   upload(bucket: string, path: string, data: Buffer, mime: string): Promise<void>;
   signedUrl(bucket: string, path: string, ttlSeconds: number): Promise<string>;
+  /** O bucket existe? (antes de gastar créditos na KIE) */
+  bucketExists(bucket: string): Promise<boolean>;
 }
+
+export const bucketMissingMessage = (bucket: string) => `Falta criar o bucket ${bucket} no Supabase: usando as imagens do produto.`;
 
 export function imagesBucket(): string {
   return (process.env.CREATIVE_IMAGES_BUCKET || '').trim() || 'creative-images';
@@ -126,6 +130,14 @@ function supabaseConfig() {
 }
 
 const supabaseImages: ImageStorage = {
+  async bucketExists(bucket) {
+    if (process.env.NODE_ENV === 'test') throw new Error('STORAGE_DISABLED_IN_TESTS');
+    const { url, key } = supabaseConfig();
+    const r = await fetch(`${url}/storage/v1/bucket/${encodeURIComponent(bucket)}`, { method: 'GET', headers: { Authorization: `Bearer ${key}`, apikey: key } });
+    if (r.ok) return true;
+    if (r.status === 404 || r.status === 400) return false;
+    throw new Error(`O armazenamento não respondeu como esperado (status ${r.status}).`);
+  },
   async upload(bucket, path, data, mime) {
     if (process.env.NODE_ENV === 'test') throw new Error('STORAGE_DISABLED_IN_TESTS');
     const { url, key } = supabaseConfig();
@@ -153,9 +165,24 @@ const supabaseImages: ImageStorage = {
 };
 
 let storage: ImageStorage = supabaseImages;
+
+// links assinados guardados por 50 minutos (assinados para valer pelo menos 1 h)
+const SIGNED_CACHE_MS = 50 * 60 * 1000;
+const signedCache = new Map<string, { url: string; until: number }>();
+
+/** Bucket existe? Erro de rede ou configuração conta como "não". */
+export async function imagesBucketReady(): Promise<boolean> {
+  try {
+    return await storage.bucketExists(imagesBucket());
+  } catch (err: any) {
+    console.warn('[geração] bucket das imagens não conferido:', err?.message || err);
+    return false;
+  }
+}
 /** Só para testes: armazenamento simulado. */
 export function setImageStorageForTests(s: ImageStorage | null) {
   storage = s || supabaseImages;
+  signedCache.clear();
 }
 export function imageStorage(): ImageStorage {
   return storage;
@@ -170,8 +197,13 @@ export async function resolveImageUrl(raw: unknown, ttlSeconds = 24 * 3600): Pro
   const rest = v.slice(STORAGE_PREFIX.length);
   const slash = rest.indexOf('/');
   if (slash <= 0) return null;
+  const hit = signedCache.get(rest);
+  if (hit && hit.until > Date.now()) return hit.url;
   try {
-    return await storage.signedUrl(rest.slice(0, slash), rest.slice(slash + 1), ttlSeconds);
+    const url = await storage.signedUrl(rest.slice(0, slash), rest.slice(slash + 1), Math.max(3600, ttlSeconds));
+    signedCache.set(rest, { url, until: Date.now() + SIGNED_CACHE_MS });
+    if (signedCache.size > 2000) signedCache.delete(signedCache.keys().next().value as string);
+    return url;
   } catch (err: any) {
     console.warn('[geração] imagem sem link assinado:', err?.message || err);
     return null;

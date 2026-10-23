@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS generated_pages (
   copy_check JSONB,
   images_mode VARCHAR(20),
   generation_method VARCHAR(20),
+  version INTEGER NOT NULL DEFAULT 0,
   data_provenance VARCHAR(50) NOT NULL DEFAULT 'COMMERCIAL_PRODUCTION',
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
