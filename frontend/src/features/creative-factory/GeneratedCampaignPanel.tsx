@@ -63,9 +63,12 @@ export const GeneratedCampaignPanel: React.FC<{
   }, [load, pageStatus]);
 
   const published = pageStatus === 'PUBLISHED';
-  const readyAds = (ads || []).filter(adLooksReady);
+  // a palavra final é do servidor (checagem refeita lá); sem resposta ainda, usa o que a tela sabe
+  const serverAds: any[] | null = data && Array.isArray(data.ads) && (!data.plan || data.rebuildable) ? data.ads : null;
+  const readyAds = serverAds ? serverAds.filter(a => a.ready) : (ads || []).filter(adLooksReady);
   const canCreate = published && readyAds.length > 0;
   const plan = data?.plan || null;
+  const rebuildable = !!data?.rebuildable;
   const why = !published ? 'Publique a página antes.' : readyAds.length === 0 ? 'Aprove pelo menos um anúncio (sem bloqueio na checagem).' : null;
 
   const submit = async (e: React.FormEvent) => {
@@ -102,7 +105,7 @@ export const GeneratedCampaignPanel: React.FC<{
 
   return (
     <Section title="Campanha na Meta" testId="generated-campaign">
-      {plan ? (
+      {plan && !open ? (
         <Surface className="p-4 space-y-2" as="div">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-nq-body font-semibold text-nq-text" data-testid="campaign-plan-code">
@@ -112,6 +115,8 @@ export const GeneratedCampaignPanel: React.FC<{
           </div>
           <p className="text-nq-aux text-nq-muted break-words">{plan?.spec?.campaign?.name}</p>
           {plan.last_error && <p className="text-nq-aux text-nq-critical-text break-words">{plan.last_error}</p>}
+          {rebuildable && <p className="text-nq-caption text-nq-subtle">Nada desta campanha está na Meta ainda: dá para montar de novo com os anúncios e valores atuais.</p>}
+          {plan.status !== 'DRAFT' && !rebuildable && plan.status !== 'FAILED' && <p className="text-nq-caption text-nq-subtle">A campanha já está na Meta: continue em Campanhas.</p>}
           {(message || (plan.status === 'DRAFT' && data && !data.mutation_enabled)) && (
             <p className="text-nq-aux text-nq-attention" data-testid="campaign-message">
               {message || 'Cadastro na Meta desligado: o plano ficou só em rascunho no NORQVA.'}
@@ -122,9 +127,20 @@ export const GeneratedCampaignPanel: React.FC<{
             <button type="button" onClick={openManage} className={`${pill} bg-nq-raised text-nq-text inline-flex items-center gap-1.5`} data-testid="open-manage">
               <ExternalLink className="h-4 w-4" /> Abrir em Gerenciar campanha
             </button>
-            {(plan.status === 'DRAFT' || plan.status === 'FAILED') && data?.mutation_enabled && (
+            {plan.status === 'FAILED' && !rebuildable && data?.mutation_enabled && (
               <button type="button" disabled={busy} onClick={e => submit(e as any)} className={`${pill} bg-nq-positive text-nq-on-positive`}>
-                {busy ? 'Criando...' : 'Criar na Meta (pausada)'}
+                {busy ? 'Criando...' : 'Continuar na Meta (pausada)'}
+              </button>
+            )}
+            {rebuildable && (
+              <button
+                type="button"
+                disabled={busy || !canCreate}
+                onClick={() => setOpen(true)}
+                data-testid="rebuild-campaign"
+                className={`${pill} bg-nq-positive text-nq-on-positive`}
+              >
+                Montar de novo
               </button>
             )}
           </div>
@@ -191,7 +207,7 @@ export const GeneratedCampaignPanel: React.FC<{
                 Cancelar
               </button>
               <button type="submit" disabled={busy} data-testid="campaign-submit" className={`${pill} bg-nq-positive text-nq-on-positive`}>
-                {busy ? 'Criando...' : 'Criar pausada'}
+                {busy ? 'Criando...' : plan ? (data?.mutation_enabled ? 'Montar de novo e criar pausada' : 'Montar de novo') : 'Criar pausada'}
               </button>
             </div>
           </form>

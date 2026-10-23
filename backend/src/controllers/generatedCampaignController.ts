@@ -30,12 +30,12 @@ export async function postGeneratedCampaign(req: AuthenticatedRequest, res: Resp
   const pool = req.app.get('db') as Pool;
   const userId = req.user?.id || null;
   try {
-    const { plan, existing } = await svc(req).draft(String(req.params.id), req.body || {}, userId);
-    if (GeneratedCampaignService.alreadyCreated(plan)) {
-      return res.status(200).json({ plan, existing: true, message: `Esta página já tem a campanha ${plan.code}.` });
+    const { plan, existing, rebuilt, message } = await svc(req).draft(String(req.params.id), req.body || {}, userId);
+    if (GeneratedCampaignService.nothingToCreate(plan)) {
+      return res.status(200).json({ plan, existing: true, message: message || `Esta página já tem a campanha ${plan.code}.` });
     }
     if (!GeneratedCampaignService.mutationEnabled()) {
-      return res.status(200).json({ plan, existing, meta: 'DISABLED', message: MUTATION_DISABLED_MESSAGE });
+      return res.status(200).json({ plan, existing, rebuilt: !!rebuilt, meta: 'DISABLED', message: MUTATION_DISABLED_MESSAGE });
     }
     const out = await createPlanOnMetaAudited(req, plan.id);
     if (out.status !== 200) {
@@ -47,7 +47,7 @@ export async function postGeneratedCampaign(req: AuthenticatedRequest, res: Resp
       `Campanha ${plan.code} criada na Meta, toda PAUSADA, a partir de uma página gerada. Ativar só pelo Sim do plano.`,
       null, JSON.stringify({ plan_id: plan.id, meta_ids: out.body?.plan?.meta_ids || null }), false, false
     );
-    return res.status(200).json({ plan: out.body.plan, existing, created: true });
+    return res.status(200).json({ plan: out.body.plan, existing, rebuilt: !!rebuilt, created: true });
   } catch (e) {
     return fail(res, e, 'Não foi possível criar a campanha.');
   }

@@ -10,7 +10,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
 import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
-import { OFFICIAL_NORQVA_PIXEL_ID } from '../meta/metaMutatingClient';
+import { OFFICIAL_NORQVA_PIXEL_ID, isGeneratedPageUrl } from '../meta/metaMutatingClient';
 import {
   LaunchPlanError,
   ALLOWED_CTA_TYPES,
@@ -166,7 +166,7 @@ async function saveSpec(pool: Pool, row: any, spec: any, maxSpend: number, extra
     // NORQVA-0052: a pergunta de ativação acompanha o teto atual
     question_text: Number(row.max_spend_brl) === Number(maxSpend) ? row.question_text : refreshQuestionText(row.question_text, maxSpend),
     spec
-  });
+  }, { allowGeneratedPage: !!row.generated_page_id });
   const upd = await pool.query(
     `UPDATE launch_plans
      SET spec = $2, daily_budget_brl = $3, max_spend_brl = $4, question_text = $8,
@@ -527,6 +527,13 @@ export async function assertAdsReadyForMeta(pool: Pool, planId: string): Promise
   if (!['DRAFT', 'FAILED', 'CREATING'].includes(row.status)) return; // já criado: nada novo vai para a Meta
   // NORQVA-0117: campanha de página gerada (anúncios de imagem) tem a conferência própria
   if (row.generated_page_id) return assertGeneratedPlanReady(pool, planId);
+  // NORQVA-0117: plano comum nunca leva à página gerada (/v/)
+  const destSpec = obj(row.spec);
+  for (const a of Array.isArray(destSpec.ads) ? destSpec.ads : []) {
+    if (isGeneratedPageUrl(String(a?.destination_url || ''))) {
+      throw new LaunchPlanError(409, `Anúncio ${a?.name || ''}: o destino /v/ (página gerada) só vale para campanha criada na tela de geração.`);
+    }
+  }
   const offer = await offerOf(pool, row.offer_human_id);
   if (!offer) throw new LaunchPlanError(409, `Oferta ${row.offer_human_id} não encontrada.`);
   const spec = obj(row.spec);

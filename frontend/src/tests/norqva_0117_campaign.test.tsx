@@ -9,7 +9,8 @@ const overview = (over: any = {}) => ({
   page: { id: 'g1', human_id: 'GEN-000001', status: 'PUBLISHED', url: 'https://acesso.norqva.com.br/v/livro-abc123' },
   mutation_enabled: true,
   images: 2,
-  ads: [],
+  rebuildable: false,
+  ads: [{ id: 'c1', human_id: 'GEN-000001-A1', ready: true, reason: null }],
   defaults: { campaign_name: 'NQ – Trattoria – Ref REF-000001 – Vendas', daily_budget_brl: 30, max_spend_brl: 210, age_min: 25, age_max: 65, min_daily_budget_brl: 5, max_daily_budget_brl: 100 },
   ...over
 });
@@ -23,14 +24,34 @@ describe('NORQVA-0117 — Criar campanha pausada', () => {
     expect(adLooksReady({ ...approved, approval_status: 'DRAFT' })).toBe(false);
   });
 
-  it('desligado enquanto a página não está no ar ou sem anúncio aprovado', async () => {
-    const apiFetch = vi.fn().mockResolvedValue(overview());
+  it('desligado enquanto a página não está no ar ou sem anúncio liberado (palavra do servidor)', async () => {
+    const apiFetch = vi.fn().mockResolvedValue(overview({ ads: [{ id: 'c1', ready: false, reason: 'checagem vencida' }] }));
     const { rerender } = render(<GeneratedCampaignPanel apiFetch={apiFetch} pageId="g1" pageStatus="APPROVED" ads={[approved]} showError={vi.fn()} showSuccess={vi.fn()} />);
     expect(await screen.findByTestId('create-paused-campaign')).toBeDisabled();
     expect(screen.getByTestId('campaign-why')).toHaveTextContent('Publique a página');
     rerender(<GeneratedCampaignPanel apiFetch={apiFetch} pageId="g1" pageStatus="PUBLISHED" ads={[{ ...approved, copy_check: { stale: true } }]} showError={vi.fn()} showSuccess={vi.fn()} />);
     expect(screen.getByTestId('create-paused-campaign')).toBeDisabled();
     expect(screen.getByTestId('campaign-why')).toHaveTextContent('Aprove pelo menos um anúncio');
+  });
+
+  it('plano em rascunho sem nada na Meta: "Montar de novo" abre o formulário e manda de novo', async () => {
+    const plan = { id: 'p1', code: 'CMP-GEN-000001', status: 'REJECTED', spec: { campaign: { name: 'NQ' } }, meta_ids: {} };
+    const apiFetch = vi.fn().mockImplementation((url: string, opts?: any) =>
+      Promise.resolve(opts?.method === 'POST' ? { plan: { ...plan, status: 'AWAITING_OPERATOR' }, rebuilt: true, created: true } : overview({ plan, rebuildable: true }))
+    );
+    render(<GeneratedCampaignPanel apiFetch={apiFetch} pageId="g1" pageStatus="PUBLISHED" ads={[approved]} showError={vi.fn()} showSuccess={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId('rebuild-campaign'));
+    expect(screen.getByTestId('campaign-submit')).toHaveTextContent('Montar de novo e criar pausada');
+    fireEvent.click(screen.getByTestId('campaign-submit'));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/generated-pages/g1/campaign', expect.objectContaining({ method: 'POST' })));
+  });
+
+  it('campanha já na Meta: sem "Montar de novo"', async () => {
+    const apiFetch = vi.fn().mockResolvedValue(overview({ plan: { id: 'p1', code: 'CMP-GEN-000001', status: 'AWAITING_OPERATOR', spec: { campaign: { name: 'NQ' } } }, rebuildable: false }));
+    render(<GeneratedCampaignPanel apiFetch={apiFetch} pageId="g1" pageStatus="PUBLISHED" ads={[approved]} showError={vi.fn()} showSuccess={vi.fn()} />);
+    expect(await screen.findByTestId('open-manage')).toBeInTheDocument();
+    expect(screen.queryByTestId('rebuild-campaign')).toBeNull();
+    expect(screen.getByTestId('generated-campaign')).toHaveTextContent('continue em Campanhas');
   });
 
   it('formulário com as sugestões; criar manda os valores e mostra o resultado', async () => {

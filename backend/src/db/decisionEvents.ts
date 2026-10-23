@@ -149,7 +149,9 @@ const uniqIds = (ids: unknown): string[] =>
 export function metaIdsOfPlan(metaIds: unknown): string[] {
   if (!metaIds || typeof metaIds !== 'object') return [];
   const out: string[] = [];
-  for (const group of Object.values(metaIds as Record<string, unknown>)) {
+  for (const [key, group] of Object.entries(metaIds as Record<string, unknown>)) {
+    // NORQVA-0117: hashes de imagem não são objetos da Meta
+    if (key === 'images') continue;
     if (group && typeof group === 'object') out.push(...Object.values(group as Record<string, unknown>).map(String));
   }
   return uniqIds(out);

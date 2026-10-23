@@ -1510,7 +1510,7 @@ export class GenerationService {
    * Checagem na hora da aprovação pela fábrica (registrada em setGeneratedAdChecker): roda de novo sobre o texto atual
    * do criativo e grava o resultado. Qualquer erro bloqueia.
    */
-  async checkCreative(c: any): Promise<{ blocked: boolean; message: string }> {
+  async checkCreative(c: any, opts: { persist?: boolean } = {}): Promise<{ blocked: boolean; message: string }> {
     try {
       let pageId = c.generated_page_id || null;
       if (!pageId && c.root_creative_id) {
@@ -1523,7 +1523,7 @@ export class GenerationService {
         hook: c.hook || '', primary_text: c.primary_text ?? c.copy ?? '', headline: c.headline || '', description: c.ad_description || '', cta: c.cta || '', script: c.script || ''
       };
       const check = adCopyCheck(fields, ctx);
-      await this.pool.query('UPDATE creatives SET copy_check = $2::jsonb WHERE id = $1', [c.id, JSON.stringify(check)]);
+      if (opts.persist !== false) await this.pool.query('UPDATE creatives SET copy_check = $2::jsonb WHERE id = $1', [c.id, JSON.stringify(check)]);
       if (!check.blocked) return { blocked: false, message: '' };
       const parts = AD_FIELDS.filter(k => !check.fields[k].ok).map(k => `${k}: ${check.fields[k].issues.map(i => i.detail).join(', ')}`);
       return { blocked: true, message: `o texto do anúncio não passou na checagem (${parts.join('; ')}). Edite ou gere de novo.` };
@@ -1596,4 +1596,4 @@ export class GenerationService {
 }
 
 // a fábrica de criativos confere o anúncio gerado de novo na hora de aprovar (sem import circular)
-setGeneratedAdChecker((pool, creative) => new GenerationService(pool).checkCreative(creative));
+setGeneratedAdChecker((pool, creative, opts) => new GenerationService(pool).checkCreative(creative, opts));

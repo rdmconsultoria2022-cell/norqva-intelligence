@@ -50,8 +50,8 @@ describe('NORQVA-0116 — página pública /v/:slug', () => {
     );
     expect(checkoutHref('OFF-000001', '')).toBe('/p/OFF-000001?checkout=1');
     // nunca nome, e-mail ou telefone (nem outros parâmetros)
-    expect(checkoutHref('OFF-000001', '?name=Ana&email=a%40b.com&phone=31999&nome=Ana&utm_term=x&gclid=g&ref=r&src=s&foo=1')).toBe(
-      '/p/OFF-000001?checkout=1&utm_term=x&gclid=g&ref=r&src=s'
+    expect(checkoutHref('OFF-000001', '?name=Ana&email=a%40b.com&phone=31999&nome=Ana&utm_term=x&gclid=g&ref=r&src=s&foo=1&ad_id=9')).toBe(
+      '/p/OFF-000001?checkout=1&utm_term=x&gclid=g&ref=r&src=s&ad_id=9'
     );
   });
 

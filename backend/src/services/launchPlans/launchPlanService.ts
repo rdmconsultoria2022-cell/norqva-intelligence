@@ -10,6 +10,7 @@ import {
   getMaxDailyBudgetBRL,
   isGeneratedPageUrl
 } from '../meta/metaMutatingClient';
+import { storageRef, freshSignedUrl } from '../creative/generatedImages';
 
 // NORQVA-0019 (D-0010): o Claude prepara a campanha inteira na Meta, sempre PAUSADA; só a resposta
 // "Sim" de um ADMIN humano no NORQVA cria a decisão, autoriza o capital e ativa os objetos do plano.
@@ -111,8 +112,10 @@ export interface LaunchPlanAdSpec {
   cta: string;
   destination_url: string;
   url_tags: string;
-  /** NORQVA-0117: anúncio de imagem (https). Com imagem, video_url fica vazio. */
+  /** NORQVA-0117: anúncio de imagem (https, ou "storage:bucket/caminho" assinado na hora). Com imagem, video_url fica vazio. */
   image_url?: string | null;
+  /** NORQVA-0117: criativo da fábrica deste anúncio (UUID), para ligar ao anúncio criado. */
+  factory_creative?: string | null;
   /** NORQVA-0117: descrição do anúncio (link_data.description). */
   description?: string | null;
 }
@@ -237,7 +240,7 @@ export const humanIdFromUrl = (url: string): string | null => {
  * Valida e normaliza o plano. `forCreation` exige o que só é necessário para criar na Meta
  * (vídeos com URL https real em vez do marcador TO_BE_FILLED).
  */
-export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boolean } = {}): LaunchPlanInput {
+export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boolean; allowGeneratedPage?: boolean } = {}): LaunchPlanInput {
   const b = isObj(body) ? body : {};
   const code = String(b.code || '').trim().toUpperCase();
   if (!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(code)) {
@@ -307,7 +310,8 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
 
     // NORQVA-0117: anúncio de imagem (image_url https) em vez de vídeo
     const imageUrl = a.image_url === undefined || a.image_url === null || a.image_url === '' ? null : String(a.image_url).trim();
-    if (imageUrl !== null && !httpsUrl(imageUrl)) throw new LaunchPlanError(400, `Anúncio "${name}": image_url deve ser https.`);
+    if (imageUrl !== null && !httpsUrl(imageUrl) && !storageRef(imageUrl)) throw new LaunchPlanError(400, `Anúncio "${name}": image_url deve ser https.`);
+    const factoryCreative = typeof a.factory_creative === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(a.factory_creative) ? a.factory_creative : null;
     const videoUrl = imageUrl !== null ? '' : String(a.video_url || '').trim();
     if (imageUrl !== null && String(a.video_url || '').trim()) throw new LaunchPlanError(400, `Anúncio "${name}": use vídeo ou imagem, não os dois.`);
     if (imageUrl !== null) {
@@ -350,6 +354,7 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
       destination_url: destination,
       url_tags: urlTags,
       ...(imageUrl !== null ? { image_url: imageUrl } : {}),
+      ...(factoryCreative ? { factory_creative: factoryCreative } : {}),
       ...(str(a.description, 255) ? { description: str(a.description, 255) } : {})
     };
   });
@@ -360,6 +365,10 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
   // NORQVA-0117: página gerada (/v/:slug): todos os anúncios na mesma página e offer_human_id informado
   const generated = ads.map((a) => (isGeneratedPageUrl(a.destination_url) ? generatedSlugFromUrl(a.destination_url) : null));
   if (generated.some(Boolean)) {
+    // NORQVA-0117: página gerada (/v/) só em plano ligado a uma página gerada
+    if (!opts.allowGeneratedPage) {
+      throw new LaunchPlanError(400, 'O destino /v/ (página gerada) só vale para campanha criada na tela de geração.');
+    }
     const slugs = Array.from(new Set(generated));
     const given = str(b.offer_human_id, 50);
     if (slugs.length !== 1 || !slugs[0] || !given) {
@@ -564,7 +573,7 @@ export class LaunchPlanService {
 
     const input = validateLaunchPlanInput(
       { code: plan.code, offer_human_id: plan.offer_human_id, max_spend_brl: plan.max_spend_brl, question_text: plan.question_text, spec: plan.spec },
-      { forCreation: true }
+      { forCreation: true, allowGeneratedPage: !!plan.generated_page_id }
     );
     const spec = input.spec;
     const pageId = spec.page_id || (await this.brandAsset(pool, plan.brand_id, 'FACEBOOK_PAGE'));
@@ -651,10 +660,13 @@ export class LaunchPlanService {
           continue;
         }
         if (!ids.creatives[ad.name] && ad.image_url) {
-          // NORQVA-0117: anúncio de imagem: envia a imagem (uma vez) e cria a peça com o hash
-          if (!ids.images[ad.name]) {
-            const up = await client.uploadImageFromUrl(pool, { fileUrl: ad.image_url, name: `${plan.code}_${ad.name}` }, ctx);
-            ids.images[ad.name] = up.hash;
+          // NORQVA-0117: anúncio de imagem: cada imagem é enviada uma vez só (hash guardado pela origem dela);
+          // imagem do armazenamento ganha um link assinado novo agora (o do rascunho pode ter vencido)
+          const imageKey = ad.image_url;
+          if (!ids.images[imageKey]) {
+            const fileUrl = storageRef(imageKey) ? await freshSignedUrl(imageKey, 3600) : imageKey;
+            const up = await client.uploadImageFromUrl(pool, { fileUrl, name: `${plan.code}_${ad.name}` }, ctx);
+            ids.images[imageKey] = up.hash;
             await save();
           }
           const creative = await client.createAdCreative(
@@ -665,7 +677,7 @@ export class LaunchPlanService {
               body: ad.primary_text,
               destinationUrl: ad.destination_url,
               callToAction: ad.cta,
-              imageHash: ids.images[ad.name],
+              imageHash: ids.images[imageKey],
               pageId,
               instagramUserId: instagramId || undefined,
               urlTags: ad.url_tags,
@@ -769,13 +781,16 @@ export class LaunchPlanService {
     if (plan.status !== 'AWAITING_OPERATOR' && !resuming) {
       throw new LaunchPlanError(409, `O plano está em ${plan.status}; só é possível responder quando aguarda o operador.`);
     }
-    const input = validateLaunchPlanInput({
-      code: plan.code,
-      offer_human_id: plan.offer_human_id,
-      max_spend_brl: plan.max_spend_brl,
-      question_text: plan.question_text,
-      spec: plan.spec
-    });
+    const input = validateLaunchPlanInput(
+      {
+        code: plan.code,
+        offer_human_id: plan.offer_human_id,
+        max_spend_brl: plan.max_spend_brl,
+        question_text: plan.question_text,
+        spec: plan.spec
+      },
+      { allowGeneratedPage: !!plan.generated_page_id }
+    );
     const owned = this.ownedObjects(input.spec, normalizeMetaIds(plan.meta_ids));
     const baseCtx: MetaMutatingSecurityContext = { userId: user.id, userRole: 'ADMIN', isDemo: false };
     await client.assertFeatureFlagAndPreflight(baseCtx, { requirePixel: false });

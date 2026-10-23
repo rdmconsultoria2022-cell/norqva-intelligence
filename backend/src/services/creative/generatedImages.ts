@@ -168,7 +168,7 @@ let storage: ImageStorage = supabaseImages;
 
 // links assinados guardados por 50 minutos (assinados para valer pelo menos 1 h)
 const SIGNED_CACHE_MS = 50 * 60 * 1000;
-const signedCache = new Map<string, { url: string; until: number }>();
+const signedCache = new Map<string, { url: string; signedAt: number; expiresAt: number }>();
 
 /** Bucket existe? Erro de rede ou configuração conta como "não". */
 export async function imagesBucketReady(): Promise<boolean> {
@@ -189,25 +189,46 @@ export function imageStorage(): ImageStorage {
 }
 
 /** "storage:bucket/caminho" -> link assinado; caminho do site (/images/...) fica como está. */
+/** "storage:bucket/caminho" -> [bucket, caminho] (ou null). */
+export function storageRef(raw: unknown): { bucket: string; path: string; key: string } | null {
+  const v = String(raw || '').trim();
+  if (!v.startsWith(STORAGE_PREFIX)) return null;
+  const rest = v.slice(STORAGE_PREFIX.length);
+  const slash = rest.indexOf('/');
+  if (slash <= 0 || slash === rest.length - 1) return null;
+  return { bucket: rest.slice(0, slash), path: rest.slice(slash + 1), key: rest };
+}
+
+/**
+ * "storage:bucket/caminho" -> link assinado; caminho do site (/images/...) fica como está.
+ * O link guardado só é reaproveitado se ainda valer pelo tempo pedido (e foi assinado há menos de 50 min).
+ */
 export async function resolveImageUrl(raw: unknown, ttlSeconds = 24 * 3600): Promise<string | null> {
   const v = String(raw || '').trim();
   if (!v) return null;
   if (v.startsWith('/images/')) return v;
-  if (!v.startsWith(STORAGE_PREFIX)) return null;
-  const rest = v.slice(STORAGE_PREFIX.length);
-  const slash = rest.indexOf('/');
-  if (slash <= 0) return null;
-  const hit = signedCache.get(rest);
-  if (hit && hit.until > Date.now()) return hit.url;
+  const ref = storageRef(v);
+  if (!ref) return null;
+  const ttl = Math.max(3600, ttlSeconds);
+  const now = Date.now();
+  const hit = signedCache.get(ref.key);
+  if (hit && hit.signedAt + SIGNED_CACHE_MS > now && hit.expiresAt - now >= ttl * 1000 - SIGNED_CACHE_MS) return hit.url;
   try {
-    const url = await storage.signedUrl(rest.slice(0, slash), rest.slice(slash + 1), Math.max(3600, ttlSeconds));
-    signedCache.set(rest, { url, until: Date.now() + SIGNED_CACHE_MS });
+    const url = await storage.signedUrl(ref.bucket, ref.path, ttl);
+    signedCache.set(ref.key, { url, signedAt: now, expiresAt: now + ttl * 1000 });
     if (signedCache.size > 2000) signedCache.delete(signedCache.keys().next().value as string);
     return url;
   } catch (err: any) {
     console.warn('[geração] imagem sem link assinado:', err?.message || err);
     return null;
   }
+}
+
+/** Link assinado NOVO (sem o guardado), para enviar a imagem à Meta agora. Lança se não conseguir. */
+export async function freshSignedUrl(raw: unknown, ttlSeconds = 3600): Promise<string> {
+  const ref = storageRef(raw);
+  if (!ref) throw new Error('Imagem sem endereço de armazenamento.');
+  return storage.signedUrl(ref.bucket, ref.path, Math.max(3600, ttlSeconds));
 }
 
 // ---------------------------------------------------------------------------------------------
