@@ -13,6 +13,7 @@ import { accessUrlBase, issueAccessToken } from './purchaseAccessService';
 import { brandSenderNameForOrder } from './emailSender';
 import { writeAuditLog } from '../db/audit';
 import { getCommercialOrderClause } from '../utils/commercialTruthPolicy';
+import { aggregateSales } from './salesAggregateService';
 
 export class SalesError extends Error {
   constructor(public status: number, message: string) {
@@ -134,13 +135,7 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 500);
 
-  const summary = {
-    total: orders.length,
-    paid: orders.filter(o => o.status === 'PAID').length,
-    pending: orders.filter(o => o.status === 'PENDING').length,
-    problem: orders.filter(o => o.problem).length,
-    revenue: Math.round(orders.filter(o => o.status === 'PAID').reduce((s, o) => s + (o.total_amount || 0), 0) * 100) / 100
-  };
+  const summary = await aggregateSales(pool, opts);
   return { orders, summary };
 }
 
