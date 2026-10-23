@@ -80,6 +80,33 @@ describe('NORQVA-0115 — aba Referências', () => {
     expect(await screen.findByTestId('reference-failure')).toHaveTextContent('IA não configurada');
   });
 
+  it('lista que não carrega mostra erro (não "nenhuma"); trava desligada no meio volta para Criativos', async () => {
+    const apiFetch = vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith('/creative-factory/creatives?')) return Promise.resolve(factory);
+      if (url === '/creative-references/status') return Promise.resolve({ enabled: true });
+      if (url === '/creative-references') return Promise.reject(new Error('Falha de rede'));
+      return Promise.resolve({});
+    });
+    const { unmount } = render(
+      <CreativeFactoryView currentUser={admin} isDemoView={false} apiFetch={apiFetch} showError={vi.fn()} showSuccess={vi.fn()} products={products} />
+    );
+    fireEvent.click(await screen.findByTestId('factory-section-references'));
+    expect(await screen.findByTestId('references-error')).toHaveTextContent('Falha de rede');
+    expect(screen.queryByTestId('references-empty')).toBeNull();
+    unmount();
+
+    const off = vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith('/creative-factory/creatives?')) return Promise.resolve(factory);
+      if (url === '/creative-references/status') return Promise.resolve({ enabled: true });
+      if (url === '/creative-references') return Promise.reject(new Error('Referências estão desligadas neste ambiente (CREATIVE_REFERENCES_ENABLED).'));
+      return Promise.resolve({});
+    });
+    render(<CreativeFactoryView currentUser={admin} isDemoView={false} apiFetch={off} showError={vi.fn()} showSuccess={vi.fn()} products={products} />);
+    fireEvent.click(await screen.findByTestId('factory-section-references'));
+    await waitFor(() => expect(screen.queryByTestId('factory-section-references')).toBeNull());
+    expect(screen.queryByTestId('creative-references')).toBeNull();
+  });
+
   it('envia o link com produto e tipo', async () => {
     const apiFetch = setup(true);
     fireEvent.click(await screen.findByTestId('factory-section-references'));

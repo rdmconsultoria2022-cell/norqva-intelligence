@@ -89,7 +89,9 @@ export const CreativeReferences: React.FC<{
   products: any[];
   isAdmin: boolean;
   canCreate: boolean;
-}> = ({ apiFetch, showError, showSuccess, products, isAdmin, canCreate }) => {
+  /** Servidor respondeu que a trava está desligada: a tela volta para Criativos e esconde a aba. */
+  onDisabled?: () => void;
+}> = ({ apiFetch, showError, showSuccess, products, isAdmin, canCreate, onDisabled }) => {
   const isMobile = useIsMobile();
   const [items, setItems] = useState<any[]>([]);
   const [trash, setTrash] = useState<any[]>([]);
@@ -103,6 +105,15 @@ export const CreativeReferences: React.FC<{
   const [notes, setNotes] = useState('');
   const [adText, setAdText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [fileKey, setFileKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sending, setSending] = useState<string | null>(null);
+
+  const disabledReply = (e: any) => /desligadas/i.test(String(e?.message || ''));
+  const resetFiles = () => {
+    setFiles([]);
+    setFileKey(k => k + 1);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,12 +121,18 @@ export const CreativeReferences: React.FC<{
       const r = await apiFetch('/creative-references');
       setItems(Array.isArray(r?.references) ? r.references : []);
       setTrash(Array.isArray(r?.trash) ? r.trash : []);
+      setLoadError(null);
     } catch (e: any) {
-      showError(e?.message || 'Não foi possível carregar as referências.');
+      if (disabledReply(e)) {
+        showError('Referências foram desligadas neste ambiente.');
+        onDisabled?.();
+        return;
+      }
+      setLoadError(e?.message || 'Não foi possível carregar as referências.');
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, showError]);
+  }, [apiFetch, showError, onDisabled]);
 
   useEffect(() => {
     load();
@@ -125,11 +142,13 @@ export const CreativeReferences: React.FC<{
     const arr = Array.from(list || []);
     if (arr.length > MAX_SHOTS) {
       showError('No máximo 5 prints por referência.');
+      resetFiles();
       return;
     }
     const big = arr.find(f => f.size > MAX_SHOT_BYTES);
     if (big) {
       showError(`O print ${big.name} passa de 4 MB.`);
+      resetFiles();
       return;
     }
     setFiles(arr);
@@ -155,6 +174,8 @@ export const CreativeReferences: React.FC<{
           showError('Escolha de 1 a 5 prints.');
           return;
         }
+        const mb = files.reduce((a, f) => a + f.size, 0) / (1024 * 1024);
+        setSending(`Enviando prints (${mb.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB)…`);
         const images = await Promise.all(files.map(readAsDataUrl));
         r = await apiFetch('/creative-references/screenshots', {
           method: 'POST',
@@ -174,13 +195,19 @@ export const CreativeReferences: React.FC<{
       setUrl('');
       setNotes('');
       setAdText('');
-      setFiles([]);
+      resetFiles();
       await load();
       if (ref?.id) setOpenId(ref.id);
     } catch (err: any) {
+      if (disabledReply(err)) {
+        showError('Referências foram desligadas neste ambiente.');
+        onDisabled?.();
+        return;
+      }
       showError(err?.message || 'Não foi possível criar a referência.');
     } finally {
       setBusy(false);
+      setSending(null);
     }
   };
 
@@ -248,7 +275,9 @@ export const CreativeReferences: React.FC<{
                 <div>
                   <label className={label} htmlFor="ref-files">Prints da página ou do anúncio (até 5, 4 MB cada)</label>
                   <input
+                    key={fileKey}
                     id="ref-files"
+                    data-testid="reference-files"
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif"
                     multiple
@@ -295,7 +324,7 @@ export const CreativeReferences: React.FC<{
                 data-testid="reference-submit"
                 className="px-5 rounded-full bg-nq-positive text-nq-on-positive font-semibold hover:brightness-110 disabled:opacity-50 min-h-[44px] w-full sm:w-auto"
               >
-                {busy ? 'Analisando...' : 'Analisar estrutura'}
+                {busy ? sending || 'Analisando...' : 'Analisar estrutura'}
               </button>
             </div>
           </form>
@@ -310,7 +339,14 @@ export const CreativeReferences: React.FC<{
           </button>
         }
       >
-        {items.length === 0 ? (
+        {loadError ? (
+          <div className="px-1 space-y-2" data-testid="references-error">
+            <p className="text-nq-aux text-nq-critical-text break-words">Não foi possível carregar as referências: {loadError}</p>
+            <button type="button" onClick={load} className="px-4 rounded-full bg-nq-raised text-nq-text text-nq-aux font-semibold min-h-[44px]">
+              Tentar de novo
+            </button>
+          </div>
+        ) : items.length === 0 ? (
           <p className="px-1 text-nq-aux text-nq-muted" data-testid="references-empty">
             {loading ? 'Carregando...' : 'Nenhuma referência ainda.'}
           </p>

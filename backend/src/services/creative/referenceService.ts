@@ -51,6 +51,7 @@ function ipv4Private(ip: string): boolean {
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
+    (a === 192 && b === 88 && c === 99) ||
     (a === 192 && b === 0 && c === 0) ||
     (a === 192 && b === 0 && c === 2) ||
     (a === 198 && (b === 18 || b === 19)) ||
@@ -95,16 +96,24 @@ export function isPrivateAddress(ip: string): boolean {
   if (zeros(0, 8)) return true; // ::
   if (zeros(0, 7) && h[7] === 1) return true; // ::1
   if (zeros(0, 5) && h[5] === 0xffff) return ipv4Private(v4From(h[6], h[7])); // ::ffff:a.b.c.d
+  if (zeros(0, 4) && h[4] === 0xffff && h[5] === 0) return ipv4Private(v4From(h[6], h[7])); // ::ffff:0:a.b.c.d
   if (zeros(0, 6)) return true; // IPv4 compatível (obsoleto)
+  if (h[0] === 0x100 && zeros(1, 4)) return true; // 100::/64 (descarte)
   if ((h[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
   if ((h[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
   if ((h[0] & 0xff00) === 0xff00) return true; // multicast
+  if (h[0] === 0x64 && h[1] === 0xff9b && h[2] === 1) return true; // 64:ff9b:1::/48 (tradução local)
   if (h[0] === 0x64 && h[1] === 0xff9b) return ipv4Private(v4From(h[6], h[7])); // NAT64
   if (h[0] === 0x2002) return ipv4Private(v4From(h[1], h[2])); // 6to4
   if (h[0] === 0x2001 && h[1] === 0x0db8) return true; // documentação
   if (h[0] === 0x2001 && h[1] === 0) return true; // Teredo
   return false;
 }
+
+// D-0115: nada de raspar a Biblioteca de Anúncios da Meta; anúncio da Meta entra por prints
+const META_HOSTS = ['facebook.com', 'fb.com', 'fb.me', 'fb.watch', 'fbcdn.net', 'instagram.com'];
+export const META_LINK_MESSAGE = 'Para anúncios da Biblioteca da Meta, envie prints em vez do link.';
+const isMetaHost = (host: string) => META_HOSTS.some(d => host === d || host.endsWith(`.${d}`));
 
 const BLOCKED_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.intranet', '.lan', '.home.arpa', '.corp'];
 
@@ -134,6 +143,7 @@ export function assertSafeUrl(raw: unknown): URL {
     if (isPrivateAddress(host)) throw new CreativeReferenceError(400, 'Endereço interno não é aceito.', 'INPUT');
     return url;
   }
+  if (isMetaHost(host)) throw new CreativeReferenceError(400, META_LINK_MESSAGE, 'INPUT');
   if (host === 'localhost' || BLOCKED_HOST_SUFFIXES.some(s => host.endsWith(s)) || !host.includes('.')) {
     throw new CreativeReferenceError(400, 'Endereço interno não é aceito.', 'INPUT');
   }
@@ -159,8 +169,26 @@ function resolver(): HostResolver {
   return realResolver;
 }
 
-/** Resolve o nome e recusa se QUALQUER endereço for interno. */
-export async function assertPublicHost(url: URL): Promise<void> {
+export const DNS_TIMEOUT_MS = 5000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new CreativeReferenceError(504, message, 'FETCH')), Math.max(1, ms));
+    p.then(
+      v => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      e => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
+/** Resolve o nome (com tempo máximo) e recusa se QUALQUER endereço for interno. */
+export async function assertPublicHost(url: URL, timeoutMs = DNS_TIMEOUT_MS): Promise<void> {
   let host = url.hostname.toLowerCase();
   if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
   if (net.isIP(host)) {
@@ -169,8 +197,9 @@ export async function assertPublicHost(url: URL): Promise<void> {
   }
   let addrs: string[];
   try {
-    addrs = await resolver()(host);
-  } catch {
+    addrs = await withTimeout(resolver()(host), Math.min(timeoutMs, DNS_TIMEOUT_MS), 'O endereço demorou para responder.');
+  } catch (err) {
+    if (err instanceof CreativeReferenceError) throw err;
     throw new CreativeReferenceError(502, 'Não encontramos esse endereço. Confira o link.', 'FETCH');
   }
   if (!addrs.length || addrs.some(a => isPrivateAddress(a))) {
@@ -188,10 +217,17 @@ export interface RawPageResponse {
 /** Faz UM pedido (sem seguir redirecionamento). Os testes trocam por um simulado. */
 export type PageTransport = (url: URL, opts: { timeoutMs: number; maxBytes: number }) => Promise<RawPageResponse>;
 
+let testLookup: ((hostname: string, options: any, cb: (err: any, addresses: any) => void) => void) | null = null;
+/** Só para testes: troca o dns.lookup usado na hora de conectar. */
+export function setDnsLookupForTests(fn: typeof testLookup) {
+  testLookup = fn;
+}
+
 // A conexão confere o IP na hora de conectar (evita troca de DNS entre a checagem e o pedido).
-const guardedLookup = (hostname: string, options: any, callback: any) => {
+export const guardedLookup = (hostname: string, options: any, callback: any) => {
   const opts = typeof options === 'object' && options ? options : {};
-  dns.lookup(hostname, { ...opts, all: true }, (err: any, addresses: any) => {
+  const lookup: any = testLookup || dns.lookup;
+  lookup(hostname, { ...opts, all: true }, (err: any, addresses: any) => {
     if (err) return callback(err);
     const list: { address: string; family: number }[] = Array.isArray(addresses) ? addresses : [];
     if (!list.length || list.some(a => isPrivateAddress(a.address))) {
@@ -204,7 +240,8 @@ const guardedLookup = (hostname: string, options: any, callback: any) => {
   });
 };
 
-const realTransport: PageTransport = (url, { timeoutMs, maxBytes }) =>
+/** Transporte real (http/https do Node). Exportado só para os testes com servidor local. */
+export const nodeTransport: PageTransport = (url, { timeoutMs, maxBytes }) =>
   new Promise<RawPageResponse>((resolve, reject) => {
     const request = (url.protocol === 'https:' ? https.request : http.request) as typeof http.request;
     let settled = false;
@@ -240,16 +277,19 @@ const realTransport: PageTransport = (url, { timeoutMs, maxBytes }) =>
           return done(() => reject(new CreativeReferenceError(413, 'A página é grande demais (mais de 3 MB).', 'FETCH')));
         }
         const enc = String(res.headers['content-encoding'] || '').toLowerCase();
-        let stream: NodeJS.ReadableStream = res;
-        if (enc === 'gzip' || enc === 'x-gzip') stream = res.pipe(zlib.createGunzip());
-        else if (enc === 'deflate') stream = res.pipe(zlib.createInflate());
-        else if (enc === 'br') stream = res.pipe(zlib.createBrotliDecompress());
+        let decoder: zlib.Gunzip | zlib.Inflate | zlib.BrotliDecompress | null = null;
+        if (enc === 'gzip' || enc === 'x-gzip') decoder = zlib.createGunzip();
+        else if (enc === 'deflate') decoder = zlib.createInflate();
+        else if (enc === 'br') decoder = zlib.createBrotliDecompress();
+        const stream: NodeJS.ReadableStream = decoder ? res.pipe(decoder) : res;
         const chunks: Buffer[] = [];
         let total = 0;
         stream.on('data', (c: Buffer) => {
+          if (settled) return;
           total += c.length;
           if (total > maxBytes) {
             res.destroy();
+            decoder?.destroy();
             done(() => reject(new CreativeReferenceError(413, 'A página é grande demais (mais de 3 MB).', 'FETCH')));
             return;
           }
@@ -287,7 +327,7 @@ function transport(): PageTransport {
       throw new CreativeReferenceError(502, 'Teste sem página simulada.', 'FETCH');
     };
   }
-  return realTransport;
+  return nodeTransport;
 }
 
 function decodeBody(body: Buffer, contentType: string): string {
@@ -302,11 +342,22 @@ function decodeBody(body: Buffer, contentType: string): string {
 }
 
 /** Baixa a página (só http/https, IP público, até 3 redirecionamentos conferidos, 10 s, 3 MB). */
-export async function fetchPage(rawUrl: string): Promise<{ finalUrl: URL; html: string }> {
+export async function fetchPage(rawUrl: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<{ finalUrl: URL; html: string }> {
+  // um prazo só para tudo (DNS + todos os redirecionamentos)
+  const deadline = Date.now() + timeoutMs;
+  const left = () => {
+    const ms = deadline - Date.now();
+    if (ms <= 0) throw new CreativeReferenceError(504, 'A página demorou mais de 10 segundos para responder.', 'FETCH');
+    return ms;
+  };
   let url = assertSafeUrl(rawUrl);
-  await assertPublicHost(url);
+  await assertPublicHost(url, left());
   for (let hop = 0; ; hop++) {
-    const res = await transport()(url, { timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_PAGE_BYTES });
+    const res = await withTimeout(
+      transport()(url, { timeoutMs: left(), maxBytes: MAX_PAGE_BYTES }),
+      left(),
+      'A página demorou mais de 10 segundos para responder.'
+    );
     if (res.status >= 300 && res.status < 400 && res.location) {
       if (hop >= MAX_REDIRECTS) throw new CreativeReferenceError(502, 'A página redireciona demais (mais de 3 vezes).', 'FETCH');
       let next: URL;
@@ -316,7 +367,7 @@ export async function fetchPage(rawUrl: string): Promise<{ finalUrl: URL; html: 
         throw new CreativeReferenceError(502, 'A página redirecionou para um endereço inválido.', 'FETCH');
       }
       url = assertSafeUrl(next.toString());
-      await assertPublicHost(url);
+      await assertPublicHost(url, left());
       continue;
     }
     if (res.status >= 400 || res.status < 200) {
@@ -388,43 +439,139 @@ const VIDEO_HOSTS = /(youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|wi
 const BUTTONISH = /(^|[\s_-])(btn|button|botao|cta|comprar|checkout|buy)([\s_-]|$)/i;
 const TESTIMONIAL_HINT = /(depoiment|testimon|review|avaliac|avaliaç|feedback|prova-social|social-proof)/i;
 const FAQ_HINT = /(faq|pergunta|duvida|dúvida|accordion)/i;
-const MAX_BLOCKS = 600;
+export const MAX_BLOCKS = 600;
 
+const MAX_ATTR_SCAN = 4000;
+const MAX_STACK = 256;
 const attr = (attrs: string, name: string): string => {
-  const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i'));
+  const m = attrs.slice(0, MAX_ATTR_SCAN).match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i'));
   return m ? m[1] ?? m[2] ?? m[3] ?? '' : '';
 };
 
+/** Minúsculas só em A-Z (mantém o tamanho da string, para os índices baterem). */
+const asciiLower = (s: string) => s.replace(/[A-Z]/g, c => c.toLowerCase());
+const TAG_NAME_RE = /^<([a-z][a-z0-9-]*)/;
+
+/**
+ * Tira comentários, declarações e as tags com conteúdo que não interessa (script, style, nav...) numa
+ * passada linear com indexOf (sem regex com retrocesso: HTML sem fechamento não trava o servidor).
+ * Comentário ou tag sem fechamento: descarta até o fim. iframe de vídeo vira um marcador <video>.
+ */
+export function stripNoise(html: string): string {
+  let src = String(html || '');
+  let lower = asciiLower(src);
+  // só o <body>, quando houver
+  const bodyAt = lower.indexOf('<body');
+  if (bodyAt !== -1) {
+    const gt = src.indexOf('>', bodyAt);
+    if (gt !== -1) {
+      const close = lower.lastIndexOf('</body');
+      src = close > gt ? src.slice(gt + 1, close) : src.slice(gt + 1);
+      lower = asciiLower(src);
+    }
+  }
+  // posição do próximo fechamento de cada tag, guardada (e "não tem" também): nada é varrido duas vezes
+  const closeCache = new Map<string, number>();
+  const findClose = (name: string, from: number) => {
+    const cached = closeCache.get(name);
+    if (cached !== undefined && (cached === -1 || cached >= from)) return cached;
+    const at = lower.indexOf(`</${name}`, from);
+    closeCache.set(name, at);
+    return at;
+  };
+  const out: string[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const lt = src.indexOf('<', i);
+    if (lt === -1) {
+      out.push(src.slice(i));
+      break;
+    }
+    out.push(src.slice(i, lt));
+    if (lower.startsWith('<!--', lt)) {
+      const end = src.indexOf('-->', lt + 4);
+      if (end === -1) break;
+      out.push(' ');
+      i = end + 3;
+      continue;
+    }
+    if (src[lt + 1] === '!' || src[lt + 1] === '?') {
+      const gt = src.indexOf('>', lt + 1);
+      if (gt === -1) break;
+      out.push(' ');
+      i = gt + 1;
+      continue;
+    }
+    const m = TAG_NAME_RE.exec(lower.slice(lt, lt + 24));
+    const name = m ? m[1] : '';
+    if (name === 'iframe') {
+      const gt = src.indexOf('>', lt);
+      if (gt === -1) break;
+      const attrs = src.slice(lt + 7, gt);
+      const close = findClose('iframe', gt);
+      const closeGt = close === -1 ? -1 : src.indexOf('>', close);
+      out.push(VIDEO_HOSTS.test(attr(attrs, 'src') || attr(attrs, 'data-src')) ? '<video></video>' : ' ');
+      i = close === -1 ? gt + 1 : closeGt === -1 ? src.length : closeGt + 1;
+      continue;
+    }
+    if (name && DROP_WITH_CONTENT.includes(name)) {
+      const gt = src.indexOf('>', lt);
+      if (gt === -1) break;
+      if (src[gt - 1] === '/') {
+        out.push(' ');
+        i = gt + 1;
+        continue;
+      }
+      const close = findClose(name, gt);
+      if (close === -1) break; // sem fechamento: descarta até o fim
+      const closeGt = src.indexOf('>', close);
+      out.push(' ');
+      i = closeGt === -1 ? src.length : closeGt + 1;
+      continue;
+    }
+    out.push('<');
+    i = lt + 1;
+  }
+  return out.join('');
+}
+
 /** Lê o HTML em blocos ordenados (título, parágrafo, lista, botão, imagem, vídeo, formulário...). */
 export function htmlToBlocks(html: string): PageBlock[] {
-  let src = String(html || '');
-  const body = src.match(/<body\b[^>]*>([\s\S]*)<\/body\s*>/i);
-  if (body) src = body[1];
-  src = src.replace(/<!--[\s\S]*?-->/g, ' ');
-  src = src.replace(/<![^>]*>|<\?[^>]*>/g, ' ');
-  // vídeos incorporados viram um marcador; os outros iframes saem
-  src = src.replace(/<iframe\b([^>]*)>(?:[\s\S]*?<\/iframe\s*>)?/gi, (_m, a: string) =>
-    VIDEO_HOSTS.test(attr(a, 'src') || attr(a, 'data-src')) ? '<video></video>' : ' '
-  );
-  for (const t of DROP_WITH_CONTENT) {
-    src = src.replace(new RegExp(`<${t}\\b[^>]*>[\\s\\S]*?<\\/${t}\\s*>`, 'gi'), ' ');
-    src = src.replace(new RegExp(`<${t}\\b[^>]*\\/?>`, 'gi'), ' ');
-  }
+  const src = stripNoise(html);
 
   const blocks: PageBlock[] = [];
-  type Frame = { tag: string; hint: 'testimonial' | 'faq' | null; button: boolean; list: boolean; form: boolean };
+  type Frame = { tag: string; hint: 'testimonial' | 'faq' | null; button: boolean; list: boolean; form: boolean; effHint?: 'testimonial' | 'faq' | null };
   const stack: Frame[] = [];
   let buffer: string[] = [];
   let pendingKind: 'heading' | 'paragraph' | 'button' = 'paragraph';
   let pendingLevel = 0;
   let list: { parts: string[]; items: number; hint: Frame['hint'] } | null = null;
 
-  const hint = (): Frame['hint'] => {
-    for (let i = stack.length - 1; i >= 0; i--) if (stack[i].hint) return stack[i].hint;
-    return null;
+  // contadores (nada de percorrer a pilha a cada token: HTML muito aninhado continua linear)
+  const depth = { form: 0, button: 0, heading: 0, list: 0 };
+  const isHeading = (t: string) => t.length === 2 && t[0] === 'h' && t[1] >= '1' && t[1] <= '6';
+  const pushFrame = (f: Frame) => {
+    if (stack.length >= MAX_STACK) return;
+    f.effHint = f.hint || (stack.length ? stack[stack.length - 1].effHint || null : null);
+    stack.push(f);
+    if (f.form) depth.form++;
+    if (f.button) depth.button++;
+    if (f.list) depth.list++;
+    if (isHeading(f.tag)) depth.heading++;
   };
-  const inForm = () => stack.some(f => f.form);
-  const inButton = () => stack.some(f => f.button);
+  const popTo = (idx: number) => {
+    for (let k = stack.length - 1; k >= idx; k--) {
+      const f = stack[k];
+      if (f.form) depth.form--;
+      if (f.button) depth.button--;
+      if (f.list) depth.list--;
+      if (isHeading(f.tag)) depth.heading--;
+    }
+    stack.length = idx;
+  };
+  const hint = (): Frame['hint'] => (stack.length ? stack[stack.length - 1].effHint || null : null);
+  const inForm = () => depth.form > 0;
+  const inButton = () => depth.button > 0;
   const push = (b: PageBlock) => {
     if (blocks.length < MAX_BLOCKS) blocks.push(b);
   };
@@ -455,20 +602,38 @@ export function htmlToBlocks(html: string): PageBlock[] {
     push({ kind, wordCount: wc, text });
   };
 
-  const re = /<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)|</g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) {
-    if (m[4] !== undefined || (m[0] === '<' && m[2] === undefined)) {
-      const raw = m[4] !== undefined ? m[4] : '<';
-      if (inForm() && !inButton()) continue;
-      const t = decodeEntities(raw).replace(/\s+/g, ' ');
-      if (t.trim()) buffer.push(t.trim());
+  const handleText = (raw: string) => {
+    if (inForm() && !inButton()) return;
+    const t = decodeEntities(raw).replace(/\s+/g, ' ').trim();
+    if (t) buffer.push(t);
+  };
+
+  // tokenizador linear: indexOf para '<' e '>' (o próximo '>' fica guardado para não varrer de novo)
+  let pos = 0;
+  let nextGt = -2;
+  while (pos < src.length) {
+    const lt = src.indexOf('<', pos);
+    const textEnd = lt === -1 ? src.length : lt;
+    if (textEnd > pos) handleText(src.slice(pos, textEnd));
+    if (lt === -1) break;
+    if (nextGt !== -1 && nextGt <= lt) nextGt = src.indexOf('>', lt + 1);
+    if (nextGt === -1) {
+      handleText(src.slice(lt));
+      break;
+    }
+    const inner = src.slice(lt + 1, nextGt);
+    const tm = /^(\/?)([a-zA-Z][\w:-]*)/.exec(inner);
+    if (!tm) {
+      handleText('<');
+      pos = lt + 1;
       continue;
     }
+    pos = nextGt + 1;
+    const m = [tm[0], tm[1], tm[2], inner.slice(tm[0].length)];
     const closing = m[1] === '/';
     const tag = m[2].toLowerCase();
     const attrs = m[3] || '';
-    const selfClosing = /\/\s*$/.test(attrs);
+    const selfClosing = attrs.trimEnd().endsWith('/');
 
     if (!closing) {
       if (tag === 'img') {
@@ -485,7 +650,7 @@ export function htmlToBlocks(html: string): PageBlock[] {
       if (tag === 'video') {
         flush();
         push({ kind: 'video', wordCount: 0, text: '' });
-        if (!selfClosing) stack.push({ tag, hint: null, button: false, list: false, form: false });
+        if (!selfClosing) pushFrame({ tag, hint: null, button: false, list: false, form: false });
         continue;
       }
       if (tag === 'input') {
@@ -527,9 +692,9 @@ export function htmlToBlocks(html: string): PageBlock[] {
         if (list) list.items += 1;
       } else if (!INLINE.has(tag)) {
         flush();
-        if (pendingKind !== 'button' && !stack.some(f => /^h[1-6]$/.test(f.tag))) pendingKind = 'paragraph';
+        if (pendingKind !== 'button' && depth.heading === 0) pendingKind = 'paragraph';
       }
-      if (!selfClosing) stack.push(frame);
+      if (!selfClosing) pushFrame(frame);
       continue;
     }
 
@@ -545,10 +710,10 @@ export function htmlToBlocks(html: string): PageBlock[] {
     const frame = stack[idx];
     const isInline = INLINE.has(tag) && !frame.button;
     if (!isInline) flush();
-    stack.splice(idx);
+    popTo(idx);
     if (frame.button) pendingKind = 'paragraph';
     if (/^h[1-6]$/.test(tag)) pendingKind = 'paragraph';
-    if (frame.list && list && !stack.some(f => f.list)) {
+    if (frame.list && list && depth.list === 0) {
       const text = list.parts.join(' ').replace(/\s+/g, ' ').trim();
       const wc = countWords(text);
       if (wc > 0) push({ kind: list.hint === 'faq' ? 'faq-like' : list.hint === 'testimonial' ? 'testimonial-like' : 'list', wordCount: wc, text, items: Math.max(1, list.items) });
@@ -618,27 +783,74 @@ const STOPWORDS = new Set(
   )
 );
 
+/**
+ * Tudo que a limpeza precisa saber da referência. Só as impressões de 6 palavras vão para o banco;
+ * o resto (janelas de 3 palavras, textos normalizados e nomes) vive só em memória e some com a requisição.
+ */
 export interface SourceFingerprint {
   shingles: Set<string>;
   properNouns: Set<string>;
+  trigrams: Set<string>;
+  normalizedTexts: string[];
+  nameSequences: string[];
+  truncated: boolean;
 }
+
+const MAX_TOKEN = 64;
+const MAX_TRIGRAMS = 300_000;
+const MAX_RUN = 8;
 
 const normToken = (t: string) =>
   t
+    .slice(0, MAX_TOKEN)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
-/** Impressões + nomes próprios (palavra com maiúscula no meio da frase que nunca aparece em minúscula). */
+const stripPunct = (t: string) => (t.length > MAX_TOKEN ? '' : t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''));
+
+/**
+ * Impressões + nomes próprios (palavra com maiúscula no meio da frase que nunca aparece em minúscula)
+ * + sequências de 2 ou mais palavras com maiúscula (marcas feitas de palavras comuns, como "Seca Barriga").
+ */
 export function buildFingerprint(texts: string[]): SourceFingerprint {
   const candidates = new Set<string>();
   const lowerSeen = new Set<string>();
+  const sequences = new Set<string>();
+  const trigrams = new Set<string>();
+  const normalizedTexts: string[] = [];
+  let truncated = false;
+  const addRun = (run: string[]) => {
+    const r = run.slice(0, MAX_RUN);
+    for (let a = 0; a < r.length; a++) {
+      for (let b = a + 2; b <= r.length; b++) {
+        const part = r.slice(a, b);
+        if (part.some(w => w.length >= 3 && !STOPWORDS.has(w))) sequences.add(part.join(' '));
+      }
+    }
+  };
   for (const text of texts) {
+    const words = normalizeWords(text);
+    if (words.length) normalizedTexts.push(` ${words.join(' ')} `);
+    for (let i = 0; i + 3 <= words.length; i++) {
+      if (trigrams.size >= MAX_TRIGRAMS) {
+        truncated = true;
+        break;
+      }
+      trigrams.add(words.slice(i, i + 3).join(' '));
+    }
     for (const sentence of String(text || '').split(/[.!?…:\n;|•]+/)) {
-      const tokens = sentence.split(/\s+/).map(t => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean);
+      const tokens = sentence.split(/\s+/).map(stripPunct).filter(Boolean);
+      let run: string[] = [];
       tokens.forEach((tok, i) => {
         const n = normToken(tok);
+        const capital = /^\p{Lu}/u.test(tok) && n.length >= 2 && !/^\d/.test(n);
+        if (capital) run.push(n);
+        else {
+          if (run.length >= 2) addRun(run);
+          run = [];
+        }
         if (n.length < 3 || STOPWORDS.has(n)) return;
         if (/^\p{Ll}/u.test(tok)) {
           lowerSeen.add(n);
@@ -647,23 +859,32 @@ export function buildFingerprint(texts: string[]): SourceFingerprint {
         const allCaps = /^[\p{Lu}\p{N}]{3,}$/u.test(tok) && /\p{Lu}/u.test(tok);
         if ((i > 0 && /^\p{Lu}/u.test(tok)) || allCaps) candidates.add(n);
       });
+      if (run.length >= 2) addRun(run);
     }
   }
   const properNouns = new Set<string>();
   candidates.forEach(c => {
     if (!lowerSeen.has(c)) properNouns.add(c);
   });
-  return { shingles: new Set(sourceShingles(texts)), properNouns };
+  const shingles = new Set(sourceShingles(texts));
+  if (shingles.size >= MAX_SHINGLES) truncated = true;
+  return { shingles, properNouns, trigrams, normalizedTexts, nameSequences: Array.from(sequences), truncated };
 }
 
-const MONEY_OR_MEASURE =
-  /((r\$|us\$|u\$|\$|€|£)\s*\d)|(\d\s*(%|por\s*cento|kg\b|kgs\b|quilos?\b|g\b|gramas?\b|reais\b|real\b|d[oó]lar(es)?\b|cm\b|ml\b|lbs?\b))|(\d+[.,]\d{2}\b)/i;
-
-/** true se o texto copia a referência, tem preço/porcentagem/peso ou nome próprio da referência. */
+/**
+ * true se o texto pode ter vindo da referência: qualquer número, janela de 6 ou de 3 palavras igual,
+ * o texto inteiro dentro de um trecho da referência, nome próprio ou sequência de nomes da referência.
+ */
 export function looksCopied(s: string, fp: SourceFingerprint): boolean {
   if (!s) return false;
-  if (MONEY_OR_MEASURE.test(s)) return true;
+  if (/\d/.test(s)) return true;
+  const words = normalizeWords(s);
+  if (!words.length) return false;
   if (shingleHashes(s).some(h => fp.shingles.has(h))) return true;
+  for (let i = 0; i + 3 <= words.length; i++) if (fp.trigrams.has(words.slice(i, i + 3).join(' '))) return true;
+  const whole = ` ${words.join(' ')} `;
+  if (fp.normalizedTexts.some(t => t.includes(whole))) return true;
+  if (fp.nameSequences.some(seq => whole.includes(` ${seq} `))) return true;
   for (const tok of s.split(/\s+/)) {
     const n = normToken(tok);
     if (n.length >= 3 && fp.properNouns.has(n)) return true;
@@ -851,6 +1072,20 @@ export function sanitizeStructure(s: ReferenceStructure, fp: SourceFingerprint):
   };
 }
 
+/** Troca todo texto livre pelos textos fixos do NORQVA (prints sem texto suficiente para conferir cópia). */
+export function genericStructure(s: ReferenceStructure): ReferenceStructure {
+  if (s.kind === 'SALES_PAGE') {
+    return {
+      ...s,
+      sections: s.sections.map(sec => ({ ...sec, purpose: ROLE_PURPOSE[sec.role] })),
+      tone: GENERIC,
+      cta_text_style: GENERIC,
+      color_mood: GENERIC
+    };
+  }
+  return { ...s, angle: GENERIC, cta_style: GENERIC, structure_beats: s.structure_beats.map(b => ({ ...b, purpose: BEAT_PURPOSE[b.role] })) };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Estrutura sem IA (palavras-chave), a partir dos blocos
 // ---------------------------------------------------------------------------------------------
@@ -964,8 +1199,7 @@ const openAiClient: ReferenceAiClient = async (messages, schema) => {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
-        max_tokens: 3000,
+        max_completion_tokens: 8000,
         messages,
         response_format: { type: 'json_schema', json_schema: { name: schema.name, strict: true, schema: schema.schema } }
       }),
@@ -1164,8 +1398,8 @@ export function parseScreenshots(list: unknown): ScreenshotImage[] {
 // ---------------------------------------------------------------------------------------------
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PUBLIC_COLUMNS = `r.id, r.human_id, r.product_id, p.name AS product_name, r.source_kind, r.source_url, r.source_host, r.reference_type,
-  r.status, r.failure_reason, r.extraction_method, r.structure, r.source_word_count, r.source_shingle_count AS shingle_count,
+const PUBLIC_COLUMNS = `r.id, r.human_id, r.product_id, p.name AS product_name, r.source_kind, r.source_host, r.reference_type,
+  r.status, r.failure_reason, r.extraction_method, r.structure, r.source_word_count, r.source_shingle_count AS shingle_count, r.fingerprint_truncated,
   r.notes, r.data_provenance, r.created_at, r.updated_at, r.deleted_at, u.name AS created_by_name`;
 const FROM = `FROM creative_references r LEFT JOIN products p ON p.id = r.product_id LEFT JOIN users u ON u.id = r.created_by`;
 
@@ -1203,6 +1437,20 @@ function publicRow(row: any) {
   return { ...row, structure, shingle_count: Number(row.shingle_count || 0) };
 }
 
+export const MIN_SCREENSHOT_WORDS = 15;
+const NOTES_REMOVED = 'Observação removida (parecia texto da referência).';
+const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|ttclid|msclkid|src|ref|sck|xcod)$/i;
+
+/** sha256 do link normalizado (domínio em minúsculas, sem #, sem parâmetros de rastreio, parâmetros em ordem). */
+export function urlHash(url: URL): string {
+  const params = Array.from(url.searchParams.entries())
+    .filter(([k]) => !TRACKING_PARAM.test(k))
+    .sort(([a, x], [b, y]) => (a === b ? (x < y ? -1 : x > y ? 1 : 0) : a < b ? -1 : 1));
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  const qs = params.length ? `?${new URLSearchParams(params).toString()}` : '';
+  return crypto.createHash('sha256').update(`${url.protocol}//${url.hostname.toLowerCase()}${path}${qs}`).digest('hex');
+}
+
 export interface CreateReferenceInput {
   url?: unknown;
   images?: unknown;
@@ -1222,14 +1470,17 @@ export class CreativeReferenceService {
     if (!UUID_RE.test(productId)) throw new CreativeReferenceError(400, 'Escolha um produto.', 'INPUT');
     const prod = await this.pool.query('SELECT id FROM products WHERE id = $1 AND deleted_at IS NULL', [productId]);
     if (!prod.rows.length) throw new CreativeReferenceError(400, 'Produto não encontrado.', 'INPUT');
-    const notes = typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim().slice(0, 1000) : null;
+    const rawNotes = typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim().slice(0, 1000) : null;
 
     const isShots = input.images !== undefined && input.images !== null;
-    let sourceUrl: string | null = null;
+    const kind: 'PAGE_URL' | 'SCREENSHOTS' = isShots ? 'SCREENSHOTS' : 'PAGE_URL';
+    let sourceUrlHash: string | null = null;
     let sourceHost: string | null = null;
     // textos da referência: só nesta função, nunca gravados
     let texts: string[] = [];
+    let blocksTruncated = false;
     let extraction: ExtractResult;
+    const base = () => ({ type, productId, sourceKind: kind, sourceUrlHash, sourceHost });
 
     if (isShots) {
       const images = parseScreenshots(input.images);
@@ -1238,7 +1489,8 @@ export class CreativeReferenceService {
       texts = [adText, extraction.ok ? extraction.visibleText : ''].filter(Boolean);
     } else {
       const url = assertSafeUrl(input.url);
-      sourceUrl = `${url.origin}${url.pathname}`.slice(0, 2048);
+      // D-0115: o caminho do link não é guardado; só o domínio e um hash do link para achar repetidos
+      sourceUrlHash = urlHash(url);
       sourceHost = url.hostname.toLowerCase().slice(0, 255);
       let blocks: PageBlock[] = [];
       try {
@@ -1246,17 +1498,15 @@ export class CreativeReferenceService {
         blocks = htmlToBlocks(page.html);
       } catch (err) {
         if (err instanceof CreativeReferenceError && err.kind === 'FETCH') {
-          return this.persist({ type, productId, notes, sourceKind: 'PAGE_URL', sourceUrl, sourceHost, failure: err.message }, userId);
+          return this.persist({ ...base(), notes: rawNotes, failure: err.message }, userId);
         }
         throw err;
       }
+      blocksTruncated = blocks.length >= MAX_BLOCKS;
       const words = blocks.reduce((a, b) => a + b.wordCount, 0);
       if (words < 20) {
         return this.persist(
-          {
-            type, productId, notes, sourceKind: 'PAGE_URL', sourceUrl, sourceHost,
-            failure: 'Não deu para ler o texto da página (pode ser feita só de imagens ou montada por script). Envie prints.'
-          },
+          { ...base(), notes: rawNotes, failure: 'Não deu para ler o texto da página (pode ser feita só de imagens ou montada por script). Envie prints.' },
           userId
         );
       }
@@ -1264,18 +1514,20 @@ export class CreativeReferenceService {
       extraction = await extractStructure({ blocks }, type);
     }
 
-    if (!extraction.ok) {
-      return this.persist({ type, productId, notes, sourceKind: isShots ? 'SCREENSHOTS' : 'PAGE_URL', sourceUrl, sourceHost, failure: extraction.reason }, userId);
-    }
     const fp = buildFingerprint(texts);
-    const structure = sanitizeStructure(extraction.structure, fp);
-    const shingles = Array.from(fp.shingles);
+    const notes = rawNotes ? sanitizeText(rawNotes, fp, NOTES_REMOVED) : null;
+    if (!extraction.ok) {
+      return this.persist({ ...base(), notes, failure: extraction.reason }, userId);
+    }
     const wordCount = texts.reduce((a, t) => a + countWords(t), 0);
+    // prints com pouco texto conferível: nada de texto livre da IA, só os textos fixos do NORQVA
+    const structure =
+      isShots && wordCount < MIN_SCREENSHOT_WORDS ? genericStructure(extraction.structure) : sanitizeStructure(extraction.structure, fp);
+    const shingles = Array.from(fp.shingles);
+    const truncated = blocksTruncated || fp.truncated;
+    if (truncated) console.warn('[referências] impressões truncadas (página muito grande); a checagem anticópia cobre só o começo.');
     texts = [];
-    return this.persist(
-      { type, productId, notes, sourceKind: isShots ? 'SCREENSHOTS' : 'PAGE_URL', sourceUrl, sourceHost, structure, method: extraction.method, shingles, wordCount },
-      userId
-    );
+    return this.persist({ ...base(), notes, structure, method: extraction.method, shingles, wordCount, truncated }, userId);
   }
 
   private async persist(
@@ -1284,13 +1536,14 @@ export class CreativeReferenceService {
       productId: string;
       notes: string | null;
       sourceKind: 'PAGE_URL' | 'SCREENSHOTS';
-      sourceUrl: string | null;
+      sourceUrlHash: string | null;
       sourceHost: string | null;
       failure?: string;
       structure?: ReferenceStructure;
       method?: 'AI' | 'HEURISTIC';
       shingles?: string[];
       wordCount?: number;
+      truncated?: boolean;
     },
     userId: string | null
   ) {
@@ -1299,13 +1552,14 @@ export class CreativeReferenceService {
     const status = r.failure ? 'FAILED' : 'READY';
     const ins = await this.pool.query(
       `INSERT INTO creative_references
-         (human_id, product_id, source_kind, source_url, source_host, reference_type, status, failure_reason, extraction_method,
-          structure, source_word_count, source_shingles, source_shingle_count, notes, data_provenance, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::text[], $13, $14, 'COMMERCIAL_PRODUCTION', $15)
+         (human_id, product_id, source_kind, source_url_hash, source_host, reference_type, status, failure_reason, extraction_method,
+          structure, source_word_count, source_shingles, source_shingle_count, fingerprint_truncated, notes, data_provenance, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::text[], $13, $14, $15, 'COMMERCIAL_PRODUCTION', $16)
        RETURNING id`,
       [
-        hid, r.productId, r.sourceKind, r.sourceUrl, r.sourceHost, r.type, status, r.failure ? r.failure.slice(0, 500) : null,
-        r.method || null, r.structure ? JSON.stringify(r.structure) : null, r.wordCount || 0, r.shingles || [], (r.shingles || []).length, r.notes, actor
+        hid, r.productId, r.sourceKind, r.sourceUrlHash, r.sourceHost, r.type, status, r.failure ? r.failure.slice(0, 500) : null,
+        r.method || null, r.structure ? JSON.stringify(r.structure) : null, r.wordCount || 0, r.shingles || [], (r.shingles || []).length,
+        !!r.truncated, r.notes, actor
       ]
     );
     const what = r.type === 'AD' ? 'anúncio' : 'página de venda';

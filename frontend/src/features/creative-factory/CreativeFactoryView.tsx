@@ -113,6 +113,10 @@ export function CreativeFactoryView({
   // NORQVA-0115: aba Referências (só aparece com CREATIVE_REFERENCES_ENABLED ligada no servidor)
   const [refsEnabled, setRefsEnabled] = useState(false);
   const [section, setSection] = useState<'creatives' | 'references'>('creatives');
+  const disableReferences = useCallback(() => {
+    setRefsEnabled(false);
+    setSection('creatives');
+  }, []);
   const [busy, setBusy] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [hookFilter, setHookFilter] = useState<string>('ALL');
@@ -1063,6 +1067,7 @@ export function CreativeFactoryView({
           products={products}
           isAdmin={isAdmin}
           canCreate={canRevise}
+          onDisabled={disableReferences}
         />
       ) : (
       <>

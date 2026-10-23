@@ -3,6 +3,9 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import request from 'supertest';
 import { Pool } from 'pg';
 import crypto from 'crypto';
+import http from 'http';
+import zlib from 'zlib';
+import { AddressInfo } from 'net';
 import app from '../index';
 import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
@@ -26,7 +29,14 @@ import {
   ROLE_PURPOSE,
   CreativeReferenceError,
   PageTransport,
-  SalesStructure
+  SalesStructure,
+  AdStructure,
+  META_LINK_MESSAGE,
+  guardedLookup,
+  setDnsLookupForTests,
+  nodeTransport,
+  urlHash,
+  genericStructure
 } from '../services/creative/referenceService';
 
 const SECRET = 'Minha avó Lucia guardava este caderno secreto de massas frescas na cozinha de Bolonha e agora ele chegou até você.';
@@ -83,6 +93,7 @@ function pages(map: Record<string, { status?: number; location?: string; html?: 
 afterEach(() => {
   setPageFetchForTests(null, null);
   setReferenceAiForTests(null);
+  setDnsLookupForTests(null);
 });
 
 describe('NORQVA-0115 — leitura da página em blocos', () => {
@@ -113,6 +124,26 @@ describe('NORQVA-0115 — leitura da página em blocos', () => {
 
   it('é determinística', () => {
     expect(JSON.stringify(htmlToBlocks(FIXTURE))).toBe(JSON.stringify(htmlToBlocks(FIXTURE)));
+  });
+
+  it('HTML sem fechamento não trava (leitura linear)', () => {
+    const big = 'x'.repeat(200_000);
+    const cases = [
+      `<p>antes</p><script>${big}`,
+      `<p>antes</p><!--${big}`,
+      `<p>antes</p>${'<script>a'.repeat(40_000)}`,
+      `<p>antes</p>${'<!--a'.repeat(40_000)}`,
+      `<p>antes</p>${'<a b'.repeat(50_000)}`,
+      `<p>antes</p>${'<iframe src="x">'.repeat(20_000)}`,
+      `<p>antes</p>${'<div>'.repeat(50_000)}texto`,
+      `<p>antes</p>${'<a class="'.repeat(30_000)}>`
+    ];
+    for (const html of cases) {
+      const t0 = Date.now();
+      const blocks = htmlToBlocks(html);
+      expect(Date.now() - t0, html.slice(0, 30)).toBeLessThan(500);
+      expect(blocks[0]?.text).toBe('antes');
+    }
   });
 });
 
@@ -161,7 +192,7 @@ describe('NORQVA-0115 — proteção contra SSRF', () => {
   it('classifica IPs', () => {
     expect(isPrivateAddress('8.8.8.8')).toBe(false);
     expect(isPrivateAddress('2001:4860:4860::8888')).toBe(false);
-    for (const ip of ['127.0.0.1', '10.0.0.1', '172.16.5.4', '192.168.1.1', '100.64.0.1', '0.0.0.0', '::1', '::', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', 'lixo']) {
+    for (const ip of ['::ffff:0:10.0.0.1', '64:ff9b:1::1', '100::1', '192.88.99.1', '127.0.0.1', '10.0.0.1', '172.16.5.4', '192.168.1.1', '100.64.0.1', '0.0.0.0', '::1', '::', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', 'lixo']) {
       expect(isPrivateAddress(ip), ip).toBe(true);
     }
   });
@@ -213,6 +244,117 @@ describe('NORQVA-0115 — proteção contra SSRF', () => {
   });
 });
 
+describe('NORQVA-0115 — Biblioteca de Anúncios e conexão real', () => {
+  it('link da Meta é recusado (pede prints), também depois de redirecionar', async () => {
+    for (const u of ['https://www.facebook.com/ads/library/?id=1', 'https://facebook.com/x', 'https://fb.com/x', 'https://m.instagram.com/p/x', 'https://instagram.com/p/x', 'https://scontent.xx.fbcdn.net/v/x.jpg']) {
+      expect(() => assertSafeUrl(u), u).toThrow(META_LINK_MESSAGE);
+    }
+    const { t, calls } = pages({ 'https://encurtador.test/a': { status: 302, location: 'https://www.facebook.com/ads/library/?id=9' } });
+    setPageFetchForTests(t, publicDns);
+    await expect(fetchPage('https://encurtador.test/a')).rejects.toMatchObject({ status: 400, kind: 'INPUT', message: META_LINK_MESSAGE });
+    expect(calls).toEqual(['https://encurtador.test/a']);
+  });
+
+  it('hash do link ignora rastreio, # e barra final', () => {
+    const a = urlHash(new URL('https://Concorrente.test/pagina/?utm_source=fb&b=2&a=1#topo'));
+    const b = urlHash(new URL('https://concorrente.test/pagina?a=1&b=2&fbclid=xyz'));
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(urlHash(new URL('https://concorrente.test/outra'))).not.toBe(a);
+  });
+
+  it('na hora de conectar: qualquer IP interno bloqueia; público passa (all e endereço único)', async () => {
+    const run = (addrs: { address: string; family: number }[], opts: any) =>
+      new Promise<any[]>(resolve => {
+        setDnsLookupForTests((_h, o, cb) => {
+          expect(o.all).toBe(true);
+          cb(null, addrs);
+        });
+        guardedLookup('pagina.test', opts, (...args: any[]) => resolve(args));
+      });
+    const blocked = await run([{ address: '93.184.216.34', family: 4 }, { address: '10.0.0.1', family: 4 }], {});
+    expect(blocked[0]?.code).toBe('ENORQVA_BLOCKED');
+    const v6 = await run([{ address: 'fe80::1', family: 6 }], { all: true });
+    expect(v6[0]?.code).toBe('ENORQVA_BLOCKED');
+    const all = await run([{ address: '93.184.216.34', family: 4 }], { all: true });
+    expect(all).toEqual([null, [{ address: '93.184.216.34', family: 4 }]]);
+    const single = await run([{ address: '93.184.216.34', family: 4 }], {});
+    expect(single).toEqual([null, '93.184.216.34', 4]);
+    const failed = await new Promise<any[]>(resolve => {
+      setDnsLookupForTests((_h, _o, cb) => cb(Object.assign(new Error('x'), { code: 'ENOTFOUND' }), null));
+      guardedLookup('pagina.test', {}, (...args: any[]) => resolve(args));
+    });
+    expect(failed[0]?.code).toBe('ENOTFOUND');
+  });
+
+  it('prazo único para todos os redirecionamentos', async () => {
+    const slow: PageTransport = url =>
+      new Promise(resolve =>
+        setTimeout(() => resolve({ status: 302, location: `${url.toString()}x`, contentType: 'text/html', body: Buffer.alloc(0) }), 120)
+      );
+    setPageFetchForTests(slow, publicDns);
+    const t0 = Date.now();
+    await expect(fetchPage('https://lenta.test/a', 300)).rejects.toMatchObject({ status: 504, kind: 'FETCH' });
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  describe('transporte real contra servidor local (127.0.0.1, só nos testes)', () => {
+    let server: http.Server;
+    let base = '';
+    const bomb = zlib.gzipSync(Buffer.alloc(5_000_000, 0x61));
+    beforeAll(async () => {
+      server = http.createServer((req, res) => {
+        if (req.url === '/ok') {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          return res.end('<p>ok</p>');
+        }
+        if (req.url === '/grande') {
+          res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Length': 5000 });
+          return res.end('a'.repeat(5000));
+        }
+        if (req.url === '/grande-sem-tamanho') {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          for (let i = 0; i < 10; i++) res.write('b'.repeat(500));
+          return res.end();
+        }
+        if (req.url === '/bomba') {
+          res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip', 'Content-Length': bomb.length });
+          return res.end(bomb);
+        }
+        if (req.url === '/gzip') {
+          const body = zlib.gzipSync(Buffer.from('<p>comprimido</p>'));
+          res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip' });
+          return res.end(body);
+        }
+        // /parada: nunca responde
+      });
+      await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+      base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+    afterAll(async () => {
+      server.closeAllConnections?.();
+      await new Promise(r => server.close(() => r(null)));
+    });
+
+    it('lê a página, inclusive comprimida', async () => {
+      expect((await nodeTransport(new URL(`${base}/ok`), { timeoutMs: 2000, maxBytes: 1000 })).body.toString()).toBe('<p>ok</p>');
+      expect((await nodeTransport(new URL(`${base}/gzip`), { timeoutMs: 2000, maxBytes: 1000 })).body.toString()).toBe('<p>comprimido</p>');
+    });
+
+    it('para no limite de tamanho (declarado, sem tamanho e bomba de compressão)', async () => {
+      await expect(nodeTransport(new URL(`${base}/grande`), { timeoutMs: 2000, maxBytes: 1000 })).rejects.toMatchObject({ status: 413 });
+      await expect(nodeTransport(new URL(`${base}/grande-sem-tamanho`), { timeoutMs: 2000, maxBytes: 1000 })).rejects.toMatchObject({ status: 413 });
+      await expect(nodeTransport(new URL(`${base}/bomba`), { timeoutMs: 5000, maxBytes: 1_000_000 })).rejects.toMatchObject({ status: 413 });
+    });
+
+    it('desiste no tempo máximo', async () => {
+      const t0 = Date.now();
+      await expect(nodeTransport(new URL(`${base}/parada`), { timeoutMs: 300, maxBytes: 1000 })).rejects.toMatchObject({ status: 504 });
+      expect(Date.now() - t0).toBeLessThan(2000);
+    });
+  });
+});
+
 describe('NORQVA-0115 — limpeza da estrutura', () => {
   const fp = buildFingerprint(htmlToBlocks(FIXTURE).map(b => b.text));
 
@@ -240,6 +382,44 @@ describe('NORQVA-0115 — limpeza da estrutura', () => {
     expect(out.tone).toBe('Não identificado');
     expect(out.cta_text_style).toBe('Verbo na primeira pessoa');
     expect(out.color_mood).toBe('Tons quentes');
+  });
+
+  it('pega trecho curto, número solto e marca feita de palavras comuns', () => {
+    const src = buildFingerprint([
+      'Desafio Seca Barriga 21 Dias',
+      'Perca a barriga com receitas simples e rápidas de preparar em casa todos os dias da semana.',
+      'Mais de dez mil alunas já fizeram.'
+    ]);
+    const s: SalesStructure = {
+      kind: 'SALES_PAGE',
+      sections: [
+        { order: 1, role: 'HERO_HOOK', purpose: 'Apresenta o Seca Barriga', headline_style: 'NONE', approx_words: 5, has_image: false, has_video: false, cta_count: 0 },
+        { order: 2, role: 'BENEFITS', purpose: 'Receitas simples e rápidas', headline_style: 'NONE', approx_words: 5, has_image: false, has_video: false, cta_count: 0 },
+        { order: 3, role: 'CONTENTS', purpose: 'Mostra 28 receitas', headline_style: 'NONE', approx_words: 5, has_image: false, has_video: false, cta_count: 0 },
+        { order: 4, role: 'PROOF_RESULTS', purpose: 'Quantidade de alunas', headline_style: 'NONE', approx_words: 5, has_image: false, has_video: false, cta_count: 0 },
+        { order: 5, role: 'PAIN', purpose: 'Lista o incômodo do leitor', headline_style: 'NONE', approx_words: 5, has_image: false, has_video: false, cta_count: 0 }
+      ],
+      tone: 'barriga',
+      length_class: 'SHORT',
+      cta_text_style: 'Convite direto',
+      color_mood: 'Verde e branco'
+    };
+    const out = sanitizeStructure(s, src) as SalesStructure;
+    expect(out.sections.map(x => x.purpose)).toEqual([
+      ROLE_PURPOSE.HERO_HOOK,
+      ROLE_PURPOSE.BENEFITS,
+      ROLE_PURPOSE.CONTENTS,
+      'Quantidade de alunas',
+      'Lista o incômodo do leitor'
+    ]);
+    expect(out.tone).toBe('Não identificado');
+    expect(out.cta_text_style).toBe('Convite direto');
+    const ad = genericStructure({
+      kind: 'AD', hook_type: 'QUESTION', angle: 'Qualquer coisa', format: 'VIDEO', duration_s: null, on_screen_text: true, voiceover: false,
+      structure_beats: [{ t_from_s: 0, role: 'HOOK', purpose: 'Texto livre' }], cta_style: 'Livre'
+    }) as AdStructure;
+    expect(ad).toMatchObject({ angle: 'Não identificado', cta_style: 'Não identificado' });
+    expect(ad.structure_beats[0].purpose).toBe('Gancho nos primeiros segundos');
   });
 
   it('validador limpa enum desconhecido e corta textos longos', () => {
@@ -423,7 +603,9 @@ describe.sequential('NORQVA-0115 — rotas e gravação', () => {
     expect(r.status).toBe(201);
     const ref = r.body.reference;
     expect(ref.human_id).toMatch(/^REF-\d{6}$/);
-    expect(ref).toMatchObject({ status: 'READY', source_kind: 'PAGE_URL', source_host: 'concorrente.test', source_url: PAGE, extraction_method: 'HEURISTIC', product_name: 'Livro 0115' });
+    expect(ref).toMatchObject({ status: 'READY', source_kind: 'PAGE_URL', source_host: 'concorrente.test', extraction_method: 'HEURISTIC', product_name: 'Livro 0115', fingerprint_truncated: false });
+    expect(ref.source_url).toBeUndefined();
+    expect(ref.source_url_hash).toBeUndefined();
     expect(ref.structure.sections.length).toBeGreaterThan(3);
     expect(ref.shingle_count).toBeGreaterThan(10);
     expect(ref.source_shingles).toBeUndefined();
@@ -433,7 +615,11 @@ describe.sequential('NORQVA-0115 — rotas e gravação', () => {
     expect(j).not.toContain('ravioli');
     expect(j).not.toContain('19,90');
     expect(j).not.toContain('<p>');
-    const row = (await pool.query('SELECT source_shingles, source_word_count FROM creative_references WHERE id = $1', [ref.id])).rows[0];
+    expect(j).not.toContain('/pagina');
+    expect(j).not.toContain('utm');
+    const row = (await pool.query('SELECT source_shingles, source_word_count, source_url_hash, notes FROM creative_references WHERE id = $1', [ref.id])).rows[0];
+    expect(row.source_url_hash).toBe(urlHash(new URL(`${PAGE}?utm=1`)));
+    expect(row.notes).toBe('Ver a ordem das seções');
     expect(row.source_shingles).toContain(shingleHash(normalizeWords('guardava este caderno secreto de massas').join(' ')));
     expect(row.source_word_count).toBeGreaterThan(80);
     const audit = await pool.query(`SELECT description FROM audit_logs WHERE event_type = 'CREATIVE_REFERENCE_CREATED' AND description LIKE $1`, [`%${ref.human_id}%`]);
@@ -505,7 +691,7 @@ describe.sequential('NORQVA-0115 — rotas e gravação', () => {
     const r = await shots({ images: [PNG_1X1], ad_text: 'Texto do anúncio colado pelo dono com a frase', product_id: productId, reference_type: 'AD' }, creative);
     expect(r.status).toBe(201);
     const ref = r.body.reference;
-    expect(ref).toMatchObject({ status: 'READY', extraction_method: 'AI', source_url: null });
+    expect(ref).toMatchObject({ status: 'READY', extraction_method: 'AI', source_host: null });
     expect(ref.structure.angle).toBe('Não identificado');
     expect(ref.structure.structure_beats[0].purpose).toBe('Pergunta sobre o erro mais comum');
     expect(ref.structure.structure_beats[1].purpose).toBe('Prova ou resultado');
@@ -522,6 +708,68 @@ describe.sequential('NORQVA-0115 — rotas e gravação', () => {
     const notImage = await shots({ images: [Buffer.from('não é imagem').toString('base64')], product_id: productId, reference_type: 'AD' });
     expect(notImage.status).toBe(400);
     expect((await shots({ product_id: productId, reference_type: 'AD' })).status).toBe(400);
+  });
+
+  it('contrato anticópia: trecho curto, número, marca de palavras comuns e observação copiada', async () => {
+    const VISIBLE = 'Desafio Seca Barriga 21 Dias. Perca a barriga com receitas simples e rápidas de preparar em casa. Mais de dez mil alunas já fizeram o desafio completo.';
+    setReferenceAiForTests(async () =>
+      JSON.stringify({
+        sections: [
+          { order: 1, role: 'HERO_HOOK', purpose: 'Apresenta o Seca Barriga', headline_style: 'BOLD_PROMISE', approx_words: 20, has_image: true, has_video: false, cta_count: 1 },
+          { order: 2, role: 'BENEFITS', purpose: 'Receitas simples e rápidas', headline_style: 'NONE', approx_words: 20, has_image: false, has_video: false, cta_count: 0 },
+          { order: 3, role: 'CONTENTS', purpose: 'Mostra 28 receitas', headline_style: 'NONE', approx_words: 20, has_image: false, has_video: false, cta_count: 0 },
+          { order: 4, role: 'PROOF_RESULTS', purpose: 'Contagem de alunas como prova', headline_style: 'NONE', approx_words: 20, has_image: false, has_video: false, cta_count: 0 }
+        ],
+        tone: 'Motivador',
+        length_class: 'SHORT',
+        cta_text_style: 'Convite direto',
+        color_mood: 'Verde',
+        visible_text: VISIBLE
+      })
+    );
+    const r = await shots({ images: [PNG_1X1], product_id: productId, reference_type: 'SALES_PAGE', notes: 'Gostei de receitas simples e rápidas' });
+    expect(r.status).toBe(201);
+    const ref = r.body.reference;
+    expect(ref.structure.sections.map((x: any) => x.purpose)).toEqual([
+      ROLE_PURPOSE.HERO_HOOK,
+      ROLE_PURPOSE.BENEFITS,
+      ROLE_PURPOSE.CONTENTS,
+      'Contagem de alunas como prova'
+    ]);
+    expect(ref.notes).toBe('Observação removida (parecia texto da referência).');
+    const j = await rowJson(ref.id);
+    for (const secret of ['Seca Barriga', 'simples e rápidas', 'Mostra 28', 'dez mil alunas', 'Desafio']) expect(j, secret).not.toContain(secret);
+    const audit = await pool.query(`SELECT description, new_value FROM audit_logs WHERE description LIKE $1`, [`%${ref.human_id}%`]);
+    expect(audit.rows.length).toBeGreaterThan(0);
+    for (const a of audit.rows) {
+      const text = `${a.description} ${a.new_value || ''}`;
+      for (const secret of ['Seca', 'Barriga', 'simples e rápidas', 'alunas']) expect(text, secret).not.toContain(secret);
+    }
+  });
+
+  it('prints sem texto para conferir: todo texto livre vira o texto fixo do NORQVA', async () => {
+    setReferenceAiForTests(async () =>
+      JSON.stringify({
+        sections: [{ order: 1, role: 'HERO_HOOK', purpose: 'Abertura com gancho emocional forte', headline_style: 'QUESTION', approx_words: 20, has_image: true, has_video: false, cta_count: 1 }],
+        tone: 'Motivador', length_class: 'SHORT', cta_text_style: 'Convite direto', color_mood: 'Verde', visible_text: ''
+      })
+    );
+    const r = await shots({ images: [PNG_1X1], product_id: productId, reference_type: 'SALES_PAGE' });
+    expect(r.status).toBe(201);
+    expect(r.body.reference.structure.sections[0].purpose).toBe(ROLE_PURPOSE.HERO_HOOK);
+    expect(r.body.reference.structure).toMatchObject({ tone: 'Não identificado', cta_text_style: 'Não identificado', color_mood: 'Não identificado' });
+  });
+
+  it('erros não devolvem o que foi enviado; link da Meta pede prints', async () => {
+    const SECRET_Q = 'SegredoDaConcorrente';
+    const meta = await post('/api/creative-references', { url: `https://www.facebook.com/ads/library/?q=${SECRET_Q}`, product_id: productId, reference_type: 'AD' });
+    expect(meta.status).toBe(400);
+    expect(meta.body.error).toBe(META_LINK_MESSAGE);
+    const bad = await post('/api/creative-references', { url: `http://10.0.0.1/${SECRET_Q}`, product_id: productId, reference_type: 'AD' });
+    expect(bad.status).toBe(400);
+    const many = await shots({ images: Array(6).fill(PNG_1X1), ad_text: SECRET_Q, product_id: productId, reference_type: 'AD' });
+    expect(many.status).toBe(400);
+    for (const res of [meta, bad, many]) expect(JSON.stringify(res.body)).not.toContain(SECRET_Q);
   });
 
   it('lista, abre, exclui e restaura (lixeira, nada apagado)', async () => {
