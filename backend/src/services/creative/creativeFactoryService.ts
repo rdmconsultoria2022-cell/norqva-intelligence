@@ -270,6 +270,7 @@ export class CreativeFactoryService {
               o.human_id AS offer_human_id, o.name AS offer_name, o.price AS offer_price,
               p.name AS product_name,
               CASE
+                WHEN c.reference_id IS NOT NULL THEN 'REFERENCE'
                 WHEN c.batch_code IS NULL THEN 'MANUAL'
                 WHEN c.batch_code = 'META_EXTERNO' THEN 'META'
                 WHEN EXISTS (SELECT 1 FROM creative_batches cb WHERE cb.code = c.batch_code AND cb.source = 'AI' AND cb.is_demo = c.is_demo) THEN 'AI_TEAM'
@@ -573,6 +574,11 @@ export class CreativeFactoryService {
     }
 
     if (decision === 'APPROVED') {
+      // NORQVA-0116 (D-0116): anúncio gerado de referência com campo bloqueado (cópia, número, promessa ou preço)
+      const cc = typeof creative.copy_check === 'string' ? (() => { try { return JSON.parse(creative.copy_check); } catch { return null; } })() : creative.copy_check;
+      if (cc && cc.blocked === true) {
+        throw new CreativeFactoryError(409, 'Aprovação bloqueada: o anúncio tem texto bloqueado pela checagem (cópia da referência, número, promessa ou preço). Edite ou gere de novo.');
+      }
       // NORQVA-0053 (D-0053): anúncio sem preço (texto do criativo)
       const priceHits = findPriceInFields({
         hook: creative.hook,

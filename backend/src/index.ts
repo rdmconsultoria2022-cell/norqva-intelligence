@@ -190,6 +190,11 @@ import {
   referencesFlag, screenshotsBody, getReferencesStatus, postReferenceFromUrl, postReferenceFromScreenshots,
   listReferences, getReference, deleteReference, restoreReference
 } from './controllers/creativeReferenceController';
+import {
+  postGenerate, listGeneratedPages, getGeneratedPage, patchGeneratedSection, regenerateGeneratedSection, patchGeneratedAd,
+  regenerateGeneratedAd, approveGeneratedPage, publishGeneratedPage, unpublishGeneratedPage, deleteGeneratedPage,
+  restoreGeneratedPage, getPublicGeneratedPage
+} from './controllers/generationController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, addOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
@@ -393,6 +398,8 @@ app.post('/api/config/clear-demo', requireRole(['ADMIN']), clearDemo);
 // Customers and Checkout endpoints (Sprint 2.5B & Public Commerce V1)
 app.get('/api/public/offers/:humanId', orderStatusRateLimiter, getPublicOffer);
 app.get('/api/public/collection', orderStatusRateLimiter, getPublicCollection);
+// NORQVA-0116: página gerada e publicada (/v/:slug no site do comprador)
+app.get('/api/public/generated-pages/:slug', orderStatusRateLimiter, getPublicGeneratedPage);
 app.post('/api/public/telemetry/events', generalRateLimiter, recordFunnelEvent);
 // NORQVA-0054: página → WhatsApp com código de origem
 app.post('/api/public/whatsapp/ref', checkoutRateLimiter, postPublicWhatsAppRef);
@@ -634,6 +641,19 @@ app.get('/api/creative-references', requireRole(REFERENCE_READERS), referencesFl
 app.get('/api/creative-references/:id', requireRole(REFERENCE_READERS), referencesFlag, getReference);
 app.delete('/api/creative-references/:id', requireRole(['ADMIN']), referencesFlag, deleteReference);
 app.post('/api/creative-references/:id/restore', requireRole(['ADMIN']), referencesFlag, restoreReference);
+// NORQVA-0116 (D-0116): geração (página original + anúncios na fábrica) a partir de uma referência
+app.post('/api/creative-references/:id/generate', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, postGenerate);
+app.get('/api/generated-pages', requireRole(REFERENCE_READERS), referencesFlag, listGeneratedPages);
+app.get('/api/generated-pages/:id', requireRole(REFERENCE_READERS), referencesFlag, getGeneratedPage);
+app.patch('/api/generated-pages/:id/sections/:order', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, patchGeneratedSection);
+app.post('/api/generated-pages/:id/sections/:order/regenerate', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, regenerateGeneratedSection);
+app.patch('/api/generated-pages/:id/ads/:creativeId', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, patchGeneratedAd);
+app.post('/api/generated-pages/:id/ads/:creativeId/regenerate', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, regenerateGeneratedAd);
+app.post('/api/generated-pages/:id/approve', requireRole(['ADMIN']), referencesFlag, approveGeneratedPage);
+app.post('/api/generated-pages/:id/publish', requireRole(['ADMIN']), referencesFlag, publishGeneratedPage);
+app.post('/api/generated-pages/:id/unpublish', requireRole(['ADMIN']), referencesFlag, unpublishGeneratedPage);
+app.delete('/api/generated-pages/:id', requireRole(['ADMIN']), referencesFlag, deleteGeneratedPage);
+app.post('/api/generated-pages/:id/restore', requireRole(['ADMIN']), referencesFlag, restoreGeneratedPage);
 app.get('/api/automation/adjustments/:id', automationGetAdjustment);
 app.post('/api/automation/adjustments/:id/status', automationReportAdjustment);
 app.post('/api/automation/adjustments/:id/version', automationDeliverAdjustment);
