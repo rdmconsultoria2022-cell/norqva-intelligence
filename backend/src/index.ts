@@ -186,6 +186,10 @@ import { getAdPreview } from './controllers/adPreviewController';
 import { createMetaChange, listMetaChanges, approveMetaChange, rejectMetaChange, cancelMetaChange, verifyMetaChange } from './controllers/metaChangeController';
 import { getTeam, inviteTeamMember, resendTeamInvite, updateTeamMember, deactivateTeamMember, reactivateTeamMember } from './controllers/teamController';
 import { getHiddenProducts, promoteHiddenProduct, getCatalogTrash, deleteOfferToTrash, restoreOfferFromTrash, deleteProductToTrash, restoreProductFromTrash } from './controllers/catalogVisibilityController';
+import {
+  referencesFlag, screenshotsBody, getReferencesStatus, postReferenceFromUrl, postReferenceFromScreenshots,
+  listReferences, getReference, deleteReference, restoreReference
+} from './controllers/creativeReferenceController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, addOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
@@ -621,6 +625,15 @@ app.post('/api/creative-factory/batches/:code/attach-assets', requireRole(['ADMI
 app.get('/api/creative-factory/adjustments', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listFactoryAdjustments);
 app.post('/api/creative-factory/adjustments/:id/retry', requireRole(['ADMIN']), retryFactoryAdjustment);
 app.post('/api/creative-factory/creatives/:id/adjustments', requireRole(['ADMIN']), enqueueFactoryAdjustment);
+// NORQVA-0115 (D-0115): Referências (só a estrutura; trava CREATIVE_REFERENCES_ENABLED)
+const REFERENCE_READERS = ['ADMIN', 'CREATIVE'];
+app.get('/api/creative-references/status', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), getReferencesStatus);
+app.post('/api/creative-references/screenshots', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, screenshotsBody, postReferenceFromScreenshots);
+app.post('/api/creative-references', requireRole(['ADMIN', 'CREATIVE']), referencesFlag, postReferenceFromUrl);
+app.get('/api/creative-references', requireRole(REFERENCE_READERS), referencesFlag, listReferences);
+app.get('/api/creative-references/:id', requireRole(REFERENCE_READERS), referencesFlag, getReference);
+app.delete('/api/creative-references/:id', requireRole(['ADMIN']), referencesFlag, deleteReference);
+app.post('/api/creative-references/:id/restore', requireRole(['ADMIN']), referencesFlag, restoreReference);
 app.get('/api/automation/adjustments/:id', automationGetAdjustment);
 app.post('/api/automation/adjustments/:id/status', automationReportAdjustment);
 app.post('/api/automation/adjustments/:id/version', automationDeliverAdjustment);

@@ -267,3 +267,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Visual por produto:** pelo nome da oferta. "Seca Barriga" = "fresh" (claro, verde #10B981→#059669, coral #F0795B, Inter); livros = "light"; Bolso Blindado = "dark". Quem compra pelo link direto não vê material de venda de outro produto.
 - **Vários PDFs:** qualquer oferta pode entregar vários arquivos; mais um PDF sobe por `POST /api/offers/:id/delivery-files/extra` (ADMIN, até 20 por oferta, sem repetir o mesmo arquivo).
 - **Risco registrado:** o repositório no GitHub é público e `backend/public/products/` tem os PDFs pagos do Trattoria. Nada foi apagado; a decisão (repositório privado ou tirar os arquivos do git) é do Ricardo.
+
+## D-0115 — Referências: só a estrutura (2026-10-23)
+
+- **Decisão (contrato aprovado pelo Ricardo):** o NORQVA lê uma página de venda ou anúncio de referência (link colado pelo dono ou de 1 a 5 prints) e guarda **só a estrutura**: papel, função e forma de cada parte (tamanho, título, imagem, vídeo, botões), tom e tamanho da página. Texto, HTML, imagens, prints, nomes, marcas, depoimentos e números da referência **nunca** são gravados.
+- **Anticópia:** ficam só impressões (sha256 cortado em 16) de cada janela de 6 palavras do texto de origem, para a etapa 2 conferir que o material novo não copia a referência. Todo texto livre da estrutura passa por limpeza (frase igual, preço/porcentagem/peso, nome próprio da referência) antes de gravar.
+- **Origem:** só link colado à mão ou prints enviados pelo dono. Nada de raspar a Biblioteca de Anúncios da Meta.
+- **Segurança da leitura:** só http/https nas portas 80/443, nenhum endereço interno (conferido no nome e na conexão), até 3 redirecionamentos conferidos, 10 s, 3 MB.
+- **Trava:** `CREATIVE_REFERENCES_ENABLED=true` liga; desligada, as rotas respondem 404 e a aba some. Modelo da IA em `CREATIVE_AI_MODEL` (sem ele, `OPENAI_MODEL`, depois `gpt-4o-mini`); sem `OPENAI_API_KEY`, link usa palavras-chave e prints falham com "IA não configurada".

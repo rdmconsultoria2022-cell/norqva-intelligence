@@ -8,6 +8,7 @@ import { NewCreativeForm, NewCreativeInput, CLAIM_TYPE_LABEL } from './NewCreati
 import { adDelivery, DeliveryBadge, MetaImage, AdPreviewButton } from '../../components/AdLivePreview';
 import { TrashAction } from '../products/CatalogTrash';
 import { CreativeTrash } from './CreativeTrash';
+import { CreativeReferences } from './CreativeReferences';
 import { useIsMobile } from '../../components/ui/premium';
 
 // NORQVA-0058: lembra se as claims ficam abertas (preferência só deste navegador)
@@ -109,6 +110,9 @@ export function CreativeFactoryView({
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // NORQVA-0115: aba Referências (só aparece com CREATIVE_REFERENCES_ENABLED ligada no servidor)
+  const [refsEnabled, setRefsEnabled] = useState(false);
+  const [section, setSection] = useState<'creatives' | 'references'>('creatives');
   const [busy, setBusy] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [hookFilter, setHookFilter] = useState<string>('ALL');
@@ -188,6 +192,22 @@ export function CreativeFactoryView({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (isDemoView || !canRevise) return;
+    let alive = true;
+    Promise.resolve()
+      .then(() => apiFetchRef.current('/creative-references/status'))
+      .then((r: any) => {
+        if (alive) setRefsEnabled(r?.enabled === true);
+      })
+      .catch(() => {
+        if (alive) setRefsEnabled(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [isDemoView, canRevise]);
 
   // Devolve true quando deu certo (NORQVA-0025: formulários só fecham em caso de sucesso)
   const run = async (key: string, fn: () => Promise<any>, ok: string): Promise<boolean> => {
@@ -992,7 +1012,7 @@ export function CreativeFactoryView({
           </p>
         </div>
         <div className="flex items-center gap-2 self-start">
-        {canRevise && (
+        {canRevise && section === 'creatives' && (
           <button
             onClick={() => setCreating(true)}
             data-testid="new-creative"
@@ -1012,6 +1032,40 @@ export function CreativeFactoryView({
         </div>
       </div>
 
+      {refsEnabled && (
+        <div className="flex gap-2" role="tablist" aria-label="Área de criativos" data-testid="factory-sections">
+          {([
+            ['creatives', 'Criativos'],
+            ['references', 'Referências']
+          ] as const).map(([k, text]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={section === k}
+              data-testid={`factory-section-${k}`}
+              onClick={() => setSection(k)}
+              className={`px-4 rounded-full text-nq-aux font-semibold min-h-[44px] ${
+                section === k ? 'bg-nq-raised text-nq-text' : 'text-nq-muted hover:text-nq-text'
+              }`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {refsEnabled && section === 'references' ? (
+        <CreativeReferences
+          apiFetch={apiFetch}
+          showError={showError}
+          showSuccess={showSuccess}
+          products={products}
+          isAdmin={isAdmin}
+          canCreate={canRevise}
+        />
+      ) : (
+      <>
       {creating && (
         <NewCreativeForm
           products={products}
@@ -1335,6 +1389,8 @@ export function CreativeFactoryView({
       ))}
       {allCampaigns && groups.length === 0 && (
         <p className="text-nq-aux text-nq-muted" data-testid="campaigns-none">Nenhuma campanha com esse filtro.</p>
+      )}
+      </>
       )}
     </div>
   );
