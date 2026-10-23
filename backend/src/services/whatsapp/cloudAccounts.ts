@@ -494,7 +494,11 @@ export async function registerCloudNumber(pool: Pool, numberId: string, body: an
     const e = res.json?.error || {};
     const known = describeCloudError(code, e.error_user_msg || e.message).message;
     // texto da ativação, não de envio de mensagem
-    const msg = known.replace(/^A Meta recusou o envio/, 'A Meta recusou a ativação');
+    let msg = known.replace(/^A Meta recusou o envio/, 'A Meta recusou a ativação');
+    // NORQVA-0105: a Meta recusa ativar enquanto a conta do WhatsApp ou a empresa estão em análise
+    if (code === 100 && /n[aã]o (foi )?verificad|not verified/i.test(String(e.error_user_msg || e.error_user_title || ''))) {
+      msg = 'A conta do WhatsApp da Meta ainda está em análise ou a empresa ainda não foi verificada. Espere o aviso de aprovação da Meta antes de tentar de novo (cada tentativa conta para o limite da Meta).';
+    }
     const sub = Number.isFinite(Number(e.error_subcode)) ? Number(e.error_subcode) : null;
     // NORQVA-0103: detalhes técnicos da Meta no histórico e no log (sem o PIN)
     const detail = [e.message, e.error_user_title, e.error_user_msg, e.error_data?.details].filter(Boolean).map(String).join(' | ').slice(0, 600);

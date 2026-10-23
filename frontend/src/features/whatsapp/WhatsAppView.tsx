@@ -413,7 +413,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                 )}
                 {pinFor === n.id && (
                   <div className="rounded border border-nq-line p-2 text-[12px] text-nq-text space-y-2" data-testid="wa-register">
-                    <p>Crie um PIN de 6 números para este número (verificação em duas etapas da Meta). Anote: ele é pedido se o número for levado para outro lugar. O NORQVA não guarda o PIN.</p>
+                    <p>Crie um PIN de 6 números para este número (verificação em duas etapas da Meta). Anote: ele é pedido se o número for levado para outro lugar. O NORQVA não guarda o PIN. Evite PIN fácil (123456, 111111). A Meta aceita poucas tentativas por número a cada 3 dias: se der erro, leia o aviso antes de tentar de novo.</p>
                     <div className="flex gap-2">
                       <input
                         aria-label="PIN de 6 números"
