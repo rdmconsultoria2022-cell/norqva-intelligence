@@ -599,7 +599,7 @@ export function sectionIssues(s: Pick<GeneratedSection, SectionField> & { remove
     }
     out[field] = list;
   }
-  if (!s.headline.trim() && !s.body.trim() && !s.bullets.length && !(s.removed_fields || []).length) out.body.push({ code: 'EMPTY', detail: ISSUE_LABEL.EMPTY });
+  if (!s.headline.trim() && !s.body.trim() && !s.bullets.length && !s.cta_label.trim() && !(s.removed_fields || []).length) out.body.push({ code: 'EMPTY', detail: ISSUE_LABEL.EMPTY });
   if (needsCta && !s.cta_label.trim() && !(s.removed_fields || []).includes('cta_label')) out.cta_label.push({ code: 'EMPTY', detail: 'Botão sem texto' });
   return out;
 }
@@ -1202,8 +1202,13 @@ export class GenerationService {
       return Array.isArray(v) ? v.length === 0 : !String(v || '').trim();
     });
     const { ctx } = await this.contextFor(r);
+    // só os campos que o dono mudou (o resto continua com o selo que já tinha)
     const issues = sectionIssues({ ...next, removed_fields: [] }, ctx.page);
-    const list = Object.values(issues).flat().filter(i => i.code !== 'EMPTY');
+    const touched = (Object.keys(changes) as Array<keyof typeof changes>).filter(k => changes[k] !== undefined).map(String);
+    const list = Object.entries(issues)
+      .filter(([k]) => touched.includes(k))
+      .flatMap(([, l]) => l)
+      .filter(i => i.code !== 'EMPTY');
     if (list.length) throw new GenerationError(422, `Não dá para salvar: ${list.map(i => i.detail).join('; ')}.`, list);
     const sections = [...r.sections];
     sections[idx] = next;
@@ -1336,7 +1341,7 @@ export class GenerationService {
       out = { creative: { id: cur.id } };
     } else {
       try {
-        out = await factory.reviseCreative(this.pool, cur.id, changes, userId && UUID_RE.test(userId) ? userId : null, false);
+        out = await factory.reviseCreative(this.pool, cur.id, changes, await actorId(this.pool, userId), false);
       } catch (e: any) {
         if (e instanceof CreativeFactoryError) throw new GenerationError(e.status, e.message);
         throw e;
@@ -1365,8 +1370,12 @@ export class GenerationService {
     const lim: Record<AdField, number> = { hook: LIMITS.hook, primary_text: LIMITS.primary, headline: LIMITS.adHeadline, description: LIMITS.description, cta: LIMITS.cta, script: 3000 };
     for (const k of AD_FIELDS) if (next[k].length > lim[k]) throw new GenerationError(400, `Texto longo demais (${k}: até ${lim[k]} caracteres).`);
     const { f, ctx } = await this.contextFor(r);
+    // só os campos que mudaram (os outros continuam com o selo que já tinham)
+    const before: Record<AdField, string> = {
+      hook: cur.hook || '', primary_text: cur.primary_text || '', headline: cur.headline || '', description: cur.ad_description || '', cta: cur.cta || '', script: cur.script || ''
+    };
     const issues = adIssues(next, ctx.ad);
-    const list = Object.values(issues).flat();
+    const list = AD_FIELDS.filter(k => next[k] !== before[k]).flatMap(k => issues[k]);
     if (list.length) throw new GenerationError(422, `Não dá para salvar: ${list.map(i => i.detail).join('; ')}.`, list);
     await this.reviseAd(r, cur, next, adCopyCheck(next, ctx.ad), null, f, userId);
     return this.get(pageId);
