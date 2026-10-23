@@ -23,9 +23,9 @@
   <body class="bg-slate-900 text-slate-100 antialiased">
     <div id="root"><div id="nq-boot" aria-hidden="true"><svg viewBox="0 0 120 120" width="96" height="96"><path d="M60 10 L104 86 L16 86 Z" fill="rgba(167,175,188,0.06)" stroke="#C9CFD9" stroke-width="6"/><circle cx="60" cy="10" r="4" fill="#F4F6F9"/></svg></div></div>
     <script>
-      // páginas do comprador (livro, kit, pedido, acesso): sem a marca interna, sem barra escura e sem instalar o painel
+      // páginas do comprador (livro, kit, pedido, acesso, página gerada): sem a marca interna, sem barra escura e sem instalar o painel
       (function () {
-        if (!/^\/(p|kit|pedido|acesso)\//.test(location.pathname)) return;
+        if (!/^\/(p|kit|pedido|acesso|v)\//.test(location.pathname)) return;
         var b = document.getElementById('nq-boot'); if (b) b.parentNode.removeChild(b);
         var m = document.getElementById('nq-manifest'); if (m) m.parentNode.removeChild(m);
         var t = document.getElementById('nq-theme'); if (t) t.setAttribute('content', '#FAF7F2');

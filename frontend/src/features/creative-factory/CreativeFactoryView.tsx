@@ -1066,6 +1066,7 @@ export function CreativeFactoryView({
           showError={showError}
           showSuccess={showSuccess}
           products={products}
+          offers={offers}
           isAdmin={isAdmin}
           canCreate={canRevise}
           onDisabled={disableReferences}

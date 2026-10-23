@@ -62,6 +62,7 @@ const PERIOD_AWARE_TABS = ['campaigns', 'research', 'results', 'creative-factory
 import { PublicOfferPage } from './features/public/PublicOfferPage';
 import { lookForNames } from './lib/productLook';
 import { KitLandingPage } from './features/public/KitLandingPage';
+import { GeneratedPage } from './features/public/GeneratedPage';
 
 import { apiFetch as apiFetchLib, API_BASE as API_BASE_LIB } from './lib/api';
 
@@ -162,9 +163,10 @@ export default function App() {
     const isOrderDelivery = location.pathname.startsWith('/pedido/');
     const isAccessRecovery = location.pathname.startsWith('/acesso/');
     const isKitPage = location.pathname.startsWith('/kit/'); // NORQVA-0038: página pública do kit
+    const isGeneratedPage = location.pathname.startsWith('/v/'); // NORQVA-0116: página gerada e publicada
 
     if (!currentUser) {
-      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery && !isKitPage) {
+      if (!isRecovery && !isForgot && !isLogin && !isPublicOffer && !isOrderDelivery && !isAccessRecovery && !isKitPage && !isGeneratedPage) {
         navigate('/login', { replace: true });
       }
     } else {
@@ -595,6 +597,11 @@ export default function App() {
         showSuccess={showSuccess}
       />
     );
+  }
+
+  // NORQVA-0116: página de venda gerada a partir de uma referência e publicada pelo dono
+  if (location.pathname.startsWith('/v/')) {
+    return <GeneratedPage />;
   }
 
   if (isPublicOffer) {
