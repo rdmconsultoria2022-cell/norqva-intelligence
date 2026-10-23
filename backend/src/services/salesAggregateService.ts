@@ -26,7 +26,7 @@ export async function aggregateSales(pool: Pool, opts: SalesAggregateOptions) {
     : opts.filter === 'PENDING' ? "AND o.status = 'PENDING'"
     : opts.filter === 'PROBLEM' ? `AND o.status = 'PAID' AND (
         (COALESCE(dl.downloads,0) = 0 AND pay.confirmed_at < NOW() - INTERVAL '30 minutes')
-        OR COALESCE(dl.expired,0) > 0 OR oae.status = 'FAILED')` : '';
+        OR COALESCE(dl.expired,0) > 0 OR COALESCE(oae.has_failed,FALSE))` : '';
   const externalEnabled = opts.filter !== 'PENDING' && opts.filter !== 'PROBLEM';
   const externalStatus = opts.filter === 'PAID' ? "AND e.status = 'PAID'" : '';
   const query = `
@@ -34,7 +34,7 @@ export async function aggregateSales(pool: Pool, opts: SalesAggregateOptions) {
       SELECT o.id, o.status, o.total_amount,
         (o.status = 'PAID' AND (
           (COALESCE(dl.downloads,0) = 0 AND pay.confirmed_at < NOW() - INTERVAL '30 minutes')
-          OR COALESCE(dl.expired,0) > 0 OR oae.status = 'FAILED'
+          OR COALESCE(dl.expired,0) > 0 OR COALESCE(oae.has_failed,FALSE)
         )) AS problem
       FROM orders o
       JOIN customers c ON c.id = o.customer_id
@@ -47,7 +47,10 @@ export async function aggregateSales(pool: Pool, opts: SalesAggregateOptions) {
           COUNT(*) FILTER (WHERE d.status='EXPIRED')::int AS expired
         FROM order_deliveries d WHERE d.order_id=o.id
       ) dl ON TRUE
-      LEFT JOIN order_access_emails oae ON oae.order_id=o.id
+      LEFT JOIN LATERAL (
+        SELECT BOOL_OR(a.status = 'FAILED') AS has_failed
+        FROM order_access_emails a WHERE a.order_id=o.id
+      ) oae ON TRUE
       WHERE ${orderEligibility}
         AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)
         AND ($2::timestamptz IS NULL OR o.created_at <= $2::timestamptz)
