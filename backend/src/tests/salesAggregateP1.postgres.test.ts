@@ -92,6 +92,24 @@ describe.sequential('P1 — full-history financial aggregates (PostgreSQL)', () 
       confirmed?new Date('2026-10-10T10:00:00Z'):null]);
     await addPayment(true);
     await addPayment(false);
+    // Two delivery rows for the same order: the aggregate must remain one order.
+    // Minimal catalog fixtures are transaction-local and rolled back.
+    const productId = crypto.randomUUID();
+    const offerId = crypto.randomUUID();
+    const asset1 = crypto.randomUUID();
+    const asset2 = crypto.randomUUID();
+    await q(`INSERT INTO products (id,human_id,name,category,description,status,is_demo)
+      VALUES ($1,$2,'P1 fixture','Test','P1','PLANEJADO',TRUE)`,[productId,`PRD-P1-${crypto.randomUUID()}`]);
+    await q(`INSERT INTO offers (id,human_id,name,product_id,price,status,description,is_demo)
+      VALUES ($1,$2,'P1 fixture',$3,$4,'ATIVA','P1',TRUE)`,[offerId,`OFF-P1-${crypto.randomUUID()}`,productId,amount]);
+    const item = await q(`INSERT INTO order_items (order_id,offer_id,product_id,product_name_snapshot,offer_name_snapshot,unit_price,quantity,total_price)
+      VALUES ($1,$2,$3,'P1','P1',$4,1,$4) RETURNING id`,[id,offerId,productId,amount]);
+    for (const assetId of [asset1,asset2]) {
+      await q(`INSERT INTO digital_assets (id,name,storage_provider,storage_bucket,storage_path,is_demo)
+        VALUES ($1,'P1','SUPABASE','test',$2,TRUE)`,[assetId,`p1/${assetId}.pdf`]);
+      await q(`INSERT INTO order_deliveries (order_id,order_item_id,asset_id,status,download_count)
+        VALUES ($1,$2,$3,'ACTIVE',1)`,[id,item.rows[0].id,assetId]);
+    }
     await q("INSERT INTO order_access_emails (order_id,status) VALUES ($1,'FAILED')",[id]);
     const after = await agg(opts());
     expect(after.total-before.total).toBe(1);
