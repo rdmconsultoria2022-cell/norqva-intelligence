@@ -92,7 +92,7 @@ export const HEALTH_PATTERNS: RegExp[] = [
   /\bemagre\w*\s+(?:muito\s+|bem\s+)?rapid\w*/,
   /\brapid\w*\s+emagre\w*/,
   /\b(?:elimin|queim|derret)\w*\s+(?:(?:a|de|da|sua|toda|essa|aquela)\s+)*gordura/,
-  /\bsec(?:a|ar|ue|ando|am)\s+(?:(?:a|sua)\s+)?barriga\b/,
+  /\b(?:seca|secar|seque|secando|secam|sequem)\s+(?:(?:a|sua)\s+)?barriga\b/,
   /\bbarriga\s+(?:chapada|negativa|lisinha|zerada|sequinha)\b/,
   /\bresultados?\s+em\s+(?:ate\s+)?\d+\s+dias\b/,
   /\bsem\s+dietas?\b/,
