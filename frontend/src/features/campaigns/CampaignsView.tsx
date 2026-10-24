@@ -11,6 +11,7 @@ import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
 import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList, AudienceList, MetaObjectsEditor, NightPauseSettings } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
+import { ExternalNightPause } from './ExternalNightPause';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
 
@@ -216,7 +217,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
   // NORQVA-0095: aviso do sino ou das pendências → abre a campanha certa, na aba que resolve
   const openFromAlert = useCallback(
-    (f: { metaCampaignId: string | null; planCode: string | null; tab: 'results' | 'cap' }) => {
+    (f: { metaCampaignId: string | null; planCode: string | null; tab: 'results' | 'cap'; section?: string | null }) => {
+      // NORQVA-0122: aviso da pausa noturna de campanha criada fora do NORQVA → seção dessas campanhas
+      if (f.section === 'external-night-pause' && isAdmin) {
+        setSelectedId(null);
+        setTimeout(() => document.querySelector('[data-testid="external-night-pause"]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 0);
+        return true;
+      }
       const plan = campaigns.find(
         (c: any) =>
           (f.planCode && c.code === f.planCode) ||
@@ -237,7 +244,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
       }
       return false;
     },
-    [campaigns, metaCampaigns, selectedId]
+    [campaigns, metaCampaigns, selectedId, isAdmin]
   );
   // NORQVA-0096: pausar ou mudar orçamento em Resultados atualiza a situação do topo ao sair da aba
   const prevTab = useRef<CampaignTab>('overview');
@@ -535,6 +542,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             showSuccess={showSuccess}
             onChanged={() => loadList()}
           />
+        </div>
+      )}
+
+      {/* NORQVA-0122: pausa noturna das campanhas criadas direto na Meta (só ADMIN) */}
+      {isAdmin && (
+        <div className={hasSelection ? 'hidden lg:block' : ''}>
+          <ExternalNightPause apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
         </div>
       )}
 

@@ -37,6 +37,7 @@ const RULES: Record<string, RuleInfo> = {
   NIGHT_PAUSE_PAUSE_FAILED: { title: 'A pausa noturna não conseguiu pausar', severity: 'ATTENTION', action: 'A campanha seguiu ativa à noite. Pause pela tela se quiser.', tab: 'results' },
   NIGHT_PAUSE_RESUME_FAILED: { title: 'A pausa noturna não conseguiu reativar', severity: 'CRITICAL', action: 'A campanha está pausada. Reative pela tela se ela deve rodar.', tab: 'results' },
   NIGHT_PAUSE_RESUME_CANCELLED: { title: 'Reativação da manhã cancelada', severity: 'ATTENTION', action: 'Alguém ou o vigia mexeu na campanha à noite. Confira e reative pela tela se quiser.', tab: 'results' },
+  NIGHT_PAUSE_MIRROR_FAILED: { title: 'Pausa noturna não consegue preparar a campanha', severity: 'ATTENTION', action: 'Confira o ID e a conta da campanha; sem isso ela não será pausada à noite.', tab: 'results' },
   NIGHT_PAUSE_RACE: { title: 'Alguém mexeu na campanha durante a reativação', severity: 'CRITICAL', action: 'A pausa noturna pausou de novo. Confira a campanha agora e decida.', tab: 'results' },
   NIGHT_PAUSE_EXPIRED: { title: 'Campanha ficou pausada depois da pausa noturna', severity: 'CRITICAL', action: 'Reative pela tela se a campanha deve rodar.', tab: 'results' }
 };
@@ -220,6 +221,9 @@ export function guardResolution(a: {
     case 'EXPERIMENT_GUARD_PAUSE_FAILED':
       return String(a.campaign_status || '').toUpperCase() === 'PAUSED' || capped ? 'CAMPAIGN_PAUSED' : null;
     // NORQVA-0120: campanha que ficou pausada volta a rodar (reativada pela tela) → resolvido
+    // a cópia em meta_campaigns já existe (linha encontrada)
+    case 'NIGHT_PAUSE_MIRROR_FAILED':
+      return a.campaign_status ? 'MIRROR_READY' : null;
     case 'NIGHT_PAUSE_RESUME_FAILED':
     case 'NIGHT_PAUSE_RESUME_CANCELLED':
     case 'NIGHT_PAUSE_EXPIRED':
@@ -263,7 +267,13 @@ function shape(row: any) {
       ad_name: guard ? null : row.ad_name || null,
       plan_code: guard ? row.ad_name || null : null
     },
-    link: { tab: info.tab, meta_campaign_id: campaignId, plan_code: guard ? row.ad_name || null : null },
+    // NORQVA-0122: aviso de campanha criada fora do NORQVA (sem plano) abre a seção dessas campanhas em Campanhas
+    link: {
+      tab: info.tab,
+      meta_campaign_id: campaignId,
+      plan_code: guard ? row.ad_name || null : null,
+      section: String(row.rule_code).startsWith('NIGHT_PAUSE_') && !row.ad_name ? 'external-night-pause' : null
+    },
     resolution: row.resolution || null,
     dismiss_reason: row.dismiss_reason || null,
     created_at: row.created_at,

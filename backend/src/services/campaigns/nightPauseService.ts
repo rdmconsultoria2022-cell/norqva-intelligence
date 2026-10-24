@@ -25,6 +25,10 @@ import { withPlanLock } from './planLock';
 // - NIGHT_PAUSE_ENABLED=true liga as pausas novas; desligado, o que já foi pausado ainda volta de manhã;
 // - META_MUTATION_ENABLED vale como sempre;
 // - falhas abrem aviso na central de pendências.
+// NORQVA-0122 (D-0122): o mesmo vale para campanhas criadas fora do NORQVA cadastradas na lista
+// night_pause_external_campaigns (noites em night_pause_external_runs). Para elas não há plano: valem as
+// conferências da Meta (situação, registro de atividades, orçamento, limite de gastos) e as fichas/decisões
+// sobre a campanha. Se a campanha também for de um plano, o plano manda.
 
 export class NightPauseError extends Error {
   constructor(public status: number, message: string) {
@@ -128,7 +132,7 @@ export function statusOnlyGuard(campaignId: string, direction?: 'PAUSED' | 'ACTI
   const allowed = direction ? [direction] : ['PAUSED', 'ACTIVE'];
   return (endpoint, payload) => {
     const keys = Object.keys(payload || {});
-    if (endpoint !== `/${campaignId}`) throw new Error('[NIGHT PAUSE GUARD]: só a campanha do plano pode ser alterada.');
+    if (endpoint !== `/${campaignId}`) throw new Error('[NIGHT PAUSE GUARD]: só a própria campanha pode ser alterada.');
     if (keys.length !== 1 || keys[0] !== 'status' || !allowed.includes(String(payload.status))) {
       throw new Error(`[NIGHT PAUSE GUARD]: a pausa noturna só muda a situação para ${allowed.join(' ou ')}.`);
     }
@@ -173,6 +177,12 @@ const instant = (v: unknown): number | null => {
   return Number.isFinite(t) ? t : null;
 };
 
+/** A campanha é de outra conta (ou a Meta não disse a conta)? Na dúvida, não mexe. */
+function wrongAccount(state: { account_id: string | null }): boolean {
+  const configured = String(process.env.META_AD_ACCOUNT_ID || '').trim().replace(/^act_/, '');
+  return !configured || !state.account_id || String(state.account_id).replace(/^act_/, '') !== configured;
+}
+
 export function campaignOfPlan(plan: any): string | null {
   const values = Object.values(normalizeMetaIds(plan.meta_ids).campaign || {});
   return values.length ? String(values[0]) : null;
@@ -182,11 +192,91 @@ type MetaState = Awaited<ReturnType<MetaMutatingClient['readCampaignState']>>;
 type Outcome = { code: string; [k: string]: unknown };
 
 // ---------------------------------------------------------------------------------------------
+// De onde vem a campanha: plano de lançamento ou campanha criada fora do NORQVA (NORQVA-0122)
+// ---------------------------------------------------------------------------------------------
+
+type Kind = 'PLAN' | 'EXTERNAL';
+interface Src {
+  kind: Kind;
+  /** tabela das noites */
+  table: 'night_pause_runs' | 'night_pause_external_runs';
+  /** coluna que liga a noite à configuração */
+  ownerCol: 'plan_id' | 'external_id';
+}
+const PLAN_SRC: Src = { kind: 'PLAN', table: 'night_pause_runs', ownerCol: 'plan_id' };
+const EXT_SRC: Src = { kind: 'EXTERNAL', table: 'night_pause_external_runs', ownerCol: 'external_id' };
+const SOURCES = [PLAN_SRC, EXT_SRC];
+const srcOf = (run: any): Src => (run && run.external_id ? EXT_SRC : PLAN_SRC);
+
+/** Dono de uma noite: plano ou campanha externa, com o que os textos e as conferências precisam. */
+interface Owner {
+  kind: Kind;
+  /** id da configuração (plano ou linha externa) */
+  ownerId: string;
+  /** id do plano (decisões, fichas); null nas externas */
+  planId: string | null;
+  /** rótulo nos textos: código do plano ou nome da campanha */
+  code: string;
+  name: string;
+  cid: string | null;
+  /** "do plano X" ou "criada fora do NORQVA" */
+  of: string;
+  raw: any;
+}
+
+function planOwner(plan: any): Owner {
+  return {
+    kind: 'PLAN',
+    ownerId: String(plan.id),
+    planId: String(plan.id),
+    code: String(plan.code),
+    name: plan.spec?.campaign?.name || String(plan.code),
+    cid: campaignOfPlan(plan),
+    of: `do plano ${plan.code}`,
+    raw: plan
+  };
+}
+
+function externalOwner(ext: any): Owner {
+  const name = ext.name || `Campanha ${ext.meta_campaign_id}`;
+  return {
+    kind: 'EXTERNAL',
+    ownerId: String(ext.id),
+    planId: null,
+    code: name,
+    name,
+    cid: String(ext.meta_campaign_id),
+    of: `"${name}" (criada fora do NORQVA)`,
+    raw: ext
+  };
+}
+
+/** Campanhas que já são de um plano (o plano tem precedência sobre a lista de externas). */
+async function planCampaignIds(pool: Pool): Promise<Set<string>> {
+  const r = await pool.query(`SELECT meta_ids FROM launch_plans WHERE meta_ids IS NOT NULL AND meta_ids::text <> '{}'`);
+  const out = new Set<string>();
+  for (const p of r.rows) {
+    const c = campaignOfPlan(p);
+    if (c) out.add(c);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Serviço
 // ---------------------------------------------------------------------------------------------
 
+let defaultClientFactory: () => MetaMutatingClient = () => new MetaMutatingClient();
+/** Só para testes: cliente da Meta simulado para as rotas (que criam o serviço sem parâmetro). */
+export function setNightPauseClientFactoryForTesting(factory: (() => MetaMutatingClient) | null) {
+  defaultClientFactory = factory || (() => new MetaMutatingClient());
+}
+
 export class NightPauseService {
-  constructor(private clientFactory: () => MetaMutatingClient = () => new MetaMutatingClient()) {}
+  private clientFactory: () => MetaMutatingClient;
+  constructor(clientFactory?: () => MetaMutatingClient) {
+    this.clientFactory = clientFactory || (() => defaultClientFactory());
+  }
 
   private client(campaignId: string, direction?: 'PAUSED' | 'ACTIVE'): MetaMutatingClient {
     return this.clientFactory().withPayloadGuard(statusOnlyGuard(campaignId, direction));
@@ -204,11 +294,18 @@ export class NightPauseService {
         console.error('[NIGHT PAUSE] etapa falhou', name, errText(err));
       }
     };
-    await step('settle', () => this.settleStale(pool, out));
-    await step('recheck', () => this.recheckUnconfirmed(pool, out));
-    await step('expire', () => this.expireOld(pool, clock, out));
-    await step('resume', () => this.resumeDue(pool, clock, out));
-    if (out.enabled && out.mutation) await step('pause', () => this.pauseDue(pool, clock, out));
+    for (const src of SOURCES) {
+      await step(`settle:${src.kind}`, () => this.settleStale(pool, src, out));
+      await step(`recheck:${src.kind}`, () => this.recheckUnconfirmed(pool, src, out));
+      await step(`expire:${src.kind}`, () => this.expireOld(pool, src, clock, out));
+      await step(`resume:${src.kind}`, () => this.resumeDue(pool, src, clock, out));
+    }
+    // campanhas externas ainda sem linha em meta_campaigns: cópia mínima lida na Meta (sem esperar a sincronização)
+    await step('mirror:EXTERNAL', () => this.ensureExternalMirrors(pool, out));
+    if (out.enabled && out.mutation) {
+      await step('pause:PLAN', () => this.pauseDuePlans(pool, clock, out));
+      await step('pause:EXTERNAL', () => this.pauseDueExternal(pool, clock, out));
+    }
     return out;
   }
 
@@ -221,67 +318,112 @@ export class NightPauseService {
     }
   }
 
-  private async planOf(pool: Pool, planId: string) {
-    return (await pool.query(`SELECT * FROM launch_plans WHERE id = $1`, [planId])).rows[0];
+  /** Dono da noite (mesmo excluído ou desligado: a noite em curso termina normalmente). */
+  private async ownerOf(pool: Pool, run: any): Promise<Owner | null> {
+    if (srcOf(run).kind === 'EXTERNAL') {
+      const r = (await pool.query(`SELECT * FROM night_pause_external_campaigns WHERE id = $1`, [run.external_id])).rows[0];
+      return r ? externalOwner(r) : null;
+    }
+    const p = (await pool.query(`SELECT * FROM launch_plans WHERE id = $1`, [run.plan_id])).rows[0];
+    return p ? planOwner(p) : null;
+  }
+
+  private lockKey(run: any): string {
+    return srcOf(run).kind === 'EXTERNAL' ? `ext:${run.meta_campaign_id}` : String(run.plan_id);
   }
 
   // ------------------------------ pausar ------------------------------
 
-  private async pauseDue(pool: Pool, clock: { date: string; minutes: number }, out: any) {
+  private async pauseDuePlans(pool: Pool, clock: { date: string; minutes: number }, out: any) {
     const plans = (await pool.query(`SELECT * FROM launch_plans WHERE status IN ('ACTIVE', 'APPROVED') AND night_pause_enabled = TRUE`)).rows;
-    const protectedIds = protectedMetaIds();
     for (const plan of plans) {
       await this.perRow(out, `pause:${plan.code}`, async () => {
-        const w = windowOf(plan);
-        if (!w || clock.minutes < w.start || clock.minutes >= Math.min(w.end, w.start + PAUSE_GRACE_MIN)) return;
-        const cid = campaignOfPlan(plan);
-        if (!cid || protectedIds.has(cid)) return;
-        const done = await pool.query(`SELECT 1 FROM night_pause_runs WHERE meta_campaign_id = $1 AND night_date = $2::date`, [cid, clock.date]);
-        if (done.rows.length) return;
-        const base = [plan.id, plan.code, cid, clock.date, w.startText, w.endText];
-        const skip = async (status: string | null, reason: string) => {
-          // a linha da noite fica gravada: se o dono reativar depois, esta noite não pausa
-          await pool.query(
-            `INSERT INTO night_pause_runs (plan_id, plan_code, meta_campaign_id, night_date, window_start, window_end, state, previous_status, reason)
-             VALUES ($1, $2, $3, $4::date, $5, $6, 'SKIPPED', $7, $8)
-             ON CONFLICT (meta_campaign_id, night_date) DO NOTHING`,
-            [...base, status, reason]
-          );
-          out.skipped.push({ code: plan.code, reason });
-        };
-        if (plan.operator_paused_at) return skip('PAUSED', 'Pausada pela tela no início da pausa noturna.');
-        if (String(plan.guard_state || '') === 'CAPPED') return skip('PAUSED', 'Parada pelo vigia do teto no início da pausa noturna.');
-
-        let state: MetaState;
-        try {
-          state = await this.client(cid).readCampaignState(cid);
-        } catch (err) {
-          // sem leitura não pausa; tenta de novo no próximo ciclo dentro da tolerância
-          out.other.push({ code: plan.code, read_failed: errText(err) });
-          return;
-        }
-        if (String(state.status || '').toUpperCase() !== 'ACTIVE') {
-          return skip(state.status, `Não estava ativa na Meta no início da pausa noturna (${state.status || 'sem situação'}).`);
-        }
-        const claim = await pool.query(
-          `INSERT INTO night_pause_runs
-             (plan_id, plan_code, meta_campaign_id, night_date, window_start, window_end, state, previous_status,
-              meta_daily_budget_at_pause, plan_daily_budget_at_pause, plan_cap_at_pause, pause_started_at)
-           VALUES ($1, $2, $3, $4::date, $5, $6, 'PAUSING', 'ACTIVE', $7, $8, $9, NOW())
-           ON CONFLICT (meta_campaign_id, night_date) DO NOTHING RETURNING *`,
-          [...base, state.daily_budget, plan.daily_budget_brl, plan.max_spend_brl]
-        );
-        if (!claim.rows.length) return; // outra instância pegou esta campanha nesta noite
-        out.paused.push(await this.pause(pool, plan, claim.rows[0]));
+        const owner = planOwner(plan);
+        const preSkip = plan.operator_paused_at
+          ? 'Pausada pela tela no início da pausa noturna.'
+          : String(plan.guard_state || '') === 'CAPPED'
+            ? 'Parada pelo vigia do teto no início da pausa noturna.'
+            : null;
+        await this.pauseOne(pool, PLAN_SRC, owner, windowOf(plan), clock, out, preSkip, { daily: plan.daily_budget_brl, cap: plan.max_spend_brl });
       });
     }
   }
 
-  private async pause(pool: Pool, plan: any, run: any): Promise<Outcome> {
+  private async pauseDueExternal(pool: Pool, clock: { date: string; minutes: number }, out: any) {
+    const rows = (await pool.query(`SELECT * FROM night_pause_external_campaigns WHERE enabled = TRUE AND deleted_at IS NULL ORDER BY created_at`)).rows;
+    if (!rows.length) return;
+    const ofPlans = await planCampaignIds(pool);
+    for (const ext of rows) {
+      await this.perRow(out, `pause:ext:${ext.meta_campaign_id}`, async () => {
+        // campanha que também é de um plano: o plano manda (nunca duas linhas para a mesma campanha)
+        if (ofPlans.has(String(ext.meta_campaign_id))) return;
+        await this.pauseOne(pool, EXT_SRC, externalOwner(ext), windowOf(ext), clock, out, null, { daily: null, cap: null });
+      });
+    }
+  }
+
+  private async pauseOne(
+    pool: Pool,
+    src: Src,
+    owner: Owner,
+    w: ReturnType<typeof windowOf>,
+    clock: { date: string; minutes: number },
+    out: any,
+    preSkip: string | null,
+    snap: { daily: unknown; cap: unknown }
+  ) {
+    if (!w || clock.minutes < w.start || clock.minutes >= Math.min(w.end, w.start + PAUSE_GRACE_MIN)) return;
+    const cid = owner.cid;
+    if (!cid || protectedMetaIds().has(cid)) return;
+    // nunca duas noites para a mesma campanha (plano ou externa)
+    const done = await pool.query(
+      `SELECT 1 FROM night_pause_runs WHERE meta_campaign_id = $1 AND night_date = $2::date
+       UNION ALL SELECT 1 FROM night_pause_external_runs WHERE meta_campaign_id = $1 AND night_date = $2::date`,
+      [cid, clock.date]
+    );
+    if (done.rows.length) return;
+    const base = [owner.ownerId, owner.code.slice(0, 255), cid, clock.date, w.startText, w.endText];
+    const skip = async (status: string | null, reason: string) => {
+      // a linha da noite fica gravada: se o dono reativar depois, esta noite não pausa
+      await pool.query(
+        `INSERT INTO ${src.table} (${src.ownerCol}, plan_code, meta_campaign_id, night_date, window_start, window_end, state, previous_status, reason)
+         VALUES ($1, $2, $3, $4::date, $5, $6, 'SKIPPED', $7, $8)
+         ON CONFLICT (meta_campaign_id, night_date) DO NOTHING`,
+        [...base, status, reason]
+      );
+      out.skipped.push({ code: owner.code, reason });
+    };
+    if (preSkip) return skip('PAUSED', preSkip);
+
+    let state: MetaState;
+    try {
+      state = await this.client(cid).readCampaignState(cid);
+    } catch (err) {
+      // sem leitura não pausa; tenta de novo no próximo ciclo dentro da tolerância
+      out.other.push({ code: owner.code, read_failed: errText(err) });
+      return;
+    }
+    if (wrongAccount(state)) return skip(state.status, `Não é da conta de anúncios configurada no NORQVA (${state.account_id || 'conta não informada'}).`);
+    if (String(state.status || '').toUpperCase() !== 'ACTIVE') {
+      return skip(state.status, `Não estava ativa na Meta no início da pausa noturna (${state.status || 'sem situação'}).`);
+    }
+    const claim = await pool.query(
+      `INSERT INTO ${src.table}
+         (${src.ownerCol}, plan_code, meta_campaign_id, night_date, window_start, window_end, state, previous_status,
+          meta_daily_budget_at_pause, plan_daily_budget_at_pause, plan_cap_at_pause, pause_started_at)
+       VALUES ($1, $2, $3, $4::date, $5, $6, 'PAUSING', 'ACTIVE', $7, $8, $9, NOW())
+       ON CONFLICT (meta_campaign_id, night_date) DO NOTHING RETURNING *`,
+      [...base, state.daily_budget, snap.daily, snap.cap]
+    );
+    if (!claim.rows.length) return; // outra instância pegou esta campanha nesta noite
+    out.paused.push(await this.pause(pool, owner, claim.rows[0]));
+  }
+
+  private async pause(pool: Pool, owner: Owner, run: any): Promise<Outcome> {
     const cid = String(run.meta_campaign_id);
-    const handle = await beginDecision(pool, SYSTEM_CTX, { action: 'NIGHT_PAUSE', decision: 'CAMPAIGN:PAUSED', planId: plan.id, planCode: plan.code, metaIds: [cid] }, { riskReducing: true });
-    const changeId = await this.openChange(pool, plan, cid, 'ACTIVE', 'PAUSED');
-    await pool.query(`UPDATE night_pause_runs SET pause_change_id = $2, updated_at = NOW() WHERE id = $1`, [run.id, changeId]);
+    const handle = await beginDecision(pool, SYSTEM_CTX, { action: 'NIGHT_PAUSE', decision: 'CAMPAIGN:PAUSED', planId: owner.planId, planCode: owner.planId ? owner.code : null, metaIds: [cid] }, { riskReducing: true });
+    const changeId = await this.openChange(pool, owner, cid, 'ACTIVE', 'PAUSED');
+    await pool.query(`UPDATE ${srcOf(run).table} SET pause_change_id = $2, updated_at = NOW() WHERE id = $1`, [run.id, changeId]);
     const r = { ...run, pause_change_id: changeId };
     try {
       await this.client(cid, 'PAUSED').setEntityStatus(pool, 'CAMPAIGN', cid, 'PAUSED', META_CTX);
@@ -289,21 +431,22 @@ export class NightPauseService {
       const msg = errText(err);
       await handle.finish('FAILED', { error: msg });
       const kind = classifySendError(msg);
-      if (kind === 'UNKNOWN') return { code: plan.code, ...(await this.resolvePauseOutcome(pool, r, plan, msg)) };
+      if (kind === 'UNKNOWN') return { code: owner.code, ...(await this.resolvePauseOutcome(pool, r, owner, msg)) };
       // nada saiu (ou a Meta recusou): a campanha segue ativa
-      await this.pauseFailed(pool, r, plan, msg);
-      return { code: plan.code, paused: false, error: msg };
+      await this.pauseFailed(pool, r, owner, msg);
+      return { code: owner.code, paused: false, error: msg };
     }
     await handle.finish('EXECUTED', { result: { campaign: cid, status: 'PAUSED' } });
     // a partir daqui, qualquer coisa nesta campanha é de outra pessoa ou rotina
-    await pool.query(`UPDATE night_pause_runs SET quiet_since = COALESCE(quiet_since, NOW()), updated_at = NOW() WHERE id = $1`, [run.id]);
-    const state = await this.confirmPause(pool, r, plan, true);
-    return { code: plan.code, paused: true, state };
+    await pool.query(`UPDATE ${srcOf(run).table} SET quiet_since = COALESCE(quiet_since, NOW()), updated_at = NOW() WHERE id = $1`, [run.id]);
+    const state = await this.confirmPause(pool, r, owner, true);
+    return { code: owner.code, paused: true, state };
   }
 
   /** Envio com resultado desconhecido (ou interrompido): a releitura da Meta decide. */
-  private async resolvePauseOutcome(pool: Pool, run: any, plan: any, msg: string): Promise<Record<string, unknown>> {
+  private async resolvePauseOutcome(pool: Pool, run: any, owner: Owner | null, msg: string): Promise<Record<string, unknown>> {
     const cid = String(run.meta_campaign_id);
+    const T = srcOf(run).table;
     let status: string | null = null;
     try {
       status = String((await this.client(cid).readCampaignState(cid)).status || '').toUpperCase();
@@ -312,35 +455,35 @@ export class NightPauseService {
     }
     if (status === 'PAUSED') {
       // a Meta aplicou: é uma pausa nossa como as outras
-      await pool.query(`UPDATE night_pause_runs SET quiet_since = COALESCE(quiet_since, NOW()), error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg]);
-      return { paused: true, state: await this.confirmPause(pool, run, plan, true), note: 'resposta perdida; a Meta mostra PAUSED' };
+      await pool.query(`UPDATE ${T} SET quiet_since = COALESCE(quiet_since, NOW()), error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg]);
+      return { paused: true, state: await this.confirmPause(pool, run, owner, true), note: 'resposta perdida; a Meta mostra PAUSED' };
     }
     if (status === null) {
       // sem leitura: pode ter pausado. Fica aguardando conferência; o próximo ciclo relê
       await pool.query(
-        `UPDATE night_pause_runs SET state = 'PAUSE_UNCONFIRMED', quiet_since = COALESCE(quiet_since, NOW()), error = $2, updated_at = NOW() WHERE id = $1 AND state IN ('PAUSING', 'PAUSE_UNCONFIRMED')`,
+        `UPDATE ${T} SET state = 'PAUSE_UNCONFIRMED', quiet_since = COALESCE(quiet_since, NOW()), error = $2, updated_at = NOW() WHERE id = $1 AND state IN ('PAUSING', 'PAUSE_UNCONFIRMED')`,
         [run.id, msg]
       );
       await this.closeChange(pool, run.pause_change_id, 'UNCONFIRMED', null, msg);
-      await writeAuditLog(pool, null, 'NIGHT_PAUSE_UNCONFIRMED', `Pausa noturna: resposta da Meta perdida ao pausar a campanha ${cid} do plano ${plan?.code || run.plan_code}; aguardando conferência.`, 'ACTIVE', null);
+      await writeAuditLog(pool, null, 'NIGHT_PAUSE_UNCONFIRMED', `Pausa noturna: resposta da Meta perdida ao pausar a campanha ${cid} ${owner?.of || ''}; aguardando conferência.`, 'ACTIVE', null);
       return { paused: null, state: 'PAUSE_UNCONFIRMED' };
     }
-    await this.pauseFailed(pool, run, plan, msg);
+    await this.pauseFailed(pool, run, owner, msg);
     return { paused: false, error: msg };
   }
 
-  private async pauseFailed(pool: Pool, run: any, plan: any, msg: string) {
+  private async pauseFailed(pool: Pool, run: any, owner: Owner | null, msg: string) {
     const cid = String(run.meta_campaign_id);
-    const code = plan?.code || run.plan_code;
-    await pool.query(`UPDATE night_pause_runs SET state = 'PAUSE_FAILED', error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg]);
+    await pool.query(`UPDATE ${srcOf(run).table} SET state = 'PAUSE_FAILED', error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg]);
     await this.closeChange(pool, run.pause_change_id, 'FAILED', null, msg);
-    await writeAuditLog(pool, null, 'NIGHT_PAUSE_FAILED', `Pausa noturna não feita: plano ${code}, campanha ${cid}. ${msg}`, 'ACTIVE', null);
-    if (plan) await this.alert(pool, plan, cid, 'NIGHT_PAUSE_PAUSE_FAILED', `A pausa noturna não conseguiu pausar a campanha do plano ${code}: ${msg.slice(0, 200)}. A campanha segue ativa durante a noite.`);
+    await writeAuditLog(pool, null, 'NIGHT_PAUSE_FAILED', `Pausa noturna não feita: campanha ${cid} ${owner?.of || ''}. ${msg}`, 'ACTIVE', null);
+    if (owner) await this.alert(pool, owner, cid, 'NIGHT_PAUSE_PAUSE_FAILED', `A pausa noturna não conseguiu pausar a campanha ${owner.of}: ${msg.slice(0, 200)}. A campanha segue ativa durante a noite.`);
   }
 
   /** Relê a Meta: PAUSED → "Confirmado pela Meta". Senão (ou sem leitura) fica aguardando conferência. */
-  private async confirmPause(pool: Pool, run: any, plan: any, first: boolean): Promise<string> {
+  private async confirmPause(pool: Pool, run: any, owner: Owner | null, first: boolean): Promise<string> {
     const cid = String(run.meta_campaign_id);
+    const T = srcOf(run).table;
     let read: MetaState | null = null;
     try {
       read = await this.client(cid).readCampaignState(cid);
@@ -350,7 +493,7 @@ export class NightPauseService {
     const status = read ? String(read.status || '').toUpperCase() : null;
     if (status === 'PAUSED') {
       const upd = await pool.query(
-        `UPDATE night_pause_runs SET state = 'PAUSED', paused_at = NOW(), quiet_since = COALESCE(quiet_since, NOW()), meta_updated_time_at_pause = $2, error = NULL, updated_at = NOW()
+        `UPDATE ${T} SET state = 'PAUSED', paused_at = NOW(), quiet_since = COALESCE(quiet_since, NOW()), meta_updated_time_at_pause = $2, error = NULL, updated_at = NOW()
          WHERE id = $1 AND state IN ('PAUSING', 'PAUSE_UNCONFIRMED') RETURNING id`,
         [run.id, read?.updated_time || null]
       );
@@ -360,29 +503,29 @@ export class NightPauseService {
         pool,
         null,
         'NIGHT_PAUSE_DONE',
-        `Pausa noturna: campanha ${cid} do plano ${plan?.code || run.plan_code} pausada. Confirmado pela Meta. Volta às ${run.window_end} (horário de Brasília) se ninguém mexer nela.`,
+        `Pausa noturna: campanha ${cid} ${owner?.of || ''} pausada. Confirmado pela Meta. Volta às ${run.window_end} (horário de Brasília) se ninguém mexer nela.`,
         'ACTIVE',
         'PAUSED'
       );
       return 'PAUSED';
     }
     const upd = await pool.query(
-      `UPDATE night_pause_runs SET state = 'PAUSE_UNCONFIRMED', quiet_since = COALESCE(quiet_since, NOW()), updated_at = NOW() WHERE id = $1 AND state IN ('PAUSING', 'PAUSE_UNCONFIRMED') RETURNING id`,
+      `UPDATE ${T} SET state = 'PAUSE_UNCONFIRMED', quiet_since = COALESCE(quiet_since, NOW()), updated_at = NOW() WHERE id = $1 AND state IN ('PAUSING', 'PAUSE_UNCONFIRMED') RETURNING id`,
       [run.id]
     );
     if (upd.rows.length && first) {
       await this.closeChange(pool, run.pause_change_id, 'UNCONFIRMED', status);
-      await writeAuditLog(pool, null, 'NIGHT_PAUSE_UNCONFIRMED', `Pausa noturna: a Meta aceitou pausar a campanha ${cid} do plano ${plan?.code || run.plan_code}, aguardando conferência.`, 'ACTIVE', status);
+      await writeAuditLog(pool, null, 'NIGHT_PAUSE_UNCONFIRMED', `Pausa noturna: a Meta aceitou pausar a campanha ${cid} ${owner?.of || ''}, aguardando conferência.`, 'ACTIVE', status);
     }
     return 'PAUSE_UNCONFIRMED';
   }
 
   // ------------------------------ reativar ------------------------------
 
-  private async resumeDue(pool: Pool, clock: { date: string; minutes: number }, out: any) {
+  private async resumeDue(pool: Pool, src: Src, clock: { date: string; minutes: number }, out: any) {
     const rows = (
       await pool.query(
-        `SELECT * FROM night_pause_runs
+        `SELECT * FROM ${src.table}
          WHERE state IN ('PAUSED', 'PAUSE_UNCONFIRMED') AND night_date = $1::date
            AND (resume_attempts = 0 OR resume_started_at IS NULL OR resume_started_at < NOW() - INTERVAL '${RESUME_RETRY_MIN} minutes')
          ORDER BY created_at`,
@@ -398,7 +541,7 @@ export class NightPauseService {
           return;
         }
         const claim = await pool.query(
-          `UPDATE night_pause_runs SET state = 'REACTIVATING', resume_started_at = NOW(), resume_change_id = NULL, resume_attempts = resume_attempts + 1, updated_at = NOW()
+          `UPDATE ${src.table} SET state = 'REACTIVATING', resume_started_at = NOW(), resume_change_id = NULL, resume_attempts = resume_attempts + 1, updated_at = NOW()
            WHERE id = $1 AND state = $2 RETURNING *`,
           [r.id, r.state]
         );
@@ -408,111 +551,139 @@ export class NightPauseService {
     }
   }
 
-  private async cancelResume(pool: Pool, run: any, plan: any, reason: string): Promise<Outcome> {
+  private async cancelResume(pool: Pool, run: any, owner: Owner | null, reason: string): Promise<Outcome> {
     const cid = String(run.meta_campaign_id);
-    const code = plan?.code || run.plan_code;
-    await pool.query(`UPDATE night_pause_runs SET state = 'CANCELLED', reason = $2, resume_change_id = NULL, updated_at = NOW() WHERE id = $1`, [run.id, reason]);
-    await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_CANCELLED', `Fim da pausa noturna cancelado: a campanha ${cid} do plano ${code} continua pausada. Motivo: ${reason}`, 'PAUSED', 'PAUSED');
-    if (plan) await this.alert(pool, plan, cid, 'NIGHT_PAUSE_RESUME_CANCELLED', `A campanha do plano ${code} não foi reativada de manhã: ${reason} Ela continua pausada; reative pela tela se quiser.`);
+    const code = owner?.code || run.plan_code;
+    await pool.query(`UPDATE ${srcOf(run).table} SET state = 'CANCELLED', reason = $2, resume_change_id = NULL, updated_at = NOW() WHERE id = $1`, [run.id, reason]);
+    await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_CANCELLED', `Fim da pausa noturna cancelado: a campanha ${cid} ${owner?.of || ''} continua pausada. Motivo: ${reason}`, 'PAUSED', 'PAUSED');
+    if (owner) await this.alert(pool, owner, cid, 'NIGHT_PAUSE_RESUME_CANCELLED', `A campanha ${owner.of} não foi reativada de manhã: ${reason} Ela continua pausada; reative pela tela se quiser.`);
     return { code, resumed: false, cancelled: reason };
   }
 
   /** Volta para tentar no próximo ciclo (todas as conferências de novo). Na 3.ª falha avisa; na 5.ª desiste. */
-  private async retryResume(pool: Pool, run: any, plan: any, previousState: string, why: string): Promise<Outcome> {
+  private async retryResume(pool: Pool, run: any, owner: Owner | null, previousState: string, why: string): Promise<Outcome> {
     const cid = String(run.meta_campaign_id);
-    const code = plan?.code || run.plan_code;
+    const code = owner?.code || run.plan_code;
     const attempts = Number(run.resume_attempts) || 1;
-    if (attempts >= MAX_RESUME_ATTEMPTS) return this.resumeFailed(pool, run, plan, `${why} (${attempts} tentativas)`);
-    await pool.query(`UPDATE night_pause_runs SET state = $2, resume_change_id = NULL, error = $3, updated_at = NOW() WHERE id = $1`, [run.id, previousState, why.slice(0, 500)]);
-    if (plan && attempts === FAILURES_ALERT) {
-      await this.alert(pool, plan, cid, 'NIGHT_PAUSE_RESUME_FAILED', `A pausa noturna ainda não conseguiu reativar a campanha do plano ${code} (${attempts} tentativas): ${why.slice(0, 200)}. O NORQVA tenta de novo até ${MAX_RESUME_ATTEMPTS} vezes, até 23:59.`);
+    if (attempts >= MAX_RESUME_ATTEMPTS) return this.resumeFailed(pool, run, owner, `${why} (${attempts} tentativas)`);
+    await pool.query(`UPDATE ${srcOf(run).table} SET state = $2, resume_change_id = NULL, error = $3, updated_at = NOW() WHERE id = $1`, [run.id, previousState, why.slice(0, 500)]);
+    if (owner && attempts === FAILURES_ALERT) {
+      await this.alert(pool, owner, cid, 'NIGHT_PAUSE_RESUME_FAILED', `A pausa noturna ainda não conseguiu reativar a campanha ${owner.of} (${attempts} tentativas): ${why.slice(0, 200)}. O NORQVA tenta de novo até ${MAX_RESUME_ATTEMPTS} vezes, até 23:59.`);
     }
     return { code, resumed: false, retry: why, attempts };
   }
 
-  private async resumeFailed(pool: Pool, run: any, plan: any, msg: string): Promise<Outcome> {
+  private async resumeFailed(pool: Pool, run: any, owner: Owner | null, msg: string): Promise<Outcome> {
     const cid = String(run.meta_campaign_id);
-    const code = plan?.code || run.plan_code;
-    await pool.query(`UPDATE night_pause_runs SET state = 'RESUME_FAILED', error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg.slice(0, 500)]);
-    await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_FAILED', `Fim da pausa noturna falhou: a campanha ${cid} do plano ${code} continua pausada. ${msg}`, 'PAUSED', null);
-    if (plan) await this.alert(pool, plan, cid, 'NIGHT_PAUSE_RESUME_FAILED', `A pausa noturna não conseguiu reativar a campanha do plano ${code}: ${msg.slice(0, 200)}. Ela continua pausada; reative pela tela se quiser.`);
+    const code = owner?.code || run.plan_code;
+    await pool.query(`UPDATE ${srcOf(run).table} SET state = 'RESUME_FAILED', error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg.slice(0, 500)]);
+    await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_FAILED', `Fim da pausa noturna falhou: a campanha ${cid} ${owner?.of || ''} continua pausada. ${msg}`, 'PAUSED', null);
+    if (owner) await this.alert(pool, owner, cid, 'NIGHT_PAUSE_RESUME_FAILED', `A pausa noturna não conseguiu reativar a campanha ${owner.of}: ${msg.slice(0, 200)}. Ela continua pausada; reative pela tela se quiser.`);
     return { code, resumed: false, error: msg };
   }
 
-  /** Conferências do plano (sem a Meta). Devolve o motivo para não reativar, ou null. */
-  private planBlock(plan: any, run: any, cid: string): string | null {
-    if (!plan) return 'o plano não existe mais.';
+  /** Conferências do dono (sem a Meta). Devolve o motivo para não reativar, ou null. */
+  private async ownerBlock(pool: Pool, owner: Owner | null, run: any, cid: string): Promise<string | null> {
+    if (!owner) return 'a configuração da campanha não existe mais.';
+    if (protectedMetaIds().has(cid)) return 'campanha protegida (CONTROL).';
+    if (owner.kind === 'EXTERNAL') {
+      // desligada ou excluída durante a noite: a pausa desta noite termina normalmente
+      // virou campanha de um plano: as regras do plano (Sim, código) passam a valer
+      if ((await planCampaignIds(pool)).has(cid)) return 'a campanha passou a ser de um plano do NORQVA.';
+      return null;
+    }
+    const plan = owner.raw;
     if (!['ACTIVE', 'APPROVED'].includes(String(plan.status))) return `o plano está como ${plan.status}.`;
     if (plan.operator_paused_at) return 'a campanha foi pausada pela tela durante a noite.';
     if (String(plan.guard_state || '') === 'CAPPED') return 'o vigia do teto parou a campanha.';
-    if (protectedMetaIds().has(cid)) return 'campanha protegida (CONTROL).';
-    if (campaignOfPlan(plan) !== cid) return 'a campanha do plano mudou.';
+    if (owner.cid !== cid) return 'a campanha do plano mudou.';
     if (!sameMoney(plan.max_spend_brl, run.plan_cap_at_pause)) return 'o teto do plano mudou durante a noite.';
     if (!sameMoney(plan.daily_budget_brl, run.plan_daily_budget_at_pause)) return 'o orçamento do plano mudou durante a noite.';
     return null;
   }
 
+  /** IDs da campanha e dos objetos dela: do plano, ou lidos na Meta para a campanha externa (melhor esforço). */
+  private async objectIds(owner: Owner, cid: string, client: MetaMutatingClient | null): Promise<Set<string>> {
+    if (owner.kind === 'PLAN') return new Set<string>([cid, ...metaIdsOfPlan(normalizeMetaIds(owner.raw.meta_ids))]);
+    const ids = new Set<string>([cid]);
+    // sem a lista de conjuntos e anúncios não dá para conferir o Gerenciador: quem chama tenta de novo depois
+    if (client) for (const id of await client.readCampaignChildIds(cid)) ids.add(id);
+    return ids;
+  }
+
   private async resume(pool: Pool, run: any, previousState: string): Promise<Outcome> {
     const cid = String(run.meta_campaign_id);
+    const T = srcOf(run).table;
     let sent = false;
-    const result = await withPlanLock(pool, String(run.plan_id), async (): Promise<Outcome | null> => {
-      const plan = await this.planOf(pool, run.plan_id);
-      const blocked = this.planBlock(plan, run, cid);
-      if (blocked) return this.cancelResume(pool, run, plan, blocked);
-
-      let touched: string | null;
-      try {
-        touched = await this.touchedSince(pool, run, plan, 'pause');
-      } catch (err) {
-        return this.retryResume(pool, run, plan, previousState, `não foi possível conferir o que aconteceu durante a noite (${errText(err)})`);
-      }
-      if (touched) return this.cancelResume(pool, run, plan, touched);
+    let ids: Set<string> = new Set([cid]);
+    const result = await withPlanLock(pool, this.lockKey(run), async (): Promise<Outcome | null> => {
+      const owner = await this.ownerOf(pool, run);
+      const blocked = await this.ownerBlock(pool, owner, run, cid);
+      if (blocked || !owner) return this.cancelResume(pool, run, owner, blocked || 'sem configuração.');
 
       const client = this.client(cid, 'ACTIVE');
+      try {
+        ids = await this.objectIds(owner, cid, client);
+      } catch (err) {
+        return this.retryResume(pool, run, owner, previousState, `não foi possível ler os conjuntos e anúncios da campanha na Meta (${errText(err)})`);
+      }
+      let touched: string | null;
+      try {
+        touched = await this.touchedSince(pool, run, owner, ids, 'pause');
+      } catch (err) {
+        return this.retryResume(pool, run, owner, previousState, `não foi possível conferir o que aconteceu durante a noite (${errText(err)})`);
+      }
+      if (touched) return this.cancelResume(pool, run, owner, touched);
+
       let state: MetaState;
       try {
         state = await client.readCampaignState(cid);
       } catch (err) {
-        return this.retryResume(pool, run, plan, previousState, `leitura da campanha na Meta falhou (${errText(err)})`);
+        return this.retryResume(pool, run, owner, previousState, `leitura da campanha na Meta falhou (${errText(err)})`);
       }
-      await pool.query(`UPDATE night_pause_runs SET meta_updated_time_at_resume = $2 WHERE id = $1`, [run.id, state.updated_time]);
+      await pool.query(`UPDATE ${T} SET meta_updated_time_at_resume = $2 WHERE id = $1`, [run.id, state.updated_time]);
+      if (wrongAccount(state)) return this.cancelResume(pool, run, owner, `a campanha não é da conta de anúncios configurada no NORQVA (${state.account_id || 'conta não informada'}).`);
       const status = String(state.status || '').toUpperCase();
-      if (status !== 'PAUSED') return this.cancelResume(pool, run, plan, `na Meta a campanha está ${status || 'sem situação'}, não pausada: alguém mexeu nela ou a pausa não pegou.`);
+      if (status !== 'PAUSED') return this.cancelResume(pool, run, owner, `na Meta a campanha está ${status || 'sem situação'}, não pausada: alguém mexeu nela ou a pausa não pegou.`);
 
       // mexeram fora do NORQVA (Gerenciador)? Registro de atividades da conta; sem ele, a hora da última alteração
-      const outside = await this.touchedOnMeta(pool, run, plan, client, state);
-      if (outside) return this.cancelResume(pool, run, plan, outside);
+      const outside = await this.touchedOnMeta(pool, run, ids, client, state);
+      if (outside) return this.cancelResume(pool, run, owner, outside);
       if (money(run.meta_daily_budget_at_pause) !== null && !sameMoney(state.daily_budget, run.meta_daily_budget_at_pause)) {
-        return this.cancelResume(pool, run, plan, 'o orçamento da campanha mudou na Meta durante a noite.');
+        return this.cancelResume(pool, run, owner, 'o orçamento da campanha mudou na Meta durante a noite.');
       }
+      // gasto da campanha (insights, em reais) contra o teto do plano e o limite de gastos da campanha na Meta
       let spend: { spend: number; spend_cap: number | null };
       try {
         spend = await client.getCampaignLifetimeSpend(cid);
       } catch (err) {
-        return this.retryResume(pool, run, plan, previousState, `leitura do gasto na Meta falhou (${errText(err)})`);
+        return this.retryResume(pool, run, owner, previousState, `leitura do gasto na Meta falhou (${errText(err)})`);
       }
-      const cap = money(plan.max_spend_brl);
-      if (cap !== null && spend.spend >= cap - 0.005) return this.cancelResume(pool, run, plan, `o teto foi atingido (${brl(spend.spend)} de ${brl(cap)}).`);
-      if (spend.spend_cap !== null && spend.spend >= spend.spend_cap - 0.005) {
-        return this.cancelResume(pool, run, plan, `o limite de gastos da campanha na Meta foi atingido (${brl(spend.spend)} de ${brl(spend.spend_cap)}).`);
+      if (owner.kind === 'PLAN') {
+        const cap = money(owner.raw.max_spend_brl);
+        if (cap !== null && spend.spend >= cap - 0.005) return this.cancelResume(pool, run, owner, `o teto foi atingido (${brl(spend.spend)} de ${brl(cap)}).`);
+      }
+      const metaCap = spend.spend_cap ?? state.spend_cap;
+      if (metaCap !== null && spend.spend >= metaCap - 0.005) {
+        return this.cancelResume(pool, run, owner, `o limite de gastos da campanha na Meta foi atingido (${brl(spend.spend)} de ${brl(metaCap)}).`);
       }
 
       // reativar aumenta exposição: sem registro de decisão, não reativa agora (fail-closed) e tenta de novo
       let handle;
       try {
-        handle = await beginDecision(pool, SYSTEM_CTX, { action: 'NIGHT_PAUSE_RESUME', decision: 'CAMPAIGN:ACTIVE', planId: plan.id, planCode: plan.code, metaIds: [cid] });
+        handle = await beginDecision(pool, SYSTEM_CTX, { action: 'NIGHT_PAUSE_RESUME', decision: 'CAMPAIGN:ACTIVE', planId: owner.planId, planCode: owner.planId ? owner.code : null, metaIds: [cid] });
       } catch (err) {
-        return this.retryResume(pool, run, plan, previousState, `auditoria de decisões indisponível (${errText(err)})`);
+        return this.retryResume(pool, run, owner, previousState, `auditoria de decisões indisponível (${errText(err)})`);
       }
-      // o plano de novo, logo antes do envio (dentro da trava)
-      const fresh = await this.planOf(pool, run.plan_id);
-      const late = this.planBlock(fresh, run, cid);
+      // o dono de novo, logo antes do envio (dentro da trava)
+      const fresh = await this.ownerOf(pool, run);
+      const late = await this.ownerBlock(pool, fresh, run, cid);
       if (late) {
         await handle.finish('REJECTED', { error: late });
         return this.cancelResume(pool, run, fresh, late);
       }
-      const changeId = await this.openChange(pool, plan, cid, 'PAUSED', 'ACTIVE');
-      await pool.query(`UPDATE night_pause_runs SET resume_change_id = $2, updated_at = NOW() WHERE id = $1`, [run.id, changeId]);
+      const changeId = await this.openChange(pool, owner, cid, 'PAUSED', 'ACTIVE');
+      await pool.query(`UPDATE ${T} SET resume_change_id = $2, updated_at = NOW() WHERE id = $1`, [run.id, changeId]);
       run.resume_change_id = changeId;
       try {
         await client.setEntityStatus(pool, 'CAMPAIGN', cid, 'ACTIVE', META_CTX);
@@ -522,11 +693,11 @@ export class NightPauseService {
         const kind = classifySendError(msg);
         if (kind === 'PRE_SEND') {
           await this.closeChange(pool, changeId, 'FAILED', null, `não enviado: ${msg}`);
-          return this.retryResume(pool, run, plan, previousState, `não enviado (${msg})`);
+          return this.retryResume(pool, run, owner, previousState, `não enviado (${msg})`);
         }
         if (kind === 'REJECTED') {
           await this.closeChange(pool, changeId, 'FAILED', null, msg);
-          return this.resumeFailed(pool, run, plan, msg);
+          return this.resumeFailed(pool, run, owner, msg);
         }
         // resultado desconhecido: a releitura decide
         let after: string | null = null;
@@ -537,12 +708,12 @@ export class NightPauseService {
         }
         if (after === 'PAUSED') {
           await this.closeChange(pool, changeId, 'FAILED', 'PAUSED', msg);
-          return this.retryResume(pool, run, plan, previousState, `a Meta não confirmou (${msg})`);
+          return this.retryResume(pool, run, owner, previousState, `a Meta não confirmou (${msg})`);
         }
         if (after === null) {
-          await pool.query(`UPDATE night_pause_runs SET state = 'RESUME_UNCONFIRMED', error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg]);
+          await pool.query(`UPDATE ${T} SET state = 'RESUME_UNCONFIRMED', error = $2, updated_at = NOW() WHERE id = $1`, [run.id, msg]);
           await this.closeChange(pool, changeId, 'UNCONFIRMED', null, msg);
-          return { code: plan.code, resumed: null, state: 'RESUME_UNCONFIRMED' };
+          return { code: owner.code, resumed: null, state: 'RESUME_UNCONFIRMED' };
         }
         // ACTIVE: a Meta aplicou; segue como envio feito
       }
@@ -554,25 +725,30 @@ export class NightPauseService {
     if (!sent) return { code: run.plan_code, resumed: false };
 
     // depois do envio (fora da trava): alguém mexeu enquanto reativávamos? Então pausa de novo na hora
-    const plan = await this.planOf(pool, run.plan_id);
-    let race: string | null = this.planBlock(plan, run, cid);
-    if (!race) {
+    const owner = await this.ownerOf(pool, run);
+    let race: string | null = await this.ownerBlock(pool, owner, run, cid);
+    if (!race && owner) {
       try {
-        race = await this.touchedSince(pool, run, plan, 'resume');
+        race = await this.touchedSince(pool, run, owner, ids, 'resume');
       } catch (err) {
         race = `não foi possível conferir depois de reativar (${errText(err)})`;
       }
     }
-    if (race) return this.repause(pool, run, plan, race);
+    if (race) return this.repause(pool, run, owner, race);
     const final = await this.confirmResume(pool, run, true);
-    return { code: plan?.code || run.plan_code, resumed: true, state: final };
+    return { code: owner?.code || run.plan_code, resumed: true, state: final };
   }
 
   /** Alguém mexeu durante a reativação: pausa de novo (reduz exposição) e avisa como crítico. */
-  private async repause(pool: Pool, run: any, plan: any, reason: string): Promise<Outcome> {
+  private async repause(pool: Pool, run: any, owner: Owner | null, reason: string): Promise<Outcome> {
     const cid = String(run.meta_campaign_id);
-    const code = plan?.code || run.plan_code;
-    const handle = await beginDecision(pool, SYSTEM_CTX, { action: 'NIGHT_PAUSE_REPAUSE', decision: 'CAMPAIGN:PAUSED', planId: plan?.id || run.plan_id, planCode: code, metaIds: [cid] }, { riskReducing: true });
+    const code = owner?.code || run.plan_code;
+    const handle = await beginDecision(
+      pool,
+      SYSTEM_CTX,
+      { action: 'NIGHT_PAUSE_REPAUSE', decision: 'CAMPAIGN:PAUSED', planId: owner?.planId || (srcOf(run).kind === 'PLAN' ? run.plan_id : null), planCode: owner?.planId ? code : null, metaIds: [cid] },
+      { riskReducing: true }
+    );
     let note = 'pausada de novo';
     try {
       await this.client(cid, 'PAUSED').setEntityStatus(pool, 'CAMPAIGN', cid, 'PAUSED', META_CTX);
@@ -582,49 +758,51 @@ export class NightPauseService {
       await handle.finish('FAILED', { error: errText(err) });
     }
     await this.closeChange(pool, run.resume_change_id, 'FAILED', null, `alteração durante a reativação: ${reason}`);
-    await pool.query(`UPDATE night_pause_runs SET state = 'CANCELLED', reason = $2, updated_at = NOW() WHERE id = $1`, [run.id, `Alteração durante a reativação (${reason}); ${note}.`]);
-    await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_CANCELLED', `Fim da pausa noturna desfeito: alguém mexeu na campanha ${cid} do plano ${code} durante a reativação (${reason}); ${note}.`, 'ACTIVE', 'PAUSED');
-    if (plan) {
-      await this.alert(pool, plan, cid, 'NIGHT_PAUSE_RACE', `A campanha do plano ${code} foi reativada pela pausa noturna no mesmo instante em que alguém mexeu nela (${reason}). O NORQVA ${note}. Confira agora.`);
+    await pool.query(`UPDATE ${srcOf(run).table} SET state = 'CANCELLED', reason = $2, updated_at = NOW() WHERE id = $1`, [run.id, `Alteração durante a reativação (${reason}); ${note}.`]);
+    await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_CANCELLED', `Fim da pausa noturna desfeito: alguém mexeu na campanha ${cid} ${owner?.of || ''} durante a reativação (${reason}); ${note}.`, 'ACTIVE', 'PAUSED');
+    if (owner) {
+      await this.alert(pool, owner, cid, 'NIGHT_PAUSE_RACE', `A campanha ${owner.of} foi reativada pela pausa noturna no mesmo instante em que alguém mexeu nela (${reason}). O NORQVA ${note}. Confira agora.`);
     }
     return { code, resumed: false, repaused: note, reason };
   }
 
   private async confirmResume(pool: Pool, run: any, first: boolean): Promise<string> {
     const cid = String(run.meta_campaign_id);
+    const T = srcOf(run).table;
     let status: string | null = null;
     try {
       status = String((await this.client(cid).readCampaignState(cid)).status || '').toUpperCase();
     } catch (err) {
       console.warn('[NIGHT PAUSE] releitura falhou; fica aguardando conferência', errText(err));
     }
+    const label = srcOf(run).kind === 'PLAN' ? `do plano ${run.plan_code}` : `"${run.plan_code}" (criada fora do NORQVA)`;
     if (status === 'ACTIVE') {
       const upd = await pool.query(
-        `UPDATE night_pause_runs SET state = 'REACTIVATED', resumed_at = NOW(), error = NULL, updated_at = NOW() WHERE id = $1 AND state IN ('REACTIVATING', 'RESUME_UNCONFIRMED') RETURNING id`,
+        `UPDATE ${T} SET state = 'REACTIVATED', resumed_at = NOW(), error = NULL, updated_at = NOW() WHERE id = $1 AND state IN ('REACTIVATING', 'RESUME_UNCONFIRMED') RETURNING id`,
         [run.id]
       );
       if (!upd.rows.length) return 'UNCHANGED';
       await this.closeChange(pool, run.resume_change_id, 'CONFIRMED', 'ACTIVE');
-      await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUMED', `Fim da pausa noturna: campanha ${cid} do plano ${run.plan_code} reativada. Confirmado pela Meta.`, 'PAUSED', 'ACTIVE');
+      await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUMED', `Fim da pausa noturna: campanha ${cid} ${label} reativada. Confirmado pela Meta.`, 'PAUSED', 'ACTIVE');
       return 'REACTIVATED';
     }
     if (!first && status === 'PAUSED') {
       // a reativação não pegou: volta para tentar de novo (com todas as conferências)
       const back = run.paused_at ? 'PAUSED' : 'PAUSE_UNCONFIRMED';
       const upd = await pool.query(
-        `UPDATE night_pause_runs SET state = $2, resume_change_id = NULL, error = 'reativação não apareceu na Meta', updated_at = NOW() WHERE id = $1 AND state IN ('REACTIVATING', 'RESUME_UNCONFIRMED') RETURNING id`,
+        `UPDATE ${T} SET state = $2, resume_change_id = NULL, error = 'reativação não apareceu na Meta', updated_at = NOW() WHERE id = $1 AND state IN ('REACTIVATING', 'RESUME_UNCONFIRMED') RETURNING id`,
         [run.id, back]
       );
       if (upd.rows.length) await this.closeChange(pool, run.resume_change_id, 'FAILED', 'PAUSED', 'reativação não apareceu na Meta');
       return back;
     }
     const upd = await pool.query(
-      `UPDATE night_pause_runs SET state = 'RESUME_UNCONFIRMED', updated_at = NOW() WHERE id = $1 AND state IN ('REACTIVATING', 'RESUME_UNCONFIRMED') RETURNING id`,
+      `UPDATE ${T} SET state = 'RESUME_UNCONFIRMED', updated_at = NOW() WHERE id = $1 AND state IN ('REACTIVATING', 'RESUME_UNCONFIRMED') RETURNING id`,
       [run.id]
     );
     if (upd.rows.length && first) {
       await this.closeChange(pool, run.resume_change_id, 'UNCONFIRMED', status);
-      await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_UNCONFIRMED', `Fim da pausa noturna: a Meta aceitou reativar a campanha ${cid} do plano ${run.plan_code}, aguardando conferência.`, 'PAUSED', status);
+      await writeAuditLog(pool, null, 'NIGHT_PAUSE_RESUME_UNCONFIRMED', `Fim da pausa noturna: a Meta aceitou reativar a campanha ${cid} ${label}, aguardando conferência.`, 'PAUSED', status);
     }
     return 'RESUME_UNCONFIRMED';
   }
@@ -635,13 +813,10 @@ export class NightPauseService {
    * pausa (quiet_since); 'resume' = desde o início desta tentativa de reativar. O instante vem do banco
    * (subconsulta): passar pelo JavaScript perderia os microssegundos.
    */
-  async touchedSince(pool: Pool, run: any, plan: any, from: 'pause' | 'resume'): Promise<string | null> {
-    const SINCE =
-      from === 'pause'
-        ? `(SELECT COALESCE(quiet_since, pause_started_at) FROM night_pause_runs WHERE id = $1)`
-        : `(SELECT resume_started_at FROM night_pause_runs WHERE id = $1)`;
+  async touchedSince(pool: Pool, run: any, owner: Owner, ids: Set<string>, from: 'pause' | 'resume'): Promise<string | null> {
+    const T = srcOf(run).table;
+    const SINCE = from === 'pause' ? `(SELECT COALESCE(quiet_since, pause_started_at) FROM ${T} WHERE id = $1)` : `(SELECT resume_started_at FROM ${T} WHERE id = $1)`;
     const cid = String(run.meta_campaign_id);
-    const ids = new Set<string>([cid, ...metaIdsOfPlan(normalizeMetaIds(plan.meta_ids))]);
     const idList = Array.from(ids);
 
     const changes = await pool.query(
@@ -650,7 +825,7 @@ export class NightPauseService {
          AND is_demo = FALSE AND COALESCE(origin, '') <> 'NIGHT_PAUSE'
          AND (plan_id = $2 OR meta_campaign_id = $3 OR meta_id = ANY($4::text[]))
        LIMIT 1`,
-      [run.id, plan.id, cid, idList]
+      [run.id, owner.planId, cid, idList]
     );
     if (changes.rows.length) {
       const c = changes.rows[0];
@@ -662,7 +837,7 @@ export class NightPauseService {
        WHERE created_at > ${SINCE} AND is_demo = FALSE AND action NOT LIKE 'NIGHT_PAUSE%'
          AND (plan_id = $2 OR meta_ids ?| $3::text[])
        ORDER BY created_at LIMIT 1`,
-      [run.id, plan.id, idList]
+      [run.id, owner.planId, idList]
     );
     if (decisions.rows.length) return `houve outra decisão sobre a campanha (${decisions.rows[0].action}).`;
 
@@ -673,7 +848,8 @@ export class NightPauseService {
       [run.id, TOUCH_EVENTS]
     );
     const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const patterns = [String(plan.code), ...idList].map((t) => new RegExp(`(^|[^A-Za-z0-9_-])${esc(t)}([^A-Za-z0-9_-]|$)`, 'i'));
+    const tokens = owner.kind === 'PLAN' ? [owner.code, ...idList] : idList;
+    const patterns = tokens.map((t) => new RegExp(`(^|[^A-Za-z0-9_-])${esc(String(t))}([^A-Za-z0-9_-]|$)`, 'i'));
     for (const a of audits.rows) {
       const text = String(a.description || '');
       if (patterns.some((p) => p.test(text))) return `a campanha foi alterada (${a.event_type}).`;
@@ -698,23 +874,27 @@ export class NightPauseService {
     }
   }
 
+  /** Situação lida na Meta para a tela das externas (60 s). */
+  private static liveCache = new Map<string, { value: any; at: number }>();
+
   /** Só para testes. */
   static resetAppCacheForTesting() {
     NightPauseService.tokenAppId = null;
+    NightPauseService.liveCache.clear();
   }
 
   /**
    * Mexeram na campanha fora do NORQVA durante a noite? Lê o registro de atividades da conta de anúncios e
-   * procura evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios do plano que não seja
-   * do NORQVA. O token pode ser do próprio dono, então o usuário (actor_id) não diz nada: "nosso" é só
+   * procura evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios que não seja do
+   * NORQVA. O token pode ser do próprio dono, então o usuário (actor_id) não diz nada: "nosso" é só
    *  - evento do app a que o token pertence (GET /app, ou META_APP_ID); ou
    *  - sem app no evento (ou app desconhecido): a própria mudança de situação da campanha, até 2 minutos antes
    *    ou depois do nosso envio de pausa (ou desta tentativa de reativar).
    * Todo o resto conta como mexido (na dúvida, não reativa). Sem o registro, compara updated_time.
    */
-  private async touchedOnMeta(pool: Pool, run: any, plan: any, client: MetaMutatingClient, state: MetaState): Promise<string | null> {
+  private async touchedOnMeta(pool: Pool, run: any, ids: Set<string>, client: MetaMutatingClient, state: MetaState): Promise<string | null> {
     const cid = String(run.meta_campaign_id);
-    const ids = new Set<string>([cid, ...metaIdsOfPlan(normalizeMetaIds(plan.meta_ids))]);
+    const T = srcOf(run).table;
     const ms = (v: unknown) => (v ? new Date(v as any).getTime() : null);
     const startMs = ms(run.pause_started_at);
     try {
@@ -742,11 +922,11 @@ export class NightPauseService {
         if (t !== null && t < startMs - TOL) return false;
         return !ours(e);
       });
-      await pool.query(`UPDATE night_pause_runs SET activity_check = $2 WHERE id = $1`, [run.id, foreign ? 'TOUCHED' : appId ? 'CLEAN' : 'CLEAN_NO_APP']);
+      await pool.query(`UPDATE ${T} SET activity_check = $2 WHERE id = $1`, [run.id, foreign ? 'TOUCHED' : appId ? 'CLEAN' : 'CLEAN_NO_APP']);
       if (foreign) return `a campanha foi alterada na Meta durante a noite fora do NORQVA (${foreign.event_type || 'alteração'}).`;
       return null;
     } catch (err) {
-      await pool.query(`UPDATE night_pause_runs SET activity_check = 'UNAVAILABLE' WHERE id = $1`, [run.id]);
+      await pool.query(`UPDATE ${T} SET activity_check = 'UNAVAILABLE' WHERE id = $1`, [run.id]);
       const before = instant(run.meta_updated_time_at_pause);
       const now = instant(state.updated_time);
       if (before !== null && now !== null && now !== before) return 'a campanha foi alterada na Meta durante a noite.';
@@ -757,32 +937,33 @@ export class NightPauseService {
   // ------------------------------ conferências e prazos ------------------------------
 
   /** Envio interrompido (queda no meio): sem envio → volta; com envio → a releitura decide. */
-  private async settleStale(pool: Pool, out: any) {
+  private async settleStale(pool: Pool, src: Src, out: any) {
+    const T = src.table;
     const stale = (
       await pool.query(
-        `SELECT * FROM night_pause_runs
+        `SELECT * FROM ${T}
          WHERE (state = 'PAUSING' AND pause_started_at < NOW() - INTERVAL '${STALE_MIN} minutes')
             OR (state = 'REACTIVATING' AND resume_started_at < NOW() - INTERVAL '${STALE_MIN} minutes')`
       )
     ).rows;
     for (const r of stale) {
       await this.perRow(out, `settle:${r.plan_code}`, async () => {
-        const plan = await this.planOf(pool, r.plan_id);
+        const owner = await this.ownerOf(pool, r);
         if (r.state === 'PAUSING') {
           if (!r.pause_change_id) {
             // interrompida antes do envio: nada foi pausado
-            await this.pauseFailed(pool, r, plan, 'pausa interrompida antes do envio');
+            await this.pauseFailed(pool, r, owner, 'pausa interrompida antes do envio');
             out.other.push({ code: r.plan_code, stale: 'PAUSING', sent: false });
             return;
           }
-          const res = await this.resolvePauseOutcome(pool, r, plan, 'envio interrompido');
+          const res = await this.resolvePauseOutcome(pool, r, owner, 'envio interrompido');
           out.other.push({ code: r.plan_code, stale: 'PAUSING', ...res });
           return;
         }
         const back = r.paused_at ? 'PAUSED' : 'PAUSE_UNCONFIRMED';
         if (!r.resume_change_id) {
           // a reativação nunca chegou a enviar: tenta de novo
-          await pool.query(`UPDATE night_pause_runs SET state = $2, error = 'reativação interrompida antes do envio', updated_at = NOW() WHERE id = $1 AND state = 'REACTIVATING'`, [r.id, back]);
+          await pool.query(`UPDATE ${T} SET state = $2, error = 'reativação interrompida antes do envio', updated_at = NOW() WHERE id = $1 AND state = 'REACTIVATING'`, [r.id, back]);
           out.other.push({ code: r.plan_code, stale: 'REACTIVATING', sent: false });
           return;
         }
@@ -796,11 +977,11 @@ export class NightPauseService {
           const s = await this.confirmResume(pool, r, true);
           out.other.push({ code: r.plan_code, stale: 'REACTIVATING', state: s });
         } else if (status === 'PAUSED') {
-          await pool.query(`UPDATE night_pause_runs SET state = $2, resume_change_id = NULL, error = 'reativação interrompida', updated_at = NOW() WHERE id = $1 AND state = 'REACTIVATING'`, [r.id, back]);
+          await pool.query(`UPDATE ${T} SET state = $2, resume_change_id = NULL, error = 'reativação interrompida', updated_at = NOW() WHERE id = $1 AND state = 'REACTIVATING'`, [r.id, back]);
           await this.closeChange(pool, r.resume_change_id, 'FAILED', 'PAUSED', 'reativação interrompida');
           out.other.push({ code: r.plan_code, stale: 'REACTIVATING', retry: true });
         } else {
-          await pool.query(`UPDATE night_pause_runs SET state = 'RESUME_UNCONFIRMED', updated_at = NOW() WHERE id = $1 AND state = 'REACTIVATING'`, [r.id]);
+          await pool.query(`UPDATE ${T} SET state = 'RESUME_UNCONFIRMED', updated_at = NOW() WHERE id = $1 AND state = 'REACTIVATING'`, [r.id]);
           out.other.push({ code: r.plan_code, stale: 'REACTIVATING', state: 'RESUME_UNCONFIRMED' });
         }
       });
@@ -808,21 +989,21 @@ export class NightPauseService {
   }
 
   /** Conferências pendentes (a Meta aceitou mas a releitura ainda não mostrava), de qualquer dia. */
-  private async recheckUnconfirmed(pool: Pool, out: any) {
-    const rows = (await pool.query(`SELECT * FROM night_pause_runs WHERE state IN ('PAUSE_UNCONFIRMED', 'RESUME_UNCONFIRMED') ORDER BY created_at LIMIT 200`)).rows;
+  private async recheckUnconfirmed(pool: Pool, src: Src, out: any) {
+    const rows = (await pool.query(`SELECT * FROM ${src.table} WHERE state IN ('PAUSE_UNCONFIRMED', 'RESUME_UNCONFIRMED') ORDER BY created_at LIMIT 200`)).rows;
     for (const r of rows) {
       await this.perRow(out, `recheck:${r.plan_code}`, async () => {
-        const s = r.state === 'PAUSE_UNCONFIRMED' ? await this.confirmPause(pool, r, await this.planOf(pool, r.plan_id), false) : await this.confirmResume(pool, r, false);
+        const s = r.state === 'PAUSE_UNCONFIRMED' ? await this.confirmPause(pool, r, await this.ownerOf(pool, r), false) : await this.confirmResume(pool, r, false);
         if (s !== r.state) out.other.push({ code: r.plan_code, confirmed: s });
       });
     }
   }
 
   /** Passou de 23:59 do dia da pausa: não reativa mais; registra e avisa. */
-  private async expireOld(pool: Pool, clock: { date: string }, out: any) {
+  private async expireOld(pool: Pool, src: Src, clock: { date: string }, out: any) {
     const expired = (
       await pool.query(
-        `UPDATE night_pause_runs SET state = 'EXPIRED', reason = 'Não foi reativada até 23:59 do dia da pausa.', updated_at = NOW()
+        `UPDATE ${src.table} SET state = 'EXPIRED', reason = 'Não foi reativada até 23:59 do dia da pausa.', updated_at = NOW()
          WHERE state IN ('PAUSED', 'PAUSE_UNCONFIRMED', 'RESUME_UNCONFIRMED') AND night_date < $1::date RETURNING *`,
         [clock.date]
       )
@@ -830,9 +1011,9 @@ export class NightPauseService {
     for (const r of expired) {
       await this.perRow(out, `expire:${r.plan_code}`, async () => {
         const cid = String(r.meta_campaign_id);
-        await writeAuditLog(pool, null, 'NIGHT_PAUSE_EXPIRED', `Fim da pausa noturna não aconteceu até 23:59: a campanha ${cid} do plano ${r.plan_code} continua pausada.`, 'PAUSED', 'PAUSED');
-        const plan = await this.planOf(pool, r.plan_id);
-        if (plan) await this.alert(pool, plan, cid, 'NIGHT_PAUSE_EXPIRED', `A campanha do plano ${plan.code} ficou pausada: o NORQVA não conseguiu reativá-la até 23:59 do dia da pausa. Reative pela tela se quiser.`);
+        const owner = await this.ownerOf(pool, r);
+        await writeAuditLog(pool, null, 'NIGHT_PAUSE_EXPIRED', `Fim da pausa noturna não aconteceu até 23:59: a campanha ${cid} ${owner?.of || ''} continua pausada.`, 'PAUSED', 'PAUSED');
+        if (owner) await this.alert(pool, owner, cid, 'NIGHT_PAUSE_EXPIRED', `A campanha ${owner.of} ficou pausada: o NORQVA não conseguiu reativá-la até 23:59 do dia da pausa. Reative pela tela se quiser.`);
         out.other.push({ code: r.plan_code, expired: true });
       });
     }
@@ -841,7 +1022,7 @@ export class NightPauseService {
   // ------------------------------ fichas e avisos ------------------------------
 
   /** Ficha de alteração (NORQVA-0097) da pausa noturna, já em "Enviando". */
-  private async openChange(pool: Pool, plan: any, cid: string, previous: string, requested: 'PAUSED' | 'ACTIVE'): Promise<string> {
+  private async openChange(pool: Pool, owner: Owner, cid: string, previous: string, requested: 'PAUSED' | 'ACTIVE'): Promise<string> {
     const id = crypto.randomUUID();
     const name = (await pool.query(`SELECT name FROM meta_campaigns WHERE meta_campaign_id = $1 AND is_demo = FALSE LIMIT 1`, [cid]).catch(() => ({ rows: [] as any[] }))).rows[0]?.name;
     await pool.query(
@@ -849,7 +1030,7 @@ export class NightPauseService {
          (id, plan_id, plan_code, entity_type, meta_id, entity_name, meta_campaign_id, kind, previous_value, requested_value, state,
           requested_by_name, requested_by_role, approved_by_name, approved_at, sent_at, origin, is_demo)
        VALUES ($1, $2, $3, 'CAMPAIGN', $4, $5, $4, 'STATUS', $6, $7, 'SENDING', $8, 'SYSTEM', $8, NOW(), NOW(), 'NIGHT_PAUSE', FALSE)`,
-      [id, plan.id, plan.code, cid, name || plan.spec?.campaign?.name || null, previous, requested, WHO]
+      [id, owner.planId, owner.planId ? owner.code : null, cid, String(name || owner.name || '').slice(0, 255) || null, previous, requested, WHO]
     );
     return id;
   }
@@ -864,12 +1045,13 @@ export class NightPauseService {
     );
   }
 
-  private async alert(pool: Pool, plan: any, cid: string, rule: string, message: string) {
+  private async alert(pool: Pool, owner: Owner, cid: string, rule: string, message: string) {
     try {
       await pool.query(
         `INSERT INTO ad_alerts (rule_code, meta_ad_id, ad_name, meta_campaign_id, campaign_name, spend, threshold, message, is_demo)
          VALUES ($1, $2, $3, $2, $4, 0, 0, $5, FALSE)`,
-        [rule, cid, plan.code, plan.spec?.campaign?.name || plan.code, message]
+        // externas: ad_name vazio (não é código de plano; o aviso abre a campanha pelo ID da Meta)
+        [rule, cid, owner.kind === 'PLAN' ? owner.code.slice(0, 255) : null, owner.name.slice(0, 255), message]
       );
     } catch (err) {
       console.error('[NIGHT PAUSE] não abriu o aviso', rule, errText(err));
@@ -923,6 +1105,175 @@ export class NightPauseService {
       );
     }
     return this.settings(pool, planId);
+  }
+
+  // ------------------------------ campanhas criadas fora do NORQVA (NORQVA-0122) ------------------------------
+
+  /**
+   * Garante a linha da campanha em meta_campaigns (setEntityStatus precisa dela). Nunca altera linha existente.
+   * Falha → grava o erro e abre aviso uma vez (na hora de adicionar ou no primeiro ciclo, não à meia-noite).
+   */
+  private async mirrorOne(pool: Pool, ext: any): Promise<{ ok: boolean; created?: boolean; error?: string }> {
+    const cid = String(ext.meta_campaign_id);
+    try {
+      const r = await this.clientFactory().ensureCampaignMirror(pool, cid);
+      await pool.query(`UPDATE night_pause_external_campaigns SET mirror_checked_at = NOW(), mirror_error = NULL WHERE id = $1`, [ext.id]);
+      return { ok: true, created: r.created };
+    } catch (err) {
+      const msg = errText(err);
+      const prev = (await pool.query(`SELECT mirror_error FROM night_pause_external_campaigns WHERE id = $1`, [ext.id])).rows[0]?.mirror_error;
+      await pool.query(`UPDATE night_pause_external_campaigns SET mirror_checked_at = NOW(), mirror_error = $2 WHERE id = $1`, [ext.id, msg]);
+      if (!prev) {
+        await writeAuditLog(pool, null, 'NIGHT_PAUSE_EXTERNAL_MIRROR_FAILED', `Pausa noturna: não foi possível preparar a campanha ${cid} ("${ext.name || cid}", criada fora do NORQVA). ${msg}`, null, null);
+        await this.alert(pool, externalOwner(ext), cid, 'NIGHT_PAUSE_MIRROR_FAILED', `A campanha "${ext.name || cid}" (${cid}) não pode ser pausada à noite: o NORQVA não conseguiu lê-la na Meta (${msg.slice(0, 160)}). Confira o ID e a conta.`);
+      }
+      return { ok: false, error: msg };
+    }
+  }
+
+  /** Para as externas ligadas ainda sem linha em meta_campaigns: tenta a cópia (no máximo 1 vez por hora se falhar). */
+  private async ensureExternalMirrors(pool: Pool, out: any) {
+    const rows = (
+      await pool.query(
+        `SELECT e.* FROM night_pause_external_campaigns e
+         WHERE e.enabled = TRUE AND e.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM meta_campaigns m WHERE m.meta_campaign_id = e.meta_campaign_id AND m.is_demo = FALSE)
+           AND (e.mirror_checked_at IS NULL OR e.mirror_error IS NULL OR e.mirror_checked_at < NOW() - INTERVAL '1 hour')`
+      )
+    ).rows;
+    for (const ext of rows) {
+      await this.perRow(out, `mirror:${ext.meta_campaign_id}`, async () => {
+        const r = await this.mirrorOne(pool, ext);
+        out.other.push({ code: ext.name || ext.meta_campaign_id, mirror: r.ok ? (r.created ? 'criada' : 'já existia') : r.error });
+      });
+    }
+  }
+
+  private shapeExternal(row: any, runs: any[], meta: { status: string | null; effective_status: string | null; error?: string } | null) {
+    return {
+      id: row.id,
+      meta_campaign_id: row.meta_campaign_id,
+      name: row.name,
+      enabled: row.enabled !== false,
+      start: row.night_pause_start || DEFAULT_START,
+      end: row.night_pause_end || DEFAULT_END,
+      meta,
+      runs,
+      mirror_error: row.mirror_error || null
+    };
+  }
+
+  /** Lista (com a situação lida na Meta agora e as últimas 3 noites). */
+  async listExternal(pool: Pool, opts: { live?: boolean } = {}) {
+    const rows = (await pool.query(`SELECT * FROM night_pause_external_campaigns WHERE deleted_at IS NULL ORDER BY created_at`)).rows;
+    const ofPlans = rows.length ? await planCampaignIds(pool) : new Set<string>();
+    const out: any[] = [];
+    for (const row of rows) {
+      const runs = (
+        await pool.query(
+          `SELECT id, night_date::text AS night_date, state, reason, error, paused_at, resumed_at
+           FROM night_pause_external_runs WHERE external_id = $1 ORDER BY night_date DESC, created_at DESC LIMIT 3`,
+          [row.id]
+        )
+      ).rows;
+      let meta: any = null;
+      if (opts.live !== false) {
+        try {
+          const key = String(row.meta_campaign_id);
+          const hit = NightPauseService.liveCache.get(key);
+          if (hit && Date.now() - hit.at < 60 * 1000) meta = hit.value;
+          else {
+            const s = await this.clientFactory().readCampaignState(key);
+            meta = { status: s.status, effective_status: s.effective_status };
+            NightPauseService.liveCache.set(key, { value: meta, at: Date.now() });
+          }
+        } catch (err) {
+          meta = { status: null, effective_status: null, error: 'não foi possível ler na Meta agora' };
+        }
+      }
+      out.push({ ...this.shapeExternal(row, runs, meta), belongs_to_plan: ofPlans.has(String(row.meta_campaign_id)) });
+    }
+    return { campaigns: out, master_enabled: nightPauseEnabled(), timezone: NIGHT_PAUSE_TZ, max_end: MAX_END };
+  }
+
+  /** Adicionar pelo ID: confere na Meta que a campanha existe e é da conta de anúncios configurada. */
+  async addExternal(pool: Pool, body: any, userId: string | null) {
+    const cid = String(body?.meta_campaign_id ?? '').trim();
+    if (!/^\d{5,25}$/.test(cid)) throw new NightPauseError(400, 'Informe o ID da campanha na Meta (só números).');
+    if (protectedMetaIds().has(cid)) throw new NightPauseError(409, 'Esta campanha é protegida (CONTROL) e não entra na pausa noturna.');
+    if ((await planCampaignIds(pool)).has(cid)) throw new NightPauseError(409, 'Esta campanha é de um plano do NORQVA: a pausa noturna dela fica em Gerenciar campanha → Configurações.');
+    let info: { id: string | null; name: string | null; account_id: string | null };
+    try {
+      info = await this.clientFactory().readCampaignIdentity(cid);
+    } catch (err) {
+      throw new NightPauseError(422, `Não foi possível achar esta campanha na Meta (${errText(err).slice(0, 160)}).`);
+    }
+    const act = String(process.env.META_AD_ACCOUNT_ID || '').replace(/^act_/, '');
+    if (!info.id || String(info.id) !== cid) throw new NightPauseError(422, 'A Meta não devolveu esta campanha.');
+    if (!act || String(info.account_id || '').replace(/^act_/, '') !== act) throw new NightPauseError(422, 'Esta campanha não é da conta de anúncios configurada no NORQVA.');
+    const uid = UUID_RE.test(String(userId || '')) ? userId : null;
+    // horário pedido (ou o padrão); adicionar de novo uma campanha tirada da lista volta ligada, com este horário
+    const w = validateWindow(body?.start ?? DEFAULT_START, body?.end ?? DEFAULT_END);
+    const r = await pool.query(
+      `INSERT INTO night_pause_external_campaigns (meta_campaign_id, name, enabled, night_pause_start, night_pause_end, created_by)
+       VALUES ($1, $2, TRUE, $3, $4, $5)
+       ON CONFLICT (meta_campaign_id) DO UPDATE SET name = EXCLUDED.name, enabled = TRUE, night_pause_start = EXCLUDED.night_pause_start,
+         night_pause_end = EXCLUDED.night_pause_end, deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+       RETURNING *`,
+      [cid, info.name ? String(info.name).slice(0, 255) : null, w.start, w.end, uid]
+    );
+    const row = r.rows[0];
+    // cópia mínima em meta_campaigns já agora: se falhar, o aviso sai na hora de adicionar, não à meia-noite
+    const mirror = await this.mirrorOne(pool, row);
+    await writeAuditLog(
+      pool,
+      uid,
+      'NIGHT_PAUSE_EXTERNAL_ADDED',
+      `Pausa noturna: campanha ${row.meta_campaign_id} ("${row.name || row.meta_campaign_id}", criada fora do NORQVA) adicionada, ${row.enabled ? 'ligada' : 'desligada'} das ${row.night_pause_start} às ${row.night_pause_end}.`,
+      null,
+      row.meta_campaign_id
+    );
+    return { ...this.shapeExternal(row, [], null), mirror: mirror.ok ? 'OK' : 'FAILED', mirror_error: mirror.error || null };
+  }
+
+  private async externalRow(pool: Pool, id: string) {
+    if (!UUID_RE.test(String(id || ''))) throw new NightPauseError(404, 'Campanha não encontrada.');
+    const r = (await pool.query(`SELECT * FROM night_pause_external_campaigns WHERE id = $1 AND deleted_at IS NULL`, [id])).rows[0];
+    if (!r) throw new NightPauseError(404, 'Campanha não encontrada.');
+    return r;
+  }
+
+  async updateExternal(pool: Pool, id: string, body: any, userId: string | null) {
+    const cur = await this.externalRow(pool, id);
+    const enabled = body?.enabled === undefined ? cur.enabled !== false : body.enabled;
+    if (typeof enabled !== 'boolean') throw new NightPauseError(400, 'Diga se a pausa noturna fica ligada ou desligada.');
+    const w = validateWindow(body?.start ?? cur.night_pause_start, body?.end ?? cur.night_pause_end);
+    const r = await pool.query(
+      `UPDATE night_pause_external_campaigns SET enabled = $2, night_pause_start = $3, night_pause_end = $4, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id, enabled, w.start, w.end]
+    );
+    const before = `${cur.enabled !== false ? 'ligada' : 'desligada'} ${cur.night_pause_start}–${cur.night_pause_end}`;
+    const after = `${enabled ? 'ligada' : 'desligada'} ${w.start}–${w.end}`;
+    if (before !== after) {
+      await writeAuditLog(
+        pool,
+        UUID_RE.test(String(userId || '')) ? userId : null,
+        'NIGHT_PAUSE_SETTINGS_CHANGED',
+        `Pausa noturna da campanha ${cur.meta_campaign_id} ("${cur.name || cur.meta_campaign_id}", criada fora do NORQVA): ${enabled ? `ligada, das ${w.start} às ${w.end}` : 'desligada'} (horário de Brasília).`,
+        before,
+        after
+      );
+    }
+    return this.shapeExternal(r.rows[0], [], null);
+  }
+
+  /** Tira da lista (só a configuração; as noites ficam). A noite em curso termina normalmente. */
+  async removeExternal(pool: Pool, id: string, userId: string | null) {
+    const cur = await this.externalRow(pool, id);
+    const uid = UUID_RE.test(String(userId || '')) ? userId : null;
+    await pool.query(`UPDATE night_pause_external_campaigns SET deleted_at = NOW(), deleted_by = $2, updated_at = NOW() WHERE id = $1`, [id, uid]);
+    await writeAuditLog(pool, uid, 'NIGHT_PAUSE_EXTERNAL_REMOVED', `Pausa noturna: campanha ${cur.meta_campaign_id} ("${cur.name || cur.meta_campaign_id}", criada fora do NORQVA) tirada da lista.`, cur.meta_campaign_id, null);
+    return { removed: true };
   }
 }
 

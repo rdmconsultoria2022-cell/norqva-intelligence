@@ -18,7 +18,7 @@ export interface AlertNotification {
   is_problem: boolean;
   is_open: boolean;
   entity: { type: 'AD' | 'CAMPAIGN'; meta_campaign_id: string | null; campaign_name: string | null; meta_ad_id?: string | null; ad_name: string | null; plan_code: string | null };
-  link: { tab: 'results' | 'cap'; meta_campaign_id: string | null; plan_code: string | null };
+  link: { tab: 'results' | 'cap'; meta_campaign_id: string | null; plan_code: string | null; section?: string | null };
   resolution: string | null;
   dismiss_reason: string | null;
   created_at: string;
@@ -36,6 +36,8 @@ export interface CampaignFocus {
   planCode: string | null;
   tab: 'results' | 'cap';
   nonce: number;
+  /** NORQVA-0122: seção da tela Campanhas (campanhas criadas fora do NORQVA) */
+  section?: string | null;
 }
 
 const SEVERITY: Record<AlertNotification['severity'], { label: string; tone: Tone }> = {
@@ -81,7 +83,7 @@ export async function fetchAlertCenter(apiFetch: (url: string, options?: Request
 }
 
 export function focusOf(n: AlertNotification): CampaignFocus {
-  return { metaCampaignId: n.link.meta_campaign_id, planCode: n.link.plan_code, tab: n.link.tab, nonce: Date.now() };
+  return { metaCampaignId: n.link.meta_campaign_id, planCode: n.link.plan_code, tab: n.link.tab, nonce: Date.now(), section: n.link.section || null };
 }
 
 /** Um aviso: usado no sino e na lista de pendências de Campanhas. */

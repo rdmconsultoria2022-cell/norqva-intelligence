@@ -1228,17 +1228,82 @@ export class MetaMutatingClient {
    */
   public async readCampaignState(
     campaignMetaId: string
-  ): Promise<{ status: string | null; effective_status: string | null; daily_budget: number | null; updated_time: string | null }> {
+  ): Promise<{
+    status: string | null;
+    effective_status: string | null;
+    daily_budget: number | null;
+    updated_time: string | null;
+    spend_cap: number | null;
+    account_id: string | null;
+  }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
-    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time' });
-    const raw = obj?.daily_budget;
-    const daily = raw !== undefined && raw !== null && String(raw) !== '' ? (parseFloat(raw) || 0) / 100 : null;
+    // só campos que existem no objeto Campaign (amount_spent não existe nele: a Meta recusa a leitura inteira)
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time,spend_cap,account_id' });
+    const cents = (v: any) => (v !== undefined && v !== null && String(v) !== '' ? (parseFloat(v) || 0) / 100 : null);
+    const cap = cents(obj?.spend_cap);
     return {
       status: obj?.status || null,
       effective_status: obj?.effective_status || null,
-      daily_budget: daily,
-      updated_time: obj?.updated_time ? String(obj.updated_time) : null
+      daily_budget: cents(obj?.daily_budget),
+      updated_time: obj?.updated_time ? String(obj.updated_time) : null,
+      // NORQVA-0122: limite de gastos da campanha em reais (0 ou ausente = sem limite)
+      spend_cap: cap && cap > 0 ? cap : null,
+      // NORQVA-0122: conta de anúncios (sem "act_"), para não mexer em campanha de outra conta
+      account_id: obj?.account_id ? String(obj.account_id).replace(/^act_/, '') : null
     };
+  }
+
+  /** NORQVA-0122: IDs dos conjuntos e anúncios de uma campanha (só leitura), para o registro de atividades. */
+  public async readCampaignChildIds(campaignMetaId: string): Promise<string[]> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const out: string[] = [];
+    for (const edge of ['adsets', 'ads']) {
+      const res = await this.callTransportGet(`/${campaignMetaId}/${edge}`, { fields: 'id', limit: '500' });
+      for (const r of Array.isArray(res?.data) ? res.data : []) if (r?.id) out.push(String(r.id));
+    }
+    return out;
+  }
+
+  /**
+   * NORQVA-0122: espelho mínimo de uma campanha em meta_campaigns (para setEntityStatus achar a linha) quando a
+   * sincronização ainda não a trouxe. Lê a campanha na Meta (só leitura), confere que é da conta configurada e
+   * grava com os mesmos campos e unidades da sincronização (orçamento em reais, COMMERCIAL_PRODUCTION).
+   * Nunca altera uma linha que já existe (ON CONFLICT DO NOTHING): a sincronização continua dona dela.
+   */
+  public async ensureCampaignMirror(pool: Pool, campaignMetaId: string): Promise<{ created: boolean; name: string | null }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const found = await pool.query('SELECT name FROM meta_campaigns WHERE meta_campaign_id = $1 AND is_demo = FALSE LIMIT 1', [campaignMetaId]);
+    if (found.rows.length > 0) return { created: false, name: found.rows[0].name || null };
+    if (!this.adAccountId) throw new Error('[META CONFIG EXCEPTION]: Missing META_AD_ACCOUNT_ID.');
+    const c = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'id,name,objective,status,effective_status,account_id,daily_budget,lifetime_budget' });
+    if (!c?.id || String(c.id) !== String(campaignMetaId)) throw new Error('[VALIDATION EXCEPTION]: Campaign not returned by Meta.');
+    const configured = this.adAccountId.replace(/^act_/, '');
+    if (String(c.account_id || '').replace(/^act_/, '') !== configured) throw new Error('[VALIDATION EXCEPTION]: Campaign belongs to another ad account.');
+    const acctDbId = await this.ensureRealAdAccountRow(pool, `act_${configured}`);
+    const reais = (v: any) => (v !== undefined && v !== null && String(v) !== '' ? parseFloat(v) / 100 : null);
+    const ins = await pool.query(
+      `INSERT INTO meta_campaigns (meta_campaign_id, ad_account_id, name, objective, status, effective_status, is_demo, data_provenance, daily_budget, lifetime_budget, last_synced_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, FALSE, 'COMMERCIAL_PRODUCTION', $7, $8, NOW(), NOW())
+       ON CONFLICT (meta_campaign_id, is_demo) DO NOTHING RETURNING id`,
+      [
+        String(c.id),
+        acctDbId,
+        String(c.name || `Campanha ${c.id}`).slice(0, 255),
+        c.objective || null,
+        String(c.status || 'PAUSED'),
+        String(c.effective_status || c.status || 'PAUSED'),
+        reais(c.daily_budget),
+        reais(c.lifetime_budget)
+      ]
+    );
+    return { created: ins.rows.length > 0, name: c.name ? String(c.name) : null };
+  }
+
+  /** NORQVA-0122: nome e conta de anúncios de uma campanha (só leitura), para cadastrar na pausa noturna. */
+  public async readCampaignIdentity(campaignMetaId: string): Promise<{ id: string | null; name: string | null; account_id: string | null }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'id,name,account_id' });
+    return { id: obj?.id ? String(obj.id) : null, name: obj?.name ? String(obj.name) : null, account_id: obj?.account_id ? String(obj.account_id) : null };
   }
 
   /**

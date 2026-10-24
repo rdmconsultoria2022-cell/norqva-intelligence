@@ -187,3 +187,46 @@ export async function saveCampaignNightPause(req: AuthenticatedRequest, res: Res
     return res.status(500).json({ error: 'Falha ao salvar a pausa noturna.' });
   }
 }
+
+// NORQVA-0122: pausa noturna das campanhas criadas fora do NORQVA (Campanhas → "Campanhas criadas fora do NORQVA").
+function nightPauseFail(res: Response, err: any, msg: string) {
+  if (err instanceof NightPauseError) return res.status(err.status).json({ error: err.message });
+  console.error('[CAMPAIGNS] pausa noturna (externas)', err);
+  return res.status(500).json({ error: msg });
+}
+
+export async function listExternalNightPause(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(200).json(await new NightPauseService().listExternal(db(req), { live: req.query.live !== '0' }));
+  } catch (err) {
+    return nightPauseFail(res, err, 'Falha ao carregar as campanhas criadas fora do NORQVA.');
+  }
+}
+
+export async function addExternalNightPause(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(201).json(await new NightPauseService().addExternal(db(req), req.body || {}, uid(req)));
+  } catch (err) {
+    return nightPauseFail(res, err, 'Falha ao adicionar a campanha.');
+  }
+}
+
+export async function updateExternalNightPause(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(200).json(await new NightPauseService().updateExternal(db(req), String(req.params.id), req.body || {}, uid(req)));
+  } catch (err) {
+    return nightPauseFail(res, err, 'Falha ao salvar a pausa noturna.');
+  }
+}
+
+export async function removeExternalNightPause(req: AuthenticatedRequest, res: Response) {
+  if (demoBlocked(req, res)) return;
+  try {
+    return res.status(200).json(await new NightPauseService().removeExternal(db(req), String(req.params.id), uid(req)));
+  } catch (err) {
+    return nightPauseFail(res, err, 'Falha ao tirar a campanha da lista.');
+  }
+}
