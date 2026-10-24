@@ -5,6 +5,7 @@
  * 2. Pagamentos reais ainda pendentes nas últimas 48 h: consulta o Asaas (a confirmação vem dele).
  * 3. Pedidos pagos sem e-mail de acesso (ou com falha, até 3 tentativas): envia.
  * 6. NORQVA-0107: lembrete de download para quem pagou e não baixou (3 h e 24 h depois do pagamento).
+ * 7. NORQVA-0123: um lembrete pelo WhatsApp para o Pix não pago da conversa (30 a 120 min, 08h–22h).
  *
  * Só pedidos reais (is_demo = false). Nada aqui marca pagamento sem a resposta do Asaas.
  * PAYMENT_SWEEP_ENABLED=false desliga.
@@ -16,6 +17,7 @@ import { shouldCheckProvider, withTimeout } from './paymentCheckThrottle';
 import { sweepWhatsAppDeliveries } from './whatsapp/whatsappDelivery';
 import { runPaymentReminders, PaymentReminderDeps } from './paymentReminderService';
 import { runDownloadReminders, DownloadReminderDeps } from './downloadReminderService';
+import { runWhatsAppPixReminders, PixReminderDeps } from './whatsapp/pixReminder';
 
 export interface PaymentSweepDeps {
   reconcile: (paymentId: string, pool: Pool) => Promise<any>;
@@ -23,6 +25,8 @@ export interface PaymentSweepDeps {
   sendAccessEmail?: (pool: Pool, orderId: string) => Promise<any>;
   reminders?: PaymentReminderDeps;
   downloadReminders?: DownloadReminderDeps;
+  /** NORQVA-0123: lembrete de Pix pelo WhatsApp (testes passam o motor e a hora) */
+  pixReminders?: PixReminderDeps;
 }
 
 export interface PaymentSweepResult {
@@ -31,6 +35,7 @@ export interface PaymentSweepResult {
   emailsAttempted: number;
   remindersSent?: number;
   downloadRemindersSent?: number;
+  whatsappPixRemindersSent?: number;
 }
 
 const BATCH = 25;
@@ -124,6 +129,14 @@ export async function runPaymentSweep(pool: Pool, deps: PaymentSweepDeps): Promi
     console.warn('[PAYMENT SWEEP] download reminder error', err?.message);
   }
 
+  // 7. NORQVA-0123: um lembrete pelo WhatsApp para o Pix gerado na conversa e não pago (WHATSAPP_PIX_REMINDER_ENABLED=true)
+  try {
+    const wa = await runWhatsAppPixReminders(pool, { reconcile: deps.reconcile, ...(deps.pixReminders || {}) });
+    if (wa.sent) result.whatsappPixRemindersSent = wa.sent;
+  } catch (err: any) {
+    console.warn('[PAYMENT SWEEP] whatsapp pix reminder error', err?.message);
+  }
+
   return result;
 }
 
@@ -136,7 +149,7 @@ export function startPaymentSweepScheduler(pool: Pool, deps: PaymentSweepDeps): 
     running = true;
     try {
       const r = await runPaymentSweep(pool, deps);
-      if (r.webhooksRetried || r.paymentsChecked || r.emailsAttempted || r.remindersSent || r.downloadRemindersSent) {
+      if (r.webhooksRetried || r.paymentsChecked || r.emailsAttempted || r.remindersSent || r.downloadRemindersSent || r.whatsappPixRemindersSent) {
         console.log('[PAYMENT SWEEP]', JSON.stringify(r));
       }
     } catch (err: any) {

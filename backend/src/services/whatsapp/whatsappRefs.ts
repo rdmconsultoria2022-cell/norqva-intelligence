@@ -144,3 +144,67 @@ export async function refForConversation(pool: Pool, conversationId: string) {
   );
   return r.rows[0] || null;
 }
+
+// ---------- NORQVA-0123 etapa A: anúncio clique-para-WhatsApp ----------
+
+/** Dados do anúncio que vêm junto com a mensagem (só o que serve para atribuir; nada do texto do anúncio). */
+export interface AdReferral {
+  adId: string;
+  ctwaClid: string | null;
+  sourceUrl: string | null;
+}
+
+const AD_ID_RE = /^\d{5,30}$/;
+
+function pickReferral(raw: any): AdReferral | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const type = String(raw.sourceType ?? raw.source_type ?? '').toLowerCase();
+  const id = String(raw.sourceId ?? raw.source_id ?? '').trim();
+  if (type !== 'ad' || !AD_ID_RE.test(id)) return null;
+  const clid = str(raw.ctwaClid ?? raw.ctwa_clid, 255);
+  const url = str(raw.sourceUrl ?? raw.source_url, 1000);
+  return { adId: id, ctwaClid: clid, sourceUrl: url && /^https?:\/\//i.test(url) ? url : null };
+}
+
+/** Evolution: `contextInfo.externalAdReply` dentro da mensagem ou no item do webhook. */
+export function adReferralFromEvolution(item: any): AdReferral | null {
+  const msg = item?.message && typeof item.message === 'object' ? item.message : {};
+  const candidates: any[] = [item?.contextInfo?.externalAdReply];
+  for (const k of Object.keys(msg)) candidates.push(msg[k]?.contextInfo?.externalAdReply);
+  for (const c of candidates) {
+    const r = pickReferral(c);
+    if (r) return r;
+  }
+  return null;
+}
+
+/** WhatsApp oficial: `referral` na mensagem do webhook da Meta. */
+export function adReferralFromCloud(message: any): AdReferral | null {
+  return pickReferral(message?.referral);
+}
+
+/**
+ * Liga a conversa ao anúncio de onde ela veio. O código da página tem preferência: conversa que já tem
+ * origem válida não é trocada. Usa a mesma tabela do código (whatsapp_refs), então o pedido herda a origem
+ * pelo caminho de sempre (refForConversation) e a atribuição liga o ad_id ao anúncio sincronizado.
+ */
+export async function linkAdReferral(pool: Pool, conversationId: string, numberId: string, ref: AdReferral): Promise<string | null> {
+  const cur = await refForConversation(pool, conversationId);
+  if (cur) return null;
+  const attribution = JSON.stringify({ ad_id: ref.adId, ...(ref.ctwaClid ? { ctwa_clid: ref.ctwaClid } : {}), source: 'ctwa' });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = newRefCode();
+    const ins = await pool.query(
+      `INSERT INTO whatsapp_refs (code, number_id, utm_source, utm_medium, utm_content, attribution_metadata,
+                                  client_user_agent, event_source_url, conversation_id, used_at)
+       VALUES ($1, $2, 'facebook', 'whatsapp_ad', $3, $4::jsonb, 'NORQVA WhatsApp', $5, $6, NOW())
+       ON CONFLICT (code) DO NOTHING RETURNING id`,
+      [code, numberId, ref.adId, attribution, ref.sourceUrl, conversationId]
+    );
+    if (ins.rows.length) {
+      await pool.query('UPDATE whatsapp_conversations SET ref_id = $2, updated_at = NOW() WHERE id = $1', [conversationId, ins.rows[0].id]);
+      return ins.rows[0].id;
+    }
+  }
+  return null;
+}

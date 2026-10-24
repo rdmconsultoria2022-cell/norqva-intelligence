@@ -253,14 +253,15 @@ export class MetaCloudProvider implements WhatsAppProvider {
     return { id: data?.messages?.[0]?.id ? String(data.messages[0].id) : null };
   }
 
-  async sendImage(_instanceName: string, to: string, base64Png: string, caption: string): Promise<{ id: string | null }> {
+  async sendImage(_instanceName: string, to: string, base64Png: string, caption: string, opts: { mimetype?: 'image/png' | 'image/jpeg' } = {}): Promise<{ id: string | null }> {
     const digits = this.guard(to);
     // a Cloud API não aceita base64 direto: sobe a imagem e envia pelo ID da mídia
     const raw = String(base64Png || '').replace(/^data:image\/[a-z]+;base64,/i, '');
+    const type = opts.mimetype === 'image/jpeg' ? 'image/jpeg' : 'image/png';
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
-    form.append('type', 'image/png');
-    form.append('file', new Blob([Buffer.from(raw, 'base64')], { type: 'image/png' }), 'pix.png');
+    form.append('type', type);
+    form.append('file', new Blob([Buffer.from(raw, 'base64')], { type }), type === 'image/jpeg' ? 'amostra.jpg' : 'pix.png');
     const up = await this.call('POST', `/${encodeURIComponent(this.b.phoneNumberId)}/media`, form, false);
     const mediaId = up?.id ? String(up.id) : null;
     if (!mediaId) throw new CloudApiError('A Meta não devolveu o ID da imagem enviada.', 502, null);
