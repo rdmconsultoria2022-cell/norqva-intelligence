@@ -551,9 +551,9 @@ export class NightPauseService {
     if (!id) return;
     await pool.query(
       `UPDATE meta_change_requests SET state = $2, meta_value = $3, verified_at = NOW(),
-              confirmed_at = CASE WHEN $2 = 'CONFIRMED' THEN NOW() ELSE confirmed_at END, error = COALESCE($4, error), updated_at = NOW()
+              confirmed_at = CASE WHEN $5 THEN NOW() ELSE confirmed_at END, error = COALESCE($4, error), updated_at = NOW()
        WHERE id = $1 AND state IN ('SENDING', 'UNCONFIRMED')`,
-      [id, state, metaValue, error]
+      [id, state, metaValue, error, state === 'CONFIRMED']
     );
   }
 
