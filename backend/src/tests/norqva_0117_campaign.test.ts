@@ -617,7 +617,9 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
       end_date: end,
       targeting: { countries: ['BR'], regions: ['MG', 'SP'], genders: 'FEMALE', placements: 'FACEBOOK_INSTAGRAM', age_min: 45, age_max: 65, advantage_audience: true }
     });
-    expect(spec.adsets[0].targeting_summary).toBe('MG, SP, 45–65 (sugestão), mulheres, público Advantage, só Facebook e Instagram');
+    expect(spec.adsets[0].targeting_summary).toBe('MG, SP, 45–65 (sugestão), mulheres (sugestão), público Advantage, só Facebook e Instagram');
+    expect(r.body.plan.question_text).toContain(`até ${end.split('-').reverse().join('/')}?`);
+    expect(r.body.plan.question_text).toContain('Público: MG, SP');
     expect(spec.ads).toHaveLength(1);
     expect(spec.ads[0].factory_creative).toBe(p.ads[1].id);
     expect(spec.ads[0].destination_url).toBe(`https://norqva-intelligence-frontend.vercel.app/p/OFF-T117${tag}`);
@@ -662,6 +664,49 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect(adset.targeting.age_range).toBeUndefined();
     expect(adset.end_time).toBeUndefined();
     expect(adset.targeting.publisher_platforms).toBeUndefined();
+  });
+
+
+  it('NORQVA-0120: estado que a Meta não acha para antes de criar qualquer coisa; dá para montar de novo sem o estado', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    const r = await post(`/api/generated-pages/${p.pageId}/campaign`, { regions: ['MG', 'TO'] });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toContain('Tocantins');
+    expect(g.calls.filter(c => /\/(campaigns|adsets|ads|adcreatives|adimages)$/.test(c.endpoint))).toHaveLength(0);
+    const ov = await get(`/api/generated-pages/${p.pageId}/campaign`);
+    expect(ov.body.rebuildable).toBe(true);
+    const again = await post(`/api/generated-pages/${p.pageId}/campaign`, { regions: ['MG'] });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(again.body.created).toBe(true);
+  });
+
+  it('NORQVA-0120: Sim de um conjunto cuja data de término já passou: aviso claro e nada ativado', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    const end = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    const created = await post(`/api/generated-pages/${p.pageId}/campaign`, { end_date: end });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    const row = (await pool.query('SELECT spec FROM launch_plans WHERE id = $1', [created.body.plan.id])).rows[0];
+    const spec = typeof row.spec === 'string' ? JSON.parse(row.spec) : row.spec;
+    spec.adsets[0].end_date = '2026-01-10';
+    await pool.query('UPDATE launch_plans SET spec = $2 WHERE id = $1', [created.body.plan.id, JSON.stringify(spec)]);
+    const before = g.calls.length;
+    const r = await post(`/api/launch-plans/${created.body.plan.id}/answer`, { answer: 'YES' });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toContain('terminou em 10/01/2026');
+    expect(g.calls.slice(before).filter(c => c.payload?.status === 'ACTIVE')).toHaveLength(0);
+  });
+
+  it('NORQVA-0120: oferta de kit leva para /kit/', async () => {
+    await pool.query(`UPDATE offers SET name = 'Kit Trattoria T117' WHERE id = $1`, [offerId]);
+    try {
+      const p = await mkPage();
+      const r = await get(`/api/generated-pages/${p.pageId}/campaign`);
+      expect(r.body.destinations[1].url).toBe(`https://norqva-intelligence-frontend.vercel.app/kit/OFF-T117${tag}`);
+    } finally {
+      await pool.query(`UPDATE offers SET name = 'Trattoria T117' WHERE id = $1`, [offerId]);
+    }
   });
 
 });

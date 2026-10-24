@@ -288,6 +288,16 @@ export function validateEndDate(v: unknown, label: string, now: Date = new Date(
   return s;
 }
 
+/** NORQVA-0120: só o formato da data de término (plano já montado). */
+export function endDateFormat(v: unknown, label: string): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) {
+    throw new LaunchPlanError(400, `${label}: data de término inválida.`);
+  }
+  return s;
+}
+
 /** Fim do dia no horário de Brasília, no formato da Meta. */
 export const endTimeFor = (date: string) => `${date}T23:59:00-0300`;
 
@@ -365,7 +375,8 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
     if (!Number.isFinite(budget) || budget < META_MIN_DAILY_BUDGET_BRL || budget > max) {
       throw new LaunchPlanError(400, `Conjunto "${name}": orçamento diário deve ficar entre R$ ${META_MIN_DAILY_BUDGET_BRL.toFixed(2)} e R$ ${max.toFixed(2)}.`);
     }
-    const endDate = validateEndDate(a.end_date, `Conjunto "${name}"`);
+    // término: na criação tem que ser depois de hoje; ao reler um plano já criado (Sim, edição) só confere o formato
+    const endDate = opts.forCreation ? validateEndDate(a.end_date, `Conjunto "${name}"`) : endDateFormat(a.end_date, `Conjunto "${name}"`);
     return {
       name,
       daily_budget_brl: budget,
@@ -672,6 +683,14 @@ export class LaunchPlanService {
     // Trava global antes de mudar o status: sem META_MUTATION_ENABLED/preflight nada acontece.
     await client.assertFeatureFlagAndPreflight(ctx);
 
+    // NORQVA-0120: público de cada conjunto montado ANTES de qualquer criação (estados viram chaves da Meta por
+    // leitura). Estado que a Meta não achar para aqui, com o plano intacto e sem nada criado: dá para montar de novo.
+    const targetingBySet: Record<string, Record<string, any>> = {};
+    for (const s of spec.adsets) {
+      const keys = await client.resolveBrazilRegionKeys(s.targeting.regions || [], BR_STATES);
+      targetingBySet[s.name] = toMetaTargeting(s.targeting, keys);
+    }
+
     const claim = await pool.query(
       `UPDATE launch_plans SET status = 'CREATING', last_error = NULL, updated_at = NOW()
        WHERE id = $1 AND (status IN ('DRAFT', 'FAILED') OR (status = 'CREATING' AND updated_at < $2))
@@ -721,7 +740,7 @@ export class LaunchPlanService {
             pixelId: spec.pixel_id,
             customEventType: 'PURCHASE',
             optimizationGoal: 'OFFSITE_CONVERSIONS',
-            targeting: toMetaTargeting(s.targeting, await client.resolveBrazilRegionKeys(s.targeting.regions || [], BR_STATES)),
+            targeting: targetingBySet[s.name],
             endTime: s.end_date ? endTimeFor(s.end_date) : undefined
           },
           ctx,
@@ -873,6 +892,12 @@ export class LaunchPlanService {
       },
       { allowGeneratedPage: !!plan.generated_page_id }
     );
+    // NORQVA-0120: conjunto cuja data de término já passou não tem mais o que rodar
+    const todayBr = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+    const ended = input.spec.adsets.find(a => a.end_date && a.end_date < todayBr);
+    if (ended) {
+      throw new LaunchPlanError(409, `O conjunto "${ended.name}" terminou em ${ended.end_date!.split('-').reverse().join('/')}: não dá mais para ativar. Monte a campanha de novo com outra data.`);
+    }
     const owned = this.ownedObjects(input.spec, normalizeMetaIds(plan.meta_ids));
     const baseCtx: MetaMutatingSecurityContext = { userId: user.id, userRole: 'ADMIN', isDemo: false };
     await client.assertFeatureFlagAndPreflight(baseCtx, { requirePixel: false });

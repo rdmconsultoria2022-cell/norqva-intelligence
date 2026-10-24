@@ -275,7 +275,11 @@ export function PublishOptions({
     const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
     setForm({ ...form, creative_ids: next.length === all.length && all.every(x => next.includes(x)) ? null : next });
   };
-  const today = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+  // mesmo critério do servidor: de amanhã até 1 ano (dia de Brasília)
+  const todayMs = Date.parse(`${new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)}T00:00:00Z`);
+  const minEnd = new Date(todayMs + 86400000).toISOString().slice(0, 10);
+  const maxEnd = new Date(todayMs + 365 * 86400000).toISOString().slice(0, 10);
+  const [pickStates, setPickStates] = React.useState(form.regions.length > 0);
 
   return (
     <div className="space-y-5" data-testid="publish-options">
@@ -322,25 +326,39 @@ export function PublishOptions({
             </select>
           </div>
         </div>
-        {ageIsHint && (
+        {(ageIsHint || (form.advantage_audience && form.genders !== 'ALL')) && (
           <p className="text-nq-caption text-nq-subtle" data-testid="cmp-age-hint">
-            Com o público Advantage, {ageMin}–{ageMax} vira sugestão para a Meta (ela pode mostrar a partir de 25 anos se achar comprador). Para travar a idade, desligue o público Advantage.
+            Com o público Advantage, {[ageIsHint ? `a idade ${ageMin}–${ageMax}` : '', form.genders !== 'ALL' ? 'o sexo' : ''].filter(Boolean).join(' e ')} vira sugestão para a Meta: ela pode mostrar
+            {ageIsHint ? ` para quem tem de ${Math.min(ageMin, 25)} a 65 anos` : ' para outras pessoas'} se achar comprador. Para travar, desligue o público Advantage.
           </p>
         )}
         <div className="space-y-2">
           <div className="text-nq-aux text-nq-muted">Onde</div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={seg(form.regions.length === 0)} onClick={() => setForm({ ...form, regions: [] })} data-testid="cmp-all-brazil">
+            <button
+              type="button"
+              className={seg(form.regions.length === 0 && !pickStates)}
+              onClick={() => {
+                setPickStates(false);
+                setForm({ ...form, regions: [] });
+              }}
+              data-testid="cmp-all-brazil"
+            >
               Brasil inteiro
             </button>
+            <button type="button" className={seg(pickStates)} onClick={() => setPickStates(true)} data-testid="cmp-pick-states">
+              Escolher estados{form.regions.length ? ` (${form.regions.length})` : ''}
+            </button>
           </div>
-          <div className="flex flex-wrap gap-1.5" data-testid="cmp-states">
-            {Object.keys(states).map(uf => (
-              <button key={uf} type="button" title={states[uf]} aria-pressed={form.regions.includes(uf)} onClick={() => toggleState(uf)} className={`${seg(form.regions.includes(uf))} w-12`}>
-                {uf}
-              </button>
-            ))}
-          </div>
+          {pickStates && (
+            <div className="flex flex-wrap gap-1.5" data-testid="cmp-states">
+              {Object.keys(states).map(uf => (
+                <button key={uf} type="button" title={states[uf]} aria-pressed={form.regions.includes(uf)} onClick={() => toggleState(uf)} className={`${seg(form.regions.includes(uf))} w-12`}>
+                  {uf}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </fieldset>
 
@@ -354,7 +372,7 @@ export function PublishOptions({
         </div>
         <div>
           <label className={label} htmlFor="cmp-end">Término (opcional)</label>
-          <input id="cmp-end" type="date" min={today} className={input} value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
+          <input id="cmp-end" type="date" min={minEnd} max={maxEnd} className={input} value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
           <p className="text-nq-caption text-nq-subtle mt-1">Sem data, roda até você pausar ou o teto parar.</p>
         </div>
       </div>

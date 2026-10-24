@@ -50,6 +50,23 @@ describe('NORQVA-0120 — ajustes de publicação', () => {
     // só os anúncios prontos aparecem para escolher
     expect(screen.getByTestId('cmp-ad-GEN-000001-A1')).toBeChecked();
     expect(screen.queryByTestId('cmp-ad-GEN-000001-A3')).toBeNull();
+    expect(screen.getByTestId('cmp-age-hint')).toHaveTextContent('de 25 a 65 anos');
+    // faixa jovem: o controle é a idade escolhida, não 25
+    fireEvent.change(screen.getByLabelText('Idade de'), { target: { value: '18' } });
+    fireEvent.change(screen.getByLabelText('até'), { target: { value: '40' } });
+    expect(screen.getByTestId('cmp-age-hint')).toHaveTextContent('de 18 a 65 anos');
+    // sexo também vira sugestão com o Advantage
+    fireEvent.change(screen.getByLabelText('Idade de'), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('até'), { target: { value: '65' } });
+    expect(screen.queryByTestId('cmp-age-hint')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Sexo'), { target: { value: 'FEMALE' } });
+    expect(screen.getByTestId('cmp-age-hint')).toHaveTextContent('o sexo vira sugestão');
+    fireEvent.change(screen.getByLabelText('Sexo'), { target: { value: 'ALL' } });
+    fireEvent.change(screen.getByLabelText('Idade de'), { target: { value: '45' } });
+    // término: de amanhã até 1 ano
+    const end = screen.getByLabelText('Término (opcional)');
+    expect(end.getAttribute('min')! > new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)).toBe(true);
+    expect(end).toHaveAttribute('max');
     // desligar o Advantage trava a idade (sem aviso de sugestão)
     fireEvent.click(screen.getByTestId('cmp-advantage'));
     expect(screen.queryByTestId('cmp-age-hint')).toBeNull();
@@ -61,6 +78,7 @@ describe('NORQVA-0120 — ajustes de publicação', () => {
     );
     const box = await open(apiFetch);
     fireEvent.click(within(box).getAllByRole('radio')[1]);
+    fireEvent.click(screen.getByTestId('cmp-pick-states'));
     fireEvent.click(within(screen.getByTestId('cmp-states')).getByText('SP'));
     fireEvent.click(within(screen.getByTestId('cmp-states')).getByText('MG'));
     fireEvent.change(screen.getByLabelText('Sexo'), { target: { value: 'FEMALE' } });
@@ -79,13 +97,21 @@ describe('NORQVA-0120 — ajustes de publicação', () => {
   it('"Brasil inteiro" limpa os estados; sem anúncio escolhido não deixa criar', async () => {
     const apiFetch = vi.fn().mockResolvedValue(overview());
     await open(apiFetch);
+    expect(screen.queryByTestId('cmp-states')).toBeNull();
+    fireEvent.click(screen.getByTestId('cmp-pick-states'));
     const sp = within(screen.getByTestId('cmp-states')).getByText('SP');
     fireEvent.click(sp);
     expect(sp).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('cmp-pick-states')).toHaveTextContent('Escolher estados (1)');
     fireEvent.click(screen.getByTestId('cmp-all-brazil'));
-    expect(sp).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('cmp-states')).toBeNull();
+    expect(screen.getByTestId('cmp-pick-states')).toHaveTextContent(/^Escolher estados$/);
     fireEvent.click(screen.getByTestId('cmp-ad-GEN-000001-A1'));
     fireEvent.click(screen.getByTestId('cmp-ad-GEN-000001-A2'));
     expect(screen.getByTestId('campaign-submit')).toBeDisabled();
+    // marcar os dois de novo volta para "todos" (nada de lista explícita)
+    fireEvent.click(screen.getByTestId('cmp-ad-GEN-000001-A1'));
+    fireEvent.click(screen.getByTestId('cmp-ad-GEN-000001-A2'));
+    expect(screen.getByTestId('campaign-submit')).not.toBeDisabled();
   });
 });

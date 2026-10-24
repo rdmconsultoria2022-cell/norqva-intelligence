@@ -26,3 +26,11 @@ Público por interesses, público semelhante e lances manuais (contrato: voltam 
 ## Testes
 
 `backend/src/tests/norqva_0120_publication_options.test.ts`, novos casos em `backend/src/tests/norqva_0117_campaign.test.ts`, `frontend/src/tests/norqva_0120_fabrica_publicacao.test.tsx`.
+
+## Revisão independente (aplicada)
+
+- Os estados viram chaves da Meta **antes** de qualquer criação: estado não achado para com o plano intacto (nada na Meta), e dá para montar de novo sem ele.
+- Data de término: na criação tem que ser depois de hoje; ao reler um plano já montado (Sim, edição) só confere o formato. No "Sim", conjunto cujo término já passou dá aviso claro ("terminou em DD/MM: monte de novo") e nada é ativado.
+- Com Advantage ligado, o sexo também aparece como sugestão (resumo e aviso da tela); o aviso de idade mostra a faixa real (de min(idade, 25) a 65).
+- Calendário do término de amanhã até 1 ano (mesma regra do servidor); estados ficam recolhidos em "Escolher estados".
+- A pergunta do "Sim" mostra o público e o término.

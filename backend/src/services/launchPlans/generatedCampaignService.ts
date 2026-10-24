@@ -280,7 +280,8 @@ export const isCookbook = (p: { collection_key?: string | null } | null | undefi
 /** Texto do público para a tela e o plano. */
 export function audienceSummary(t: { regions?: string[]; age_min: number; age_max: number; advantage_audience: boolean; genders?: string; placements?: string }): string {
   const where = t.regions && t.regions.length ? t.regions.join(', ') : 'Brasil';
-  const sex = t.genders === 'FEMALE' ? ', mulheres' : t.genders === 'MALE' ? ', homens' : '';
+  const hint = t.advantage_audience ? ' (sugestão)' : '';
+  const sex = t.genders === 'FEMALE' ? `, mulheres${hint}` : t.genders === 'MALE' ? `, homens${hint}` : '';
   const age = t.advantage_audience && (t.age_min > ADVANTAGE_MAX_AGE_MIN || t.age_max < 65) ? `${t.age_min}–${t.age_max} (sugestão)` : `${t.age_min}–${t.age_max}`;
   const adv = t.advantage_audience ? ', público Advantage' : ', público fechado';
   const where2 = t.placements === 'FACEBOOK_INSTAGRAM' ? ', só Facebook e Instagram' : '';
@@ -474,6 +475,9 @@ export class GeneratedCampaignService {
     );
     // resumo do público a partir do que foi validado (estados, idade, sexo, Advantage, posicionamento)
     input.spec.adsets[0].targeting_summary = audienceSummary(input.spec.adsets[0].targeting);
+    // a pergunta do "Sim" mostra também o público e o término (o que vai rodar de fato)
+    const endTxt = input.spec.adsets[0].end_date ? ` até ${input.spec.adsets[0].end_date.split('-').reverse().join('/')}` : '';
+    input.question_text = `${input.question_text.replace(/\?$/, '')}${endTxt}? Público: ${input.spec.adsets[0].targeting_summary}.`.slice(0, 500);
     if (await this.nameTaken(input.spec.campaign.name, existing?.id || null)) {
       throw new LaunchPlanError(409, `Já existe na conta ou em outro plano uma campanha chamada "${input.spec.campaign.name}". Use outro nome.`);
     }

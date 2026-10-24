@@ -36,7 +36,8 @@ describe('NORQVA-0120 — público para a Meta', () => {
 
   it('resumo do público', () => {
     expect(audienceSummary(base)).toBe('Brasil, 25–65, público Advantage');
-    expect(audienceSummary({ ...base, age_min: 45, regions: ['MG'], genders: 'FEMALE' })).toBe('MG, 45–65 (sugestão), mulheres, público Advantage');
+    expect(audienceSummary({ ...base, age_min: 45, regions: ['MG'], genders: 'FEMALE' })).toBe('MG, 45–65 (sugestão), mulheres (sugestão), público Advantage');
+    expect(audienceSummary({ ...base, advantage_audience: false, genders: 'MALE' })).toBe('Brasil, 25–65, homens, público fechado');
     expect(audienceSummary({ ...base, age_min: 45, advantage_audience: false, placements: 'FACEBOOK_INSTAGRAM' })).toBe('Brasil, 45–65, público fechado, só Facebook e Instagram');
     expect(isCookbook({ collection_key: 'trattoria' })).toBe(true);
     expect(isCookbook({ collection_key: null })).toBe(false);
@@ -69,6 +70,9 @@ describe('NORQVA-0120 — data de término', () => {
       }
     });
     const end = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    // plano já montado (Sim, edição): data vencida não trava a leitura; na criação, trava
+    expect(validateLaunchPlanInput(plan({ end_date: '2026-01-10', targeting: { countries: ['BR'], age_min: 30, age_max: 65 } })).spec.adsets[0].end_date).toBe('2026-01-10');
+    expect(() => validateLaunchPlanInput(plan({ end_date: '2026-01-10', targeting: { countries: ['BR'], age_min: 30, age_max: 65 } }), { forCreation: true })).toThrow(/depois de hoje/);
     const ok = validateLaunchPlanInput(plan({ end_date: end, targeting: { countries: ['BR'], age_min: 30, age_max: 65, regions: ['sp'], genders: 'ALL' } }));
     expect(ok.spec.adsets[0]).toMatchObject({ end_date: end, targeting: { regions: ['SP'] } });
     expect(ok.spec.adsets[0].targeting.genders).toBeUndefined();
@@ -88,5 +92,8 @@ describe('NORQVA-0120 — chaves dos estados na Meta (só leitura)', () => {
     expect(await client.resolveBrazilRegionKeys([], BR_STATES)).toEqual({});
     expect(get).not.toHaveBeenCalled();
     expect(await client.resolveBrazilRegionKeys(['SP', 'MG'], BR_STATES)).toEqual({ SP: '472' });
+    // nome com espaço e sem acento no estado da Meta
+    get.mockImplementationOnce(async () => ({ data: [{ key: '440', name: 'Distrito Federal', type: 'region', country_code: 'BR' }] }));
+    expect(await client.resolveBrazilRegionKeys(['DF'], BR_STATES)).toEqual({ DF: '440' });
   });
 });
