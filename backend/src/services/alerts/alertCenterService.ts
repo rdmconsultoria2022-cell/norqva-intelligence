@@ -32,7 +32,12 @@ const RULES: Record<string, RuleInfo> = {
   EXPERIMENT_CAP_PAUSED: { title: 'Campanha pausada no teto', severity: 'ATTENTION', action: 'Decidir: subir o teto para continuar ou encerrar a campanha.', tab: 'cap' },
   EXPERIMENT_GUARD_PAUSE_FAILED: { title: 'O vigia não conseguiu pausar', severity: 'CRITICAL', action: 'Pausar a campanha manualmente agora.', tab: 'results' },
   EXPERIMENT_GUARD_READ_FAILED: { title: 'O vigia não consegue ler o gasto', severity: 'CRITICAL', action: 'Conferir o gasto na Meta e pausar se estiver perto do teto.', tab: 'cap' },
-  EXPERIMENT_CAP_EXTENDED_PROFIT: { title: 'Teto ampliado por lucro', severity: 'INFO', action: 'Nenhuma ação: a campanha está dando lucro.', tab: 'cap' }
+  EXPERIMENT_CAP_EXTENDED_PROFIT: { title: 'Teto ampliado por lucro', severity: 'INFO', action: 'Nenhuma ação: a campanha está dando lucro.', tab: 'cap' },
+  // NORQVA-0118: pausa noturna
+  NIGHT_PAUSE_PAUSE_FAILED: { title: 'A pausa noturna não conseguiu pausar', severity: 'ATTENTION', action: 'A campanha seguiu ativa à noite. Pause pela tela se quiser.', tab: 'results' },
+  NIGHT_PAUSE_RESUME_FAILED: { title: 'A pausa noturna não conseguiu reativar', severity: 'CRITICAL', action: 'A campanha está pausada. Reative pela tela se ela deve rodar.', tab: 'results' },
+  NIGHT_PAUSE_RESUME_CANCELLED: { title: 'Reativação da manhã cancelada', severity: 'ATTENTION', action: 'Alguém ou o vigia mexeu na campanha à noite. Confira e reative pela tela se quiser.', tab: 'results' },
+  NIGHT_PAUSE_EXPIRED: { title: 'Campanha ficou pausada depois da pausa noturna', severity: 'CRITICAL', action: 'Reative pela tela se a campanha deve rodar.', tab: 'results' }
 };
 
 export function describeRule(rule: string): RuleInfo {
@@ -40,7 +45,8 @@ export function describeRule(rule: string): RuleInfo {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isGuardRule = (rule: string) => rule.startsWith('EXPERIMENT_');
+// alertas de campanha (vigia do teto e pausa noturna): o objeto é a campanha, não um anúncio
+const isGuardRule = (rule: string) => rule.startsWith('EXPERIMENT_') || rule.startsWith('NIGHT_PAUSE_');
 const CENTER_DAYS = 30;
 
 export class AlertCenterService {
@@ -58,7 +64,7 @@ export class AlertCenterService {
        FROM ad_alerts a
        LEFT JOIN launch_plans p ON p.code = a.ad_name
        LEFT JOIN meta_campaigns mc ON mc.meta_campaign_id = a.meta_campaign_id AND mc.is_demo = FALSE
-       WHERE a.is_demo = FALSE AND a.status IN ('OPEN', 'ACKNOWLEDGED') AND a.dismissed_at IS NULL AND a.rule_code LIKE 'EXPERIMENT_%'`
+       WHERE a.is_demo = FALSE AND a.status IN ('OPEN', 'ACKNOWLEDGED') AND a.dismissed_at IS NULL AND (a.rule_code LIKE 'EXPERIMENT_%' OR a.rule_code LIKE 'NIGHT_PAUSE_%')`
     );
     let n = 0;
     for (const a of open.rows) {
@@ -212,6 +218,11 @@ export function guardResolution(a: {
       return capped || String(a.campaign_status || '').toUpperCase() === 'PAUSED' ? 'CAMPAIGN_PAUSED' : null;
     case 'EXPERIMENT_GUARD_PAUSE_FAILED':
       return String(a.campaign_status || '').toUpperCase() === 'PAUSED' || capped ? 'CAMPAIGN_PAUSED' : null;
+    // NORQVA-0118: campanha que ficou pausada volta a rodar (reativada pela tela) → resolvido
+    case 'NIGHT_PAUSE_RESUME_FAILED':
+    case 'NIGHT_PAUSE_RESUME_CANCELLED':
+    case 'NIGHT_PAUSE_EXPIRED':
+      return String(a.campaign_status || '').toUpperCase() === 'ACTIVE' ? 'CAMPAIGN_ACTIVE' : null;
     default:
       return null;
   }

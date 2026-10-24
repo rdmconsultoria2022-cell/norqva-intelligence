@@ -180,7 +180,8 @@ import { postKiwifyWebhook, importKiwifySale } from './controllers/kiwifyControl
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
-import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory } from './controllers/campaignController';
+import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory, getCampaignNightPause, saveCampaignNightPause } from './controllers/campaignController';
+import { startNightPauseScheduler } from './services/campaigns/nightPauseService';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
 import { createMetaChange, listMetaChanges, approveMetaChange, rejectMetaChange, cancelMetaChange, verifyMetaChange } from './controllers/metaChangeController';
@@ -548,6 +549,9 @@ app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampai
 // NORQVA-0096: Gerenciar campanha (só leitura)
 app.get('/api/campaigns/:id/economics', requireRole(CAMPAIGNS_READ), getCampaignEconomics);
 app.get('/api/campaigns/:id/history', requireRole(CAMPAIGNS_READ), getCampaignHistory);
+// NORQVA-0118: pausa noturna (00h–06h por padrão, horário de Brasília); salvar só muda a configuração do plano
+app.get('/api/campaigns/:id/night-pause', requireRole(CAMPAIGNS_READ), getCampaignNightPause);
+app.post('/api/campaigns/:id/night-pause', requireRole(['ADMIN']), saveCampaignNightPause);
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
 app.post('/api/campaigns/:id/fields', requireRole(['ADMIN']), saveCampaignFields);
 app.post('/api/campaigns/:id/ads/:index/creative', requireRole(['ADMIN']), chooseCampaignCreative);
@@ -723,6 +727,13 @@ async function startServer() {
       registerShutdownHook(startExperimentGuardScheduler(pool));
     } catch (e: any) {
       console.error('[Server] Failed to start experiment guard (non-fatal):', e.message);
+    }
+
+    // NORQVA-0118: pausa noturna a cada 2 min (NIGHT_PAUSE_ENABLED=true liga as pausas novas; reativar o que já pausou roda sempre)
+    try {
+      registerShutdownHook(startNightPauseScheduler(pool));
+    } catch (e: any) {
+      console.error('[Server] Failed to start night pause (non-fatal):', e.message);
     }
 
     // NORQVA-0023: varredura de pagamentos e e-mails de acesso (PAYMENT_SWEEP_ENABLED=false desliga)

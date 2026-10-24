@@ -1222,6 +1222,25 @@ export class MetaMutatingClient {
     return { status: obj?.status || null, effective_status: obj?.effective_status || null, daily_budget: daily };
   }
 
+  /**
+   * NORQVA-0118: leitura da campanha para a pausa noturna (só leitura): situação configurada, orçamento
+   * diário em reais (null quando fica nos conjuntos) e a hora da última alteração na Meta (updated_time).
+   */
+  public async readCampaignState(
+    campaignMetaId: string
+  ): Promise<{ status: string | null; effective_status: string | null; daily_budget: number | null; updated_time: string | null }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time' });
+    const raw = obj?.daily_budget;
+    const daily = raw !== undefined && raw !== null && String(raw) !== '' ? (parseFloat(raw) || 0) / 100 : null;
+    return {
+      status: obj?.status || null,
+      effective_status: obj?.effective_status || null,
+      daily_budget: daily,
+      updated_time: obj?.updated_time ? String(obj.updated_time) : null
+    };
+  }
+
   /** H6: lifetime spend (BRL) of a campaign, read live from the Graph API (GET only). */
   public async getCampaignLifetimeSpend(campaignMetaId: string): Promise<{ spend: number; effective_status: string | null; spend_cap: number | null }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
