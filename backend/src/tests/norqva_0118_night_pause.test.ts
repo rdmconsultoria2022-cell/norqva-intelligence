@@ -369,6 +369,7 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     const keepB = await pool.query(`UPDATE night_pause_runs SET window_end = '23:59' WHERE meta_campaign_id = $1 RETURNING id`, [b.cid]);
     expect(keepB.rows).toHaveLength(1);
     await service().run(pool, at(date, '14:00'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED', reason: null });
     expect(postsTo(a.cid).filter((p) => p.body.status === 'ACTIVE')).toHaveLength(1);
     expect(postsTo(b.cid).filter((p) => p.body.status === 'ACTIVE')).toHaveLength(0);
     // B (fim às 23:59): volta às 23:59 do mesmo dia
