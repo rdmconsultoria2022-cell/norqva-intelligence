@@ -20,13 +20,24 @@ D-0122. Lista de campanhas da Meta que não são de um plano, com a mesma pausa 
   - campanha que também é de um plano fica com o plano (a lista não pausa; não dá para cadastrar; e se virar plano durante a noite, a volta é cancelada);
   - nunca duas noites para a mesma campanha (confere as duas tabelas);
   - reativa só a própria pausa, mesmo que a campanha tenha sido desligada ou tirada da lista durante a noite;
-  - conferências da Meta: situação PAUSED, registro de atividades (mesma regra do app do token, D-0120) na campanha e nos conjuntos e anúncios dela (lidos na Meta, só leitura; se a leitura falhar, só a campanha), `updated_time` sem o registro, orçamento diário igual ao da pausa e limite de gastos: com `spend_cap` definido e `amount_spent` ≥ `spend_cap`, não reativa (vale também para planos);
+  - conferências da Meta: situação PAUSED, registro de atividades (mesma regra do app do token, D-0120) na campanha e nos conjuntos e anúncios dela (lidos na Meta, só leitura; se a leitura falhar, não reativa naquele ciclo e tenta de novo), `updated_time` sem o registro, orçamento diário igual ao da pausa e limite de gastos: com `spend_cap` definido e o gasto da campanha nos insights (em reais) ≥ `spend_cap`, não reativa (vale também para planos; o objeto Campaign não tem `amount_spent`);
+  - conta de anúncios: campanha que não é da conta `META_AD_ACCOUNT_ID` (lida em `account_id`) não é pausada (SKIPPED) nem reativada (planos e externas);
+  - sem conseguir ler os conjuntos e anúncios da campanha externa, não reativa naquele ciclo e tenta de novo;
   - fichas, decisões e registros sobre a campanha durante a noite cancelam a volta; não há conferências de plano (pausado pela tela, CAPPED, situação do plano);
   - trava no envio por direção (só status, só no ID da campanha; nunca conjunto ou anúncio), trava no banco pelo ID da campanha (`ext:<id>`), avisos e histórico como nos planos (fichas sem plano, `origin = NIGHT_PAUSE`).
 - Campanha ainda fora de `meta_campaigns` (a sincronização não trouxe): ao adicionar pela tela e a cada ciclo (antes de pausar, para as externas ligadas sem linha) o NORQVA grava uma cópia mínima lida na Meta (`MetaMutatingClient.ensureCampaignMirror`: id, nome, objetivo, situação, orçamentos em reais, conta configurada, `COMMERCIAL_PRODUCTION`), como a sincronização grava, sem nunca alterar linha existente (`ON CONFLICT DO NOTHING`); a sincronização não muda. Se não der (outra conta, campanha inexistente), grava o erro na linha (`mirror_error`), abre o aviso `NIGHT_PAUSE_MIRROR_FAILED` uma vez (na hora de adicionar ou no primeiro ciclo) e tenta de novo a cada hora.
-- `MetaMutatingClient`: `readCampaignState` passa a trazer `spend_cap` e `amount_spent`; `readCampaignChildIds` (conjuntos e anúncios) e `readCampaignIdentity` (nome e conta), só leitura.
+- `MetaMutatingClient`: `readCampaignState` passa a trazer `spend_cap` e `account_id` (só campos que existem no objeto Campaign); `readCampaignChildIds` (conjuntos e anúncios) e `readCampaignIdentity` (nome e conta), só leitura.
 - Rotas (só ADMIN): `GET /api/night-pause/external` (lista, situação lida na Meta agora, últimas 3 noites), `POST` (adicionar pelo ID: confere na Meta que existe e é da conta `META_AD_ACCOUNT_ID`; recusa campanha de plano e protegida; adicionar de novo volta a mesma linha), `PATCH /:id` (ligada, início, fim; fim até 23:00) e `DELETE /:id` (tira da lista com `deleted_at`; as noites ficam).
 - Tela: Campanhas → "Campanhas criadas fora do NORQVA — pausa noturna" (só ADMIN): nome, ID, situação na Meta, chave, horários, últimas 3 noites, "Tirar" com confirmação e "Adicionar pelo ID da campanha" (`frontend/src/features/campaigns/ExternalNightPause.tsx`).
+
+## Revisão independente (aplicada)
+
+- `amount_spent` não existe no objeto Campaign (confirmado na Meta: erro #100): saiu da leitura; o limite usa o gasto dos insights. Os simulados da Graph API dos testes 0120 e 0122 recusam campo inexistente no objeto Campaign com o mesmo erro #100.
+- Conta de anúncios conferida em todas as campanhas (planos e externas), na pausa e na volta.
+- Sem conjuntos/anúncios lidos, não reativa naquele ciclo (tenta de novo).
+- Adicionar de novo: volta ligada, com o horário pedido ou o padrão; registro e mensagens a partir da linha gravada.
+- Avisos das externas sem código de plano (abrem a seção "Campanhas criadas fora do NORQVA"); `NIGHT_PAUSE_MIRROR_FAILED` se resolve sozinho quando a linha em `meta_campaigns` existe.
+- Tela explica que desligar ou tirar da lista à noite não impede a volta daquela noite; situação na Meta guardada por 60 s na tela.
 
 ## Testes
 

@@ -221,6 +221,9 @@ export function guardResolution(a: {
     case 'EXPERIMENT_GUARD_PAUSE_FAILED':
       return String(a.campaign_status || '').toUpperCase() === 'PAUSED' || capped ? 'CAMPAIGN_PAUSED' : null;
     // NORQVA-0120: campanha que ficou pausada volta a rodar (reativada pela tela) → resolvido
+    // a cópia em meta_campaigns já existe (linha encontrada)
+    case 'NIGHT_PAUSE_MIRROR_FAILED':
+      return a.campaign_status ? 'MIRROR_READY' : null;
     case 'NIGHT_PAUSE_RESUME_FAILED':
     case 'NIGHT_PAUSE_RESUME_CANCELLED':
     case 'NIGHT_PAUSE_EXPIRED':
@@ -264,7 +267,13 @@ function shape(row: any) {
       ad_name: guard ? null : row.ad_name || null,
       plan_code: guard ? row.ad_name || null : null
     },
-    link: { tab: info.tab, meta_campaign_id: campaignId, plan_code: guard ? row.ad_name || null : null },
+    // NORQVA-0122: aviso de campanha criada fora do NORQVA (sem plano) abre a seção dessas campanhas em Campanhas
+    link: {
+      tab: info.tab,
+      meta_campaign_id: campaignId,
+      plan_code: guard ? row.ad_name || null : null,
+      section: String(row.rule_code).startsWith('NIGHT_PAUSE_') && !row.ad_name ? 'external-night-pause' : null
+    },
     resolution: row.resolution || null,
     dismiss_reason: row.dismiss_reason || null,
     created_at: row.created_at,

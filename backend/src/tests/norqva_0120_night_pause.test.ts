@@ -14,6 +14,14 @@ import { withPlanLock } from '../services/campaigns/planLock';
 import { CampaignInsightService } from '../services/campaigns/campaignInsightService';
 import { describeRule } from '../services/alerts/alertCenterService';
 
+const CAMPAIGN_FIELDS = new Set(['id', 'name', 'account_id', 'objective', 'status', 'effective_status', 'configured_status', 'daily_budget', 'lifetime_budget', 'updated_time', 'spend_cap']);
+/** A Meta recusa a leitura inteira se pedir um campo que não existe no objeto Campaign (erro #100). */
+const checkCampaignFields = (params: any) => {
+  for (const f of String(params?.fields || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    if (!CAMPAIGN_FIELDS.has(f)) throw new Error(`[META GRAPH API ERROR]: (#100) Tried accessing nonexisting field (${f}) (code 100)`);
+  }
+};
+
 // Horário de Brasília = UTC-3. O servidor (e o CI) roda em UTC: os testes passam o instante em UTC.
 const at = (date: string, hhmm: string) => {
   const [h, m] = hhmm.split(':').map(Number);
@@ -85,7 +93,7 @@ describe.sequential('NORQVA-0120 — pausa noturna', () => {
   let perf: string;
   const ENV_KEYS = ['META_MUTATION_ENABLED', 'META_AD_ACCOUNT_ID', 'NIGHT_PAUSE_ENABLED'] as const;
   const envBackup: Record<string, string | undefined> = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
-  type MetaObj = { status: string; daily_budget: number | null; updated_time: string; spend: number; spend_cap: number | null };
+  type MetaObj = { status: string; daily_budget: number | null; updated_time: string; spend: number; spend_cap: number | null; account_id?: string };
   const onMeta = new Map<string, MetaObj>();
   let posts: Array<{ endpoint: string; body: any }>;
   let failPost: ((endpoint: string, body: any) => boolean) | null;
@@ -126,14 +134,15 @@ describe.sequential('NORQVA-0120 — pausa noturna', () => {
     if (ins) return { data: [{ spend: String(onMeta.get(ins[1])?.spend ?? 0) }] };
     const obj = onMeta.get(endpoint.slice(1));
     if (obj) {
+      checkCampaignFields(params);
       return {
         id: endpoint.slice(1),
+        account_id: obj.account_id ?? '2887010388338951',
         status: obj.status,
         effective_status: obj.status,
         daily_budget: obj.daily_budget === null ? undefined : String(obj.daily_budget * 100),
         updated_time: obj.updated_time,
-        spend_cap: obj.spend_cap === null ? undefined : String(obj.spend_cap * 100),
-        _fields: params?.fields
+        spend_cap: obj.spend_cap === null ? '0' : String(obj.spend_cap * 100)
       };
     }
     throw new Error('unexpected ' + endpoint);
@@ -864,6 +873,34 @@ describe.sequential('NORQVA-0120 — pausa noturna', () => {
     expect(await runOf(same.cid, date2)).toMatchObject({ state: 'REACTIVATED', activity_check: 'UNAVAILABLE' });
     expect(await runOf(changed.cid, date2)).toMatchObject({ state: 'CANCELLED', activity_check: 'UNAVAILABLE' });
     expect(await runOf(changed.cid, date2)).toMatchObject({ meta_updated_time_at_resume: '2027-06-01T10:00:00+0000' });
+  });
+
+  it('conta de anúncios diferente da configurada: não pausa; e de manhã não reativa', async () => {
+    const date = nextDay();
+    const a = await seed();
+    const b = await seed();
+    onMeta.get(a.cid)!.account_id = '999999999';
+    await service().run(pool, at(date, '00:01'));
+    expect(postsTo(a.cid)).toHaveLength(0);
+    expect((await runOf(a.cid, date)).reason).toMatch(/conta de anúncios/);
+    expect(onMeta.get(b.cid)!.status).toBe('PAUSED');
+    onMeta.get(b.cid)!.account_id = '999999999';
+    await service().run(pool, at(date, '06:01'));
+    expect(actives(b.cid)).toHaveLength(0);
+    expect((await runOf(b.cid, date)).reason).toMatch(/conta de anúncios/);
+  });
+
+  it('limite de gastos da campanha: atingido (gasto dos insights) não reativa; sem limite reativa', async () => {
+    const date = nextDay();
+    const capped = await seed({ cap: 5000, spend: 100 });
+    const noCap = await seed({ cap: 5000, spend: 4000 });
+    await service().run(pool, at(date, '00:01'));
+    onMeta.get(capped.cid)!.spend_cap = 420;
+    onMeta.get(capped.cid)!.spend = 420;
+    await service().run(pool, at(date, '06:01'));
+    expect(actives(capped.cid)).toHaveLength(0);
+    expect((await runOf(capped.cid, date)).reason).toMatch(/limite de gastos da campanha na Meta foi atingido \(R\$ 420,00 de R\$ 420,00\)/);
+    expect(actives(noCap.cid)).toHaveLength(1);
   });
 
   it('configuração: padrão ligada 00:00–06:00; só ADMIN salva; valida a janela', async () => {

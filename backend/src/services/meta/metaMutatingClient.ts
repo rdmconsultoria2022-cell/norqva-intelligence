@@ -1234,10 +1234,11 @@ export class MetaMutatingClient {
     daily_budget: number | null;
     updated_time: string | null;
     spend_cap: number | null;
-    amount_spent: number | null;
+    account_id: string | null;
   }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
-    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time,spend_cap,amount_spent' });
+    // só campos que existem no objeto Campaign (amount_spent não existe nele: a Meta recusa a leitura inteira)
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time,spend_cap,account_id' });
     const cents = (v: any) => (v !== undefined && v !== null && String(v) !== '' ? (parseFloat(v) || 0) / 100 : null);
     const cap = cents(obj?.spend_cap);
     return {
@@ -1245,9 +1246,10 @@ export class MetaMutatingClient {
       effective_status: obj?.effective_status || null,
       daily_budget: cents(obj?.daily_budget),
       updated_time: obj?.updated_time ? String(obj.updated_time) : null,
-      // NORQVA-0122: limite de gastos da campanha (0 = sem limite) e o que já foi gasto contra ele
+      // NORQVA-0122: limite de gastos da campanha em reais (0 ou ausente = sem limite)
       spend_cap: cap && cap > 0 ? cap : null,
-      amount_spent: cents(obj?.amount_spent)
+      // NORQVA-0122: conta de anúncios (sem "act_"), para não mexer em campanha de outra conta
+      account_id: obj?.account_id ? String(obj.account_id).replace(/^act_/, '') : null
     };
   }
 

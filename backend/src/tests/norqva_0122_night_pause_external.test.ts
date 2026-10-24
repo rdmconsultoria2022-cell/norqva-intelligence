@@ -9,6 +9,15 @@ import { runMigrations } from '../db/migrations';
 import { signSupabaseToken } from '../utils/token';
 import { MetaMutatingClient, resetMetaPreflightCacheForTesting, OFFICIAL_NORQVA_PIXEL_ID } from '../services/meta/metaMutatingClient';
 import { NightPauseService, setNightPauseClientFactoryForTesting } from '../services/campaigns/nightPauseService';
+import { guardResolution, AlertCenterService } from '../services/alerts/alertCenterService';
+
+const CAMPAIGN_FIELDS = new Set(['id', 'name', 'account_id', 'objective', 'status', 'effective_status', 'configured_status', 'daily_budget', 'lifetime_budget', 'updated_time', 'spend_cap']);
+/** A Meta recusa a leitura inteira se pedir um campo que não existe no objeto Campaign (erro #100). */
+const checkCampaignFields = (params: any) => {
+  for (const f of String(params?.fields || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    if (!CAMPAIGN_FIELDS.has(f)) throw new Error(`[META GRAPH API ERROR]: (#100) Tried accessing nonexisting field (${f}) (code 100)`);
+  }
+};
 
 // Horário de Brasília = UTC-3; o servidor (e o CI) roda em UTC.
 const at = (date: string, hhmm: string) => {
@@ -31,7 +40,7 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
     daily_budget: number | null;
     updated_time: string;
     spend_cap: number | null;
-    amount_spent: number;
+    spend: number;
     name: string;
     account_id: string;
     children: string[];
@@ -39,6 +48,7 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
   const onMeta = new Map<string, MetaObj>();
   let posts: Array<{ endpoint: string; body: any }>;
   let activities: any[];
+  let failChildren = false;
   let tick = 0;
   let day = 0;
   const nextDay = () => {
@@ -55,14 +65,16 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
     if (endpoint === `/${OFFICIAL_NORQVA_PIXEL_ID}`) return { id: OFFICIAL_NORQVA_PIXEL_ID };
     const child = /^\/(\d+)\/(adsets|ads)$/.exec(endpoint);
     if (child) {
+      if (failChildren) throw new Error('[META GRAPH API ERROR]: leitura dos conjuntos falhou');
       const o = onMeta.get(child[1]);
       if (!o) throw new Error('unexpected ' + endpoint);
       return { data: o.children.filter((c) => (child[2] === 'adsets' ? c.startsWith('set') : c.startsWith('ad'))).map((c) => ({ id: c.replace(/^(set|ad)/, '') })) };
     }
     const ins = /^\/(\d+)\/insights$/.exec(endpoint);
-    if (ins) return { data: [{ spend: String(onMeta.get(ins[1])?.amount_spent ?? 0) }] };
+    if (ins) return { data: [{ spend: String(onMeta.get(ins[1])?.spend ?? 0) }] };
     const obj = onMeta.get(endpoint.slice(1));
     if (obj) {
+      checkCampaignFields(params);
       return {
         id: endpoint.slice(1),
         name: obj.name,
@@ -71,9 +83,7 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
         effective_status: obj.status,
         daily_budget: obj.daily_budget === null ? undefined : String(obj.daily_budget * 100),
         updated_time: obj.updated_time,
-        spend_cap: obj.spend_cap === null ? '0' : String(obj.spend_cap * 100),
-        amount_spent: String(Math.round(obj.amount_spent * 100)),
-        _fields: params?.fields
+        spend_cap: obj.spend_cap === null ? '0' : String(obj.spend_cap * 100)
       };
     }
     throw new Error('unexpected ' + endpoint);
@@ -107,7 +117,7 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
       daily_budget: 30,
       updated_time: '2028-01-01T00:00:00+0000',
       spend_cap: opts.spendCap ?? null,
-      amount_spent: opts.spent ?? 40,
+      spend: opts.spent ?? 40,
       name,
       account_id: ACCOUNT,
       children: [`set${setId}`, `ad${adId}`]
@@ -156,6 +166,7 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
   });
 
   beforeEach(async () => {
+    failChildren = false;
     process.env.META_MUTATION_ENABLED = 'true';
     process.env.META_AD_ACCOUNT_ID = `act_${ACCOUNT}`;
     process.env.NIGHT_PAUSE_ENABLED = 'true';
@@ -260,16 +271,51 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
     expect((await runOf(b.cid, date)).reason).toMatch(/META_ENTITY_STATUS/);
   });
 
-  it('limite de gastos da campanha atingido (amount_spent ≥ spend_cap): não reativa', async () => {
+  it('limite de gastos da campanha atingido (gasto dos insights ≥ spend_cap): não reativa; sem limite reativa', async () => {
     const date = nextDay();
     const a = await seedExternal({ spendCap: 300, spent: 120 });
     const b = await seedExternal({ spendCap: 300, spent: 120 });
     await service().run(pool, at(date, '00:01'));
-    onMeta.get(a.cid)!.amount_spent = 300;
+    onMeta.get(a.cid)!.spend = 300;
     await service().run(pool, at(date, '06:01'));
     expect(actives(a.cid)).toHaveLength(0);
     expect((await runOf(a.cid, date)).reason).toMatch(/limite de gastos/);
     expect(actives(b.cid)).toHaveLength(1);
+    // sem limite (spend_cap "0"): gasto alto reativa
+    const d2 = nextDay();
+    const c = await seedExternal({ spendCap: null, spent: 9000 });
+    await service().run(pool, at(d2, '00:01'));
+    await service().run(pool, at(d2, '06:01'));
+    expect(actives(c.cid)).toHaveLength(1);
+  });
+
+  it('o objeto Campaign não tem amount_spent: pedir campos inexistentes falha como na Meta', async () => {
+    expect(() => checkCampaignFields({ fields: 'status,spend_cap,amount_spent' })).toThrow(/#100/);
+    expect(() => checkCampaignFields({ fields: 'status,effective_status,daily_budget,updated_time,spend_cap,account_id' })).not.toThrow();
+  });
+
+  it('outra conta de anúncios: não pausa (SKIPPED)', async () => {
+    const date = nextDay();
+    const a = await seedExternal();
+    onMeta.get(a.cid)!.account_id = '999999999';
+    await service().run(pool, at(date, '00:01'));
+    expect(postsTo(a.cid)).toHaveLength(0);
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'SKIPPED' });
+    expect((await runOf(a.cid, date)).reason).toMatch(/conta de anúncios/);
+  });
+
+  it('sem a lista de conjuntos e anúncios na Meta: não reativa agora, tenta de novo', async () => {
+    const date = nextDay();
+    const a = await seedExternal();
+    await service().run(pool, at(date, '00:01'));
+    failChildren = true;
+    await service().run(pool, at(date, '06:01'));
+    expect(actives(a.cid)).toHaveLength(0);
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED', resume_attempts: 1 });
+    failChildren = false;
+    await pool.query(`UPDATE night_pause_external_runs SET resume_started_at = NOW() - INTERVAL '1 hour' WHERE meta_campaign_id = $1`, [a.cid]);
+    await service().run(pool, at(date, '06:09'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
   });
 
   it('orçamento mudado na Meta ou campanha alterada (sem registro de atividades): não reativa', async () => {
@@ -371,6 +417,29 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
     expect((await pool.query(`SELECT name FROM meta_campaigns WHERE meta_campaign_id = $1`, [b.cid])).rows[0].name).toBe(b.name);
   });
 
+  it('avisos das externas: sem código de plano, abrem a seção das externas; aviso da cópia se resolve com a linha pronta', async () => {
+    expect(guardResolution({ rule_code: 'NIGHT_PAUSE_MIRROR_FAILED', campaign_status: null })).toBeNull();
+    expect(guardResolution({ rule_code: 'NIGHT_PAUSE_MIRROR_FAILED', campaign_status: 'ACTIVE' })).toBe('MIRROR_READY');
+    const date = nextDay();
+    const a = await seedExternal({ synced: false });
+    onMeta.get(a.cid)!.account_id = '999999999';
+    await service().run(pool, at(date, '00:01'));
+    const row = (await pool.query(`SELECT ad_name FROM ad_alerts WHERE meta_ad_id = $1 AND rule_code = 'NIGHT_PAUSE_MIRROR_FAILED'`, [a.cid])).rows[0];
+    expect(row.ad_name).toBeNull();
+    const center = await new AlertCenterService(pool).center('', false);
+    const n = center.notifications.find((x: any) => x.entity.meta_campaign_id === a.cid && x.rule_code === 'NIGHT_PAUSE_MIRROR_FAILED');
+    expect(n.link).toMatchObject({ section: 'external-night-pause', plan_code: null, meta_campaign_id: a.cid });
+    // a campanha passa a existir em meta_campaigns: o aviso se resolve
+    await pool.query(
+      `INSERT INTO meta_campaigns (id, meta_campaign_id, ad_account_id, name, status, effective_status, is_demo) VALUES ($1, $2, $3, $4, 'ACTIVE', 'ACTIVE', FALSE)`,
+      [crypto.randomUUID(), a.cid, accountDbId, a.name]
+    );
+    const after = await new AlertCenterService(pool).center('', false);
+    const m = after.notifications.find((x: any) => x.entity.meta_campaign_id === a.cid && x.rule_code === 'NIGHT_PAUSE_MIRROR_FAILED');
+    expect(m.is_open).toBe(false);
+    expect(m.resolution).toBe('MIRROR_READY');
+  });
+
   it('adicionar pela tela já cria a cópia mínima (e avisa na hora se não der)', async () => {
     const a = await seedExternal({ register: false, synced: false });
     const r = await as(admin).post('/api/night-pause/external?mode=real', { meta_campaign_id: a.cid });
@@ -418,10 +487,10 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
     expect(still.deleted_at).not.toBeNull();
     const after = await as(admin).get('/api/night-pause/external?mode=real&live=0');
     expect(after.body.campaigns.some((c: any) => c.meta_campaign_id === novo.cid)).toBe(false);
-    // adicionar de novo volta a mesma linha
+    // adicionar de novo volta a mesma linha, ligada e com o horário padrão (estava desligada, 01:00–05:00)
     const again = await as(admin).post('/api/night-pause/external?mode=real', { meta_campaign_id: novo.cid });
     expect(again.status).toBe(201);
-    expect(again.body.id).toBe(row.id);
+    expect(again.body).toMatchObject({ id: row.id, enabled: true, start: '00:00', end: '06:00' });
     const audits = (await auditsOf(novo.cid)).map((x) => x.event_type);
     expect(audits).toEqual(expect.arrayContaining(['NIGHT_PAUSE_EXTERNAL_ADDED', 'NIGHT_PAUSE_SETTINGS_CHANGED', 'NIGHT_PAUSE_EXTERNAL_REMOVED']));
     // nada disso fala com a Meta para mudar algo

@@ -177,6 +177,12 @@ const instant = (v: unknown): number | null => {
   return Number.isFinite(t) ? t : null;
 };
 
+/** A campanha é de outra conta (ou a Meta não disse a conta)? Na dúvida, não mexe. */
+function wrongAccount(state: { account_id: string | null }): boolean {
+  const configured = String(process.env.META_AD_ACCOUNT_ID || '').trim().replace(/^act_/, '');
+  return !configured || !state.account_id || String(state.account_id).replace(/^act_/, '') !== configured;
+}
+
 export function campaignOfPlan(plan: any): string | null {
   const values = Object.values(normalizeMetaIds(plan.meta_ids).campaign || {});
   return values.length ? String(values[0]) : null;
@@ -397,6 +403,7 @@ export class NightPauseService {
       out.other.push({ code: owner.code, read_failed: errText(err) });
       return;
     }
+    if (wrongAccount(state)) return skip(state.status, `Não é da conta de anúncios configurada no NORQVA (${state.account_id || 'conta não informada'}).`);
     if (String(state.status || '').toUpperCase() !== 'ACTIVE') {
       return skip(state.status, `Não estava ativa na Meta no início da pausa noturna (${state.status || 'sem situação'}).`);
     }
@@ -599,13 +606,8 @@ export class NightPauseService {
   private async objectIds(owner: Owner, cid: string, client: MetaMutatingClient | null): Promise<Set<string>> {
     if (owner.kind === 'PLAN') return new Set<string>([cid, ...metaIdsOfPlan(normalizeMetaIds(owner.raw.meta_ids))]);
     const ids = new Set<string>([cid]);
-    if (client) {
-      try {
-        for (const id of await client.readCampaignChildIds(cid)) ids.add(id);
-      } catch (err) {
-        console.warn('[NIGHT PAUSE] não leu conjuntos e anúncios da campanha externa; confere só a campanha', errText(err));
-      }
-    }
+    // sem a lista de conjuntos e anúncios não dá para conferir o Gerenciador: quem chama tenta de novo depois
+    if (client) for (const id of await client.readCampaignChildIds(cid)) ids.add(id);
     return ids;
   }
 
@@ -620,7 +622,11 @@ export class NightPauseService {
       if (blocked || !owner) return this.cancelResume(pool, run, owner, blocked || 'sem configuração.');
 
       const client = this.client(cid, 'ACTIVE');
-      ids = await this.objectIds(owner, cid, client);
+      try {
+        ids = await this.objectIds(owner, cid, client);
+      } catch (err) {
+        return this.retryResume(pool, run, owner, previousState, `não foi possível ler os conjuntos e anúncios da campanha na Meta (${errText(err)})`);
+      }
       let touched: string | null;
       try {
         touched = await this.touchedSince(pool, run, owner, ids, 'pause');
@@ -636,6 +642,7 @@ export class NightPauseService {
         return this.retryResume(pool, run, owner, previousState, `leitura da campanha na Meta falhou (${errText(err)})`);
       }
       await pool.query(`UPDATE ${T} SET meta_updated_time_at_resume = $2 WHERE id = $1`, [run.id, state.updated_time]);
+      if (wrongAccount(state)) return this.cancelResume(pool, run, owner, `a campanha não é da conta de anúncios configurada no NORQVA (${state.account_id || 'conta não informada'}).`);
       const status = String(state.status || '').toUpperCase();
       if (status !== 'PAUSED') return this.cancelResume(pool, run, owner, `na Meta a campanha está ${status || 'sem situação'}, não pausada: alguém mexeu nela ou a pausa não pegou.`);
 
@@ -645,22 +652,20 @@ export class NightPauseService {
       if (money(run.meta_daily_budget_at_pause) !== null && !sameMoney(state.daily_budget, run.meta_daily_budget_at_pause)) {
         return this.cancelResume(pool, run, owner, 'o orçamento da campanha mudou na Meta durante a noite.');
       }
-      // limite de gastos da campanha na Meta (spend_cap contra amount_spent, como a Meta compara)
-      if (state.spend_cap !== null && state.amount_spent !== null && state.amount_spent >= state.spend_cap - 0.005) {
-        return this.cancelResume(pool, run, owner, `o limite de gastos da campanha na Meta foi atingido (${brl(state.amount_spent)} de ${brl(state.spend_cap)}).`);
+      // gasto da campanha (insights, em reais) contra o teto do plano e o limite de gastos da campanha na Meta
+      let spend: { spend: number; spend_cap: number | null };
+      try {
+        spend = await client.getCampaignLifetimeSpend(cid);
+      } catch (err) {
+        return this.retryResume(pool, run, owner, previousState, `leitura do gasto na Meta falhou (${errText(err)})`);
       }
       if (owner.kind === 'PLAN') {
-        let spend: { spend: number; spend_cap: number | null };
-        try {
-          spend = await client.getCampaignLifetimeSpend(cid);
-        } catch (err) {
-          return this.retryResume(pool, run, owner, previousState, `leitura do gasto na Meta falhou (${errText(err)})`);
-        }
         const cap = money(owner.raw.max_spend_brl);
         if (cap !== null && spend.spend >= cap - 0.005) return this.cancelResume(pool, run, owner, `o teto foi atingido (${brl(spend.spend)} de ${brl(cap)}).`);
-        if (spend.spend_cap !== null && spend.spend >= spend.spend_cap - 0.005) {
-          return this.cancelResume(pool, run, owner, `o limite de gastos da campanha na Meta foi atingido (${brl(spend.spend)} de ${brl(spend.spend_cap)}).`);
-        }
+      }
+      const metaCap = spend.spend_cap ?? state.spend_cap;
+      if (metaCap !== null && spend.spend >= metaCap - 0.005) {
+        return this.cancelResume(pool, run, owner, `o limite de gastos da campanha na Meta foi atingido (${brl(spend.spend)} de ${brl(metaCap)}).`);
       }
 
       // reativar aumenta exposição: sem registro de decisão, não reativa agora (fail-closed) e tenta de novo
@@ -869,9 +874,13 @@ export class NightPauseService {
     }
   }
 
+  /** Situação lida na Meta para a tela das externas (60 s). */
+  private static liveCache = new Map<string, { value: any; at: number }>();
+
   /** Só para testes. */
   static resetAppCacheForTesting() {
     NightPauseService.tokenAppId = null;
+    NightPauseService.liveCache.clear();
   }
 
   /**
@@ -1041,7 +1050,8 @@ export class NightPauseService {
       await pool.query(
         `INSERT INTO ad_alerts (rule_code, meta_ad_id, ad_name, meta_campaign_id, campaign_name, spend, threshold, message, is_demo)
          VALUES ($1, $2, $3, $2, $4, 0, 0, $5, FALSE)`,
-        [rule, cid, owner.code.slice(0, 255), owner.name.slice(0, 255), message]
+        // externas: ad_name vazio (não é código de plano; o aviso abre a campanha pelo ID da Meta)
+        [rule, cid, owner.kind === 'PLAN' ? owner.code.slice(0, 255) : null, owner.name.slice(0, 255), message]
       );
     } catch (err) {
       console.error('[NIGHT PAUSE] não abriu o aviso', rule, errText(err));
@@ -1169,8 +1179,14 @@ export class NightPauseService {
       let meta: any = null;
       if (opts.live !== false) {
         try {
-          const s = await this.clientFactory().readCampaignState(String(row.meta_campaign_id));
-          meta = { status: s.status, effective_status: s.effective_status };
+          const key = String(row.meta_campaign_id);
+          const hit = NightPauseService.liveCache.get(key);
+          if (hit && Date.now() - hit.at < 60 * 1000) meta = hit.value;
+          else {
+            const s = await this.clientFactory().readCampaignState(key);
+            meta = { status: s.status, effective_status: s.effective_status };
+            NightPauseService.liveCache.set(key, { value: meta, at: Date.now() });
+          }
         } catch (err) {
           meta = { status: null, effective_status: null, error: 'não foi possível ler na Meta agora' };
         }
@@ -1196,17 +1212,28 @@ export class NightPauseService {
     if (!info.id || String(info.id) !== cid) throw new NightPauseError(422, 'A Meta não devolveu esta campanha.');
     if (!act || String(info.account_id || '').replace(/^act_/, '') !== act) throw new NightPauseError(422, 'Esta campanha não é da conta de anúncios configurada no NORQVA.');
     const uid = UUID_RE.test(String(userId || '')) ? userId : null;
+    // horário pedido (ou o padrão); adicionar de novo uma campanha tirada da lista volta ligada, com este horário
+    const w = validateWindow(body?.start ?? DEFAULT_START, body?.end ?? DEFAULT_END);
     const r = await pool.query(
-      `INSERT INTO night_pause_external_campaigns (meta_campaign_id, name, enabled, created_by)
-       VALUES ($1, $2, TRUE, $3)
-       ON CONFLICT (meta_campaign_id) DO UPDATE SET name = EXCLUDED.name, deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+      `INSERT INTO night_pause_external_campaigns (meta_campaign_id, name, enabled, night_pause_start, night_pause_end, created_by)
+       VALUES ($1, $2, TRUE, $3, $4, $5)
+       ON CONFLICT (meta_campaign_id) DO UPDATE SET name = EXCLUDED.name, enabled = TRUE, night_pause_start = EXCLUDED.night_pause_start,
+         night_pause_end = EXCLUDED.night_pause_end, deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
        RETURNING *`,
-      [cid, info.name ? String(info.name).slice(0, 255) : null, uid]
+      [cid, info.name ? String(info.name).slice(0, 255) : null, w.start, w.end, uid]
     );
+    const row = r.rows[0];
     // cópia mínima em meta_campaigns já agora: se falhar, o aviso sai na hora de adicionar, não à meia-noite
-    const mirror = await this.mirrorOne(pool, r.rows[0]);
-    await writeAuditLog(pool, uid, 'NIGHT_PAUSE_EXTERNAL_ADDED', `Pausa noturna: campanha ${cid} ("${info.name || cid}", criada fora do NORQVA) adicionada, ligada das ${r.rows[0].night_pause_start} às ${r.rows[0].night_pause_end}.`, null, cid);
-    return { ...this.shapeExternal(r.rows[0], [], null), mirror: mirror.ok ? 'OK' : 'FAILED', mirror_error: mirror.error || null };
+    const mirror = await this.mirrorOne(pool, row);
+    await writeAuditLog(
+      pool,
+      uid,
+      'NIGHT_PAUSE_EXTERNAL_ADDED',
+      `Pausa noturna: campanha ${row.meta_campaign_id} ("${row.name || row.meta_campaign_id}", criada fora do NORQVA) adicionada, ${row.enabled ? 'ligada' : 'desligada'} das ${row.night_pause_start} às ${row.night_pause_end}.`,
+      null,
+      row.meta_campaign_id
+    );
+    return { ...this.shapeExternal(row, [], null), mirror: mirror.ok ? 'OK' : 'FAILED', mirror_error: mirror.error || null };
   }
 
   private async externalRow(pool: Pool, id: string) {

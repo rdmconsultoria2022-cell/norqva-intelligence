@@ -103,7 +103,7 @@ function Row({ c, apiFetch, showError, showSuccess, onChanged }: { c: any; apiFe
           </button>
         ) : (
           <span className="inline-flex flex-wrap items-center gap-2 text-[12px] text-nq-muted">
-            Tirar da pausa noturna? (a noite em curso termina normalmente)
+            Tirar da pausa noturna? Se ela já estiver pausada nesta noite, o NORQVA ainda a reativa no horário do fim.
             <button type="button" onClick={remove} disabled={busy} className="min-h-[44px] px-3 rounded-full bg-nq-critical/15 text-nq-critical-text text-[13px] font-semibold">
               Confirmar
             </button>
@@ -182,7 +182,7 @@ export function ExternalNightPause({ apiFetch, showError, showSuccess }: { apiFe
       <h2 className="text-[13px] leading-[18px] font-semibold text-nq-muted">Campanhas criadas fora do NORQVA — pausa noturna</h2>
       <div className="rounded-2xl bg-nq-surface overflow-hidden">
         <p className="px-4 pt-3.5 text-[13px] leading-[18px] text-nq-muted">
-          Campanhas feitas direto na Meta também podem pausar à noite (horário de Brasília): o NORQVA pausa no início, se estiverem ativas, e reativa no fim só o que ele pausou e ninguém mexeu. Orçamento e limite de gastos não mudam.
+          Campanhas feitas direto na Meta também podem pausar à noite (horário de Brasília): o NORQVA pausa no início, se estiverem ativas, e reativa no fim só o que ele pausou e ninguém mexeu. Orçamento e limite de gastos não mudam. Desligar ou tirar da lista vale a partir da próxima noite: se a campanha já estiver pausada nesta noite, ela ainda é reativada no horário do fim.
         </p>
         {data?.master_enabled === false && (
           <p className="px-4 pt-2 text-[12px] text-nq-attention">A chave geral da pausa noturna está desligada no servidor: nada é pausado por enquanto.</p>
