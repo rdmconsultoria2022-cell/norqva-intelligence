@@ -9,6 +9,7 @@ import { adDelivery, DeliveryBadge, MetaImage, AdPreviewButton } from '../../com
 import { TrashAction } from '../products/CatalogTrash';
 import { CreativeTrash } from './CreativeTrash';
 import { CreativeReferences } from './CreativeReferences';
+import { FactoryWizard } from './FactoryWizard';
 import { useIsMobile } from '../../components/ui/premium';
 
 // NORQVA-0058: lembra se as claims ficam abertas (preferência só deste navegador)
@@ -113,7 +114,10 @@ export function CreativeFactoryView({
   const [loading, setLoading] = useState(true);
   // NORQVA-0115: aba Referências (só aparece com CREATIVE_REFERENCES_ENABLED ligada no servidor)
   const [refsEnabled, setRefsEnabled] = useState(false);
-  const [section, setSection] = useState<'creatives' | 'references'>('creatives');
+  // NORQVA-0118: aba Fábrica (o passo a passo da referência à campanha pausada), junto com Referências
+  const [section, setSection] = useState<'factory' | 'creatives' | 'references'>('creatives');
+  // a Fábrica abre primeiro quando está ligada, a menos que a pessoa já tenha escolhido outra aba
+  const pickedSection = React.useRef(false);
   const disableReferences = useCallback(() => {
     setRefsEnabled(false);
     setSection('creatives');
@@ -204,7 +208,9 @@ export function CreativeFactoryView({
     Promise.resolve()
       .then(() => apiFetchRef.current('/creative-references/status'))
       .then((r: any) => {
-        if (alive) setRefsEnabled(r?.enabled === true);
+        if (!alive) return;
+        setRefsEnabled(r?.enabled === true);
+        if (r?.enabled === true && canRevise && !pickedSection.current) setSection('factory');
       })
       .catch(() => {
         if (alive) setRefsEnabled(false);
@@ -1013,7 +1019,9 @@ export function CreativeFactoryView({
         <div className="min-w-0">
           <h1 className="text-[28px] leading-[34px] font-semibold tracking-tight text-nq-text">Criativos</h1>
           <p className="text-nq-aux text-nq-muted mt-1">
-            Todos os criativos num lugar só: criar, anexar o vídeo ou a imagem, registrar promessas, aprovar e ver o resultado. Nada é publicado na Meta por aqui.
+            {refsEnabled && section === 'factory'
+              ? 'Fábrica: da referência à campanha em 6 passos. A campanha nasce pausada; gastar só com o seu Sim.'
+              : 'Todos os criativos num lugar só: criar, anexar o vídeo ou a imagem, registrar promessas, aprovar e ver o resultado. Nada é publicado na Meta por aqui.'}
           </p>
         </div>
         <div className="flex items-center gap-2 self-start">
@@ -1040,6 +1048,7 @@ export function CreativeFactoryView({
       {refsEnabled && (
         <div className="flex gap-2" role="tablist" aria-label="Área de criativos" data-testid="factory-sections">
           {([
+            ['factory', 'Fábrica'],
             ['creatives', 'Criativos'],
             ['references', 'Referências']
           ] as const).map(([k, text]) => (
@@ -1049,7 +1058,10 @@ export function CreativeFactoryView({
               role="tab"
               aria-selected={section === k}
               data-testid={`factory-section-${k}`}
-              onClick={() => setSection(k)}
+              onClick={() => {
+                pickedSection.current = true;
+                setSection(k);
+              }}
               className={`px-4 rounded-full text-nq-aux font-semibold min-h-[44px] ${
                 section === k ? 'bg-nq-raised text-nq-text' : 'text-nq-muted hover:text-nq-text'
               }`}
@@ -1060,7 +1072,16 @@ export function CreativeFactoryView({
         </div>
       )}
 
-      {refsEnabled && section === 'references' ? (
+      {refsEnabled && section === 'factory' ? (
+        <FactoryWizard
+          apiFetch={apiFetch}
+          isAdmin={isAdmin}
+          canCreate={canRevise}
+          showError={showError}
+          showSuccess={showSuccess}
+          onDisabled={disableReferences}
+        />
+      ) : refsEnabled && section === 'references' ? (
         <CreativeReferences
           apiFetch={apiFetch}
           showError={showError}

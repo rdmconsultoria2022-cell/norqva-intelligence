@@ -83,71 +83,53 @@ const readAsDataUrl = (f: File) =>
     r.readAsDataURL(f);
   });
 
-export const CreativeReferences: React.FC<{
+const disabledReply = (e: any) => /desligadas/i.test(String(e?.message || ''));
+
+/**
+ * Formulário de nova referência (link ou prints). Usado em Criativos → Referências e no passo 1 da Fábrica.
+ * Com `fixedProductId`, o produto já foi escolhido e o campo some.
+ */
+export function ReferenceForm({
+  apiFetch,
+  products,
+  showError,
+  showSuccess,
+  onDisabled,
+  onCreated,
+  fixedProductId,
+  defaultNotes = '',
+  submitLabel = 'Analisar estrutura'
+}: {
   apiFetch: ApiFetch;
+  products: any[];
   showError: (m: string) => void;
   showSuccess: (m: string) => void;
-  products: any[];
-  /** NORQVA-0116: ofertas (para escolher a oferta da página gerada). */
-  offers?: any[];
-  isAdmin: boolean;
-  canCreate: boolean;
-  /** Servidor respondeu que a trava está desligada: a tela volta para Criativos e esconde a aba. */
   onDisabled?: () => void;
-}> = ({ apiFetch, showError, showSuccess, products, offers = [], isAdmin, canCreate, onDisabled }) => {
-  const isMobile = useIsMobile();
-  // NORQVA-0116: geração aberta e se há imagens novas (KIE) no servidor
-  const [genId, setGenId] = useState<string | null>(null);
-  const [kie, setKie] = useState(false);
-  useEffect(() => {
-    Promise.resolve(apiFetch('/creative-references/status'))
-      .then((r: any) => setKie(r?.kie === true))
-      .catch(() => setKie(false));
-  }, [apiFetch]);
-  const [items, setItems] = useState<any[]>([]);
-  const [trash, setTrash] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  onCreated: (ref: any) => void | Promise<void>;
+  fixedProductId?: string;
+  defaultNotes?: string;
+  submitLabel?: string;
+}) {
   const [source, setSource] = useState<'URL' | 'SHOTS'>('URL');
   const [url, setUrl] = useState('');
-  const [productId, setProductId] = useState('');
+  const [pickedProduct, setProductId] = useState('');
+  const productId = fixedProductId || pickedProduct;
   const [refType, setRefType] = useState<'SALES_PAGE' | 'AD'>('SALES_PAGE');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(defaultNotes);
   const [adText, setAdText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [fileKey, setFileKey] = useState(0);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
 
-  const disabledReply = (e: any) => /desligadas/i.test(String(e?.message || ''));
+  useEffect(() => {
+    setNotes(defaultNotes);
+  }, [defaultNotes]);
+
   const resetFiles = () => {
     setFiles([]);
     setFileKey(k => k + 1);
   };
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await apiFetch('/creative-references');
-      setItems(Array.isArray(r?.references) ? r.references : []);
-      setTrash(Array.isArray(r?.trash) ? r.trash : []);
-      setLoadError(null);
-    } catch (e: any) {
-      if (disabledReply(e)) {
-        showError('Referências foram desligadas neste ambiente.');
-        onDisabled?.();
-        return;
-      }
-      setLoadError(e?.message || 'Não foi possível carregar as referências.');
-    } finally {
-      setLoading(false);
-    }
-  }, [apiFetch, showError, onDisabled]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const pickFiles = (list: FileList | null) => {
     const arr = Array.from(list || []);
@@ -204,11 +186,10 @@ export const CreativeReferences: React.FC<{
       if (ref?.status === 'READY') showSuccess(`Referência ${ref.human_id} pronta.`);
       else if (ref) showError(`Referência ${ref.human_id} falhou: ${ref.failure_reason || 'motivo não informado'}`);
       setUrl('');
-      setNotes('');
+      setNotes(defaultNotes);
       setAdText('');
       resetFiles();
-      await load();
-      if (ref?.id) setOpenId(ref.id);
+      await onCreated(ref);
     } catch (err: any) {
       if (disabledReply(err)) {
         showError('Referências foram desligadas neste ambiente.');
@@ -221,6 +202,149 @@ export const CreativeReferences: React.FC<{
       setSending(null);
     }
   };
+
+  return (
+    <Surface className="p-4">
+      <form onSubmit={submit} className="space-y-4 text-nq-body" data-testid="reference-form">
+        <div className="flex gap-2" role="tablist" aria-label="Origem da referência">
+          {([
+            ['URL', 'Colar link', Link2],
+            ['SHOTS', 'Enviar prints', Upload]
+          ] as const).map(([k, text, Icon]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={source === k}
+              onClick={() => setSource(k)}
+              className={`inline-flex items-center gap-1.5 px-4 rounded-full text-nq-aux font-semibold min-h-[44px] ${
+                source === k ? 'bg-nq-raised text-nq-text' : 'text-nq-muted hover:text-nq-text'
+              }`}
+            >
+              <Icon className="h-4 w-4" /> {text}
+            </button>
+          ))}
+        </div>
+        {source === 'URL' ? (
+          <div>
+            <label className={label} htmlFor="ref-url">Link da página ou do anúncio</label>
+            <input id="ref-url" type="url" inputMode="url" placeholder="https://..." value={url} onChange={e => setUrl(e.target.value)} className={input} />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className={label} htmlFor="ref-files">Prints da página ou do anúncio (até 5, 4 MB cada)</label>
+              <input
+                key={fileKey}
+                id="ref-files"
+                data-testid="reference-files"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                onChange={e => pickFiles(e.target.files)}
+                className="block w-full text-nq-aux text-nq-muted file:mr-3 file:rounded-full file:border-0 file:bg-nq-raised file:px-4 file:py-2 file:text-nq-text"
+              />
+              {files.length > 0 && <p className="text-nq-caption text-nq-subtle mt-1">{files.length} print(s) escolhido(s).</p>}
+            </div>
+            <div>
+              <label className={label} htmlFor="ref-adtext">Texto do anúncio (opcional)</label>
+              <textarea id="ref-adtext" rows={3} value={adText} onChange={e => setAdText(e.target.value)} className={input} />
+              <p className="text-nq-caption text-nq-subtle mt-1">Serve só para entender a estrutura; não é salvo.</p>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {!fixedProductId && (
+            <div>
+              <label className={label} htmlFor="ref-product">Produto nosso</label>
+              <select id="ref-product" value={pickedProduct} onChange={e => setProductId(e.target.value)} className={input}>
+                <option value="">Selecione...</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className={label} htmlFor="ref-type">Tipo</label>
+            <select id="ref-type" value={refType} onChange={e => setRefType(e.target.value as 'SALES_PAGE' | 'AD')} className={input}>
+              <option value="SALES_PAGE">Página de venda</option>
+              <option value="AD">Anúncio</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={label} htmlFor="ref-notes">Suas observações (opcional)</label>
+          <input id="ref-notes" type="text" maxLength={1000} value={notes} onChange={e => setNotes(e.target.value)} className={input} />
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={busy}
+            data-testid="reference-submit"
+            className="px-5 rounded-full bg-nq-positive text-nq-on-positive font-semibold hover:brightness-110 disabled:opacity-50 min-h-[44px] w-full sm:w-auto"
+          >
+            {busy ? sending || 'Analisando...' : submitLabel}
+          </button>
+        </div>
+      </form>
+    </Surface>
+  );
+}
+
+export const CreativeReferences: React.FC<{
+  apiFetch: ApiFetch;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+  products: any[];
+  /** NORQVA-0116: ofertas (para escolher a oferta da página gerada). */
+  offers?: any[];
+  isAdmin: boolean;
+  canCreate: boolean;
+  /** Servidor respondeu que a trava está desligada: a tela volta para Criativos e esconde a aba. */
+  onDisabled?: () => void;
+}> = ({ apiFetch, showError, showSuccess, products, offers = [], isAdmin, canCreate, onDisabled }) => {
+  const isMobile = useIsMobile();
+  // NORQVA-0116: geração aberta e se há imagens novas (KIE) no servidor
+  const [genId, setGenId] = useState<string | null>(null);
+  const [kie, setKie] = useState(false);
+  useEffect(() => {
+    Promise.resolve(apiFetch('/creative-references/status'))
+      .then((r: any) => setKie(r?.kie === true))
+      .catch(() => setKie(false));
+  }, [apiFetch]);
+  const [items, setItems] = useState<any[]>([]);
+  const [trash, setTrash] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await apiFetch('/creative-references');
+      setItems(Array.isArray(r?.references) ? r.references : []);
+      setTrash(Array.isArray(r?.trash) ? r.trash : []);
+      setLoadError(null);
+    } catch (e: any) {
+      if (disabledReply(e)) {
+        showError('Referências foram desligadas neste ambiente.');
+        onDisabled?.();
+        return;
+      }
+      setLoadError(e?.message || 'Não foi possível carregar as referências.');
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, showError, onDisabled]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const trashAction = async (id: string, action: 'delete' | 'restore') => {
     setBusy(true);
@@ -272,99 +396,17 @@ export const CreativeReferences: React.FC<{
       </p>
 
       {canCreate && (
-        <Surface className="p-4">
-          <form onSubmit={submit} className="space-y-4 text-nq-body" data-testid="reference-form">
-            <div className="flex gap-2" role="tablist" aria-label="Origem da referência">
-              {([
-                ['URL', 'Colar link', Link2],
-                ['SHOTS', 'Enviar prints', Upload]
-              ] as const).map(([k, text, Icon]) => (
-                <button
-                  key={k}
-                  type="button"
-                  role="tab"
-                  aria-selected={source === k}
-                  onClick={() => setSource(k)}
-                  className={`inline-flex items-center gap-1.5 px-4 rounded-full text-nq-aux font-semibold min-h-[44px] ${
-                    source === k ? 'bg-nq-raised text-nq-text' : 'text-nq-muted hover:text-nq-text'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" /> {text}
-                </button>
-              ))}
-            </div>
-            {source === 'URL' ? (
-              <div>
-                <label className={label} htmlFor="ref-url">Link da página ou do anúncio</label>
-                <input
-                  id="ref-url"
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://..."
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  className={input}
-                />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label className={label} htmlFor="ref-files">Prints da página ou do anúncio (até 5, 4 MB cada)</label>
-                  <input
-                    key={fileKey}
-                    id="ref-files"
-                    data-testid="reference-files"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    multiple
-                    onChange={e => pickFiles(e.target.files)}
-                    className="block w-full text-nq-aux text-nq-muted file:mr-3 file:rounded-full file:border-0 file:bg-nq-raised file:px-4 file:py-2 file:text-nq-text"
-                  />
-                  {files.length > 0 && <p className="text-nq-caption text-nq-subtle mt-1">{files.length} print(s) escolhido(s).</p>}
-                </div>
-                <div>
-                  <label className={label} htmlFor="ref-adtext">Texto do anúncio (opcional)</label>
-                  <textarea id="ref-adtext" rows={3} value={adText} onChange={e => setAdText(e.target.value)} className={input} />
-                  <p className="text-nq-caption text-nq-subtle mt-1">Serve só para entender a estrutura; não é salvo.</p>
-                </div>
-              </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={label} htmlFor="ref-product">Produto nosso</label>
-                <select id="ref-product" value={productId} onChange={e => setProductId(e.target.value)} className={input}>
-                  <option value="">Selecione...</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={label} htmlFor="ref-type">Tipo</label>
-                <select id="ref-type" value={refType} onChange={e => setRefType(e.target.value as 'SALES_PAGE' | 'AD')} className={input}>
-                  <option value="SALES_PAGE">Página de venda</option>
-                  <option value="AD">Anúncio</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className={label} htmlFor="ref-notes">Suas observações (opcional)</label>
-              <input id="ref-notes" type="text" maxLength={1000} value={notes} onChange={e => setNotes(e.target.value)} className={input} />
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={busy}
-                data-testid="reference-submit"
-                className="px-5 rounded-full bg-nq-positive text-nq-on-positive font-semibold hover:brightness-110 disabled:opacity-50 min-h-[44px] w-full sm:w-auto"
-              >
-                {busy ? sending || 'Analisando...' : 'Analisar estrutura'}
-              </button>
-            </div>
-          </form>
-        </Surface>
+        <ReferenceForm
+          apiFetch={apiFetch}
+          products={products}
+          showError={showError}
+          showSuccess={showSuccess}
+          onDisabled={onDisabled}
+          onCreated={async ref => {
+            await load();
+            if (ref?.id) setOpenId(ref.id);
+          }}
+        />
       )}
 
       <Section
@@ -691,6 +733,19 @@ function ReferenceDetail({
         </Surface>
       )}
 
+      <ReferenceStructureView structure={s} />
+
+      {generation && item.status === 'READY' && s && <GenerationPanel item={item} g={generation} />}
+    </div>
+  );
+}
+
+/** Esqueleto lido de uma referência (página de venda ou anúncio). Usado no detalhe e no passo 2 da Fábrica. */
+export function ReferenceStructureView({ structure }: { structure: any }) {
+  const s = structure;
+  if (!s) return null;
+  return (
+    <>
       {s?.kind === 'SALES_PAGE' && (
         <>
           <Surface className="p-4 grid grid-cols-2 gap-3">
@@ -767,7 +822,6 @@ function ReferenceDetail({
         </>
       )}
 
-      {generation && item.status === 'READY' && s && <GenerationPanel item={item} g={generation} />}
-    </div>
+    </>
   );
 }

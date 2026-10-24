@@ -70,7 +70,7 @@ describe('NORQVA-0116 — página pública /v/:slug', () => {
     expect(screen.getByTestId('generated-cta')).toHaveAttribute('href', '/p/OFF-000001?checkout=1&utm_source=meta&fbclid=abc');
     expect(screen.getByTestId('generated-cta-sticky')).toHaveTextContent('Quero o meu');
     expect(screen.getByTestId('generated-page')).toHaveAttribute('data-look', 'light');
-    expect(document.title).toBe('Trattoria em Casa');
+    await waitFor(() => expect(document.title).toBe('Trattoria em Casa'));
     // preço e parcelas vêm da oferta (campo price da seção), e a frase fixa da garantia aparece
     expect(screen.getByTestId('generated-price')).toHaveTextContent('R$ 19,90');
     expect(screen.getByTestId('generated-price')).toHaveTextContent('ou 3x de R$ 6,63 sem juros no cartão');
