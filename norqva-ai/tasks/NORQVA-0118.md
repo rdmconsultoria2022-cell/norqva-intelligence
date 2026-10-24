@@ -29,11 +29,23 @@ D-0118. Todo dia, no horário de Brasília, o NORQVA pausa na Meta, no início d
 - Rotas: `GET /api/campaigns/:id/night-pause` (leitura, mesmos perfis de Campanhas) e `POST` (só ADMIN; `enabled`, `start`, `end`; janela no mesmo dia, início antes do fim). Salvar não fala com a Meta e vale a partir da próxima janela (a noite em curso usa o horário gravado na pausa).
 - Tela: Gerenciar campanha → Configurações → "Pausa noturna (00h–06h)": chave, horários (HH:MM), aviso quando a chave geral está desligada e as últimas noites.
 
+## Revisão independente (aplicada)
+
+- Pausa com resposta perdida (tempo esgotado, 5xx, rede, limite de chamadas): relê a Meta. PAUSED = pausa nossa normal; ACTIVE = falhou (aviso "segue ativa"); sem leitura = aguardando conferência, o próximo ciclo relê. Falha antes do envio ou recusa clara da Meta = falhou.
+- Reativar tenta de novo: falha antes do envio (credencial, trava, objeto não sincronizado) e resposta perdida com a Meta ainda PAUSED voltam para a fila; resposta perdida com ACTIVE = reativada (confirmada); recusa clara (permissão, parâmetro) = definitivo com aviso. Até 5 tentativas, com no mínimo 4 minutos entre elas, até 23:59, refazendo todas as conferências; aviso na 3.ª falha.
+- Os registros genéricos do cliente da Meta (`META_*_STATUS_CHANGED`, `META_MUTATION_FAILED`) não contam como "alguém mexeu" (a própria pausa noturna também os escreve): mudanças de outras pessoas e rotinas do NORQVA aparecem como decisão ou ficha, que são conferidas.
+- Trava do plano no banco (`pg_advisory_lock`, `services/campaigns/planLock.ts`) em volta da decisão e do envio da reativação; o vigia (pausar e marcar CAPPED) e o registro da pausa pela tela usam a mesma trava. O plano é relido logo antes do envio. Depois do envio, se o plano mudou ou apareceu decisão/ficha/registro desde o início da tentativa, pausa de novo na hora e abre aviso crítico `NIGHT_PAUSE_RACE`.
+- Vigia: campanha parada pela pausa noturna (pausando, pausada, reativando) não vira CAPPED pelo atalho "já não está ativa"; de manhã a pausa noturna não reativa com o teto atingido e, reativada, o próximo ciclo do vigia decide como sempre.
+- Fim da janela no máximo às 23:00 (servidor e tela). Pausa só nos primeiros 60 minutos da janela; planos pausados pela tela, parados no teto ou inativos ganham a linha SKIPPED no início, então reativar no meio da noite não é pausado.
+- Gerenciador: lê o registro de atividades da conta (`GET /act_X/activities`, campos `event_type,event_time,object_id,object_type,actor_id,application_id`, `since`/`until`) e cancela se houver evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios feito por outro usuário (não o do token, nem o app `META_APP_ID`). Sem o registro, compara os instantes de `updated_time`. Antes e depois ficam na linha (`meta_updated_time_at_pause`/`_at_resume`, `activity_check`).
+- `quiet_since` nunca é sobrescrito; cada etapa e cada linha do ciclo têm o próprio tratamento de erro; o cliente de pausar só aceita PAUSED e o de reativar só ACTIVE; conferências pendentes de dias anteriores são fechadas.
+
 ## Variáveis de ambiente
 
 - `NIGHT_PAUSE_ENABLED` (nova): `true` liga as pausas novas. Qualquer outro valor (ou ausente) = nenhuma pausa nova; o que já foi pausado volta de manhã normalmente.
 - `META_MUTATION_ENABLED`: desligada, não pausa e não reativa (a reativação fica esperando até 23:59; depois vira EXPIRED com aviso).
 - `PROTECTED_META_IDS`: campanhas protegidas nunca são tocadas.
+- `META_APP_ID` (opcional): eventos deste app no registro de atividades contam como do próprio NORQVA.
 
 ## Para ligar em produção (com o Ricardo)
 
