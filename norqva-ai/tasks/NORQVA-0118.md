@@ -37,7 +37,7 @@ D-0118. Todo dia, no horário de Brasília, o NORQVA pausa na Meta, no início d
 - Trava do plano no banco (`pg_advisory_lock`, `services/campaigns/planLock.ts`) em volta da decisão e do envio da reativação; o vigia (pausar e marcar CAPPED) e o registro da pausa pela tela usam a mesma trava. O plano é relido logo antes do envio. Depois do envio, se o plano mudou ou apareceu decisão/ficha/registro desde o início da tentativa, pausa de novo na hora e abre aviso crítico `NIGHT_PAUSE_RACE`.
 - Vigia: campanha parada pela pausa noturna (pausando, pausada, reativando) não vira CAPPED pelo atalho "já não está ativa"; de manhã a pausa noturna não reativa com o teto atingido e, reativada, o próximo ciclo do vigia decide como sempre.
 - Fim da janela no máximo às 23:00 (servidor e tela). Pausa só nos primeiros 60 minutos da janela; planos pausados pela tela, parados no teto ou inativos ganham a linha SKIPPED no início, então reativar no meio da noite não é pausado.
-- Gerenciador: lê o registro de atividades da conta (`GET /act_X/activities`, campos `event_type,event_time,object_id,object_type,actor_id,application_id`, `since`/`until`) e cancela se houver evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios feito por outro usuário (não o do token, nem o app `META_APP_ID`). Sem o registro, compara os instantes de `updated_time`. Antes e depois ficam na linha (`meta_updated_time_at_pause`/`_at_resume`, `activity_check`).
+- Gerenciador: lê o registro de atividades da conta (`GET /act_X/activities`, campos `event_type,event_time,object_id,object_type,actor_id,application_id`, `since`/`until`) e cancela se houver evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios que não seja do NORQVA. O token pode ser do próprio dono, então o usuário (`actor_id`) não identifica o NORQVA: "nosso" é só evento do app a que o token pertence (`GET /app`, guardado 12 h; `META_APP_ID` tem prioridade) ou, em evento sem app (ou com o app desconhecido), a própria mudança de situação da campanha até 2 minutos antes/depois do nosso envio. Todo o resto conta como mexido. Sem o registro, compara os instantes de `updated_time`. Antes e depois ficam na linha (`meta_updated_time_at_pause`/`_at_resume`, `activity_check`: CLEAN, CLEAN_NO_APP, TOUCHED, UNAVAILABLE).
 - `quiet_since` nunca é sobrescrito; cada etapa e cada linha do ciclo têm o próprio tratamento de erro; o cliente de pausar só aceita PAUSED e o de reativar só ACTIVE; conferências pendentes de dias anteriores são fechadas.
 
 ## Variáveis de ambiente
@@ -45,7 +45,7 @@ D-0118. Todo dia, no horário de Brasília, o NORQVA pausa na Meta, no início d
 - `NIGHT_PAUSE_ENABLED` (nova): `true` liga as pausas novas. Qualquer outro valor (ou ausente) = nenhuma pausa nova; o que já foi pausado volta de manhã normalmente.
 - `META_MUTATION_ENABLED`: desligada, não pausa e não reativa (a reativação fica esperando até 23:59; depois vira EXPIRED com aviso).
 - `PROTECTED_META_IDS`: campanhas protegidas nunca são tocadas.
-- `META_APP_ID` (opcional): eventos deste app no registro de atividades contam como do próprio NORQVA.
+- `META_APP_ID` (opcional): app do NORQVA no registro de atividades; sem ela, o app é lido do próprio token (`GET /app`).
 
 ## Para ligar em produção (com o Ricardo)
 

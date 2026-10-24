@@ -1280,10 +1280,13 @@ export class MetaMutatingClient {
     return out;
   }
 
-  /** NORQVA-0118: ID de quem usa o token (o usuário do sistema do NORQVA), para reconhecer as próprias ações. */
-  public async readTokenUserId(): Promise<string | null> {
-    const me = await this.callTransportGet('/me', { fields: 'id' });
-    return me?.id ? String(me.id) : null;
+  /**
+   * NORQVA-0118: ID do app a que o token pertence (GET /app com o próprio token), para reconhecer as ações do
+   * NORQVA no registro de atividades. O usuário do token não serve: pode ser o próprio dono.
+   */
+  public async readTokenAppId(): Promise<string | null> {
+    const app = await this.callTransportGet('/app', { fields: 'id' });
+    return app?.id ? String(app.id) : null;
   }
 
   /** H6: lifetime spend (BRL) of a campaign, read live from the Graph API (GET only). */

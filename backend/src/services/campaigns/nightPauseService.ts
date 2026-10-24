@@ -681,29 +681,69 @@ export class NightPauseService {
     return null;
   }
 
+  /** App do token (cache por processo). META_APP_ID tem prioridade. null = não deu para saber. */
+  private static tokenAppId: { value: string | null; at: number } | null = null;
+  private async ownAppId(client: MetaMutatingClient): Promise<string | null> {
+    const env = String(process.env.META_APP_ID || '').trim();
+    if (env) return env;
+    const cached = NightPauseService.tokenAppId;
+    // sucesso fica 12 h; falha é tentada de novo no próximo uso
+    if (cached && cached.value && Date.now() - cached.at < 12 * 3600 * 1000) return cached.value;
+    try {
+      const value = await client.readTokenAppId();
+      NightPauseService.tokenAppId = { value, at: Date.now() };
+      return value;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Só para testes. */
+  static resetAppCacheForTesting() {
+    NightPauseService.tokenAppId = null;
+  }
+
   /**
    * Mexeram na campanha fora do NORQVA durante a noite? Lê o registro de atividades da conta de anúncios e
-   * procura evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios do plano, feito por
-   * outra pessoa (não pelo usuário do sistema do NORQVA nem pelo app META_APP_ID). Sem o registro,
-   * compara a hora da última alteração (updated_time) da campanha com a da pausa.
+   * procura evento na campanha, nos conjuntos (inclusive orçamento ABO) ou nos anúncios do plano que não seja
+   * do NORQVA. O token pode ser do próprio dono, então o usuário (actor_id) não diz nada: "nosso" é só
+   *  - evento do app a que o token pertence (GET /app, ou META_APP_ID); ou
+   *  - sem app no evento (ou app desconhecido): a própria mudança de situação da campanha, até 2 minutos antes
+   *    ou depois do nosso envio de pausa (ou desta tentativa de reativar).
+   * Todo o resto conta como mexido (na dúvida, não reativa). Sem o registro, compara updated_time.
    */
   private async touchedOnMeta(pool: Pool, run: any, plan: any, client: MetaMutatingClient, state: MetaState): Promise<string | null> {
     const cid = String(run.meta_campaign_id);
     const ids = new Set<string>([cid, ...metaIdsOfPlan(normalizeMetaIds(plan.meta_ids))]);
-    const startMs = run.pause_started_at ? new Date(run.pause_started_at).getTime() : null;
+    const ms = (v: unknown) => (v ? new Date(v as any).getTime() : null);
+    const startMs = ms(run.pause_started_at);
     try {
       if (startMs === null) throw new Error('sem hora da pausa');
-      const [events, me] = await Promise.all([client.readAccountActivities(startMs / 1000 - 60, Date.now() / 1000 + 60), client.readTokenUserId()]);
-      const appId = String(process.env.META_APP_ID || '').trim();
+      const events = await client.readAccountActivities(startMs / 1000 - 180, Date.now() / 1000 + 60);
+      const appId = await this.ownAppId(client);
+      const TOL = 2 * 60 * 1000;
+      const sends: Array<[number, number]> = [];
+      const pauseEnd = ms(run.quiet_since) ?? ms(run.paused_at) ?? startMs;
+      sends.push([startMs - TOL, pauseEnd + TOL]);
+      const resumeAt = ms(run.resume_started_at);
+      if (resumeAt !== null) sends.push([resumeAt - TOL, Date.now() + TOL]);
+      const ownStatusChange = (e: (typeof events)[number]) => {
+        if (String(e.object_id) !== cid || !/status/i.test(String(e.event_type || ''))) return false;
+        const t = instant(e.event_time);
+        return t !== null && sends.some(([a, b]) => t >= a && t <= b);
+      };
+      const ours = (e: (typeof events)[number]) => {
+        if (appId) return e.application_id === appId || (!e.application_id && ownStatusChange(e));
+        return ownStatusChange(e);
+      };
       const foreign = events.find((e) => {
         if (!e.object_id || !ids.has(String(e.object_id))) return false;
         const t = instant(e.event_time);
-        if (t !== null && t < startMs - 1000) return false;
-        const ours = (me && e.actor_id === me) || (appId && e.application_id === appId);
-        return !ours;
+        if (t !== null && t < startMs - TOL) return false;
+        return !ours(e);
       });
-      await pool.query(`UPDATE night_pause_runs SET activity_check = $2 WHERE id = $1`, [run.id, foreign ? 'TOUCHED' : 'CLEAN']);
-      if (foreign) return `a campanha foi alterada na Meta durante a noite por outra pessoa (${foreign.event_type || 'alteração'}).`;
+      await pool.query(`UPDATE night_pause_runs SET activity_check = $2 WHERE id = $1`, [run.id, foreign ? 'TOUCHED' : appId ? 'CLEAN' : 'CLEAN_NO_APP']);
+      if (foreign) return `a campanha foi alterada na Meta durante a noite fora do NORQVA (${foreign.event_type || 'alteração'}).`;
       return null;
     } catch (err) {
       await pool.query(`UPDATE night_pause_runs SET activity_check = 'UNAVAILABLE' WHERE id = $1`, [run.id]);

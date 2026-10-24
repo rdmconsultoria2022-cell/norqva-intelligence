@@ -92,6 +92,8 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
   let failGet: ((endpoint: string) => boolean) | null;
   let activities: any[];
   let failActivities: boolean;
+  let failApp: boolean;
+  const ADS_MANAGER_APP = '119211728144504';
   let getHook: ((endpoint: string) => Promise<void>) | null;
   let postHook: ((endpoint: string, body: any) => Promise<void>) | null;
   // envio que a Meta aplica mas cuja resposta se perde
@@ -111,6 +113,10 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     if (/^\/act_[^/]+\/activities$/.test(endpoint)) {
       if (failActivities) throw new Error('[META GRAPH API ERROR]: atividades indisponíveis');
       return { data: activities };
+    }
+    if (endpoint === '/app') {
+      if (failApp) throw new Error('[META GRAPH API ERROR]: app indisponível');
+      return { id: 'app1' };
     }
     if (endpoint === '/me') return { id: 'u1' };
     if (endpoint === '/me/permissions') return { data: ['ads_management', 'ads_read'].map((p) => ({ permission: p, status: 'granted' })) };
@@ -210,6 +216,8 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     failGet = null;
     activities = [];
     failActivities = false;
+    failApp = false;
+    NightPauseService.resetAppCacheForTesting();
     getHook = null;
     postHook = null;
     applyThenThrow = null;
@@ -358,7 +366,7 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     await pool.query(`UPDATE launch_plans SET guard_state = 'CAPPED' WHERE id = $1`, [capped.plan.id]);
     await pool.query(`UPDATE launch_plans SET max_spend_brl = 500 WHERE id = $1`, [capChanged.plan.id]);
     await pool.query(`UPDATE launch_plans SET daily_budget_brl = 50 WHERE id = $1`, [budget.plan.id]);
-    activities = [{ event_type: 'update_campaign_run_status', event_time: new Date().toISOString(), object_id: adsManager.cid, object_type: 'CAMPAIGN', actor_id: 'dono-no-gerenciador' }];
+    activities = [{ event_type: 'update_campaign_run_status', event_time: new Date().toISOString(), object_id: adsManager.cid, object_type: 'CAMPAIGN', actor_id: 'dono', application_id: ADS_MANAGER_APP }];
     onMeta.get(metaBudget.cid)!.daily_budget = 80;
     await service().run(pool, at(date, '06:01'));
     for (const x of [capped, capChanged, budget, adsManager, metaBudget]) {
@@ -368,7 +376,7 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     expect((await runOf(capped.cid, date)).reason).toMatch(/vigia/);
     expect((await runOf(capChanged.cid, date)).reason).toMatch(/teto/);
     expect((await runOf(budget.cid, date)).reason).toMatch(/orçamento/);
-    expect((await runOf(adsManager.cid, date)).reason).toMatch(/alterada na Meta durante a noite por outra pessoa/);
+    expect((await runOf(adsManager.cid, date)).reason).toMatch(/alterada na Meta durante a noite fora do NORQVA/);
     expect(await runOf(adsManager.cid, date)).toMatchObject({ activity_check: 'TOUCHED' });
     expect((await runOf(metaBudget.cid, date)).reason).toMatch(/orçamento da campanha mudou na Meta/);
   });
@@ -784,20 +792,68 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     expect(postsTo(a.cid)).toHaveLength(1);
   });
 
-  it('Gerenciador: atividade do próprio NORQVA não conta; sem o registro de atividades, compara updated_time', async () => {
+  it('Gerenciador: o token pode ser do dono; "nosso" é só o app do token ou a nossa própria mudança de situação', async () => {
     const date = nextDay();
-    const ours = await seed();
+    const appOurs = await seed();
+    const ownPause = await seed();
+    const ownerSameActor = await seed();
+    const ownerNoApp = await seed();
     await service().run(pool, at(date, '00:01'));
-    // evento do próprio usuário do sistema (o mesmo do /me)
-    activities = [{ event_type: 'update_campaign_run_status', event_time: new Date().toISOString(), object_id: ours.cid, actor_id: 'u1' }];
+    const now = new Date().toISOString();
+    const late = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min depois da pausa
+    activities = [
+      // evento do app do token (qualquer tipo): nosso
+      { event_type: 'update_campaign_budget', event_time: now, object_id: appOurs.cid, actor_id: 'u1', application_id: 'app1' },
+      // nossa própria pausa, sem app no evento, perto do envio: nossa
+      { event_type: 'update_campaign_run_status', event_time: now, object_id: ownPause.cid, actor_id: 'u1' },
+      // o dono usa o mesmo usuário do token, mas pelo Gerenciador: mexido
+      { event_type: 'update_campaign_run_status', event_time: now, object_id: ownerSameActor.cid, actor_id: 'u1', application_id: ADS_MANAGER_APP },
+      // sem app e longe do nosso envio: mexido (na dúvida, não reativa)
+      { event_type: 'update_campaign_run_status', event_time: late, object_id: ownerNoApp.cid, actor_id: 'u1' }
+    ];
     await service().run(pool, at(date, '06:01'));
-    expect(await runOf(ours.cid, date)).toMatchObject({ state: 'REACTIVATED', activity_check: 'CLEAN' });
+    expect(await runOf(appOurs.cid, date)).toMatchObject({ state: 'REACTIVATED', activity_check: 'CLEAN' });
+    expect(await runOf(ownPause.cid, date)).toMatchObject({ state: 'REACTIVATED', activity_check: 'CLEAN' });
+    expect(await runOf(ownerSameActor.cid, date)).toMatchObject({ state: 'CANCELLED', activity_check: 'TOUCHED' });
+    expect((await runOf(ownerSameActor.cid, date)).reason).toMatch(/fora do NORQVA/);
+    expect(await runOf(ownerNoApp.cid, date)).toMatchObject({ state: 'CANCELLED', activity_check: 'TOUCHED' });
+    expect(actives(ownerSameActor.cid)).toHaveLength(0);
+  });
 
-    // outra noite, sem o registro de atividades: hora da última alteração (instantes comparados, não texto)
+  it('Gerenciador: sem saber o app do token, só a nossa mudança de situação é nossa; com META_APP_ID vale o app informado', async () => {
+    const date = nextDay();
+    const ownPause = await seed();
+    const budget = await seed();
+    await service().run(pool, at(date, '00:01'));
+    failApp = true;
+    const now = new Date().toISOString();
+    activities = [
+      { event_type: 'update_campaign_run_status', event_time: now, object_id: ownPause.cid, actor_id: 'u1', application_id: 'app1' },
+      { event_type: 'update_campaign_budget', event_time: now, object_id: budget.cid, actor_id: 'u1', application_id: 'app1' }
+    ];
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(ownPause.cid, date)).toMatchObject({ state: 'REACTIVATED', activity_check: 'CLEAN_NO_APP' });
+    expect(await runOf(budget.cid, date)).toMatchObject({ state: 'CANCELLED', activity_check: 'TOUCHED' });
+
+    const date2 = nextDay();
+    const viaEnv = await seed();
+    await service().run(pool, at(date2, '00:01'));
+    const prevApp = process.env.META_APP_ID;
+    process.env.META_APP_ID = 'app-env';
+    try {
+      activities = [{ event_type: 'update_campaign_budget', event_time: new Date().toISOString(), object_id: viaEnv.cid, actor_id: 'u1', application_id: 'app-env' }];
+      await service().run(pool, at(date2, '06:01'));
+      expect(await runOf(viaEnv.cid, date2)).toMatchObject({ state: 'REACTIVATED', activity_check: 'CLEAN' });
+    } finally {
+      if (prevApp === undefined) delete process.env.META_APP_ID;
+      else process.env.META_APP_ID = prevApp;
+    }
+  });
+
+  it('Gerenciador: sem o registro de atividades, compara os instantes de updated_time', async () => {
     const date2 = nextDay();
     const same = await seed();
     const changed = await seed();
-    activities = [];
     await service().run(pool, at(date2, '00:01'));
     failActivities = true;
     const before = String((await runOf(same.cid, date2)).meta_updated_time_at_pause);
