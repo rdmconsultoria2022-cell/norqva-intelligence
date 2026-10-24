@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, RefreshCw, ExternalLink, Image as ImageIcon, Wand2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ExternalLink, Image as ImageIcon, Wand2, Copy } from 'lucide-react';
 import { Section, Surface, StatusPill, useIsMobile, Tone } from '../../components/ui/premium';
 import { ROLE_LABEL } from './CreativeReferences';
 import { GeneratedCampaignPanel } from './GeneratedCampaignPanel';
+import { buildNorqvaCopy, adText, copyText } from './factoryCopy';
 
 // NORQVA-0116 (D-0116): tela de geração. À esquerda, o esqueleto da referência (só função e forma); à direita,
 // a NOSSA seção, editável. No celular as duas ficam uma embaixo da outra. Cada campo mostra o selo da checagem
@@ -86,7 +87,14 @@ export const GenerationView: React.FC<{
   showError: (m: string) => void;
   showSuccess: (m: string) => void;
   onBack: () => void;
-}> = ({ apiFetch, pageId, isAdmin, canEdit, showError, showSuccess, onBack }) => {
+  /** NORQVA-0118: na Fábrica a campanha fica no passo 6 e a navegação é a do passo a passo. */
+  hideCampaign?: boolean;
+  hideBack?: boolean;
+  /** NORQVA-0118: aprovar/publicar a página ficam no passo 5 da Fábrica. */
+  hideStatusActions?: boolean;
+  /** NORQVA-0118: avisa a Fábrica quando a página ou os anúncios mudam (aprovação, publicação). */
+  onChanged?: (d: any) => void;
+}> = ({ apiFetch, pageId, isAdmin, canEdit, showError, showSuccess, onBack, hideCampaign = false, hideBack = false, hideStatusActions = false, onChanged }) => {
   const isMobile = useIsMobile();
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -99,6 +107,7 @@ export const GenerationView: React.FC<{
   const apply = (d: any) => {
     if (!alive.current || !d?.page) return;
     setData(d);
+    onChanged?.(d);
     setDrafts(Object.fromEntries((d.page.sections || []).map((s: any) => [s.order, sectionDraft(s)])));
     setAdDrafts(Object.fromEntries((d.ads || []).map((a: any) => [a.id, adDraft(a)])));
   };
@@ -174,6 +183,23 @@ export const GenerationView: React.FC<{
   const editable = canEdit && page.status !== 'PUBLISHED';
   const publicUrl = typeof window !== 'undefined' ? `${window.location.origin}/v/${page.slug}` : `/v/${page.slug}`;
   const notes: string[] = page.copy_check?.notes || [];
+
+  // NORQVA-0118: copia o que está na tela (inclusive o que ainda não foi salvo). Só texto nosso.
+  const copyAll = async () => {
+    const sections = (page.sections || []).map((s: any) => {
+      const d = drafts[s.order];
+      return s.fixed || !d ? s : { ...s, headline: d.headline, body: d.body, bullets: d.bullets, cta_label: d.cta_label };
+    });
+    const list = (ads || []).map((a: any) => ({ human_id: a.human_id, ...(adDrafts[a.id] || adDraft(a)) }));
+    const ok = await copyText(buildNorqvaCopy({ title: `${page.product_name || 'Produto'} (${page.human_id})`, sections, ads: list }));
+    if (ok) showSuccess('Versão NORQVA copiada: página e anúncios.');
+    else showError('Não deu para copiar neste navegador. Selecione o texto e copie à mão.');
+  };
+  const copyAd = async (a: any) => {
+    const ok = await copyText(adText({ human_id: a.human_id, ...(adDrafts[a.id] || adDraft(a)) }));
+    if (ok) showSuccess(`Anúncio ${a.human_id} copiado.`);
+    else showError('Não deu para copiar neste navegador.');
+  };
 
   const refCard = (s: any) => {
     const r = refSections.find(x => x.order === s.ref_order);
@@ -303,9 +329,13 @@ export const GenerationView: React.FC<{
   return (
     <div className="space-y-6" data-testid="generation-view">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-nq-aux text-nq-muted hover:text-nq-text min-h-[44px]">
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </button>
+        {hideBack ? (
+          <span />
+        ) : (
+          <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-nq-aux text-nq-muted hover:text-nq-text min-h-[44px]">
+            <ArrowLeft className="h-4 w-4" /> Voltar
+          </button>
+        )}
         <button type="button" onClick={load} aria-label="Atualizar" className="h-11 w-11 flex items-center justify-center rounded-full text-nq-muted hover:text-nq-text">
           <RefreshCw className="h-4 w-4" />
         </button>
@@ -323,6 +353,14 @@ export const GenerationView: React.FC<{
           {reference && <span>Referência {reference.human_id}</span>}
         </div>
         <p className="text-nq-caption text-nq-subtle">Texto 100% nosso. Da referência só veio a ordem e a função de cada parte.</p>
+        <button
+          type="button"
+          onClick={copyAll}
+          data-testid="copy-norqva"
+          className={`${pill} bg-nq-raised text-nq-text inline-flex items-center gap-1.5 mt-2`}
+        >
+          <Copy className="h-4 w-4" /> Copiar a versão NORQVA
+        </button>
       </div>
 
       {(images?.message || notes.length > 0 || blocked > 0) && (
@@ -345,7 +383,7 @@ export const GenerationView: React.FC<{
         </Surface>
       )}
 
-      {isAdmin && (
+      {isAdmin && !hideStatusActions && (
         <div className="flex flex-wrap gap-2">
           {page.status === 'DRAFT' && (
             <button
@@ -450,6 +488,14 @@ export const GenerationView: React.FC<{
                     {(a.claims || []).length ? a.claims.map((c: any) => c.text).join('; ') : 'nenhuma ligada (cadastre uma na fábrica para poder aprovar)'}
                   </p>
                   <div className="flex flex-wrap gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => copyAd(a)}
+                      data-testid={`copy-ad-${a.human_id}`}
+                      className={`${pill} bg-nq-raised text-nq-text inline-flex items-center gap-1.5`}
+                    >
+                      <Copy className="h-4 w-4" /> Copiar
+                    </button>
                     {canEdit && (
                       <button
                         type="button"
@@ -534,7 +580,7 @@ export const GenerationView: React.FC<{
         </ul>
       </Section>
 
-      {isAdmin && (
+      {isAdmin && !hideCampaign && (
         <GeneratedCampaignPanel apiFetch={apiFetch} pageId={page.id} pageStatus={page.status} ads={ads || []} showError={showError} showSuccess={showSuccess} />
       )}
     </div>

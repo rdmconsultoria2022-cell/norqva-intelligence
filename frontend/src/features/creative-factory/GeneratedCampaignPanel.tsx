@@ -33,7 +33,9 @@ export const GeneratedCampaignPanel: React.FC<{
   ads: any[];
   showError: (m: string) => void;
   showSuccess: (m: string) => void;
-}> = ({ apiFetch, pageId, pageStatus, ads, showError, showSuccess }) => {
+  /** NORQVA-0119: avisa a Fábrica depois de montar/criar a campanha (para recarregar os resultados). */
+  onChanged?: () => void;
+}> = ({ apiFetch, pageId, pageStatus, ads, showError, showSuccess, onChanged }) => {
   const [data, setData] = useState<any>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,6 +93,7 @@ export const GeneratedCampaignPanel: React.FC<{
       showSuccess(msg);
       setOpen(false);
       await load();
+      onChanged?.();
     } catch (err: any) {
       showError(err?.message || 'Não foi possível criar a campanha.');
       await load();

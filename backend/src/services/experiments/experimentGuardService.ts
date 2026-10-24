@@ -168,7 +168,7 @@ export class ExperimentGuardService {
   }
 
   private async pause(pool: Pool, plan: any, campaignId: string, reason: string, numbers: Record<string, unknown>) {
-    // NORQVA-0118: mesma trava do plano que a pausa noturna usa ao reativar
+    // NORQVA-0120: mesma trava do plano que a pausa noturna usa ao reativar
     return withPlanLock(pool, String(plan.id), () => this.pauseLocked(pool, plan, campaignId, reason, numbers));
   }
 
@@ -340,7 +340,7 @@ export class ExperimentGuardService {
       const out: any = { code: plan.code, spent: reading.spend, cap, pct: ev.pct, projection: ev.projection, alerts: ev.newAlerts, meta_status: reading.effective_status };
       if (ev.shouldPause) {
         if (reading.effective_status && !['ACTIVE', 'IN_PROCESS', 'WITH_ISSUES'].includes(reading.effective_status)) {
-          // NORQVA-0118: parada pela pausa noturna não vira CAPPED aqui; de manhã a pausa noturna confere o teto
+          // NORQVA-0120: parada pela pausa noturna não vira CAPPED aqui; de manhã a pausa noturna confere o teto
           // (não reativa com o teto atingido) e, reativada, o próximo ciclo do vigia decide como sempre
           if (await nightPausedNow(pool, campaignId)) {
             out.capped = null;
@@ -422,7 +422,7 @@ export class ExperimentGuardService {
   }
 }
 
-/** NORQVA-0118: a campanha está parada pela pausa noturna agora (pausando, pausada ou reativando)? */
+/** NORQVA-0120: a campanha está parada pela pausa noturna agora (pausando, pausada ou reativando)? */
 export async function nightPausedNow(pool: Pool, campaignId: string): Promise<boolean> {
   try {
     const r = await pool.query(

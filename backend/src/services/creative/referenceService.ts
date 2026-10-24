@@ -11,6 +11,7 @@ import net from 'net';
 import zlib from 'zlib';
 import { Pool, PoolClient } from 'pg';
 import { writeAuditLog } from '../../db/audit';
+import { referenceScore } from './referenceScore';
 
 // ---------------------------------------------------------------------------------------------
 // Erros e trava
@@ -956,6 +957,23 @@ export interface SalesSection {
   has_video: boolean;
   cta_count: number;
 }
+/**
+ * NORQVA-0119: sinais de força vistos nos prints da Biblioteca de Anúncios da Meta (data de início e quantos
+ * anúncios usam o mesmo criativo). Não é texto da referência; servem só para a nota estimada da Fábrica.
+ */
+export interface ReferenceSignals {
+  /** Data de "Veiculação iniciada em", se aparece nos prints (AAAA-MM-DD). */
+  started_on: string | null;
+  /** Último dia no ar, quando o anúncio já saiu do ar (a Biblioteca mostra um intervalo). Null = ainda no ar. */
+  ended_on: string | null;
+  /** Dias no ar (do início até o fim ou até a análise), calculado no servidor. */
+  active_days: number | null;
+  /** Quantos anúncios usam esse criativo/texto, se aparece. */
+  ads_using_creative: number | null;
+  /** Data da análise (AAAA-MM-DD), base do cálculo de dias. */
+  observed_on: string;
+}
+
 export interface SalesStructure {
   kind: 'SALES_PAGE';
   sections: SalesSection[];
@@ -963,6 +981,7 @@ export interface SalesStructure {
   length_class: (typeof LENGTH_CLASSES)[number];
   cta_text_style: string;
   color_mood: string;
+  signals?: ReferenceSignals | null;
 }
 export interface AdBeat {
   t_from_s: number | null;
@@ -979,6 +998,7 @@ export interface AdStructure {
   voiceover: boolean;
   structure_beats: AdBeat[];
   cta_style: string;
+  signals?: ReferenceSignals | null;
 }
 export type ReferenceStructure = SalesStructure | AdStructure;
 export type ReferenceType = 'SALES_PAGE' | 'AD';
@@ -995,6 +1015,37 @@ const clampStr = (v: unknown, max: number) =>
   typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '';
 const bool = (v: unknown) => v === true || v === 'true';
 const lengthFromWords = (w: number): (typeof LENGTH_CLASSES)[number] => (w < 600 ? 'SHORT' : w < 2000 ? 'MEDIUM' : 'LONG');
+
+const DAY_MS = 86400000;
+const BR_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
+/** Dia de hoje no horário de Brasília (AAAA-MM-DD). */
+export const brDay = (now: Date = new Date()) => BR_DAY.format(now);
+
+const validDay = (v: unknown): string | null => {
+  const d = typeof v === 'string' ? v.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const t = Date.parse(`${d}T00:00:00Z`);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === d ? d : null;
+};
+
+/**
+ * NORQVA-0119: confere os sinais vindos da IA. Datas só no formato AAAA-MM-DD, de 2010 até hoje (horário de
+ * Brasília); fim antes do início é descartado. Dias no ar calculados aqui (a IA não faz conta): até o fim, se o
+ * anúncio já saiu do ar, ou até hoje. Quantidade de anúncios de 1 a 10000. Sem nenhum sinal válido = null.
+ */
+export function validateSignals(raw: any, now: Date = new Date()): ReferenceSignals | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const today = brDay(now);
+  const inRange = (d: string | null) => (d && d >= '2010-01-01' && d <= today ? d : null);
+  const started = inRange(validDay(raw.started_on));
+  let ended = inRange(validDay(raw.ended_on));
+  if (ended && started && ended < started) ended = null;
+  const days = started ? Math.round((Date.parse(`${ended || today}T00:00:00Z`) - Date.parse(`${started}T00:00:00Z`)) / DAY_MS) : null;
+  const n = Number(raw.ads_using_creative);
+  const ads = raw.ads_using_creative !== null && raw.ads_using_creative !== undefined && Number.isInteger(n) && n >= 1 && n <= 10000 ? n : null;
+  if (started === null && ads === null) return null;
+  return { started_on: started, ended_on: started ? ended : null, active_days: days, ads_using_creative: ads, observed_on: today };
+}
 
 /** Confere o JSON da IA para página de venda; valor desconhecido vira o padrão; sem seções = inválido. */
 export function validateSalesStructure(raw: any): SalesStructure | null {
@@ -1020,7 +1071,8 @@ export function validateSalesStructure(raw: any): SalesStructure | null {
     tone: clampStr(raw.tone, 80),
     length_class: pick(raw.length_class, LENGTH_CLASSES, lengthFromWords(total)),
     cta_text_style: clampStr(raw.cta_text_style, 80),
-    color_mood: clampStr(raw.color_mood, 80)
+    color_mood: clampStr(raw.color_mood, 80),
+    signals: validateSignals(raw.signals)
   };
 }
 
@@ -1049,7 +1101,8 @@ export function validateAdStructure(raw: any): AdStructure | null {
     on_screen_text: bool(raw.on_screen_text),
     voiceover: bool(raw.voiceover),
     structure_beats: beats,
-    cta_style: clampStr(raw.cta_style, 80)
+    cta_style: clampStr(raw.cta_style, 80),
+    signals: validateSignals(raw.signals)
   };
 }
 
@@ -1220,6 +1273,9 @@ function ai(): ReferenceAiClient {
 
 const obj = (properties: Record<string, any>) => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 
+// NORQVA-0119: só nos prints (a Biblioteca de Anúncios mostra a data de início e quantos anúncios usam o criativo)
+const SIGNALS_SCHEMA = obj({ started_on: { type: ['string', 'null'] }, ended_on: { type: ['string', 'null'] }, ads_using_creative: { type: ['integer', 'null'] } });
+
 export function salesSchema(withVisibleText: boolean) {
   const props: Record<string, any> = {
     sections: {
@@ -1240,7 +1296,10 @@ export function salesSchema(withVisibleText: boolean) {
     cta_text_style: { type: 'string' },
     color_mood: { type: 'string' }
   };
-  if (withVisibleText) props.visible_text = { type: 'string' };
+  if (withVisibleText) {
+    props.visible_text = { type: 'string' };
+    props.signals = SIGNALS_SCHEMA;
+  }
   return { name: 'sales_page_structure', schema: obj(props) };
 }
 
@@ -1258,7 +1317,10 @@ export function adSchema(withVisibleText: boolean) {
     },
     cta_style: { type: 'string' }
   };
-  if (withVisibleText) props.visible_text = { type: 'string' };
+  if (withVisibleText) {
+    props.visible_text = { type: 'string' };
+    props.signals = SIGNALS_SCHEMA;
+  }
   return { name: 'ad_structure', schema: obj(props) };
 }
 
@@ -1274,8 +1336,10 @@ export const SYSTEM_PROMPT = [
   'Responda somente com o JSON do esquema.'
 ].join('\n');
 
-const VISIBLE_TEXT_RULE =
-  'O campo visible_text deve trazer a transcrição literal do texto visível nos prints (até 6000 caracteres). Ele serve só para conferir que nada foi copiado e é descartado em seguida; não use esse texto nos outros campos.';
+const VISIBLE_TEXT_RULE = [
+  'O campo visible_text deve trazer a transcrição literal do texto visível nos prints (até 6000 caracteres). Ele serve só para conferir que nada foi copiado e é descartado em seguida; não use esse texto nos outros campos.',
+  'O campo signals é a única exceção à regra dos números: se o print for da Biblioteca de Anúncios da Meta, informe em started_on a data de "Veiculação iniciada em" no formato AAAA-MM-DD; se o anúncio estiver inativo e aparecer um intervalo de datas, informe o último dia em ended_on (senão null); em ads_using_creative, quantos anúncios usam esse criativo e texto (quando aparecer). Se não aparecer, use null. Não invente.'
+].join('\n');
 
 export interface ScreenshotImage {
   mime: string;
@@ -1327,7 +1391,7 @@ export async function extractStructure(input: ExtractInput, type: ReferenceType)
   const label = type === 'AD' ? 'anúncio' : 'página de venda';
   let messages: any[];
   if (shots) {
-    const intro = `Tipo: ${label}. Prints em ordem (de cima para baixo).${
+    const intro = `Tipo: ${label}. Hoje é ${brDay()}. Prints em ordem (de cima para baixo).${
       shots.adText ? `\nTexto do anúncio colado pelo dono (só para entender a estrutura):\n${shots.adText.slice(0, 4000)}` : ''
     }`;
     messages = [
@@ -1434,7 +1498,8 @@ function publicRow(row: any) {
       structure = null;
     }
   }
-  return { ...row, structure, shingle_count: Number(row.shingle_count || 0) };
+  // NORQVA-0119: nota de força estimada (conta pura sobre a estrutura e os sinais dos prints)
+  return { ...row, structure, shingle_count: Number(row.shingle_count || 0), score: row.status === 'READY' ? referenceScore(structure) : null };
 }
 
 export const MIN_SCREENSHOT_WORDS = 15;

@@ -549,7 +549,7 @@ app.get('/api/campaigns/:id/creative-options', requireRole(['ADMIN']), getCampai
 // NORQVA-0096: Gerenciar campanha (só leitura)
 app.get('/api/campaigns/:id/economics', requireRole(CAMPAIGNS_READ), getCampaignEconomics);
 app.get('/api/campaigns/:id/history', requireRole(CAMPAIGNS_READ), getCampaignHistory);
-// NORQVA-0118: pausa noturna (00h–06h por padrão, horário de Brasília); salvar só muda a configuração do plano
+// NORQVA-0120: pausa noturna (00h–06h por padrão, horário de Brasília); salvar só muda a configuração do plano
 app.get('/api/campaigns/:id/night-pause', requireRole(CAMPAIGNS_READ), getCampaignNightPause);
 app.post('/api/campaigns/:id/night-pause', requireRole(['ADMIN']), saveCampaignNightPause);
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
@@ -729,7 +729,7 @@ async function startServer() {
       console.error('[Server] Failed to start experiment guard (non-fatal):', e.message);
     }
 
-    // NORQVA-0118: pausa noturna a cada 2 min (NIGHT_PAUSE_ENABLED=true liga as pausas novas; reativar o que já pausou roda sempre)
+    // NORQVA-0120: pausa noturna a cada 2 min (NIGHT_PAUSE_ENABLED=true liga as pausas novas; reativar o que já pausou roda sempre)
     try {
       registerShutdownHook(startNightPauseScheduler(pool));
     } catch (e: any) {

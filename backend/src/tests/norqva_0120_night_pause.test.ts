@@ -1,4 +1,4 @@
-// NORQVA-0118: pausa noturna. Graph API simulada: nunca fala com a Meta.
+// NORQVA-0120: pausa noturna. Graph API simulada: nunca fala com a Meta.
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { Pool } from 'pg';
@@ -21,7 +21,7 @@ const at = (date: string, hhmm: string) => {
   return new Date(Date.UTC(y, mo - 1, d, h + 3, m));
 };
 
-describe('NORQVA-0118 — horário de Brasília e janela', () => {
+describe('NORQVA-0120 — horário de Brasília e janela', () => {
   it('calcula data e minuto em São Paulo com o servidor em UTC', () => {
     expect(spClock(new Date('2026-10-24T03:00:00Z'))).toMatchObject({ date: '2026-10-24', minutes: 0, hhmm: '00:00' });
     expect(spClock(new Date('2026-10-24T02:59:00Z'))).toMatchObject({ date: '2026-10-23', minutes: 23 * 60 + 59 });
@@ -78,7 +78,7 @@ describe('NORQVA-0118 — horário de Brasília e janela', () => {
   });
 });
 
-describe.sequential('NORQVA-0118 — pausa noturna', () => {
+describe.sequential('NORQVA-0120 — pausa noturna', () => {
   let pool: Pool;
   let accountDbId: string;
   let admin: string;
@@ -164,7 +164,7 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     );
     const r = await pool.query(
       `INSERT INTO launch_plans (code, status, spec, meta_ids, daily_budget_brl, max_spend_brl, question_text, night_pause_enabled, night_pause_start, night_pause_end)
-       VALUES ($1, 'ACTIVE', $2, $3, 30, $4::numeric, 'teste 0118', $5, $6, $7) RETURNING *`,
+       VALUES ($1, 'ACTIVE', $2, $3, 30, $4::numeric, 'teste 0120', $5, $6, $7) RETURNING *`,
       [
         code,
         JSON.stringify({ campaign: { name: `Campanha ${code}` } }),
@@ -190,7 +190,7 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     pool = initializeDB();
     await runMigrations(pool);
     const acct = await pool.query(
-      `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo) VALUES ('act_norqva_0118', 'NORQVA 0118', 'BRL', FALSE)
+      `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo) VALUES ('act_norqva_0120', 'NORQVA 0120', 'BRL', FALSE)
        ON CONFLICT (meta_account_id, is_demo) DO UPDATE SET name = EXCLUDED.name RETURNING id`
     );
     accountDbId = acct.rows[0].id;
@@ -202,8 +202,8 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
       );
       return signSupabaseToken({ sub: u.rows[0].auth_user_id, email: u.rows[0].email, role });
     };
-    admin = await mk('admin.night0118@norqva.test', 'ADMIN');
-    perf = await mk('perf.night0118@norqva.test', 'PERFORMANCE');
+    admin = await mk('admin.night0120@norqva.test', 'ADMIN');
+    perf = await mk('perf.night0120@norqva.test', 'PERFORMANCE');
   });
 
   beforeEach(async () => {

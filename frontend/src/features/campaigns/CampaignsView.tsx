@@ -964,7 +964,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
               </div>
             )}
             {tab === 'config' && (
-              // NORQVA-0118: pausa noturna (padrão ligada, 00:00 às 06:00, horário de Brasília)
+              // NORQVA-0120: pausa noturna (padrão ligada, 00:00 às 06:00, horário de Brasília)
               <NightPauseSettings campaignId={campaign.id} canEdit={isAdmin} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
             )}
 

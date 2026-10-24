@@ -165,7 +165,7 @@ export async function getCampaignHistory(req: AuthenticatedRequest, res: Respons
   }
 }
 
-// NORQVA-0118: pausa noturna por campanha (Gerenciar campanha → Configurações). Salvar não mexe na Meta.
+// NORQVA-0120: pausa noturna por campanha (Gerenciar campanha → Configurações). Salvar não mexe na Meta.
 export async function getCampaignNightPause(req: AuthenticatedRequest, res: Response) {
   if (demoBlocked(req, res)) return;
   try {

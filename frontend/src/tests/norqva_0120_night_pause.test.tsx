@@ -1,4 +1,4 @@
-// NORQVA-0118: pausa noturna em Gerenciar campanha → Configurações.
+// NORQVA-0120: pausa noturna em Gerenciar campanha → Configurações.
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -21,7 +21,7 @@ function setup(settings: any, canEdit = true) {
 const base = { enabled: true, start: '00:00', end: '06:00', timezone: 'America/Sao_Paulo', master_enabled: true, runs: [] };
 const postCall = (apiFetch: any) => apiFetch.mock.calls.find((c: any[]) => c[1]?.method === 'POST') as any;
 
-describe('NORQVA-0118 — pausa noturna na tela', () => {
+describe('NORQVA-0120 — pausa noturna na tela', () => {
   it('rótulos e validação da janela', () => {
     expect(hourLabel('00:00')).toBe('00h');
     expect(hourLabel('01:30')).toBe('01h30');

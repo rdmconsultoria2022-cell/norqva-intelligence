@@ -1,4 +1,4 @@
--- NORQVA-0118 pausa noturna (só aditiva)
+-- NORQVA-0120 pausa noturna (só aditiva)
 -- cada plano ganha a pausa noturna ligada por padrão, das 00:00 às 06:00 no horário de Brasília
 -- night_pause_runs guarda uma linha por campanha e por noite: o NORQVA só reativa o que ele mesmo pausou
 -- a chave única (campanha, data) impede pausar ou reativar duas vezes, mesmo com reinício ou duas instâncias

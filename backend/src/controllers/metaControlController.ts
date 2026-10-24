@@ -340,7 +340,7 @@ async function syncPlanPauseState(pool: Pool, req: AuthenticatedRequest, metaId:
   try {
     const owner = await planOfEntity(pool, 'CAMPAIGN', metaId, isDemoReq(req));
     if (!owner || !isPlanCampaign(owner.plan, owner.metaId)) return {};
-    // NORQVA-0118: mesma trava do plano que a pausa noturna usa ao reativar
+    // NORQVA-0120: mesma trava do plano que a pausa noturna usa ao reativar
     return await withPlanLock(pool, String(owner.plan.id), () => syncPlanPauseStateLocked(pool, req, owner, status));
   } catch (err) {
     console.error('[META CONTROL] não registrou a pausa no plano', err);

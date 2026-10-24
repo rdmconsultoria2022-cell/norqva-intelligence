@@ -249,7 +249,7 @@ const EVENT_LABEL: Record<string, string> = {
   LAUNCH_PLAN_CREATE_ON_META: 'Decisão: criar na Meta',
   LAUNCH_PLAN_SPEND_CAP: 'Decisão: teto de gasto',
   CAMPAIGN_AD_CREATIVE_SWAP: 'Decisão: editar anúncio na Meta',
-  // NORQVA-0118: pausa noturna
+  // NORQVA-0120: pausa noturna
   NIGHT_PAUSE_DONE: 'Pausa noturna',
   NIGHT_PAUSE_UNCONFIRMED: 'Pausa noturna (aguardando conferência)',
   NIGHT_PAUSE_FAILED: 'Pausa noturna não feita',
@@ -339,7 +339,7 @@ const CHANGE_STATE: Record<string, { label: string; tone: 'positive' | 'attentio
 const brlText = (v: string | null) => (v === null || v === undefined || v === '' ? '—' : brl(Number(v)));
 
 export function changeLabel(c: any): string {
-  // NORQVA-0118: fichas da pausa noturna
+  // NORQVA-0120: fichas da pausa noturna
   if (c.origin === 'NIGHT_PAUSE' && c.kind === 'STATUS') return c.requested_value === 'PAUSED' ? 'Pausa noturna' : 'Fim da pausa noturna';
   if (c.kind === 'STATUS') return c.requested_value === 'PAUSED' ? 'Pausar' : 'Reativar';
   return `Orçamento ${brlText(c.previous_value)} → ${brlText(c.requested_value)} por dia`;
@@ -712,7 +712,7 @@ export function MetaObjectsEditor({
   );
 }
 
-// ---------------- NORQVA-0118: pausa noturna ----------------
+// ---------------- NORQVA-0120: pausa noturna ----------------
 
 const NIGHT_RUN_STATE: Record<string, { label: string; tone: 'positive' | 'attention' | 'critical' | 'neutral' | 'info' }> = {
   SKIPPED: { label: 'Não estava ativa', tone: 'neutral' },

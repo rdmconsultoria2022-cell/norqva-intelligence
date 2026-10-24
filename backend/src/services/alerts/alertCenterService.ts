@@ -33,7 +33,7 @@ const RULES: Record<string, RuleInfo> = {
   EXPERIMENT_GUARD_PAUSE_FAILED: { title: 'O vigia não conseguiu pausar', severity: 'CRITICAL', action: 'Pausar a campanha manualmente agora.', tab: 'results' },
   EXPERIMENT_GUARD_READ_FAILED: { title: 'O vigia não consegue ler o gasto', severity: 'CRITICAL', action: 'Conferir o gasto na Meta e pausar se estiver perto do teto.', tab: 'cap' },
   EXPERIMENT_CAP_EXTENDED_PROFIT: { title: 'Teto ampliado por lucro', severity: 'INFO', action: 'Nenhuma ação: a campanha está dando lucro.', tab: 'cap' },
-  // NORQVA-0118: pausa noturna
+  // NORQVA-0120: pausa noturna
   NIGHT_PAUSE_PAUSE_FAILED: { title: 'A pausa noturna não conseguiu pausar', severity: 'ATTENTION', action: 'A campanha seguiu ativa à noite. Pause pela tela se quiser.', tab: 'results' },
   NIGHT_PAUSE_RESUME_FAILED: { title: 'A pausa noturna não conseguiu reativar', severity: 'CRITICAL', action: 'A campanha está pausada. Reative pela tela se ela deve rodar.', tab: 'results' },
   NIGHT_PAUSE_RESUME_CANCELLED: { title: 'Reativação da manhã cancelada', severity: 'ATTENTION', action: 'Alguém ou o vigia mexeu na campanha à noite. Confira e reative pela tela se quiser.', tab: 'results' },
@@ -219,7 +219,7 @@ export function guardResolution(a: {
       return capped || String(a.campaign_status || '').toUpperCase() === 'PAUSED' ? 'CAMPAIGN_PAUSED' : null;
     case 'EXPERIMENT_GUARD_PAUSE_FAILED':
       return String(a.campaign_status || '').toUpperCase() === 'PAUSED' || capped ? 'CAMPAIGN_PAUSED' : null;
-    // NORQVA-0118: campanha que ficou pausada volta a rodar (reativada pela tela) → resolvido
+    // NORQVA-0120: campanha que ficou pausada volta a rodar (reativada pela tela) → resolvido
     case 'NIGHT_PAUSE_RESUME_FAILED':
     case 'NIGHT_PAUSE_RESUME_CANCELLED':
     case 'NIGHT_PAUSE_EXPIRED':

@@ -1223,7 +1223,7 @@ export class MetaMutatingClient {
   }
 
   /**
-   * NORQVA-0118: leitura da campanha para a pausa noturna (só leitura): situação configurada, orçamento
+   * NORQVA-0120: leitura da campanha para a pausa noturna (só leitura): situação configurada, orçamento
    * diário em reais (null quando fica nos conjuntos) e a hora da última alteração na Meta (updated_time).
    */
   public async readCampaignState(
@@ -1242,7 +1242,7 @@ export class MetaMutatingClient {
   }
 
   /**
-   * NORQVA-0118: registro de atividades da conta de anúncios (só leitura, GET /act_X/activities) entre dois
+   * NORQVA-0120: registro de atividades da conta de anúncios (só leitura, GET /act_X/activities) entre dois
    * instantes (segundos Unix). Segue a paginação até 5 páginas. Campos do AdActivity: actor_id, application_id,
    * event_time, event_type, object_id, object_type.
    */
@@ -1281,7 +1281,7 @@ export class MetaMutatingClient {
   }
 
   /**
-   * NORQVA-0118: ID do app a que o token pertence (GET /app com o próprio token), para reconhecer as ações do
+   * NORQVA-0120: ID do app a que o token pertence (GET /app com o próprio token), para reconhecer as ações do
    * NORQVA no registro de atividades. O usuário do token não serve: pode ser o próprio dono.
    */
   public async readTokenAppId(): Promise<string | null> {

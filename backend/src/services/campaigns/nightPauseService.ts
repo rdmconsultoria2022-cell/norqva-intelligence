@@ -7,7 +7,7 @@ import { writeAuditLog } from '../../db/audit';
 import { protectedMetaIds } from '../experiments/protectedIds';
 import { withPlanLock } from './planLock';
 
-// NORQVA-0118 (D-0118): pausa noturna. Contrato aprovado pelo Ricardo em 23/10/2026 21h22.
+// NORQVA-0120 (D-0120): pausa noturna. Contrato aprovado pelo Ricardo em 23/10/2026 21h22.
 // Todo dia, no horário de Brasília (America/Sao_Paulo, calculado aqui, sem depender do fuso do servidor):
 // - no início da janela (padrão 00:00, com tolerância de 60 min se o servidor estava fora) pausa na Meta cada
 //   campanha ATIVA de plano com a pausa noturna ligada e grava que foi o NORQVA quem pausou (night_pause_runs,
