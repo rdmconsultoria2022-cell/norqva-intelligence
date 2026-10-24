@@ -423,17 +423,19 @@ export class NightPauseService {
    * Fichas de alteração, decisões e registros de auditoria do plano ou dos objetos dele, menos os da própria pausa.
    */
   async touchedDuringNight(pool: Pool, run: any, plan: any): Promise<string | null> {
-    const since = run.quiet_since || run.pause_started_at;
+    // o instante vem do próprio banco (subconsulta): passar pelo JavaScript perde os microssegundos e o
+    // registro da própria pausa, gravado no mesmo milissegundo, pareceria "depois"
+    const SINCE = `(SELECT COALESCE(quiet_since, pause_started_at) FROM night_pause_runs WHERE id = $1)`;
     const cid = String(run.meta_campaign_id);
     const ids = new Set<string>([cid, ...metaIdsOfPlan(normalizeMetaIds(plan.meta_ids))]);
     const idList = Array.from(ids);
 
     const changes = await pool.query(
       `SELECT kind, requested_value, requested_by_name FROM meta_change_requests
-       WHERE created_at > $1 AND is_demo = FALSE AND COALESCE(origin, '') <> 'NIGHT_PAUSE'
+       WHERE created_at > ${SINCE} AND is_demo = FALSE AND COALESCE(origin, '') <> 'NIGHT_PAUSE'
          AND (plan_id = $2 OR meta_campaign_id = $3 OR meta_id = ANY($4::text[]))
        LIMIT 1`,
-      [since, plan.id, cid, idList]
+      [run.id, plan.id, cid, idList]
     );
     if (changes.rows.length) {
       const c = changes.rows[0];
@@ -442,9 +444,9 @@ export class NightPauseService {
 
     const decisions = await pool.query(
       `SELECT action, plan_id, meta_ids FROM decision_events
-       WHERE created_at > $1 AND is_demo = FALSE AND action NOT LIKE 'NIGHT_PAUSE%'
+       WHERE created_at > ${SINCE} AND is_demo = FALSE AND action NOT LIKE 'NIGHT_PAUSE%'
        ORDER BY created_at LIMIT 500`,
-      [since]
+      [run.id]
     );
     for (const d of decisions.rows) {
       const metaIds = parseJson(d.meta_ids);
@@ -454,9 +456,9 @@ export class NightPauseService {
 
     const audits = await pool.query(
       `SELECT event_type, description FROM audit_logs
-       WHERE created_at > $1 AND is_demo = FALSE AND event_type = ANY($2::text[])
+       WHERE created_at > ${SINCE} AND is_demo = FALSE AND event_type = ANY($2::text[])
        ORDER BY created_at LIMIT 500`,
-      [since, TOUCH_EVENTS]
+      [run.id, TOUCH_EVENTS]
     );
     const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const patterns = [String(plan.code), ...idList].map((t) => new RegExp(`(^|[^A-Za-z0-9_-])${esc(t)}([^A-Za-z0-9_-]|$)`, 'i'));

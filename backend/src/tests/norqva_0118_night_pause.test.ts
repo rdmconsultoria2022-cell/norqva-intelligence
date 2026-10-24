@@ -328,6 +328,24 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     expect((await runOf(metaBudget.cid, date)).reason).toMatch(/orçamento da campanha mudou na Meta/);
   });
 
+  it('registro da própria pausa no mesmo milissegundo não conta como alteração; um microssegundo depois conta', async () => {
+    const date = nextDay();
+    const a = await seed();
+    const b = await seed();
+    await service().run(pool, at(date, '00:01'));
+    const touch = (cid: string, offset: string) =>
+      pool.query(
+        `INSERT INTO audit_logs (id, event_type, description, is_demo, created_at)
+         VALUES ($1, 'META_CAMPAIGN_STATUS_CHANGED', $2, FALSE, (SELECT quiet_since FROM night_pause_runs WHERE meta_campaign_id = $3) + $4::interval)`,
+        [crypto.randomUUID(), `Set CAMPAIGN 'x' (${cid}) status from ACTIVE to PAUSED.`, cid, offset]
+      );
+    await touch(a.cid, '-200 microseconds');
+    await touch(b.cid, '200 microseconds');
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
+    expect(await runOf(b.cid, date)).toMatchObject({ state: 'CANCELLED' });
+  });
+
   it('reativada por alguém durante a noite (Meta já ACTIVE): não manda nada', async () => {
     const date = nextDay();
     const a = await seed();
