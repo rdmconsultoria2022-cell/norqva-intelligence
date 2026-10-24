@@ -82,7 +82,13 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
     resetMetaPreflightCacheForTesting();
     try {
       const get = vi.fn(async (endpoint: string) => {
-        if (endpoint === '/me') return { id: 'u1' };
+        // NORQVA-0120: busca de estados (regiões) da Meta
+    if (endpoint === '/search') {
+      const keys: Record<string, string> = { 'Minas Gerais': '460', 'São Paulo': '472' };
+      const q = String(params.q || '');
+      return { data: keys[q] ? [{ key: keys[q], name: q, type: 'region', country_code: 'BR' }, { key: '9', name: `${q} (outro)`, type: 'region', country_code: 'BR' }] : [] };
+    }
+    if (endpoint === '/me') return { id: 'u1' };
         if (endpoint === '/me/permissions') return { data: [{ permission: 'ads_management', status: 'granted' }] };
         return { id: endpoint.slice(1) };
       });
@@ -182,6 +188,12 @@ function makeGraph(opts: { failOnFirst?: string } = {}) {
     if (listing && params.filtering) {
       const name = JSON.parse(params.filtering)[0].value;
       return { data: registry.filter(o => o.parent === listing[1] && o.edge === listing[2] && o.name === name) };
+    }
+    // NORQVA-0120: busca de estados (regiões) da Meta
+    if (endpoint === '/search') {
+      const keys: Record<string, string> = { 'Minas Gerais': '460', 'São Paulo': '472' };
+      const q = String(params.q || '');
+      return { data: keys[q] ? [{ key: keys[q], name: q, type: 'region', country_code: 'BR' }, { key: '9', name: `${q} (outro)`, type: 'region', country_code: 'BR' }] : [] };
     }
     if (endpoint === '/me') return { id: 'u1' };
     if (endpoint === '/me/permissions') return { data: [{ permission: 'ads_management', status: 'granted' }, { permission: 'ads_read', status: 'granted' }] };
@@ -559,6 +571,97 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     });
     expect(r.status).toBe(400);
     expect(r.body.error).toContain('só vale para campanha criada na tela de geração');
+  });
+
+
+  // ---------------------------------------------------------------------------------------------
+  // NORQVA-0120 (contrato NORQVA-0118, etapa C): ajustes de publicação
+  // ---------------------------------------------------------------------------------------------
+
+  it('NORQVA-0120: livro da coleção sugere 45–65; destinos e estados na tela; WhatsApp ainda indisponível', async () => {
+    await pool.query('UPDATE products SET collection_key = $2 WHERE id = $1', [productId, `t120${tag.toLowerCase()}`]);
+    try {
+      const p = await mkPage();
+      const r = await get(`/api/generated-pages/${p.pageId}/campaign`);
+      expect(r.body.defaults).toMatchObject({ age_min: 45, age_max: 65, destination: 'PAGE', regions: [], genders: 'ALL', placements: 'AUTOMATIC', advantage_audience: true, end_date: null });
+      expect(r.body.destinations.map((d: any) => [d.value, d.available])).toEqual([['PAGE', true], ['OFFER_PAGE', true], ['WHATSAPP', false]]);
+      expect(r.body.destinations[1].url).toBe(`https://norqva-intelligence-frontend.vercel.app/p/OFF-T117${tag}`);
+      expect(r.body.states.MG).toBe('Minas Gerais');
+    } finally {
+      await pool.query('UPDATE products SET collection_key = NULL WHERE id = $1', [productId]);
+    }
+  });
+
+  it('NORQVA-0120: todos os ajustes chegam PAUSADOS na Meta (estados, sexo, idade como sugestão, posicionamentos, término, destino da oferta, anúncios escolhidos)', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    const end = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+    const r = await post(`/api/generated-pages/${p.pageId}/campaign`, {
+      daily_budget_brl: 40,
+      max_spend_brl: 200,
+      age_min: 45,
+      age_max: 65,
+      regions: ['sp', 'MG'],
+      genders: 'FEMALE',
+      placements: 'FACEBOOK_INSTAGRAM',
+      advantage_audience: true,
+      end_date: end,
+      destination: 'OFFER_PAGE',
+      creative_ids: [p.ads[1].id]
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.created).toBe(true);
+    const spec = r.body.plan.spec;
+    expect(spec.adsets[0]).toMatchObject({
+      daily_budget_brl: 40,
+      end_date: end,
+      targeting: { countries: ['BR'], regions: ['MG', 'SP'], genders: 'FEMALE', placements: 'FACEBOOK_INSTAGRAM', age_min: 45, age_max: 65, advantage_audience: true }
+    });
+    expect(spec.adsets[0].targeting_summary).toBe('MG, SP, 45–65 (sugestão), mulheres, público Advantage, só Facebook e Instagram');
+    expect(spec.ads).toHaveLength(1);
+    expect(spec.ads[0].factory_creative).toBe(p.ads[1].id);
+    expect(spec.ads[0].destination_url).toBe(`https://norqva-intelligence-frontend.vercel.app/p/OFF-T117${tag}`);
+    const adset = g.calls.find(c => c.endpoint.endsWith('/adsets'))!.payload;
+    expect(adset.status).toBe('PAUSED');
+    expect(adset.end_time).toBe(`${end}T23:59:00-0300`);
+    // Advantage ligado: idade mínima de controle até 25, máxima 65 e a faixa escolhida como sugestão
+    expect(adset.targeting).toMatchObject({
+      geo_locations: { regions: [{ key: '460' }, { key: '472' }] },
+      age_min: 25,
+      age_max: 65,
+      age_range: [45, 65],
+      genders: [2],
+      publisher_platforms: ['facebook', 'instagram'],
+      targeting_automation: { advantage_audience: 1 }
+    });
+    expect(adset.targeting.geo_locations.countries).toBeUndefined();
+    const creativeCall = g.calls.find(c => c.endpoint.endsWith('/adcreatives'))!.payload;
+    expect(JSON.stringify(creativeCall)).toContain(`/p/OFF-T117${tag}`);
+    expect(JSON.stringify(g.calls)).not.toContain('ACTIVE');
+  });
+
+  it('NORQVA-0120: público fechado trava a idade; valores inválidos são recusados sem criar nada', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    const bad = async (body: any, msg: RegExp) => {
+      const r = await post(`/api/generated-pages/${p.pageId}/campaign`, body);
+      expect(r.status, JSON.stringify(r.body)).toBe(400);
+      expect(r.body.error).toMatch(msg);
+    };
+    await bad({ regions: ['XX'] }, /siglas dos estados/);
+    await bad({ genders: 'OUTRO' }, /sexo inválido/);
+    await bad({ placements: 'TUDO' }, /posicionamento inválido/);
+    await bad({ destination: 'WHATSAPP' }, /WhatsApp fica para quando/);
+    await bad({ end_date: '2020-01-01' }, /depois de hoje/);
+    await bad({ end_date: '31/12/2026' }, /data de término inválida/);
+    expect(g.post).not.toHaveBeenCalled();
+    const ok = await post(`/api/generated-pages/${p.pageId}/campaign`, { age_min: 45, age_max: 60, advantage_audience: false });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    const adset = g.calls.find(c => c.endpoint.endsWith('/adsets'))!.payload;
+    expect(adset.targeting).toMatchObject({ geo_locations: { countries: ['BR'] }, age_min: 45, age_max: 60, targeting_automation: { advantage_audience: 0 } });
+    expect(adset.targeting.age_range).toBeUndefined();
+    expect(adset.end_time).toBeUndefined();
+    expect(adset.targeting.publisher_platforms).toBeUndefined();
   });
 
 });

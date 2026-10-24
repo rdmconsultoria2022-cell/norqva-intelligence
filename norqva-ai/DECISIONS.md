@@ -316,3 +316,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (mesma aprovação da D-0118, etapa B):** a referência pronta ganha uma nota de 0 a 100, sempre marcada como **estimativa** e com o motivo de cada ponto: tempo no ar até 40, variações até 25, estrutura até 35. Números reais só da nossa campanha, no passo 6.
 - **Exceção à D-0115:** dos prints da Biblioteca de Anúncios ficam gravadas duas coisas que não são texto da referência: a data de início (e a de fim, se o anúncio saiu do ar) e quantos anúncios usam o criativo (`structure.signals`). Os dias no ar são calculados no servidor pelo dia de Brasília. A geração de página e anúncios não usa esses sinais.
+
+## D-0120 — Ajustes de publicação da campanha da Fábrica (2026-10-23)
+
+- **Decisão (Ricardo, "2 aprovado" em 23/10/2026 21h46, etapa C do contrato NORQVA-0118):** antes de criar a campanha (sempre PAUSADA), dá para ajustar orçamento, teto, destino (página gerada ou da oferta), estados, idade, sexo, público Advantage, posicionamentos, término e quais anúncios entram. Padrões: R$ 30/dia, teto de 7 dias, página gerada, Brasil, idade do produto (livros de cozinha 45–65, outros 25–65), todos os sexos, Advantage ligado, posicionamentos automáticos, sem término.
+- **Idade com Advantage:** a Meta só aceita mínima de 18 a 25 e máxima 65; a faixa escolhida vira sugestão (`age_range`). Para travar a idade, desliga-se o Advantage.
+- **WhatsApp como destino:** só depois do número oficial ativo. Interesses, semelhante e lances manuais ficam de fora até 50 compras.

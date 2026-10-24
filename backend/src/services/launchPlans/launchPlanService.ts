@@ -93,13 +93,32 @@ export interface LaunchPlanTargeting {
   age_min: number;
   age_max: number;
   advantage_audience: boolean;
+  /** NORQVA-0120: estados do Brasil (UF). Vazio = país inteiro. */
+  regions?: string[];
+  /** NORQVA-0120: ALL (padrão), MALE ou FEMALE. */
+  genders?: 'ALL' | 'MALE' | 'FEMALE';
+  /** NORQVA-0120: AUTOMATIC (padrão, Advantage+) ou FACEBOOK_INSTAGRAM. */
+  placements?: 'AUTOMATIC' | 'FACEBOOK_INSTAGRAM';
 }
+
+/** NORQVA-0120: UF → nome do estado como a Meta usa na busca de regiões. */
+export const BR_STATES: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo',
+  GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná',
+  PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima',
+  SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins'
+};
+
+/** Com o público Advantage+ ligado a Meta só aceita idade mínima de 18 a 25 e a máxima fica em 65 (a faixa escolhida vira sugestão). */
+export const ADVANTAGE_MAX_AGE_MIN = 25;
 
 export interface LaunchPlanAdSetSpec {
   name: string;
   daily_budget_brl: number;
   targeting: LaunchPlanTargeting;
   targeting_summary: string | null;
+  /** NORQVA-0120: último dia do conjunto (AAAA-MM-DD, horário de Brasília). Sem data = roda até alguém pausar. */
+  end_date?: string | null;
 }
 
 export interface LaunchPlanAdSpec {
@@ -203,19 +222,74 @@ function validateTargeting(raw: unknown, adsetName: string): LaunchPlanTargeting
   if (!Number.isInteger(ageMin) || !Number.isInteger(ageMax) || ageMin < 18 || ageMax > 65 || ageMin > ageMax) {
     throw new LaunchPlanError(400, `Conjunto "${adsetName}": faixa de idade inválida (18 a 65).`);
   }
-  return { countries: Array.from(new Set(countries)), age_min: ageMin, age_max: ageMax, advantage_audience: t.advantage_audience !== false };
+  const out: LaunchPlanTargeting = { countries: Array.from(new Set(countries)), age_min: ageMin, age_max: ageMax, advantage_audience: t.advantage_audience !== false };
+  // NORQVA-0120: estados, sexo e posicionamentos (opcionais; sem eles, tudo como antes)
+  if (t.regions !== undefined && t.regions !== null) {
+    if (!Array.isArray(t.regions)) throw new LaunchPlanError(400, `Conjunto "${adsetName}": estados inválidos.`);
+    const ufs = Array.from(new Set(t.regions.map((r: unknown) => String(r || '').trim().toUpperCase())));
+    if (ufs.some(uf => !BR_STATES[uf])) throw new LaunchPlanError(400, `Conjunto "${adsetName}": use as siglas dos estados (ex.: MG, SP).`);
+    if (ufs.length && (out.countries.length !== 1 || out.countries[0] !== 'BR')) throw new LaunchPlanError(400, `Conjunto "${adsetName}": estados só valem para o Brasil.`);
+    if (ufs.length) out.regions = ufs.sort();
+  }
+  if (t.genders !== undefined && t.genders !== null && t.genders !== 'ALL') {
+    if (t.genders !== 'MALE' && t.genders !== 'FEMALE') throw new LaunchPlanError(400, `Conjunto "${adsetName}": sexo inválido.`);
+    out.genders = t.genders;
+  }
+  if (t.placements !== undefined && t.placements !== null && t.placements !== 'AUTOMATIC') {
+    if (t.placements !== 'FACEBOOK_INSTAGRAM') throw new LaunchPlanError(400, `Conjunto "${adsetName}": posicionamento inválido.`);
+    out.placements = t.placements;
+  }
+  return out;
 }
 
-/** Meta targeting do conjunto. Posicionamentos Advantage+: nenhum publisher_platforms definido. */
-export function toMetaTargeting(t: LaunchPlanTargeting): Record<string, any> {
-  const out: Record<string, any> = {
-    geo_locations: { countries: t.countries },
-    age_min: t.age_min,
-    age_max: t.age_max
-  };
+/**
+ * Meta targeting do conjunto. Posicionamentos Advantage+: nenhum publisher_platforms definido.
+ * NORQVA-0120: com o público Advantage ligado, a idade mínima vai como controle (no máximo 25), a máxima fica 65
+ * e a faixa escolhida segue como sugestão (age_range). Estados precisam das chaves da Meta (regionKeys, por UF).
+ */
+export function toMetaTargeting(t: LaunchPlanTargeting, regionKeys: Record<string, string> = {}): Record<string, any> {
+  const regions = t.regions || [];
+  const geo: Record<string, any> = regions.length
+    ? {
+        regions: regions.map(uf => {
+          const key = regionKeys[uf];
+          if (!key) throw new LaunchPlanError(409, `Não achei na Meta o estado ${BR_STATES[uf] || uf}. Tente de novo ou tire o estado.`);
+          return { key };
+        })
+      }
+    : { countries: t.countries };
+  const out: Record<string, any> = { geo_locations: geo };
+  if (t.advantage_audience) {
+    out.age_min = Math.min(t.age_min, ADVANTAGE_MAX_AGE_MIN);
+    out.age_max = 65;
+    if (t.age_min > ADVANTAGE_MAX_AGE_MIN || t.age_max < 65) out.age_range = [t.age_min, t.age_max];
+  } else {
+    out.age_min = t.age_min;
+    out.age_max = t.age_max;
+  }
+  if (t.genders === 'MALE') out.genders = [1];
+  if (t.genders === 'FEMALE') out.genders = [2];
+  if (t.placements === 'FACEBOOK_INSTAGRAM') out.publisher_platforms = ['facebook', 'instagram'];
   out.targeting_automation = { advantage_audience: t.advantage_audience ? 1 : 0 };
   return out;
 }
+
+/** NORQVA-0120: data de término válida (amanhã até 1 ano), no horário de Brasília. */
+export function validateEndDate(v: unknown, label: string, now: Date = new Date()): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) {
+    throw new LaunchPlanError(400, `${label}: data de término inválida.`);
+  }
+  const todayBr = new Date(now.getTime() - 3 * 3600000).toISOString().slice(0, 10);
+  const max = new Date(Date.parse(`${todayBr}T00:00:00Z`) + 365 * 86400000).toISOString().slice(0, 10);
+  if (s <= todayBr) throw new LaunchPlanError(400, `${label}: a data de término tem que ser depois de hoje.`);
+  if (s > max) throw new LaunchPlanError(400, `${label}: a data de término pode ser no máximo daqui a 1 ano.`);
+  return s;
+}
+
+/** Fim do dia no horário de Brasília, no formato da Meta. */
+export const endTimeFor = (date: string) => `${date}T23:59:00-0300`;
 
 /** NORQVA-0117: slug da página gerada (/v/:slug) ou null. */
 export const generatedSlugFromUrl = (url: string): string | null => {
@@ -291,7 +365,14 @@ export function validateLaunchPlanInput(body: unknown, opts: { forCreation?: boo
     if (!Number.isFinite(budget) || budget < META_MIN_DAILY_BUDGET_BRL || budget > max) {
       throw new LaunchPlanError(400, `Conjunto "${name}": orçamento diário deve ficar entre R$ ${META_MIN_DAILY_BUDGET_BRL.toFixed(2)} e R$ ${max.toFixed(2)}.`);
     }
-    return { name, daily_budget_brl: budget, targeting: validateTargeting(a.targeting, name), targeting_summary: str(a.targeting_summary, 300) };
+    const endDate = validateEndDate(a.end_date, `Conjunto "${name}"`);
+    return {
+      name,
+      daily_budget_brl: budget,
+      targeting: validateTargeting(a.targeting, name),
+      targeting_summary: str(a.targeting_summary, 300),
+      ...(endDate ? { end_date: endDate } : {})
+    };
   });
 
   if (!Array.isArray(rawSpec.ads) || rawSpec.ads.length < 1 || rawSpec.ads.length > 50) {
@@ -640,7 +721,8 @@ export class LaunchPlanService {
             pixelId: spec.pixel_id,
             customEventType: 'PURCHASE',
             optimizationGoal: 'OFFSITE_CONVERSIONS',
-            targeting: toMetaTargeting(s.targeting)
+            targeting: toMetaTargeting(s.targeting, await client.resolveBrazilRegionKeys(s.targeting.regions || [], BR_STATES)),
+            endTime: s.end_date ? endTimeFor(s.end_date) : undefined
           },
           ctx,
           async (extId) => {
