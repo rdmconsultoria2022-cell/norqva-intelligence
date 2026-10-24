@@ -5,6 +5,8 @@ import { ReferenceForm, ReferenceStructureView } from './CreativeReferences';
 import { GenerationView } from './GenerationView';
 import { GeneratedCampaignPanel } from './GeneratedCampaignPanel';
 import { buildNorqvaCopy, copyText } from './factoryCopy';
+import { ReferenceScoreCard } from './ReferenceScoreCard';
+import { FactoryResults } from './FactoryResults';
 
 // NORQVA-0118 (contrato "Fábrica de Criativos"): uma aba só, Criativos → Fábrica, que leva da referência à
 // campanha PAUSADA em 6 passos. Junta o que já existia (Referências 0115, Geração 0116, campanha pausada 0117).
@@ -127,6 +129,7 @@ export const FactoryWizard: React.FC<{
   const [pageData, setPageData] = useState<any>(null);
   const [kie, setKie] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resultsKey, setResultsKey] = useState(0);
 
   const setRun = (r: Run) => {
     setRunState(r);
@@ -297,7 +300,7 @@ export const FactoryWizard: React.FC<{
                       <strong>{r.human_id}</strong> · {r.product_name || 'Produto'}
                     </span>
                   }
-                  sub="Referência analisada, falta gerar a página"
+                  sub={`Referência analisada, falta gerar a página${r.score ? ` · nota estimada ${r.score.score}` : ''}`}
                   right={<StatusPill tone="info">Passo 2</StatusPill>}
                 />
               ))}
@@ -433,7 +436,10 @@ export const FactoryWizard: React.FC<{
                 <p className="text-nq-caption text-nq-subtle">O que o NORQVA leu da referência: só a função e a forma de cada parte. Texto, imagens e nomes dela não são guardados.</p>
               </Surface>
               {ref.status === 'READY' ? (
-                <ReferenceStructureView structure={ref.structure} />
+                <>
+                  <ReferenceScoreCard score={ref.score} />
+                  <ReferenceStructureView structure={ref.structure} />
+                </>
               ) : (
                 <Surface className="p-4">
                   <StatusPill tone="critical">Falhou</StatusPill>
@@ -536,10 +542,12 @@ export const FactoryWizard: React.FC<{
               ads={pageData?.ads || []}
               showError={showError}
               showSuccess={showSuccess}
+              onChanged={() => setResultsKey(k => k + 1)}
             />
           ) : (
             <p className="text-nq-aux text-nq-muted">Criar a campanha é com o administrador.</p>
           )}
+          {isAdmin && <FactoryResults apiFetch={apiFetch} pageId={run.pageId} refreshKey={resultsKey} />}
           {nav()}
         </div>
       )}
