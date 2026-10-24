@@ -27,3 +27,13 @@ Nada novo no servidor; nada vai para a Meta por esta etapa; testes com a API sim
 ## Testes
 
 `frontend/src/tests/norqva_0118_fabrica.test.tsx`.
+
+## Revisão independente (aplicada)
+
+- **Arquivo entregue ao comprador** virou item do passo 5 (`GET /api/offers/:id/digital-assets`): sem PDF ligado à oferta, "Pôr a oferta em teste", "Publicar página" e o passo 6 ficam travados, com o caminho em Produtos. Assim ninguém paga sem ter o que receber.
+- Retomada: só apaga a fábrica salva quando o servidor diz que a página não existe; falha de rede mostra aviso e mantém.
+- Passo a passo: check só nos passos já passados; passo 6 só com tudo pronto; passo 3 sem a referência (lixeira) mostra aviso e "Voltar".
+- Falha ao analisar a referência aparece no passo 1; erro ao carregar a Fábrica aparece (antes ficava "Nada em andamento").
+- A Fábrica abre primeiro só para ADMIN e CREATIVE; "Oferta liberada para compra" no lugar de "Oferta à venda".
+- Teste da página pública (0116) espera o título com `waitFor` (falhava às vezes no CI).
+- Pendente, com aprovação: o servidor ainda deixa uma oferta ir para TESTE/ATIVA sem arquivo (`PUT /api/offers/:id`); a trava hoje é só na tela da Fábrica.

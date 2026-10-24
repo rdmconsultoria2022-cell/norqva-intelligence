@@ -210,7 +210,7 @@ export function CreativeFactoryView({
       .then((r: any) => {
         if (!alive) return;
         setRefsEnabled(r?.enabled === true);
-        if (r?.enabled === true && !pickedSection.current) setSection('factory');
+        if (r?.enabled === true && canRevise && !pickedSection.current) setSection('factory');
       })
       .catch(() => {
         if (alive) setRefsEnabled(false);

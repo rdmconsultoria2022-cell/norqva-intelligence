@@ -91,16 +91,23 @@ const brl = (v: any) => {
 /** Anúncio pronto para ir para a campanha (aprovado e com a checagem em dia). */
 const adOk = (a: any) => a?.approval_status === 'APPROVED' && !a?.copy_check?.blocked && !a?.copy_check?.stale;
 
-/** O que falta para publicar a campanha (passo 5). */
+/**
+ * O que falta para publicar a campanha (passo 5). `delivery_files` é quantos arquivos a oferta entrega ao
+ * comprador (null = não deu para conferir): sem arquivo, quem pagar fica sem o produto, então nada avança.
+ */
 export function readiness(pageData: any) {
   const page = pageData?.page || {};
   const ads: any[] = pageData?.ads || [];
   const approved = ['APPROVED', 'PUBLISHED', 'UNPUBLISHED'].includes(String(page.status)) || !!page.approved_at;
+  const files = typeof pageData?.delivery_files === 'number' ? pageData.delivery_files : null;
+  const fileOk = (files ?? 0) > 0;
   const offerOk = page.offer_status === 'ATIVA' || page.offer_status === 'TESTE';
   const live = page.status === 'PUBLISHED';
   const readyAds = ads.filter(adOk).length;
-  return { approved, offerOk, live, readyAds, totalAds: ads.length, all: approved && offerOk && live && readyAds > 0 };
+  return { approved, fileOk, files, offerOk, live, readyAds, totalAds: ads.length, all: approved && fileOk && offerOk && live && readyAds > 0 };
 }
+
+const notFound = (e: any) => /não encontrad/i.test(String(e?.message || ''));
 
 export const FactoryWizard: React.FC<{
   apiFetch: ApiFetch;
@@ -144,26 +151,40 @@ export const FactoryWizard: React.FC<{
       if (/desligadas/i.test(String(e?.message || ''))) {
         showError('Referências foram desligadas neste ambiente.');
         onDisabled?.();
+      } else {
+        showError(e?.message || 'Não foi possível carregar a Fábrica.');
       }
     }
   }, [apiFetch, showError, onDisabled]);
 
-  const loadPage = useCallback(
-    async (id: string | null | undefined) => {
-      if (!id) {
-        setPageData(null);
-        return null;
-      }
-      try {
-        const d = await apiFetch(`/generated-pages/${id}`);
-        setPageData(d);
-        return d;
-      } catch {
-        setPageData(null);
-        return null;
-      }
+  // página + quantos arquivos a oferta entrega (o comprador só recebe o produto se houver arquivo)
+  const withFiles = useCallback(
+    async (d: any) => {
+      const offerId = d?.page?.offer_id;
+      if (!offerId) return { ...d, delivery_files: null };
+      const files = await Promise.resolve(apiFetch(`/offers/${offerId}/digital-assets?mode=real`)).catch(() => null);
+      return { ...d, delivery_files: Array.isArray(files) ? files.length : null };
     },
     [apiFetch]
+  );
+
+  /** Carrega a página. `missing` só quando o servidor diz que ela não existe (falha de rede não apaga nada). */
+  const loadPage = useCallback(
+    async (id: string | null | undefined): Promise<{ data: any; missing: boolean }> => {
+      if (!id) {
+        setPageData(null);
+        return { data: null, missing: true };
+      }
+      try {
+        const d = await withFiles(await apiFetch(`/generated-pages/${id}`));
+        setPageData(d);
+        return { data: d, missing: false };
+      } catch (e: any) {
+        if (notFound(e)) setPageData(null);
+        return { data: null, missing: notFound(e) };
+      }
+    },
+    [apiFetch, withFiles]
   );
 
   // primeira carga: catálogo, trabalho em andamento e, se havia uma fábrica aberta, o passo onde parou
@@ -177,10 +198,11 @@ export const FactoryWizard: React.FC<{
       await Promise.all([loadCatalog(), loadWork()]);
       const saved = readRun();
       if (saved.pageId) {
-        const d = await loadPage(saved.pageId);
+        const { data: d, missing } = await loadPage(saved.pageId);
         if (!alive) return;
         if (d?.page) setStep(readiness(d).all ? 6 : 4);
-        else setRun({});
+        else if (missing) setRun({});
+        else showError('Não deu para abrir a fábrica onde você parou. Tente de novo em instantes.');
       } else if (saved.refId) {
         setStep(2);
       }
@@ -195,7 +217,7 @@ export const FactoryWizard: React.FC<{
   const ref = useMemo(() => refs.find(r => r.id === run.refId) || null, [refs, run.refId]);
   const refReady = ref?.status === 'READY';
   const ready = readiness(pageData);
-  const maxStep = run.pageId ? (ready.all || pageData?.page?.status === 'PUBLISHED' ? 6 : 5) : refReady ? 3 : 1;
+  const maxStep = run.pageId ? (ready.all ? 6 : 5) : refReady ? 3 : 1;
 
   const startNew = () => {
     setRun({});
@@ -204,7 +226,7 @@ export const FactoryWizard: React.FC<{
   };
   const openPage = async (p: any) => {
     setRun({ refId: p.reference_id || null, pageId: p.id, productId: p.product_id || null });
-    const d = await loadPage(p.id);
+    const { data: d } = await loadPage(p.id);
     setStep(d && readiness(d).all ? 6 : 4);
   };
   const openRef = (r: any) => {
@@ -295,7 +317,7 @@ export const FactoryWizard: React.FC<{
         {FACTORY_STEPS.map((name, i) => {
           const n = i + 1;
           const current = n === step;
-          const done = n < step || n <= maxStep - 1;
+          const done = n < step;
           const reachable = n <= maxStep;
           return (
             <li key={name} className="min-w-0">
@@ -426,6 +448,13 @@ export const FactoryWizard: React.FC<{
         </div>
       )}
 
+      {step === 3 && !ref && (
+        <div className="space-y-4" data-testid="factory-no-ref">
+          <p className="text-nq-aux text-nq-muted">A referência desta fábrica não está mais disponível (foi para a lixeira). Comece outra no passo 1 ou abra a página gerada no passo 4.</p>
+          {nav()}
+        </div>
+      )}
+
       {step === 3 && ref && (
         <StepProduct
           apiFetch={apiFetch}
@@ -467,7 +496,9 @@ export const FactoryWizard: React.FC<{
             hideBack
             hideCampaign
             hideStatusActions
-            onChanged={setPageData}
+            onChanged={d => {
+              withFiles(d).then(setPageData);
+            }}
           />
           {nav({ next: { label: 'Continuar para a aprovação', onClick: () => setStep(5) } })}
         </div>
@@ -478,7 +509,9 @@ export const FactoryWizard: React.FC<{
           apiFetch={apiFetch}
           pageData={pageData}
           isAdmin={isAdmin}
-          reload={() => loadPage(run.pageId)}
+          reload={async () => {
+            await loadPage(run.pageId);
+          }}
           onReviewAds={() => setStep(4)}
           showError={showError}
           showSuccess={showSuccess}
@@ -550,6 +583,7 @@ function StepInput({
   nav: React.ReactNode;
 }) {
   const [text, setText] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ category: 'Infoproduto digital', description: '' });
   const [busy, setBusy] = useState(false);
@@ -696,10 +730,19 @@ function StepInput({
               showError={showError}
               showSuccess={showSuccess}
               onDisabled={onDisabled}
-              onCreated={onReference}
+              onCreated={async r => {
+                setFailure(r && r.status !== 'READY' ? r.failure_reason || 'Motivo não informado.' : null);
+                await onReference(r);
+              }}
               submitLabel="Analisar"
             />
-          ) : (
+          ) : null}
+          {product && failure && (
+            <p className="px-1 text-nq-aux text-nq-critical-text break-words" data-testid="fab-ref-failure">
+              A análise falhou: {failure}
+            </p>
+          )}
+          {!product && (
             <p className="px-1 text-nq-aux text-nq-muted" data-testid="fab-pick-product-first">
               Escolha ou crie o produto acima para enviar o link ou os prints.
             </p>
@@ -1020,7 +1063,7 @@ function StepApproval({
   return (
     <div className="space-y-4" data-testid="factory-approval">
       <p className="text-nq-aux text-nq-muted">
-        {r.all ? 'Tudo pronto para montar a campanha.' : 'O que falta para publicar. Cada item tem o botão para resolver.'}
+        {r.all ? 'Tudo pronto para montar a campanha.' : 'O que falta para publicar. Cada item tem o botão para resolver, na ordem.'}
       </p>
       <ol className="space-y-2">
         {item(
@@ -1037,15 +1080,28 @@ function StepApproval({
           'check-approved'
         )}
         {item(
+          r.fileOk,
+          'Arquivo entregue ao comprador',
+          r.fileOk
+            ? `${r.files} arquivo(s) ligado(s) à oferta: quem pagar recebe o produto.`
+            : r.files === null
+              ? 'Não deu para conferir o arquivo da oferta agora.'
+              : 'A oferta ainda não tem o PDF do produto. Sem ele, quem pagar fica sem receber. Ligue o arquivo em Produtos → "PDF entregue ao comprador".',
+          <button type="button" disabled={!!busy} onClick={() => act('files', async () => undefined, 'Conferido de novo.')} className={quiet}>
+            Conferir de novo
+          </button>,
+          'check-file'
+        )}
+        {item(
           r.offerOk,
-          'Oferta à venda',
+          'Oferta liberada para compra',
           r.offerOk
             ? `Oferta ${page.offer_human_id || ''} ${page.offer_status === 'ATIVA' ? 'à venda' : 'em teste'}.`
             : `Oferta ${page.offer_human_id || ''} em ${String(OFFER_STATUS[page.offer_status]?.label || page.offer_status || 'rascunho').toLowerCase()}. Em teste, quem tiver o link já consegue comprar.`,
           isAdmin && page.offer_id ? (
             <button
               type="button"
-              disabled={!!busy}
+              disabled={!!busy || !r.fileOk}
               data-testid="offer-to-test"
               onClick={() =>
                 act('offer', () => apiFetch(`/offers/${page.offer_id}?mode=real`, { method: 'PUT', body: JSON.stringify({ status: 'TESTE' }) }), 'Oferta em teste.')
@@ -1066,7 +1122,7 @@ function StepApproval({
           isAdmin ? (
             <button
               type="button"
-              disabled={!!busy || !r.approved || !r.offerOk}
+              disabled={!!busy || !r.approved || !r.offerOk || !r.fileOk}
               onClick={() => act('publish', () => post(`/generated-pages/${page.id}/publish`), 'Página publicada.')}
               className={primary}
             >
