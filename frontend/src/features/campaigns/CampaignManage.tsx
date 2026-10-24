@@ -248,7 +248,19 @@ const EVENT_LABEL: Record<string, string> = {
   LAUNCH_PLAN_ANSWER: 'Decisão: resposta Sim ou Não',
   LAUNCH_PLAN_CREATE_ON_META: 'Decisão: criar na Meta',
   LAUNCH_PLAN_SPEND_CAP: 'Decisão: teto de gasto',
-  CAMPAIGN_AD_CREATIVE_SWAP: 'Decisão: editar anúncio na Meta'
+  CAMPAIGN_AD_CREATIVE_SWAP: 'Decisão: editar anúncio na Meta',
+  // NORQVA-0118: pausa noturna
+  NIGHT_PAUSE_DONE: 'Pausa noturna',
+  NIGHT_PAUSE_UNCONFIRMED: 'Pausa noturna (aguardando conferência)',
+  NIGHT_PAUSE_FAILED: 'Pausa noturna não feita',
+  NIGHT_PAUSE_RESUMED: 'Fim da pausa noturna',
+  NIGHT_PAUSE_RESUME_UNCONFIRMED: 'Fim da pausa noturna (aguardando conferência)',
+  NIGHT_PAUSE_RESUME_CANCELLED: 'Fim da pausa noturna cancelado',
+  NIGHT_PAUSE_RESUME_FAILED: 'Fim da pausa noturna falhou',
+  NIGHT_PAUSE_EXPIRED: 'Ficou pausada depois da pausa noturna',
+  NIGHT_PAUSE_SETTINGS_CHANGED: 'Pausa noturna configurada',
+  NIGHT_PAUSE: 'Decisão: pausa noturna',
+  NIGHT_PAUSE_RESUME: 'Decisão: fim da pausa noturna'
 };
 
 const OUTCOME: Record<string, { label: string; tone: 'positive' | 'attention' | 'critical' | 'neutral' }> = {
@@ -327,6 +339,8 @@ const CHANGE_STATE: Record<string, { label: string; tone: 'positive' | 'attentio
 const brlText = (v: string | null) => (v === null || v === undefined || v === '' ? '—' : brl(Number(v)));
 
 export function changeLabel(c: any): string {
+  // NORQVA-0118: fichas da pausa noturna
+  if (c.origin === 'NIGHT_PAUSE' && c.kind === 'STATUS') return c.requested_value === 'PAUSED' ? 'Pausa noturna' : 'Fim da pausa noturna';
   if (c.kind === 'STATUS') return c.requested_value === 'PAUSED' ? 'Pausar' : 'Reativar';
   return `Orçamento ${brlText(c.previous_value)} → ${brlText(c.requested_value)} por dia`;
 }
@@ -694,6 +708,171 @@ export function MetaObjectsEditor({
           <NameRow label="Anúncio" entity="ad" metaId={String(id)} initial={name} {...common} />
         </div>
       ))}
+    </section>
+  );
+}
+
+// ---------------- NORQVA-0118: pausa noturna ----------------
+
+const NIGHT_RUN_STATE: Record<string, { label: string; tone: 'positive' | 'attention' | 'critical' | 'neutral' | 'info' }> = {
+  SKIPPED: { label: 'Não estava ativa', tone: 'neutral' },
+  PAUSING: { label: 'Pausando', tone: 'info' },
+  PAUSE_UNCONFIRMED: { label: 'Pausada, aguardando conferência', tone: 'attention' },
+  PAUSED: { label: 'Pausada à noite', tone: 'info' },
+  PAUSE_FAILED: { label: 'Não conseguiu pausar', tone: 'attention' },
+  REACTIVATING: { label: 'Reativando', tone: 'info' },
+  RESUME_UNCONFIRMED: { label: 'Reativada, aguardando conferência', tone: 'attention' },
+  REACTIVATED: { label: 'Reativada de manhã', tone: 'positive' },
+  RESUME_FAILED: { label: 'Não conseguiu reativar', tone: 'critical' },
+  CANCELLED: { label: 'Reativação cancelada', tone: 'attention' },
+  EXPIRED: { label: 'Ficou pausada', tone: 'critical' }
+};
+
+const toMin = (v: string): number | null => {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(v || '').trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/** "00:00" → "00h", "01:30" → "01h30" (rótulo curto da janela). */
+export function hourLabel(v: string): string {
+  const [h, m] = String(v || '').split(':');
+  return m && m !== '00' ? `${h}h${m}` : `${h}h`;
+}
+
+/** Erro da janela em português, ou null. Mesmo dia: início antes do fim. */
+export function nightWindowError(start: string, end: string): string | null {
+  const s = toMin(start);
+  const e = toMin(end);
+  if (s === null || e === null) return 'Use horários no formato HH:MM.';
+  if (s >= e) return 'O início precisa ser antes do fim, no mesmo dia.';
+  return null;
+}
+
+/** Gerenciar campanha → Configurações: pausa noturna (padrão ligada, 00:00 às 06:00, horário de Brasília). */
+export function NightPauseSettings({
+  campaignId,
+  canEdit,
+  apiFetch,
+  showError,
+  showSuccess
+}: {
+  campaignId: string;
+  canEdit: boolean;
+  apiFetch: Api;
+  showError: (m: string) => void;
+  showSuccess: (m: string) => void;
+}) {
+  const [data, setData] = useState<any | null>(null);
+  const [enabled, setEnabled] = useState(true);
+  const [start, setStart] = useState('00:00');
+  const [end, setEnd] = useState('06:00');
+  const [busy, setBusy] = useState(false);
+
+  const apply = (d: any) => {
+    setData(d);
+    setEnabled(d?.enabled !== false);
+    setStart(d?.start || '00:00');
+    setEnd(d?.end || '06:00');
+  };
+
+  useEffect(() => {
+    let off = false;
+    apiFetch(`/campaigns/${campaignId}/night-pause?mode=real`)
+      .then((d) => {
+        if (!off) apply(d);
+      })
+      .catch(() => {
+        if (!off) setData({ error: true });
+      });
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId]);
+
+  if (!data) return <p className="rounded-2xl bg-nq-surface p-4 text-[13px] text-nq-muted">Carregando pausa noturna…</p>;
+  if (data.error) return <p className="rounded-2xl bg-nq-surface p-4 text-[13px] text-nq-critical-text">Não foi possível carregar a pausa noturna.</p>;
+
+  const error = nightWindowError(start, end);
+  const changed = enabled !== (data.enabled !== false) || start !== data.start || end !== data.end;
+  const save = async () => {
+    if (error) return;
+    setBusy(true);
+    try {
+      const d = await apiFetch(`/campaigns/${campaignId}/night-pause?mode=real`, { method: 'POST', body: JSON.stringify({ enabled, start, end }) });
+      apply(d);
+      showSuccess(enabled ? `Pausa noturna ligada: das ${start} às ${end} (horário de Brasília).` : 'Pausa noturna desligada para esta campanha.');
+    } catch (e: any) {
+      showError(e?.message || 'Não foi possível salvar a pausa noturna.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const runs: any[] = Array.isArray(data.runs) ? data.runs.slice(0, 3) : [];
+  const timeInput = 'min-h-[44px] w-[120px] rounded-xl bg-nq-raised px-3 text-[15px] text-nq-text tabular-nums [color-scheme:dark] disabled:opacity-60';
+
+  return (
+    <section className="rounded-2xl bg-nq-surface p-4 space-y-3" aria-label="Pausa noturna" data-testid="night-pause">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[15px] font-semibold text-nq-text">Pausa noturna ({hourLabel(start)}–{hourLabel(end)})</h3>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`Pausa noturna (${hourLabel(start)}–${hourLabel(end)})`}
+          disabled={!canEdit || busy}
+          onClick={() => setEnabled(!enabled)}
+          className={`relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-60 ${enabled ? 'bg-nq-positive' : 'bg-nq-raised'}`}
+        >
+          <span className={`absolute top-1 h-6 w-6 rounded-full bg-nq-text transition-all ${enabled ? 'left-7' : 'left-1'}`} />
+        </button>
+      </div>
+      <p className="text-[13px] leading-[18px] text-nq-muted">
+        Todo dia, no horário de Brasília, o NORQVA pausa a campanha no início e reativa no fim, só se foi ele quem pausou e ninguém mexeu nela durante a noite. Orçamento e teto não mudam.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="space-y-1">
+          <span className="block text-[12px] text-nq-muted">Pausa às</span>
+          <input type="time" aria-label="Início da pausa noturna" value={start} disabled={!canEdit || busy} onChange={(e) => setStart(e.target.value)} className={timeInput} />
+        </label>
+        <label className="space-y-1">
+          <span className="block text-[12px] text-nq-muted">Volta às</span>
+          <input type="time" aria-label="Fim da pausa noturna" value={end} disabled={!canEdit || busy} onChange={(e) => setEnd(e.target.value)} className={timeInput} />
+        </label>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={save}
+            disabled={!changed || !!error || busy}
+            data-testid="night-pause-save"
+            className="min-h-[44px] px-4 rounded-full bg-nq-text text-nq-bg text-[13px] font-semibold disabled:opacity-50"
+          >
+            Salvar
+          </button>
+        )}
+      </div>
+      {error && <p className="text-[12px] text-nq-critical-text" data-testid="night-pause-error">{error}</p>}
+      {!canEdit && <p className="text-[12px] text-nq-subtle">Só o administrador muda a pausa noturna.</p>}
+      {data.master_enabled === false && (
+        <p className="text-[12px] text-nq-attention" data-testid="night-pause-master-off">
+          A chave geral da pausa noturna está desligada no servidor: nenhuma campanha é pausada por enquanto. O que já foi pausado volta normalmente.
+        </p>
+      )}
+      {runs.length > 0 && (
+        <ul className="space-y-1 text-[12px]" aria-label="Últimas noites">
+          {runs.map((r) => {
+            const st = NIGHT_RUN_STATE[r.state] || { label: r.state, tone: 'neutral' as const };
+            const d = String(r.night_date || '').slice(0, 10).split('-');
+            return (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 text-nq-muted">
+                <span className="tabular-nums">{d.length === 3 ? `${d[2]}/${d[1]}` : r.night_date}</span>
+                <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                {r.reason && r.state !== 'SKIPPED' && <span className="break-words">{r.reason}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

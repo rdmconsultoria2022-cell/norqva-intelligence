@@ -9,7 +9,7 @@ import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
 import { MethodView } from '../method/MethodView';
 import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
-import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList, AudienceList, MetaObjectsEditor } from './CampaignManage';
+import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList, AudienceList, MetaObjectsEditor, NightPauseSettings } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
@@ -962,6 +962,10 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 />
                 {!['APPROVED', 'ACTIVE'].includes(campaign.status) && <p className="text-[13px] text-nq-subtle">O vigia começa depois do seu Sim.</p>}
               </div>
+            )}
+            {tab === 'config' && (
+              // NORQVA-0118: pausa noturna (padrão ligada, 00:00 às 06:00, horário de Brasília)
+              <NightPauseSettings campaignId={campaign.id} canEdit={isAdmin} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
             )}
 
             {tab === 'config' && (
