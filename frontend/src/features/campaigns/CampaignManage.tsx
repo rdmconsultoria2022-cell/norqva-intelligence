@@ -745,6 +745,7 @@ export function nightWindowError(start: string, end: string): string | null {
   const e = toMin(end);
   if (s === null || e === null) return 'Use horários no formato HH:MM.';
   if (s >= e) return 'O início precisa ser antes do fim, no mesmo dia.';
+  if (e > 23 * 60) return 'O fim pode ser no máximo às 23:00, para dar tempo de reativar no mesmo dia.';
   return null;
 }
 
@@ -814,12 +815,12 @@ export function NightPauseSettings({
   return (
     <section className="rounded-2xl bg-nq-surface p-4 space-y-3" aria-label="Pausa noturna" data-testid="night-pause">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[15px] font-semibold text-nq-text">Pausa noturna ({hourLabel(start)}–{hourLabel(end)})</h3>
+        <h3 className="text-[15px] font-semibold text-nq-text">Pausa noturna ({hourLabel(data.start)}–{hourLabel(data.end)})</h3>
         <button
           type="button"
           role="switch"
           aria-checked={enabled}
-          aria-label={`Pausa noturna (${hourLabel(start)}–${hourLabel(end)})`}
+          aria-label={`Pausa noturna (${hourLabel(data.start)}–${hourLabel(data.end)})`}
           disabled={!canEdit || busy}
           onClick={() => setEnabled(!enabled)}
           className={`relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-60 ${enabled ? 'bg-nq-positive' : 'bg-nq-raised'}`}
@@ -837,7 +838,7 @@ export function NightPauseSettings({
         </label>
         <label className="space-y-1">
           <span className="block text-[12px] text-nq-muted">Volta às</span>
-          <input type="time" aria-label="Fim da pausa noturna" value={end} disabled={!canEdit || busy} onChange={(e) => setEnd(e.target.value)} className={timeInput} />
+          <input type="time" aria-label="Fim da pausa noturna" max="23:00" value={end} disabled={!canEdit || busy} onChange={(e) => setEnd(e.target.value)} className={timeInput} />
         </label>
         {canEdit && (
           <button

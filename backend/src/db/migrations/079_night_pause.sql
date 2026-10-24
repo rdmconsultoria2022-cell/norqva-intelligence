@@ -3,6 +3,7 @@
 -- night_pause_runs guarda uma linha por campanha e por noite: o NORQVA só reativa o que ele mesmo pausou
 -- a chave única (campanha, data) impede pausar ou reativar duas vezes, mesmo com reinício ou duas instâncias
 -- meta_change_requests ganha a origem da ficha (NIGHT_PAUSE nas fichas da pausa noturna)
+-- updated_time da Meta antes e depois e o resultado da leitura do registro de atividades ficam na linha para diagnóstico
 
 ALTER TABLE launch_plans ADD COLUMN IF NOT EXISTS night_pause_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE launch_plans ADD COLUMN IF NOT EXISTS night_pause_start VARCHAR(5) NOT NULL DEFAULT '00:00';
@@ -22,6 +23,8 @@ CREATE TABLE IF NOT EXISTS night_pause_runs (
   previous_status VARCHAR(30),
   meta_daily_budget_at_pause NUMERIC(14, 2),
   meta_updated_time_at_pause VARCHAR(40),
+  meta_updated_time_at_resume VARCHAR(40),
+  activity_check VARCHAR(30),
   plan_daily_budget_at_pause NUMERIC(14, 2),
   plan_cap_at_pause NUMERIC(14, 2),
   pause_change_id UUID,
@@ -32,6 +35,7 @@ CREATE TABLE IF NOT EXISTS night_pause_runs (
   resume_started_at TIMESTAMPTZ,
   resumed_at TIMESTAMPTZ,
   read_failures INTEGER NOT NULL DEFAULT 0,
+  resume_attempts INTEGER NOT NULL DEFAULT 0,
   reason TEXT,
   error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

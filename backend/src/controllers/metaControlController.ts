@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { writeAuditLog } from '../db/audit';
 import { protectedMetaIds } from '../services/experiments/protectedIds';
 import { beginDecision, decisionContextFromRequest, DecisionAuditError, metaIdsOfPlan } from '../db/decisionEvents';
+import { withPlanLock } from '../services/campaigns/planLock';
 import {
   MetaMutatingClient,
   MetaMutatingSecurityContext,
@@ -339,7 +340,17 @@ async function syncPlanPauseState(pool: Pool, req: AuthenticatedRequest, metaId:
   try {
     const owner = await planOfEntity(pool, 'CAMPAIGN', metaId, isDemoReq(req));
     if (!owner || !isPlanCampaign(owner.plan, owner.metaId)) return {};
-    const p = owner.plan;
+    // NORQVA-0118: mesma trava do plano que a pausa noturna usa ao reativar
+    return await withPlanLock(pool, String(owner.plan.id), () => syncPlanPauseStateLocked(pool, req, owner, status));
+  } catch (err) {
+    console.error('[META CONTROL] não registrou a pausa no plano', err);
+    return { plan_sync_failed: true };
+  }
+}
+
+async function syncPlanPauseStateLocked(pool: Pool, req: AuthenticatedRequest, owner: { plan: any; metaId: string }, status: string): Promise<Record<string, unknown>> {
+  try {
+    const p = (await pool.query(`SELECT id, code, status, operator_paused_at FROM launch_plans WHERE id = $1`, [owner.plan.id])).rows[0] || owner.plan;
     if (status === 'PAUSED' && ['ACTIVE', 'APPROVED'].includes(p.status) && !p.operator_paused_at) {
       await pool.query(`UPDATE launch_plans SET operator_paused_at = NOW(), operator_paused_by = $2, updated_at = NOW() WHERE id = $1`, [p.id, req.user?.id || null]);
       await writeAuditLog(pool, req.user?.id || null, 'LAUNCH_PLAN_PAUSED_BY_OPERATOR', `Plano ${p.code}: campanha pausada pela tela. Reativar pede o código do plano.`, p.status, 'PAUSED');

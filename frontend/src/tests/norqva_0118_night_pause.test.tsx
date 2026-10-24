@@ -28,6 +28,8 @@ describe('NORQVA-0118 — pausa noturna na tela', () => {
     expect(nightWindowError('00:00', '06:00')).toBeNull();
     expect(nightWindowError('06:00', '00:00')).toMatch(/antes do fim/);
     expect(nightWindowError('', '06:00')).toMatch(/HH:MM/);
+    expect(nightWindowError('22:00', '23:00')).toBeNull();
+    expect(nightWindowError('22:00', '23:58')).toMatch(/23:00/);
     expect(changeLabel({ origin: 'NIGHT_PAUSE', kind: 'STATUS', requested_value: 'PAUSED' })).toBe('Pausa noturna');
     expect(changeLabel({ origin: 'NIGHT_PAUSE', kind: 'STATUS', requested_value: 'ACTIVE' })).toBe('Fim da pausa noturna');
     expect(changeLabel({ kind: 'STATUS', requested_value: 'PAUSED' })).toBe('Pausar');
@@ -56,9 +58,11 @@ describe('NORQVA-0118 — pausa noturna na tela', () => {
     fireEvent.change(startInput, { target: { value: '01:30' } });
     fireEvent.change(endInput, { target: { value: '05:00' } });
     expect(screen.queryByTestId('night-pause-error')).toBeNull();
-    expect(screen.getByRole('switch', { name: 'Pausa noturna (01h30–05h)' })).toBeInTheDocument();
+    // o título mostra o horário salvo até salvar
+    expect(screen.getByRole('switch', { name: 'Pausa noturna (00h–06h)' })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('night-pause-save'));
     await waitFor(() => expect(showSuccess).toHaveBeenCalled());
+    expect(await screen.findByRole('switch', { name: 'Pausa noturna (01h30–05h)' })).toBeInTheDocument();
     expect(JSON.parse(postCall(apiFetch)[1].body)).toEqual({ enabled: true, start: '01:30', end: '05:00' });
     expect(String(showSuccess.mock.calls[0][0])).toContain('01:30');
   });

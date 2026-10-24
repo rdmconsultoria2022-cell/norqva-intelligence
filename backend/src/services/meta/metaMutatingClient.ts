@@ -1241,6 +1241,51 @@ export class MetaMutatingClient {
     };
   }
 
+  /**
+   * NORQVA-0118: registro de atividades da conta de anúncios (só leitura, GET /act_X/activities) entre dois
+   * instantes (segundos Unix). Segue a paginação até 5 páginas. Campos do AdActivity: actor_id, application_id,
+   * event_time, event_type, object_id, object_type.
+   */
+  public async readAccountActivities(
+    sinceUnix: number,
+    untilUnix: number
+  ): Promise<Array<{ event_type: string | null; event_time: string | null; object_id: string | null; object_type: string | null; actor_id: string | null; application_id: string | null }>> {
+    if (!this.adAccountId) throw new Error('[META CONFIG EXCEPTION]: Missing META_AD_ACCOUNT_ID.');
+    const act = this.adAccountId.startsWith('act_') ? this.adAccountId : `act_${this.adAccountId}`;
+    const out: any[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < 5; page++) {
+      const params: Record<string, string> = {
+        fields: 'event_type,event_time,object_id,object_type,actor_id,application_id',
+        since: String(Math.floor(sinceUnix)),
+        until: String(Math.ceil(untilUnix)),
+        limit: '100'
+      };
+      if (after) params.after = after;
+      const res = await this.callTransportGet(`/${act}/activities`, params);
+      const rows: any[] = Array.isArray(res?.data) ? res.data : [];
+      for (const r of rows) {
+        out.push({
+          event_type: r?.event_type ? String(r.event_type) : null,
+          event_time: r?.event_time ? String(r.event_time) : null,
+          object_id: r?.object_id ? String(r.object_id) : null,
+          object_type: r?.object_type ? String(r.object_type) : null,
+          actor_id: r?.actor_id ? String(r.actor_id) : null,
+          application_id: r?.application_id ? String(r.application_id) : null
+        });
+      }
+      after = res?.paging?.next && res?.paging?.cursors?.after ? String(res.paging.cursors.after) : null;
+      if (!after) break;
+    }
+    return out;
+  }
+
+  /** NORQVA-0118: ID de quem usa o token (o usuário do sistema do NORQVA), para reconhecer as próprias ações. */
+  public async readTokenUserId(): Promise<string | null> {
+    const me = await this.callTransportGet('/me', { fields: 'id' });
+    return me?.id ? String(me.id) : null;
+  }
+
   /** H6: lifetime spend (BRL) of a campaign, read live from the Graph API (GET only). */
   public async getCampaignLifetimeSpend(campaignMetaId: string): Promise<{ spend: number; effective_status: string | null; spend_cap: number | null }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
