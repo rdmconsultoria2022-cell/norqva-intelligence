@@ -1467,12 +1467,17 @@ export class MetaMutatingClient {
       customEventType: 'PURCHASE';
       optimizationGoal: 'OFFSITE_CONVERSIONS';
       targeting: Record<string, any>;
+      /** NORQVA-0121: término do conjunto (ISO com fuso), opcional. */
+      endTime?: string;
     },
     context: MetaMutatingSecurityContext,
     onCreated?: (externalId: string) => Promise<void>
   ): Promise<{ externalId: string }> {
     await this.assertFeatureFlagAndPreflight(context);
     const actId = this.realLaunchActId(context);
+    if (params.endTime !== undefined && !(Date.parse(params.endTime) > Date.now())) {
+      throw new Error('[VALIDATION EXCEPTION]: Ad set end_time must be in the future.');
+    }
     this.assertAccountAndPixelBinding(undefined, params.pixelId);
     const amount = Math.round(Number(params.dailyBudget) * 100) / 100;
     const max = getMaxDailyBudgetBRL();
@@ -1492,6 +1497,7 @@ export class MetaMutatingClient {
           destination_type: 'WEBSITE',
           promoted_object: { pixel_id: params.pixelId, custom_event_type: params.customEventType },
           targeting: params.targeting,
+          ...(params.endTime ? { end_time: params.endTime } : {}),
           ...advertiserIdentityParams()
         }),
         'Ad set'
@@ -1751,6 +1757,30 @@ export class MetaMutatingClient {
       false
     );
     return { success: true, entityId: String(row.meta_id), previousName: row.name || null, name: clean, confirmed };
+  }
+
+  /**
+   * NORQVA-0121: chaves da Meta dos estados do Brasil (só leitura: GET /search, tipo adgeolocation, região, BR).
+   * Recebe UFs e o nome de cada uma; confere nome e país exatos (sem acento e maiúscula). Sem estados, nada é pedido.
+   */
+  async resolveBrazilRegionKeys(ufs: string[], names: Record<string, string>): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    const fold = (v: string) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    for (const uf of ufs) {
+      const name = names[uf];
+      if (!name) continue;
+      const res = await this.callTransportGet('/search', {
+        type: 'adgeolocation',
+        location_types: JSON.stringify(['region']),
+        country_code: 'BR',
+        q: name,
+        limit: '10'
+      });
+      const list: any[] = Array.isArray(res?.data) ? res.data : [];
+      const hit = list.find(r => String(r?.type) === 'region' && String(r?.country_code).toUpperCase() === 'BR' && fold(r?.name) === fold(name));
+      if (hit?.key !== undefined && hit?.key !== null && /^\d{1,10}$/.test(String(hit.key))) out[uf] = String(hit.key);
+    }
+    return out;
   }
 
   /**

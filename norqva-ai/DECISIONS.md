@@ -328,3 +328,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Repetição:** agendador no servidor a cada 2 minutos; criar a linha da noite e tomar a reativação são atômicos no banco, então reinício ou duas instâncias não pausam nem reativam duas vezes.
 - **Revisão:** resposta perdida da Meta é resolvida relendo a Meta; reativar tenta até 5 vezes até 23:59 (aviso na 3.ª); trava do plano no banco compartilhada com o vigia e a pausa pela tela, plano relido antes do envio e, se alguém mexeu no mesmo instante, pausa de novo com aviso crítico; fim da janela até 23:00; pausa só nos primeiros 60 minutos; Gerenciador detectado pelo registro de atividades da conta (sem ele, `updated_time`). Como o token pode ser do próprio dono, evento "nosso" é só o do app do token (`GET /app` ou `META_APP_ID`) ou, sem app no evento, a nossa própria mudança de situação até 2 minutos do nosso envio; todo o resto cancela a volta.
 - **Fica para um contrato futuro:** orçamento por hora e reanálise da janela com 100+ vendas.
+
+## D-0121 — Ajustes de publicação da campanha da Fábrica (2026-10-23)
+
+- **Decisão (Ricardo, "2 aprovado" em 23/10/2026 21h46, etapa C do contrato NORQVA-0118):** antes de criar a campanha (sempre PAUSADA), dá para ajustar orçamento, teto, destino (página gerada ou da oferta), estados, idade, sexo, público Advantage, posicionamentos, término e quais anúncios entram. Padrões: R$ 30/dia, teto de 7 dias, página gerada, Brasil, idade do produto (livros de cozinha 45–65, outros 25–65), todos os sexos, Advantage ligado, posicionamentos automáticos, sem término.
+- **Idade com Advantage:** a Meta só aceita mínima de 18 a 25 e máxima 65; a faixa escolhida vira sugestão (`age_range`). Para travar a idade, desliga-se o Advantage.
+- **WhatsApp como destino:** só depois do número oficial ativo. Interesses, semelhante e lances manuais ficam de fora até 50 compras.
