@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Image as ImageIcon, Video, MousePointerClick, Link2, Upload, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import { Section, Surface, RowGroup, Row, StatusPill, Disclosure, useIsMobile, Tone } from '../../components/ui/premium';
 import { GenerationView } from './GenerationView';
+import { ReferenceScoreCard } from './ReferenceScoreCard';
 
 // NORQVA-0115 (D-0115): Referências. O NORQVA guarda só a estrutura (esqueleto) de uma página de venda
 // ou anúncio de referência. Textos, imagens e nomes da referência não são salvos.
@@ -733,6 +734,7 @@ function ReferenceDetail({
         </Surface>
       )}
 
+      {item.status === 'READY' && <ReferenceScoreCard score={item.score} />}
       <ReferenceStructureView structure={s} />
 
       {generation && item.status === 'READY' && s && <GenerationPanel item={item} g={generation} />}

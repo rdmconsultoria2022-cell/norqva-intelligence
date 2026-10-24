@@ -304,3 +304,15 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Imagens:** só da abertura e das seções do produto (nunca a de preço). Imagem nova (armazenamento) fica no plano como `storage:` e ganha um link assinado novo na hora de enviar à Meta; download com prazo de 15 s, sem redirecionamento, até 8 MB, só de hosts do NORQVA.
 - **Padrões:** "NQ – <produto> – Ref <REF> – Vendas" (com o código da página se o nome já existir), R$ 30/dia, teto de 7 dias (editável pela D-0052), Brasil 25–65, Advantage, pixel oficial, Compra. **UTMs iguais às de todo plano** (`urlTagsFor`: `utm_source=meta`, `utm_medium=paid_social`, `utm_campaign=<plano>`, `utm_content=<criativo>` e os ids de campanha, conjunto e anúncio), para a venda ser atribuída por anúncio; a página gerada repassa esses parâmetros ao pagamento.
 - **Trava geral:** `META_MUTATION_ENABLED` desligada = só o rascunho, com "Cadastro na Meta desligado".
+
+## D-0118 — Fábrica de Criativos: um passo a passo só (2026-10-23)
+
+- **Decisão (Ricardo, "1 pode seguir, 2 aprovado" em 23/10/2026 21h46, contrato no Claude Docs "NORQVA-0118 — Fábrica de Criativos (fluxo único)"):** Criativos → Fábrica leva da referência à campanha pausada em 6 passos (Entrada, Análise, Produto, Geração, Aprovação, Publicação), juntando Referências (D-0115), Geração (D-0116) e campanha pausada (D-0117). Nada novo vai para a Meta sem aprovação na tela e o "Sim" com código.
+- **"Copiar informações" = "Copiar a versão NORQVA":** copia só o texto que o NORQVA escreveu para o nosso produto. Texto, imagem ou depoimento de concorrente nunca (direito autoral, política da Meta e D-0115).
+- **Busca pelo nome:** acha ou cria o nosso produto e abre a Biblioteca de Anúncios da Meta no navegador do dono; o NORQVA não lê esse site.
+- **Arquivo antes de vender:** a Fábrica só deixa pôr a oferta em teste e publicar a página com o PDF entregue ao comprador ligado à oferta.
+
+## D-0119 — Nota de força estimada da referência (2026-10-23)
+
+- **Decisão (mesma aprovação da D-0118, etapa B):** a referência pronta ganha uma nota de 0 a 100, sempre marcada como **estimativa** e com o motivo de cada ponto: tempo no ar até 40, variações até 25, estrutura até 35. Números reais só da nossa campanha, no passo 6.
+- **Exceção à D-0115:** dos prints da Biblioteca de Anúncios ficam gravadas duas coisas que não são texto da referência: a data de início (e a de fim, se o anúncio saiu do ar) e quantos anúncios usam o criativo (`structure.signals`). Os dias no ar são calculados no servidor pelo dia de Brasília. A geração de página e anúncios não usa esses sinais.
