@@ -5,6 +5,7 @@ import { beginDecision, DecisionContext } from '../../db/decisionEvents';
 import { writeAuditLog } from '../../db/audit';
 import { AlertEmailSender, defaultAlertEmailSender } from '../alerts/adAlertService';
 import { validateFrontendUrl } from '../emailConfig';
+import { withPlanLock } from '../campaigns/planLock';
 import { DEFAULT_PROTECTED_META_IDS, protectedMetaIds, metaSpendCapFor, minimumFromMetaError, metaMinCampaignSpendCapBRL } from './protectedIds';
 
 // H6/H7/H8 — teto real do experimento (R-0019-01).
@@ -167,6 +168,11 @@ export class ExperimentGuardService {
   }
 
   private async pause(pool: Pool, plan: any, campaignId: string, reason: string, numbers: Record<string, unknown>) {
+    // NORQVA-0120: mesma trava do plano que a pausa noturna usa ao reativar
+    return withPlanLock(pool, String(plan.id), () => this.pauseLocked(pool, plan, campaignId, reason, numbers));
+  }
+
+  private async pauseLocked(pool: Pool, plan: any, campaignId: string, reason: string, numbers: Record<string, unknown>) {
     const handle = await beginDecision(pool, SYSTEM_CTX, { action: 'EXPERIMENT_GUARD_PAUSE', decision: 'CAMPAIGN:PAUSED', planId: plan.id, planCode: plan.code, metaIds: [campaignId] }, { riskReducing: true });
     try {
       const ctx = { userId: null as any, userRole: 'SYSTEM', isDemo: false } as MetaMutatingSecurityContext;
@@ -334,8 +340,17 @@ export class ExperimentGuardService {
       const out: any = { code: plan.code, spent: reading.spend, cap, pct: ev.pct, projection: ev.projection, alerts: ev.newAlerts, meta_status: reading.effective_status };
       if (ev.shouldPause) {
         if (reading.effective_status && !['ACTIVE', 'IN_PROCESS', 'WITH_ISSUES'].includes(reading.effective_status)) {
-          await pool.query(`UPDATE launch_plans SET guard_state = 'CAPPED', capped_at = NOW(), updated_at = NOW() WHERE id = $1`, [plan.id]);
-          out.capped = 'campanha já não está ativa na Meta';
+          // NORQVA-0120: parada pela pausa noturna não vira CAPPED aqui; de manhã a pausa noturna confere o teto
+          // (não reativa com o teto atingido) e, reativada, o próximo ciclo do vigia decide como sempre
+          if (await nightPausedNow(pool, campaignId)) {
+            out.capped = null;
+            out.night_pause = 'pausada pela pausa noturna: o vigia decide depois da reativação';
+          } else {
+            await withPlanLock(pool, String(plan.id), () =>
+              pool.query(`UPDATE launch_plans SET guard_state = 'CAPPED', capped_at = NOW(), updated_at = NOW() WHERE id = $1`, [plan.id])
+            );
+            out.capped = 'campanha já não está ativa na Meta';
+          }
         } else if (autopauseEnabled()) {
           // NORQVA-0052: campanha lucrativa não é pausada; o teto cresce 50% até o teto máximo.
           // Logo depois de o operador BAIXAR o teto, não estende: a decisão dele vale (pausa se já passou).
@@ -404,6 +419,19 @@ export class ExperimentGuardService {
       await pool.query(`UPDATE launch_plans SET spend_cap_status = 'FAILED', spend_cap_error = $2, updated_at = NOW() WHERE id = $1`, [plan.id, msg]);
       return { status: 'FAILED', error: msg };
     }
+  }
+}
+
+/** NORQVA-0120: a campanha está parada pela pausa noturna agora (pausando, pausada ou reativando)? */
+export async function nightPausedNow(pool: Pool, campaignId: string): Promise<boolean> {
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM night_pause_runs WHERE meta_campaign_id = $1 AND state IN ('PAUSING', 'PAUSED', 'PAUSE_UNCONFIRMED', 'REACTIVATING', 'RESUME_UNCONFIRMED') LIMIT 1`,
+      [campaignId]
+    );
+    return r.rows.length > 0;
+  } catch {
+    return false;
   }
 }
 
