@@ -8,7 +8,7 @@ export const MAX_SAMPLE_IMAGES_PER_CONVERSATION = 4;
 export const SAMPLE_CAPTION_PREFIX = 'Amostra · ';
 const MAX_BYTES = 5 * 1024 * 1024;
 
-export type SampleKey = 'trattoria' | 'dolci' | 'kit2' | 'kit5' | 'paes' | 'antipasti' | 'risotos';
+export type SampleKey = 'trattoria' | 'dolci' | 'kit2' | 'kit4' | 'kit5' | 'paes' | 'antipasti' | 'risotos';
 
 /** Caminhos públicos do site (frontend/public). A ordem é a ordem de envio. */
 export const SAMPLE_IMAGES: Record<SampleKey, { path: string; caption: string }[]> = {
@@ -34,6 +34,13 @@ export const SAMPLE_IMAGES: Record<SampleKey, { path: string; caption: string }[
     { path: '/images/kit/trat_carbonara.jpg', caption: 'Trattoria em Casa: carbonara' },
     { path: '/images/livros/risotos/milanese.jpg', caption: 'Risotos & Polentas: risoto alla milanese' },
     { path: '/images/livros/antipasti/caponata.jpg', caption: 'Antipasti & Aperitivo: caponata siciliana' },
+    { path: '/images/kit/dolci_tiramisu.jpg', caption: 'Dolci della Nonna: tiramisù' }
+  ],
+  // "Complete a coleção: +4 livros" (sem o Trattoria)
+  kit4: [
+    { path: '/images/livros/risotos/milanese.jpg', caption: 'Risotos & Polentas: risoto alla milanese' },
+    { path: '/images/livros/antipasti/caponata.jpg', caption: 'Antipasti & Aperitivo: caponata siciliana' },
+    { path: '/images/livros/paes/focaccia.jpg', caption: 'Pães & Fermentação Natural: focaccia barese' },
     { path: '/images/kit/dolci_tiramisu.jpg', caption: 'Dolci della Nonna: tiramisù' }
   ],
   paes: [
@@ -63,6 +70,7 @@ export function sampleKeyFor(item: { name?: string | null; product_name?: string
   const ck = norm(item.collection_key);
   if (ck === 'paes' || ck === 'antipasti' || ck === 'risotos') return ck;
   const n = `${norm(item.name)} ${norm(item.product_name)}`;
+  if (/\+\s*4|\b4 livros|quatro livros/.test(n)) return 'kit4';
   if (/\bkit\b|colecao/.test(n)) return /complet|5 livros|cinco/.test(n) ? 'kit5' : 'kit2';
   if (/risoto|polenta/.test(n)) return 'risotos';
   if (/antipast|aperitiv/.test(n)) return 'antipasti';
@@ -102,6 +110,8 @@ export async function loadSampleImage(path: string): Promise<{ base64: string; m
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
       const r = await fetch(url, { signal: controller.signal });
+      const len = Number(r.headers.get('content-length') || 0);
+      if (len > MAX_BYTES) return null;
       const buf = Buffer.from(await r.arrayBuffer());
       res = { ok: r.ok, contentType: String(r.headers.get('content-type') || ''), bytes: buf };
     } catch {

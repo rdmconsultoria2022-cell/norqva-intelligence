@@ -37,6 +37,8 @@ describe('NORQVA-0123 — regras puras', () => {
   it('escolhe as fotos certas para cada produto', () => {
     expect(sampleKeyFor({ name: 'Kit Trattoria Completo', product_name: '5 livros' })).toBe('kit5');
     expect(sampleKeyFor({ name: 'Kit Cozinha Italiana' })).toBe('kit2');
+    expect(sampleKeyFor({ name: 'COMPLETE A COLEÇÃO — +4 LIVROS' })).toBe('kit4');
+    expect(sampleKeyFor({ name: 'KIT TRATTORIA COMPLETO — 5 LIVROS' })).toBe('kit5');
     expect(sampleKeyFor({ name: 'Trattoria em Casa' })).toBe('trattoria');
     expect(sampleKeyFor({ name: 'Dolci della Nonna' })).toBe('dolci');
     expect(sampleKeyFor({ name: 'Volume III', collection_key: 'paes' })).toBe('paes');
@@ -288,5 +290,29 @@ describe.sequential('NORQVA-0123 — anúncio, amostras e lembrete', () => {
     expect((await runWhatsAppPixReminders(pool, { now: NOON, reconcile: paid, provider })).sent).toBe(0);
     expect((await pool.query('SELECT status, reason FROM whatsapp_payment_reminders WHERE payment_id = $1', [pay.id])).rows[0]).toEqual({ status: 'SKIPPED', reason: 'NOT_PENDING' });
     expect((provider.sendText as any).mock.calls.length).toBe(0);
+  });
+
+  it('B: conversa esperando uma pessoa (needs_human) ou com pessoa não recebe lembrete', async () => {
+    process.env.WHATSAPP_PIX_REMINDER_ENABLED = 'true';
+    for (const [i, setup] of [[0, `needs_human = TRUE`], [1, `mode = 'HUMAN'`]] as const) {
+      const jid = `553196666000${i}@s.whatsapp.net`;
+      await inbound(jid, { conversation: 'quero' });
+      const conv = await convOf(jid);
+      mockPix(`pay_0123_h${i}`);
+      script = [
+        { content: null, tool_calls: [{ id: 'c1', name: 'create_pix_payment', arguments: JSON.stringify({ offer_code: offerCode, full_name: 'Eva Melo', email: `eva${i}.0123.${tag}@example.com` }) }] },
+        { content: 'Pix aqui.', tool_calls: [] }
+      ];
+      await processConversation(pool, conv.id, ['CPF 529.982.247-25']);
+      const pay = (await pool.query(`SELECT p.id FROM payments p JOIN orders o ON o.id = p.order_id WHERE o.whatsapp_conversation_id = $1`, [conv.id])).rows[0];
+      const ago = new Date(NOON.getTime() - 40 * 60 * 1000).toISOString();
+      await pool.query('UPDATE payments SET created_at = $2 WHERE id = $1', [pay.id, ago]);
+      await pool.query('UPDATE whatsapp_messages SET created_at = $2 WHERE conversation_id = $1', [conv.id, ago]);
+      await pool.query(`UPDATE whatsapp_conversations SET ${setup} WHERE id = $1`, [conv.id]);
+      (provider.sendText as any).mockClear();
+      expect((await runWhatsAppPixReminders(pool, { now: NOON, reconcile: async () => null, provider })).sent).toBe(0);
+      expect((await pool.query('SELECT status, reason FROM whatsapp_payment_reminders WHERE payment_id = $1', [pay.id])).rows[0]).toEqual({ status: 'SKIPPED', reason: i === 0 ? 'NEEDS_HUMAN' : 'MODE_HUMAN' });
+      expect((provider.sendText as any).mock.calls.length).toBe(0);
+    }
   });
 });
