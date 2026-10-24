@@ -1,6 +1,6 @@
 // NORQVA-0046: números, conversas e mensagens do WhatsApp, tudo operado dentro do NORQVA.
 import { Pool } from 'pg';
-import { linkRefFromText } from './whatsappRefs';
+import { linkRefFromText, linkAdReferral, adReferralFromEvolution, AdReferral } from './whatsappRefs';
 import crypto from 'crypto';
 import { writeAuditLog } from '../../db/audit';
 import { WhatsAppProvider, ProviderError, phoneFromJid } from './provider';
@@ -410,7 +410,8 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
       name: !fromMe && m?.pushName ? String(m.pushName).slice(0, 120) : null,
       body: content.body,
       kind: content.kind,
-      at: Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date()
+      at: Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date(),
+      adReferral: fromMe ? null : adReferralFromEvolution(m)
     });
   }
   return { inbound: await ingestInbound(pool, n.id, normalized), numberId: n.id };
@@ -426,6 +427,8 @@ export interface NormalizedInbound {
   body: string;
   kind: string;
   at: Date;
+  /** NORQVA-0123: anúncio clique-para-WhatsApp de onde a mensagem veio (se veio de um) */
+  adReferral?: AdReferral | null;
 }
 
 /**
@@ -472,7 +475,11 @@ export async function ingestInbound(pool: Pool, numberId: string, items: Normali
     }
     if (fromMe) continue;
     // NORQVA-0054: código de origem da página (campanha/anúncio/clique) liga a conversa à origem
-    await linkRefFromText(pool, convId, n.id, body).catch(err => console.warn('[WhatsApp] código de origem:', err?.message || err));
+    const textRef = await linkRefFromText(pool, convId, n.id, body).catch(err => { console.warn('[WhatsApp] código de origem:', err?.message || err); return null; });
+    // NORQVA-0123: sem código da página, a origem é o anúncio clique-para-WhatsApp (se a mensagem veio de um)
+    if (!textRef && m.adReferral) {
+      await linkAdReferral(pool, convId, n.id, m.adReferral).catch(err => console.warn('[WhatsApp] origem do anúncio:', err?.message || err));
+    }
     if (OPT_OUT_RE.test(body)) {
       await pool.query(`UPDATE whatsapp_conversations SET mode = 'OPTED_OUT', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [convId]);
       continue;

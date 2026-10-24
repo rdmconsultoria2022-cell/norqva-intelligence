@@ -26,7 +26,8 @@ export interface WhatsAppProvider {
   deleteInstance(instanceName: string): Promise<void>;
   setWebhook(instanceName: string, webhookUrl: string): Promise<void>;
   sendText(instanceName: string, to: string, text: string, opts?: { delayMs?: number }): Promise<{ id: string | null }>;
-  sendImage(instanceName: string, to: string, base64Png: string, caption: string): Promise<{ id: string | null }>;
+  /** NORQVA-0123: `opts.mimetype` (padrão PNG, o QR Code do Pix) para as fotos de amostra em JPEG. */
+  sendImage(instanceName: string, to: string, base64Png: string, caption: string, opts?: { mimetype?: 'image/png' | 'image/jpeg' }): Promise<{ id: string | null }>;
 }
 
 export interface ServerCheck {
@@ -234,14 +235,15 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { id: data?.key?.id || null };
   }
 
-  async sendImage(instanceName: string, to: string, base64Png: string, caption: string): Promise<{ id: string | null }> {
+  async sendImage(instanceName: string, to: string, base64Png: string, caption: string, opts: { mimetype?: 'image/png' | 'image/jpeg' } = {}): Promise<{ id: string | null }> {
+    const jpeg = opts.mimetype === 'image/jpeg';
     const data = await this.call('POST', `/message/sendMedia/${encodeURIComponent(instanceName)}`, {
       number: to,
       mediatype: 'image',
-      mimetype: 'image/png',
+      mimetype: jpeg ? 'image/jpeg' : 'image/png',
       caption,
       media: stripDataUrl(base64Png),
-      fileName: 'pix.png'
+      fileName: jpeg ? 'amostra.jpg' : 'pix.png'
     });
     return { id: data?.key?.id || null };
   }

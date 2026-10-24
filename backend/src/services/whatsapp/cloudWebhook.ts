@@ -10,6 +10,7 @@ import { writeAuditLog } from '../../db/audit';
 import { loadAccountForWebhook } from './cloudAccounts';
 import { openSecret } from '../../utils/secretBox';
 import { ingestInbound, InboundMessage, NormalizedInbound } from './whatsappService';
+import { adReferralFromCloud } from './whatsappRefs';
 import { jidFromWaId, digitsOf } from './metaCloudProvider';
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
@@ -152,7 +153,8 @@ export async function processCloudWebhook(pool: Pool, baseAccount: any, payload:
           name: names.get(from) || null,
           body: content.body,
           kind: content.kind,
-          at: Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date()
+          at: Number.isFinite(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date(),
+          adReferral: adReferralFromCloud(m)
         });
       }
       if (items.length) {

@@ -344,3 +344,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Desligar ou tirar da lista** vale da próxima noite; a pausa da noite em curso termina normalmente. Tirar da lista é suave (`deleted_at`).
 - **Sem esperar a sincronização:** campanha que ainda não está em `meta_campaigns` ganha uma cópia mínima lida na Meta (como a sincronização grava, `COMMERCIAL_PRODUCTION`, nunca alterando linha existente) ao ser adicionada e no primeiro ciclo; se não der, aviso na hora, não à meia-noite.
 - **Só ADMIN** vê e muda a lista (Campanhas → "Campanhas criadas fora do NORQVA — pausa noturna"); adicionar confere na Meta que a campanha existe e é da conta configurada.
+
+## D-0123 — WhatsApp pela Evolution no 5642, venda ligada ao anúncio, lembrete de Pix e fotos de amostra (2026-10-24)
+
+- **Evolution de volta (Ricardo, 23/10/2026 22h03: "Eu quero que faça a integração com o numero 5642"):** a Evolution (não oficial) volta a atender o +55 31 98585-5642, com o risco de banimento assumido pelo operador (como na D-0046). `WHATSAPP_EVOLUTION_ENABLED=true`, servidor `evolution-api-latest-s3lt.onrender.com` com banco próprio `norqva-whatsapp-db` (o `norqva-production-db` está suspenso). Enquanto o número estiver na Evolution, não usar "Ativar número" no cartão oficial. Muda a D-0079 só neste ponto.
+- **Contrato NORQVA-0123 aprovado pelo Ricardo em 24/10/2026 01h55:**
+  - **Origem do anúncio:** mensagem de anúncio clique-para-WhatsApp grava a origem da conversa em `whatsapp_refs` (`utm_medium = whatsapp_ad`, `ad_id`, `ctwa_clid`); o pedido herda e a atribuição liga ao anúncio. Código da página tem preferência; 28 dias como o código.
+  - **Lembrete de Pix:** no máximo um por Pix, texto fixo, 30 a 120 min depois, 08h–22h de Brasília, conversa parada há 25 min, no BOT, dentro dos limites por hora, conferido no Asaas antes. Chave `WHATSAPP_PIX_REMINDER_ENABLED` (padrão desligada). Cartão fora.
+  - **Fotos de amostra:** só as fotos do site (lista fixa por livro e kit), no máximo 4 por conversa, nunca páginas do PDF.
+- **Fica para depois:** evento de compra como evento de mensagem (Business Messaging) na Meta, segundo lembrete, lembrete de cartão.
