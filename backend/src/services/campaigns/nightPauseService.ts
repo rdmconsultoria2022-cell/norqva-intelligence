@@ -25,7 +25,7 @@ import { withPlanLock } from './planLock';
 // - NIGHT_PAUSE_ENABLED=true liga as pausas novas; desligado, o que já foi pausado ainda volta de manhã;
 // - META_MUTATION_ENABLED vale como sempre;
 // - falhas abrem aviso na central de pendências.
-// NORQVA-0121 (D-0121): o mesmo vale para campanhas criadas fora do NORQVA cadastradas na lista
+// NORQVA-0122 (D-0122): o mesmo vale para campanhas criadas fora do NORQVA cadastradas na lista
 // night_pause_external_campaigns (noites em night_pause_external_runs). Para elas não há plano: valem as
 // conferências da Meta (situação, registro de atividades, orçamento, limite de gastos) e as fichas/decisões
 // sobre a campanha. Se a campanha também for de um plano, o plano manda.
@@ -186,7 +186,7 @@ type MetaState = Awaited<ReturnType<MetaMutatingClient['readCampaignState']>>;
 type Outcome = { code: string; [k: string]: unknown };
 
 // ---------------------------------------------------------------------------------------------
-// De onde vem a campanha: plano de lançamento ou campanha criada fora do NORQVA (NORQVA-0121)
+// De onde vem a campanha: plano de lançamento ou campanha criada fora do NORQVA (NORQVA-0122)
 // ---------------------------------------------------------------------------------------------
 
 type Kind = 'PLAN' | 'EXTERNAL';
@@ -1095,7 +1095,7 @@ export class NightPauseService {
     return this.settings(pool, planId);
   }
 
-  // ------------------------------ campanhas criadas fora do NORQVA (NORQVA-0121) ------------------------------
+  // ------------------------------ campanhas criadas fora do NORQVA (NORQVA-0122) ------------------------------
 
   private shapeExternal(row: any, runs: any[], meta: { status: string | null; effective_status: string | null; error?: string } | null) {
     return {

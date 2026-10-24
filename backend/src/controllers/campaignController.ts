@@ -188,7 +188,7 @@ export async function saveCampaignNightPause(req: AuthenticatedRequest, res: Res
   }
 }
 
-// NORQVA-0121: pausa noturna das campanhas criadas fora do NORQVA (Campanhas → "Campanhas criadas fora do NORQVA").
+// NORQVA-0122: pausa noturna das campanhas criadas fora do NORQVA (Campanhas → "Campanhas criadas fora do NORQVA").
 function nightPauseFail(res: Response, err: any, msg: string) {
   if (err instanceof NightPauseError) return res.status(err.status).json({ error: err.message });
   console.error('[CAMPAIGNS] pausa noturna (externas)', err);

@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { StatusPill } from '../../components/ui/premium';
 import { hourLabel, nightWindowError } from './CampaignManage';
 
-// NORQVA-0121 (D-0121): pausa noturna das campanhas criadas direto na Meta (fora do NORQVA). Só ADMIN.
+// NORQVA-0122 (D-0122): pausa noturna das campanhas criadas direto na Meta (fora do NORQVA). Só ADMIN.
 // Mesma regra das campanhas de plano: pausa no início da janela só se estiver ativa e reativa no fim só o que
 // ela mesma pausou e ninguém mexeu. Salvar aqui só muda a configuração; nada vai para a Meta.
 

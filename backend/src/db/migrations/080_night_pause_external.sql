@@ -1,4 +1,4 @@
--- NORQVA-0121 pausa noturna das campanhas criadas fora do NORQVA (só aditiva)
+-- NORQVA-0122 pausa noturna das campanhas criadas fora do NORQVA (só aditiva)
 -- night_pause_external_campaigns guarda a configuração (ligada, início e fim) por campanha da Meta que não é de um plano
 -- night_pause_external_runs guarda uma linha por campanha e por noite, com as mesmas colunas de night_pause_runs
 -- plan_code na tabela de noites guarda o rótulo usado nos textos (nome da campanha)

@@ -1,4 +1,4 @@
-// NORQVA-0121: pausa noturna das campanhas criadas fora do NORQVA. Graph API simulada: nunca fala com a Meta.
+// NORQVA-0122: pausa noturna das campanhas criadas fora do NORQVA. Graph API simulada: nunca fala com a Meta.
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { Pool } from 'pg';
@@ -17,7 +17,7 @@ const at = (date: string, hhmm: string) => {
   return new Date(Date.UTC(y, mo - 1, d, h + 3, m));
 };
 
-describe.sequential('NORQVA-0121 — pausa noturna das campanhas criadas fora do NORQVA', () => {
+describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do NORQVA', () => {
   let pool: Pool;
   let accountDbId: string;
   let admin: string;
@@ -137,7 +137,7 @@ describe.sequential('NORQVA-0121 — pausa noturna das campanhas criadas fora do
     pool = initializeDB();
     await runMigrations(pool);
     const acct = await pool.query(
-      `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo) VALUES ('act_norqva_0121', 'NORQVA 0121', 'BRL', FALSE)
+      `INSERT INTO meta_ad_accounts (meta_account_id, name, currency, is_demo) VALUES ('act_norqva_0122', 'NORQVA 0122', 'BRL', FALSE)
        ON CONFLICT (meta_account_id, is_demo) DO UPDATE SET name = EXCLUDED.name RETURNING id`
     );
     accountDbId = acct.rows[0].id;
@@ -149,8 +149,8 @@ describe.sequential('NORQVA-0121 — pausa noturna das campanhas criadas fora do
       );
       return signSupabaseToken({ sub: u.rows[0].auth_user_id, email: u.rows[0].email, role });
     };
-    admin = await mk('admin.night0121@norqva.test', 'ADMIN');
-    perf = await mk('perf.night0121@norqva.test', 'PERFORMANCE');
+    admin = await mk('admin.night0122@norqva.test', 'ADMIN');
+    perf = await mk('perf.night0122@norqva.test', 'PERFORMANCE');
   });
 
   beforeEach(async () => {
@@ -284,7 +284,7 @@ describe.sequential('NORQVA-0121 — pausa noturna das campanhas criadas fora do
     const a = await seedExternal();
     await pool.query(
       `INSERT INTO launch_plans (code, status, spec, meta_ids, daily_budget_brl, max_spend_brl, question_text, night_pause_enabled)
-       VALUES ($1, 'ACTIVE', '{}', $2, 30, 300, 'teste 0121', FALSE)`,
+       VALUES ($1, 'ACTIVE', '{}', $2, 30, 300, 'teste 0122', FALSE)`,
       [`NP21-${crypto.randomUUID().slice(0, 6)}`, JSON.stringify({ campaign: { c: a.cid } })]
     );
     await service().run(pool, at(date, '00:01'));

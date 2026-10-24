@@ -552,7 +552,7 @@ app.get('/api/campaigns/:id/history', requireRole(CAMPAIGNS_READ), getCampaignHi
 // NORQVA-0120: pausa noturna (00h–06h por padrão, horário de Brasília); salvar só muda a configuração do plano
 app.get('/api/campaigns/:id/night-pause', requireRole(CAMPAIGNS_READ), getCampaignNightPause);
 app.post('/api/campaigns/:id/night-pause', requireRole(['ADMIN']), saveCampaignNightPause);
-// NORQVA-0121: pausa noturna das campanhas criadas fora do NORQVA (configuração; ler na Meta só para conferir)
+// NORQVA-0122: pausa noturna das campanhas criadas fora do NORQVA (configuração; ler na Meta só para conferir)
 app.get('/api/night-pause/external', requireRole(['ADMIN']), listExternalNightPause);
 app.post('/api/night-pause/external', requireRole(['ADMIN']), addExternalNightPause);
 app.patch('/api/night-pause/external/:id', requireRole(['ADMIN']), updateExternalNightPause);

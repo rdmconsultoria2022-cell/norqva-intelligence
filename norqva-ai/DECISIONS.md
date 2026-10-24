@@ -329,7 +329,13 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Revisão:** resposta perdida da Meta é resolvida relendo a Meta; reativar tenta até 5 vezes até 23:59 (aviso na 3.ª); trava do plano no banco compartilhada com o vigia e a pausa pela tela, plano relido antes do envio e, se alguém mexeu no mesmo instante, pausa de novo com aviso crítico; fim da janela até 23:00; pausa só nos primeiros 60 minutos; Gerenciador detectado pelo registro de atividades da conta (sem ele, `updated_time`). Como o token pode ser do próprio dono, evento "nosso" é só o do app do token (`GET /app` ou `META_APP_ID`) ou, sem app no evento, a nossa própria mudança de situação até 2 minutos do nosso envio; todo o resto cancela a volta.
 - **Fica para um contrato futuro:** orçamento por hora e reanálise da janela com 100+ vendas.
 
-## D-0121 — Pausa noturna nas campanhas criadas fora do NORQVA (2026-10-24)
+## D-0121 — Ajustes de publicação da campanha da Fábrica (2026-10-23)
+
+- **Decisão (Ricardo, "2 aprovado" em 23/10/2026 21h46, etapa C do contrato NORQVA-0118):** antes de criar a campanha (sempre PAUSADA), dá para ajustar orçamento, teto, destino (página gerada ou da oferta), estados, idade, sexo, público Advantage, posicionamentos, término e quais anúncios entram. Padrões: R$ 30/dia, teto de 7 dias, página gerada, Brasil, idade do produto (livros de cozinha 45–65, outros 25–65), todos os sexos, Advantage ligado, posicionamentos automáticos, sem término.
+- **Idade com Advantage:** a Meta só aceita mínima de 18 a 25 e máxima 65; a faixa escolhida vira sugestão (`age_range`). Para travar a idade, desliga-se o Advantage.
+- **WhatsApp como destino:** só depois do número oficial ativo. Interesses, semelhante e lances manuais ficam de fora até 50 compras.
+
+## D-0122 — Pausa noturna nas campanhas criadas fora do NORQVA (2026-10-24)
 
 - **Decisão (contrato da pausa noturna, Ricardo 23/10/2026 21h22: "ligada nas duas campanhas ativas hoje"):** campanhas criadas direto na Meta entram na pausa noturna por uma lista própria (`night_pause_external_campaigns`, noites em `night_pause_external_runs`). A migration 080 já cadastra, ligadas, "NQ – Kit 5 livros – Teste – Vendas" (120250112900200097) e "NQ – Seca Barriga – Teste – Vendas" (120250081197880097).
 - **Mesmas travas da D-0120** (pausa só se ativa no início, 60 min de tolerância, SKIPPED, só reativa a própria pausa até 23:59, registro de atividades com a regra do app do token, `updated_time` sem o registro, orçamento diário, envio só de status na campanha, trava no banco, avisos, fichas e histórico), sem as conferências de plano. Limite de gastos da Meta: `amount_spent` ≥ `spend_cap` não reativa (vale para planos também).

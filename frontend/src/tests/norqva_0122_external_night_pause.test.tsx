@@ -1,4 +1,4 @@
-// NORQVA-0121: pausa noturna das campanhas criadas fora do NORQVA (tela Campanhas, só ADMIN).
+// NORQVA-0122: pausa noturna das campanhas criadas fora do NORQVA (tela Campanhas, só ADMIN).
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -29,7 +29,7 @@ function setup(campaigns: any[] = [row]) {
 }
 const call = (apiFetch: any, method: string) => apiFetch.mock.calls.find((c: any[]) => c[1]?.method === method) as any;
 
-describe('NORQVA-0121 — campanhas criadas fora do NORQVA', () => {
+describe('NORQVA-0122 — campanhas criadas fora do NORQVA', () => {
   it('lista com situação na Meta, chave, horários e últimas noites; salva com PATCH', async () => {
     const { apiFetch, showSuccess } = setup();
     expect(await screen.findByText('NQ – Kit 5 livros – Teste – Vendas')).toBeInTheDocument();

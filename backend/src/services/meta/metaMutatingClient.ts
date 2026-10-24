@@ -1245,13 +1245,13 @@ export class MetaMutatingClient {
       effective_status: obj?.effective_status || null,
       daily_budget: cents(obj?.daily_budget),
       updated_time: obj?.updated_time ? String(obj.updated_time) : null,
-      // NORQVA-0121: limite de gastos da campanha (0 = sem limite) e o que já foi gasto contra ele
+      // NORQVA-0122: limite de gastos da campanha (0 = sem limite) e o que já foi gasto contra ele
       spend_cap: cap && cap > 0 ? cap : null,
       amount_spent: cents(obj?.amount_spent)
     };
   }
 
-  /** NORQVA-0121: IDs dos conjuntos e anúncios de uma campanha (só leitura), para o registro de atividades. */
+  /** NORQVA-0122: IDs dos conjuntos e anúncios de uma campanha (só leitura), para o registro de atividades. */
   public async readCampaignChildIds(campaignMetaId: string): Promise<string[]> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
     const out: string[] = [];
@@ -1262,7 +1262,7 @@ export class MetaMutatingClient {
     return out;
   }
 
-  /** NORQVA-0121: nome e conta de anúncios de uma campanha (só leitura), para cadastrar na pausa noturna. */
+  /** NORQVA-0122: nome e conta de anúncios de uma campanha (só leitura), para cadastrar na pausa noturna. */
   public async readCampaignIdentity(campaignMetaId: string): Promise<{ id: string | null; name: string | null; account_id: string | null }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
     const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'id,name,account_id' });
@@ -1495,12 +1495,17 @@ export class MetaMutatingClient {
       customEventType: 'PURCHASE';
       optimizationGoal: 'OFFSITE_CONVERSIONS';
       targeting: Record<string, any>;
+      /** NORQVA-0121: término do conjunto (ISO com fuso), opcional. */
+      endTime?: string;
     },
     context: MetaMutatingSecurityContext,
     onCreated?: (externalId: string) => Promise<void>
   ): Promise<{ externalId: string }> {
     await this.assertFeatureFlagAndPreflight(context);
     const actId = this.realLaunchActId(context);
+    if (params.endTime !== undefined && !(Date.parse(params.endTime) > Date.now())) {
+      throw new Error('[VALIDATION EXCEPTION]: Ad set end_time must be in the future.');
+    }
     this.assertAccountAndPixelBinding(undefined, params.pixelId);
     const amount = Math.round(Number(params.dailyBudget) * 100) / 100;
     const max = getMaxDailyBudgetBRL();
@@ -1520,6 +1525,7 @@ export class MetaMutatingClient {
           destination_type: 'WEBSITE',
           promoted_object: { pixel_id: params.pixelId, custom_event_type: params.customEventType },
           targeting: params.targeting,
+          ...(params.endTime ? { end_time: params.endTime } : {}),
           ...advertiserIdentityParams()
         }),
         'Ad set'
@@ -1779,6 +1785,30 @@ export class MetaMutatingClient {
       false
     );
     return { success: true, entityId: String(row.meta_id), previousName: row.name || null, name: clean, confirmed };
+  }
+
+  /**
+   * NORQVA-0121: chaves da Meta dos estados do Brasil (só leitura: GET /search, tipo adgeolocation, região, BR).
+   * Recebe UFs e o nome de cada uma; confere nome e país exatos (sem acento e maiúscula). Sem estados, nada é pedido.
+   */
+  async resolveBrazilRegionKeys(ufs: string[], names: Record<string, string>): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    const fold = (v: string) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    for (const uf of ufs) {
+      const name = names[uf];
+      if (!name) continue;
+      const res = await this.callTransportGet('/search', {
+        type: 'adgeolocation',
+        location_types: JSON.stringify(['region']),
+        country_code: 'BR',
+        q: name,
+        limit: '10'
+      });
+      const list: any[] = Array.isArray(res?.data) ? res.data : [];
+      const hit = list.find(r => String(r?.type) === 'region' && String(r?.country_code).toUpperCase() === 'BR' && fold(r?.name) === fold(name));
+      if (hit?.key !== undefined && hit?.key !== null && /^\d{1,10}$/.test(String(hit.key))) out[uf] = String(hit.key);
+    }
+    return out;
   }
 
   /**

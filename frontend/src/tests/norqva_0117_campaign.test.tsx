@@ -76,7 +76,11 @@ describe('NORQVA-0117 — Criar campanha pausada', () => {
     fireEvent.click(screen.getByTestId('campaign-submit'));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/generated-pages/g1/campaign', expect.objectContaining({ method: 'POST' })));
     const body = JSON.parse(apiFetch.mock.calls.find((c: any[]) => c[1]?.method === 'POST')![1].body);
-    expect(body).toEqual({ campaign_name: 'NQ – Trattoria – Ref REF-000001 – Vendas', daily_budget_brl: 40, max_spend_brl: 210, age_min: 25, age_max: 65 });
+    expect(body).toEqual({
+      campaign_name: 'NQ – Trattoria – Ref REF-000001 – Vendas', daily_budget_brl: 40, max_spend_brl: 210, age_min: 25, age_max: 65,
+      // NORQVA-0121: ajustes de publicação com os padrões
+      destination: 'PAGE', regions: [], genders: 'ALL', placements: 'AUTOMATIC', advantage_audience: true, end_date: null
+    });
     expect(await screen.findByTestId('campaign-plan-code')).toHaveTextContent('CMP-GEN-000001');
     expect(ok).toHaveBeenCalledWith(expect.stringContaining('PAUSADA'));
   });

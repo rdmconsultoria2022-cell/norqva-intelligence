@@ -539,7 +539,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
         </div>
       )}
 
-      {/* NORQVA-0121: pausa noturna das campanhas criadas direto na Meta (só ADMIN) */}
+      {/* NORQVA-0122: pausa noturna das campanhas criadas direto na Meta (só ADMIN) */}
       {isAdmin && (
         <div className={hasSelection ? 'hidden lg:block' : ''}>
           <ExternalNightPause apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
