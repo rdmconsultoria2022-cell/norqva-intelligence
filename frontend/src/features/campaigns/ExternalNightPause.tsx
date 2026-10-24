@@ -114,6 +114,7 @@ function Row({ c, apiFetch, showError, showSuccess, onChanged }: { c: any; apiFe
         )}
       </div>
       {error && <p className="text-[12px] text-nq-critical-text">{error}</p>}
+      {c.mirror_error && <p className="text-[12px] text-nq-critical-text break-words">Ainda não dá para pausar esta campanha à noite: o NORQVA não conseguiu lê-la na Meta ({c.mirror_error}).</p>}
       {c.belongs_to_plan && <p className="text-[12px] text-nq-attention">Esta campanha agora é de um plano do NORQVA: vale a pausa noturna do plano.</p>}
       {Array.isArray(c.runs) && c.runs.length > 0 && (
         <ul className="space-y-1 text-[12px]" aria-label="Últimas noites">
@@ -164,7 +165,8 @@ export function ExternalNightPause({ apiFetch, showError, showSuccess }: { apiFe
     setAdding(true);
     try {
       const r = await apiFetch('/night-pause/external?mode=real', { method: 'POST', body: JSON.stringify({ meta_campaign_id: id }) });
-      showSuccess(`"${r?.name || id}" entrou na pausa noturna (00:00 às 06:00).`);
+      if (r?.mirror === 'FAILED') showError(`"${r?.name || id}" entrou na lista, mas o NORQVA não conseguiu prepará-la na Meta: ${r?.mirror_error || 'erro'}. Ela não será pausada até isso ser resolvido.`);
+      else showSuccess(`"${r?.name || id}" entrou na pausa noturna (00:00 às 06:00).`);
       setNewId('');
       setReload((n) => n + 1);
     } catch (e: any) {

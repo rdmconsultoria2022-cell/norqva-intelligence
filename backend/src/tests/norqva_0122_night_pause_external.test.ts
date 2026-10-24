@@ -91,15 +91,17 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
 
   const newId = () => String(1210000000000 + Math.floor(Math.random() * 1e9));
   /** Campanha na Meta (sincronizada) e, se pedido, cadastrada na lista de externas. */
-  const seedExternal = async (opts: { metaStatus?: string; enabled?: boolean; start?: string; end?: string; register?: boolean; spendCap?: number | null; spent?: number } = {}) => {
+  const seedExternal = async (opts: { metaStatus?: string; enabled?: boolean; start?: string; end?: string; register?: boolean; spendCap?: number | null; spent?: number; synced?: boolean } = {}) => {
     const cid = newId();
     const setId = newId();
     const adId = newId();
     const name = `Externa ${cid.slice(-5)}`;
-    await pool.query(
-      `INSERT INTO meta_campaigns (id, meta_campaign_id, ad_account_id, name, status, effective_status, is_demo) VALUES ($1, $2, $3, $4, $5, $5, FALSE)`,
-      [crypto.randomUUID(), cid, accountDbId, name, opts.metaStatus || 'ACTIVE']
-    );
+    if (opts.synced !== false) {
+      await pool.query(
+        `INSERT INTO meta_campaigns (id, meta_campaign_id, ad_account_id, name, status, effective_status, is_demo) VALUES ($1, $2, $3, $4, $5, $5, FALSE)`,
+        [crypto.randomUUID(), cid, accountDbId, name, opts.metaStatus || 'ACTIVE']
+      );
+    }
     onMeta.set(cid, {
       status: opts.metaStatus || 'ACTIVE',
       daily_budget: 30,
@@ -336,6 +338,45 @@ describe.sequential('NORQVA-0122 — pausa noturna das campanhas criadas fora do
     await service().run(pool, at(date, '01:00'));
     expect(postsTo(a.cid)).toHaveLength(0);
     expect(await runOf(a.cid, date)).toBeUndefined();
+  });
+
+  it('campanha ainda fora de meta_campaigns: o primeiro ciclo cria a cópia mínima e a pausa funciona', async () => {
+    const date = nextDay();
+    const a = await seedExternal({ synced: false });
+    expect((await pool.query(`SELECT 1 FROM meta_campaigns WHERE meta_campaign_id = $1`, [a.cid])).rows).toHaveLength(0);
+    await service().run(pool, at(date, '00:01'));
+    const m = (await pool.query(`SELECT name, status, data_provenance, daily_budget, is_demo FROM meta_campaigns WHERE meta_campaign_id = $1`, [a.cid])).rows[0];
+    expect(m).toMatchObject({ name: a.name, data_provenance: 'COMMERCIAL_PRODUCTION', is_demo: false });
+    expect(Number(m.daily_budget)).toBe(30);
+    expect(postsTo(a.cid)).toEqual([{ endpoint: `/${a.cid}`, body: { status: 'PAUSED' } }]);
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED' });
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
+  });
+
+  it('cópia impossível (outra conta): aviso no primeiro ciclo, uma vez só; nada é pausado; linha existente nunca muda', async () => {
+    const date = nextDay();
+    const a = await seedExternal({ synced: false });
+    onMeta.get(a.cid)!.account_id = '999999999';
+    await service().run(pool, at(date, '00:01'));
+    await service().run(pool, at(date, '00:03'));
+    expect(postsTo(a.cid)).toHaveLength(0);
+    expect((await alertsOf(a.cid)).filter((x) => x.rule_code === 'NIGHT_PAUSE_MIRROR_FAILED')).toHaveLength(1);
+    const ext = (await pool.query(`SELECT mirror_error FROM night_pause_external_campaigns WHERE id = $1`, [a.ext.id])).rows[0];
+    expect(ext.mirror_error).toMatch(/another ad account/);
+    // campanha já sincronizada: a cópia não altera a linha da sincronização
+    const b = await seedExternal();
+    onMeta.get(b.cid)!.name = 'Nome novo na Meta';
+    await service().run(pool, at(nextDay(), '03:00'));
+    expect((await pool.query(`SELECT name FROM meta_campaigns WHERE meta_campaign_id = $1`, [b.cid])).rows[0].name).toBe(b.name);
+  });
+
+  it('adicionar pela tela já cria a cópia mínima (e avisa na hora se não der)', async () => {
+    const a = await seedExternal({ register: false, synced: false });
+    const r = await as(admin).post('/api/night-pause/external?mode=real', { meta_campaign_id: a.cid });
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ mirror: 'OK', mirror_error: null });
+    expect((await pool.query(`SELECT data_provenance FROM meta_campaigns WHERE meta_campaign_id = $1`, [a.cid])).rows[0].data_provenance).toBe('COMMERCIAL_PRODUCTION');
   });
 
   it('telas: só ADMIN; adicionar confere na Meta e na conta; editar valida; tirar da lista é suave', async () => {

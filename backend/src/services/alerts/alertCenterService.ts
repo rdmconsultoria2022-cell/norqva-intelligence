@@ -37,6 +37,7 @@ const RULES: Record<string, RuleInfo> = {
   NIGHT_PAUSE_PAUSE_FAILED: { title: 'A pausa noturna não conseguiu pausar', severity: 'ATTENTION', action: 'A campanha seguiu ativa à noite. Pause pela tela se quiser.', tab: 'results' },
   NIGHT_PAUSE_RESUME_FAILED: { title: 'A pausa noturna não conseguiu reativar', severity: 'CRITICAL', action: 'A campanha está pausada. Reative pela tela se ela deve rodar.', tab: 'results' },
   NIGHT_PAUSE_RESUME_CANCELLED: { title: 'Reativação da manhã cancelada', severity: 'ATTENTION', action: 'Alguém ou o vigia mexeu na campanha à noite. Confira e reative pela tela se quiser.', tab: 'results' },
+  NIGHT_PAUSE_MIRROR_FAILED: { title: 'Pausa noturna não consegue preparar a campanha', severity: 'ATTENTION', action: 'Confira o ID e a conta da campanha; sem isso ela não será pausada à noite.', tab: 'results' },
   NIGHT_PAUSE_RACE: { title: 'Alguém mexeu na campanha durante a reativação', severity: 'CRITICAL', action: 'A pausa noturna pausou de novo. Confira a campanha agora e decida.', tab: 'results' },
   NIGHT_PAUSE_EXPIRED: { title: 'Campanha ficou pausada depois da pausa noturna', severity: 'CRITICAL', action: 'Reative pela tela se a campanha deve rodar.', tab: 'results' }
 };

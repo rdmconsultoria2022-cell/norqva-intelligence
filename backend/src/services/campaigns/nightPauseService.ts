@@ -294,6 +294,8 @@ export class NightPauseService {
       await step(`expire:${src.kind}`, () => this.expireOld(pool, src, clock, out));
       await step(`resume:${src.kind}`, () => this.resumeDue(pool, src, clock, out));
     }
+    // campanhas externas ainda sem linha em meta_campaigns: cópia mínima lida na Meta (sem esperar a sincronização)
+    await step('mirror:EXTERNAL', () => this.ensureExternalMirrors(pool, out));
     if (out.enabled && out.mutation) {
       await step('pause:PLAN', () => this.pauseDuePlans(pool, clock, out));
       await step('pause:EXTERNAL', () => this.pauseDueExternal(pool, clock, out));
@@ -1097,6 +1099,46 @@ export class NightPauseService {
 
   // ------------------------------ campanhas criadas fora do NORQVA (NORQVA-0122) ------------------------------
 
+  /**
+   * Garante a linha da campanha em meta_campaigns (setEntityStatus precisa dela). Nunca altera linha existente.
+   * Falha → grava o erro e abre aviso uma vez (na hora de adicionar ou no primeiro ciclo, não à meia-noite).
+   */
+  private async mirrorOne(pool: Pool, ext: any): Promise<{ ok: boolean; created?: boolean; error?: string }> {
+    const cid = String(ext.meta_campaign_id);
+    try {
+      const r = await this.clientFactory().ensureCampaignMirror(pool, cid);
+      await pool.query(`UPDATE night_pause_external_campaigns SET mirror_checked_at = NOW(), mirror_error = NULL WHERE id = $1`, [ext.id]);
+      return { ok: true, created: r.created };
+    } catch (err) {
+      const msg = errText(err);
+      const prev = (await pool.query(`SELECT mirror_error FROM night_pause_external_campaigns WHERE id = $1`, [ext.id])).rows[0]?.mirror_error;
+      await pool.query(`UPDATE night_pause_external_campaigns SET mirror_checked_at = NOW(), mirror_error = $2 WHERE id = $1`, [ext.id, msg]);
+      if (!prev) {
+        await writeAuditLog(pool, null, 'NIGHT_PAUSE_EXTERNAL_MIRROR_FAILED', `Pausa noturna: não foi possível preparar a campanha ${cid} ("${ext.name || cid}", criada fora do NORQVA). ${msg}`, null, null);
+        await this.alert(pool, externalOwner(ext), cid, 'NIGHT_PAUSE_MIRROR_FAILED', `A campanha "${ext.name || cid}" (${cid}) não pode ser pausada à noite: o NORQVA não conseguiu lê-la na Meta (${msg.slice(0, 160)}). Confira o ID e a conta.`);
+      }
+      return { ok: false, error: msg };
+    }
+  }
+
+  /** Para as externas ligadas ainda sem linha em meta_campaigns: tenta a cópia (no máximo 1 vez por hora se falhar). */
+  private async ensureExternalMirrors(pool: Pool, out: any) {
+    const rows = (
+      await pool.query(
+        `SELECT e.* FROM night_pause_external_campaigns e
+         WHERE e.enabled = TRUE AND e.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM meta_campaigns m WHERE m.meta_campaign_id = e.meta_campaign_id AND m.is_demo = FALSE)
+           AND (e.mirror_checked_at IS NULL OR e.mirror_error IS NULL OR e.mirror_checked_at < NOW() - INTERVAL '1 hour')`
+      )
+    ).rows;
+    for (const ext of rows) {
+      await this.perRow(out, `mirror:${ext.meta_campaign_id}`, async () => {
+        const r = await this.mirrorOne(pool, ext);
+        out.other.push({ code: ext.name || ext.meta_campaign_id, mirror: r.ok ? (r.created ? 'criada' : 'já existia') : r.error });
+      });
+    }
+  }
+
   private shapeExternal(row: any, runs: any[], meta: { status: string | null; effective_status: string | null; error?: string } | null) {
     return {
       id: row.id,
@@ -1106,7 +1148,8 @@ export class NightPauseService {
       start: row.night_pause_start || DEFAULT_START,
       end: row.night_pause_end || DEFAULT_END,
       meta,
-      runs
+      runs,
+      mirror_error: row.mirror_error || null
     };
   }
 
@@ -1160,8 +1203,10 @@ export class NightPauseService {
        RETURNING *`,
       [cid, info.name ? String(info.name).slice(0, 255) : null, uid]
     );
+    // cópia mínima em meta_campaigns já agora: se falhar, o aviso sai na hora de adicionar, não à meia-noite
+    const mirror = await this.mirrorOne(pool, r.rows[0]);
     await writeAuditLog(pool, uid, 'NIGHT_PAUSE_EXTERNAL_ADDED', `Pausa noturna: campanha ${cid} ("${info.name || cid}", criada fora do NORQVA) adicionada, ligada das ${r.rows[0].night_pause_start} às ${r.rows[0].night_pause_end}.`, null, cid);
-    return this.shapeExternal(r.rows[0], [], null);
+    return { ...this.shapeExternal(r.rows[0], [], null), mirror: mirror.ok ? 'OK' : 'FAILED', mirror_error: mirror.error || null };
   }
 
   private async externalRow(pool: Pool, id: string) {

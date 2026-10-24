@@ -2,6 +2,7 @@
 -- night_pause_external_campaigns guarda a configuração (ligada, início e fim) por campanha da Meta que não é de um plano
 -- night_pause_external_runs guarda uma linha por campanha e por noite, com as mesmas colunas de night_pause_runs
 -- plan_code na tabela de noites guarda o rótulo usado nos textos (nome da campanha)
+-- mirror_checked_at e mirror_error registram a cópia mínima da campanha em meta_campaigns (para pausar sem esperar a sincronização)
 -- as duas campanhas ativas no dia do contrato entram ligadas (dados novos de uma tabela nova)
 
 CREATE TABLE IF NOT EXISTS night_pause_external_campaigns (
@@ -12,6 +13,8 @@ CREATE TABLE IF NOT EXISTS night_pause_external_campaigns (
   night_pause_start VARCHAR(5) NOT NULL DEFAULT '00:00',
   night_pause_end VARCHAR(5) NOT NULL DEFAULT '06:00',
   created_by UUID,
+  mirror_checked_at TIMESTAMPTZ,
+  mirror_error TEXT,
   deleted_at TIMESTAMPTZ,
   deleted_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
