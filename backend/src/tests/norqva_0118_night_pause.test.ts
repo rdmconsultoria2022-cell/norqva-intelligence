@@ -8,7 +8,9 @@ import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { signSupabaseToken } from '../utils/token';
 import { MetaMutatingClient, resetMetaPreflightCacheForTesting, OFFICIAL_NORQVA_PIXEL_ID } from '../services/meta/metaMutatingClient';
-import { NightPauseService, spClock, validateWindow, parseHHMM, statusOnlyGuard, NightPauseError } from '../services/campaigns/nightPauseService';
+import { NightPauseService, spClock, validateWindow, parseHHMM, statusOnlyGuard, NightPauseError, classifySendError } from '../services/campaigns/nightPauseService';
+import { ExperimentGuardService } from '../services/experiments/experimentGuardService';
+import { withPlanLock } from '../services/campaigns/planLock';
 import { CampaignInsightService } from '../services/campaigns/campaignInsightService';
 import { describeRule } from '../services/alerts/alertCenterService';
 
@@ -34,6 +36,8 @@ describe('NORQVA-0118 — horário de Brasília e janela', () => {
     expect(() => validateWindow('02:00', '02:00')).toThrow(/antes do fim/);
     expect(() => validateWindow('24:00', '06:00')).toThrow(/HH:MM/);
     expect(() => validateWindow('1:00', '06:00')).toThrow(/HH:MM/);
+    expect(validateWindow('22:00', '23:00')).toEqual({ start: '22:00', end: '23:00' });
+    expect(() => validateWindow('22:00', '23:58')).toThrow(/23:00/);
     expect(parseHHMM('23:59')).toBe(1439);
     expect(parseHHMM('7:00')).toBeNull();
   });
@@ -47,6 +51,24 @@ describe('NORQVA-0118 — horário de Brasília e janela', () => {
     expect(() => g('/1200001', { spend_cap: 100 })).toThrow();
     expect(() => g('/1200001', { status: 'ARCHIVED' })).toThrow();
     expect(() => g('/act_1/campaigns', { status: 'PAUSED' })).toThrow();
+    // por direção: o cliente de pausar só pausa; o de reativar só reativa
+    expect(() => statusOnlyGuard('1200001', 'PAUSED')('/1200001', { status: 'ACTIVE' })).toThrow();
+    expect(() => statusOnlyGuard('1200001', 'PAUSED')('/1200001', { status: 'PAUSED' })).not.toThrow();
+    expect(() => statusOnlyGuard('1200001', 'ACTIVE')('/1200001', { status: 'PAUSED' })).toThrow();
+  });
+
+  it('tipos de erro do envio', () => {
+    expect(classifySendError('[SECURITY EXCEPTION]: BLOCKED_BY_META_WRITE_SAFETY_HOLD')).toBe('PRE_SEND');
+    expect(classifySendError("[VALIDATION EXCEPTION]: CAMPAIGN '1' not found. Sync Meta data first.")).toBe('PRE_SEND');
+    expect(classifySendError('[NIGHT PAUSE GUARD]: x')).toBe('PRE_SEND');
+    expect(classifySendError('[META TIMEOUT EXCEPTION]: Mutating request timed out after 15000ms.')).toBe('UNKNOWN');
+    expect(classifySendError('[META GRAPH API ERROR]: Meta mutating request returned HTTP 503')).toBe('UNKNOWN');
+    expect(classifySendError('[META GRAPH API ERROR]: User request limit reached (code 17)')).toBe('UNKNOWN');
+    expect(classifySendError('[META GRAPH API ERROR]: x (code 613, subcode 1487742)')).toBe('UNKNOWN');
+    expect(classifySendError('[META GRAPH API ERROR]: x (code 80004)')).toBe('UNKNOWN');
+    expect(classifySendError('fetch failed')).toBe('UNKNOWN');
+    expect(classifySendError('[META GRAPH API ERROR]: Permissions error (code 200)')).toBe('REJECTED');
+    expect(classifySendError('[META GRAPH API ERROR]: Invalid parameter (code 100)')).toBe('REJECTED');
   });
 
   it('avisos da pausa noturna têm título e ação na central', () => {
@@ -68,6 +90,12 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
   let posts: Array<{ endpoint: string; body: any }>;
   let failPost: ((endpoint: string, body: any) => boolean) | null;
   let failGet: ((endpoint: string) => boolean) | null;
+  let activities: any[];
+  let failActivities: boolean;
+  let getHook: ((endpoint: string) => Promise<void>) | null;
+  let postHook: ((endpoint: string, body: any) => Promise<void>) | null;
+  // envio que a Meta aplica mas cuja resposta se perde
+  let applyThenThrow: ((endpoint: string, body: any) => string | null) | null;
   let tick = 0;
   // cada teste usa um dia diferente: linhas de outros testes não se misturam
   let day = 0;
@@ -78,7 +106,12 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
   };
 
   const get = vi.fn(async (endpoint: string, params?: any) => {
+    if (getHook) await getHook(endpoint);
     if (failGet && failGet(endpoint)) throw new Error('[META GRAPH API ERROR]: leitura simulada falhou');
+    if (/^\/act_[^/]+\/activities$/.test(endpoint)) {
+      if (failActivities) throw new Error('[META GRAPH API ERROR]: atividades indisponíveis');
+      return { data: activities };
+    }
     if (endpoint === '/me') return { id: 'u1' };
     if (endpoint === '/me/permissions') return { data: ['ads_management', 'ads_read'].map((p) => ({ permission: p, status: 'granted' })) };
     if (endpoint.startsWith('/act_')) return { id: endpoint.slice(1), account_status: 1 };
@@ -105,8 +138,11 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     const obj = onMeta.get(endpoint.slice(1));
     if (obj && body?.status) {
       obj.status = body.status;
-      obj.updated_time = `t${++tick}`;
+      obj.updated_time = `2027-01-01T00:00:${String(++tick % 60).padStart(2, '0')}+0000`;
     }
+    if (postHook) await postHook(endpoint, body);
+    const lost = applyThenThrow ? applyThenThrow(endpoint, body) : null;
+    if (lost) throw new Error(lost);
     return { success: true };
   });
   const service = () => new NightPauseService(() => new MetaMutatingClient(post as any, undefined, get as any));
@@ -133,11 +169,14 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
         opts.end ?? '06:00'
       ]
     );
-    onMeta.set(cid, { status: opts.metaStatus || 'ACTIVE', daily_budget: opts.dailyMeta === undefined ? 30 : opts.dailyMeta, updated_time: 't0', spend: opts.spend ?? 50, spend_cap: null });
+    onMeta.set(cid, { status: opts.metaStatus || 'ACTIVE', daily_budget: opts.dailyMeta === undefined ? 30 : opts.dailyMeta, updated_time: '2027-01-01T00:00:00+0000', spend: opts.spend ?? 50, spend_cap: null });
     return { plan: r.rows[0], cid, setId, code };
   };
   const runOf = async (cid: string, date: string) => (await pool.query(`SELECT * FROM night_pause_runs WHERE meta_campaign_id = $1 AND night_date = $2::date`, [cid, date])).rows[0];
   const postsTo = (cid: string) => posts.filter((p) => p.endpoint === `/${cid}`);
+  const actives = (cid: string) => postsTo(cid).filter((p) => p.body.status === 'ACTIVE');
+  // a reativação tenta de novo com intervalo mínimo: nos testes, "o tempo passa"
+  const skipBackoff = (cid: string) => pool.query(`UPDATE night_pause_runs SET resume_started_at = NOW() - INTERVAL '1 hour' WHERE meta_campaign_id = $1`, [cid]);
   const alertsOf = async (cid: string) => (await pool.query(`SELECT rule_code, message FROM ad_alerts WHERE meta_ad_id = $1 ORDER BY created_at`, [cid])).rows;
   const auditsOf = async (code: string) => (await pool.query(`SELECT event_type, description FROM audit_logs WHERE description LIKE $1 ORDER BY created_at`, [`%${code}%`])).rows;
 
@@ -169,6 +208,11 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     posts = [];
     failPost = null;
     failGet = null;
+    activities = [];
+    failActivities = false;
+    getHook = null;
+    postHook = null;
+    applyThenThrow = null;
     // planos de outros testes (e de outras suítes) ficam fora desta noite
     await pool.query(`UPDATE launch_plans SET night_pause_enabled = FALSE`);
   });
@@ -314,7 +358,7 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     await pool.query(`UPDATE launch_plans SET guard_state = 'CAPPED' WHERE id = $1`, [capped.plan.id]);
     await pool.query(`UPDATE launch_plans SET max_spend_brl = 500 WHERE id = $1`, [capChanged.plan.id]);
     await pool.query(`UPDATE launch_plans SET daily_budget_brl = 50 WHERE id = $1`, [budget.plan.id]);
-    onMeta.get(adsManager.cid)!.updated_time = 'mexeu-no-gerenciador';
+    activities = [{ event_type: 'update_campaign_run_status', event_time: new Date().toISOString(), object_id: adsManager.cid, object_type: 'CAMPAIGN', actor_id: 'dono-no-gerenciador' }];
     onMeta.get(metaBudget.cid)!.daily_budget = 80;
     await service().run(pool, at(date, '06:01'));
     for (const x of [capped, capChanged, budget, adsManager, metaBudget]) {
@@ -324,7 +368,8 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     expect((await runOf(capped.cid, date)).reason).toMatch(/vigia/);
     expect((await runOf(capChanged.cid, date)).reason).toMatch(/teto/);
     expect((await runOf(budget.cid, date)).reason).toMatch(/orçamento/);
-    expect((await runOf(adsManager.cid, date)).reason).toMatch(/alterada na Meta/);
+    expect((await runOf(adsManager.cid, date)).reason).toMatch(/alterada na Meta durante a noite por outra pessoa/);
+    expect(await runOf(adsManager.cid, date)).toMatchObject({ activity_check: 'TOUCHED' });
     expect((await runOf(metaBudget.cid, date)).reason).toMatch(/orçamento da campanha mudou na Meta/);
   });
 
@@ -336,8 +381,8 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     const touch = (cid: string, offset: string) =>
       pool.query(
         `INSERT INTO audit_logs (id, event_type, description, is_demo, created_at)
-         VALUES ($1, 'META_CAMPAIGN_STATUS_CHANGED', $2, FALSE, (SELECT quiet_since FROM night_pause_runs WHERE meta_campaign_id = $3) + $4::interval)`,
-        [crypto.randomUUID(), `Set CAMPAIGN 'x' (${cid}) status from ACTIVE to PAUSED.`, cid, offset]
+         VALUES ($1, 'EXPERIMENT_GUARD_PAUSED', $2, FALSE, (SELECT quiet_since FROM night_pause_runs WHERE meta_campaign_id = $3) + $4::interval)`,
+        [crypto.randomUUID(), `Campanha ${cid} pausada pelo vigia do teto.`, cid, offset]
       );
     await touch(a.cid, '-200 microseconds');
     await touch(b.cid, '200 microseconds');
@@ -475,9 +520,13 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     await service().run(pool, at(date, '00:01'));
     failGet = (endpoint) => endpoint === `/${a.cid}`;
     await service().run(pool, at(date, '06:01'));
-    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED', read_failures: 1 });
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED', resume_attempts: 1 });
     failGet = null;
+    // intervalo mínimo entre tentativas
     await service().run(pool, at(date, '06:03'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED' });
+    await skipBackoff(a.cid);
+    await service().run(pool, at(date, '06:05'));
     expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
   });
 
@@ -494,6 +543,272 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     expect(postsTo(a.cid).map((p) => p.body.status)).toEqual(['PAUSED', 'ACTIVE']);
   });
 
+  it('pausa: a Meta aplicou mas a resposta se perdeu → é pausa nossa (e volta de manhã)', async () => {
+    const date = nextDay();
+    const a = await seed();
+    applyThenThrow = (endpoint, body) => (endpoint === `/${a.cid}` && body.status === 'PAUSED' ? '[META TIMEOUT EXCEPTION]: Mutating request timed out after 15000ms.' : null);
+    await service().run(pool, at(date, '00:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED' });
+    expect((await alertsOf(a.cid)).map((x) => x.rule_code)).not.toContain('NIGHT_PAUSE_PAUSE_FAILED');
+    const ch = (await pool.query(`SELECT state FROM meta_change_requests WHERE meta_campaign_id = $1`, [a.cid])).rows;
+    expect(ch).toEqual([{ state: 'CONFIRMED' }]);
+    applyThenThrow = null;
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
+  });
+
+  it('pausa: resposta perdida e releitura falhando → aguardando conferência; o próximo ciclo confirma', async () => {
+    const date = nextDay();
+    const a = await seed();
+    applyThenThrow = (endpoint, body) => (endpoint === `/${a.cid}` && body.status === 'PAUSED' ? 'fetch failed' : null);
+    // depois do envio, a leitura da campanha falha
+    postHook = async (endpoint) => {
+      if (endpoint === `/${a.cid}`) failGet = (e) => e === `/${a.cid}`;
+    };
+    await service().run(pool, at(date, '00:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSE_UNCONFIRMED' });
+    expect((await runOf(a.cid, date)).quiet_since).not.toBeNull();
+    failGet = null;
+    postHook = null;
+    applyThenThrow = null;
+    await service().run(pool, at(date, '00:03'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED' });
+    expect(postsTo(a.cid)).toHaveLength(1); // não pausou de novo
+  });
+
+  it('pausa: a Meta mostra ACTIVE depois do erro → falhou, com aviso', async () => {
+    const date = nextDay();
+    const a = await seed();
+    failPost = (endpoint, body) => endpoint === `/${a.cid}` && body.status === 'PAUSED';
+    // a Meta recusou: a campanha segue ativa
+    await service().run(pool, at(date, '00:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSE_FAILED' });
+    expect((await alertsOf(a.cid)).map((x) => x.message).join(' ')).toMatch(/segue ativa/);
+  });
+
+  it('reativar: a Meta aplicou mas a resposta se perdeu → reativada (confirmada), sem segundo envio', async () => {
+    const date = nextDay();
+    const a = await seed();
+    await service().run(pool, at(date, '00:01'));
+    applyThenThrow = (endpoint, body) => (endpoint === `/${a.cid}` && body.status === 'ACTIVE' ? '[META GRAPH API ERROR]: Meta mutating request returned HTTP 502' : null);
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
+    expect(actives(a.cid)).toHaveLength(1);
+  });
+
+  it('reativar: falha antes do envio tenta de novo (o registro META_MUTATION_FAILED não cancela a volta)', async () => {
+    const date = nextDay();
+    const a = await seed();
+    await service().run(pool, at(date, '00:01'));
+    // campanha sumiu da sincronização: o cliente recusa antes de enviar e grava META_MUTATION_FAILED
+    await pool.query(`UPDATE meta_campaigns SET is_demo = TRUE WHERE meta_campaign_id = $1`, [a.cid]);
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED', resume_attempts: 1, resume_change_id: null });
+    const failed = (await pool.query(`SELECT 1 FROM audit_logs WHERE event_type = 'META_MUTATION_FAILED' AND description LIKE $1`, [`%${a.cid}%`])).rows;
+    expect(failed.length).toBeGreaterThan(0);
+    expect(actives(a.cid)).toHaveLength(0);
+    await pool.query(`UPDATE meta_campaigns SET is_demo = FALSE WHERE meta_campaign_id = $1`, [a.cid]);
+    await skipBackoff(a.cid);
+    await service().run(pool, at(date, '06:07'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED', resume_attempts: 2 });
+    expect(actives(a.cid)).toHaveLength(1);
+  });
+
+  it('reativar: erro passageiro da Meta tenta até 5 vezes (aviso na 3.ª) e depois desiste', async () => {
+    const date = nextDay();
+    const a = await seed();
+    await service().run(pool, at(date, '00:01'));
+    const msg = '[META GRAPH API ERROR]: Service temporarily unavailable (code 2)';
+    // a Meta não aplica e responde erro passageiro
+    const realPost = post.getMockImplementation()!;
+    post.mockImplementation(async (endpoint: string, body: any) => {
+      if (endpoint === `/${a.cid}` && body.status === 'ACTIVE') {
+        posts.push({ endpoint, body });
+        throw new Error(msg);
+      }
+      return realPost(endpoint, body);
+    });
+    try {
+      for (let i = 1; i <= 5; i++) {
+        await skipBackoff(a.cid);
+        await service().run(pool, at(date, `06:${String(i * 5).padStart(2, '0')}`));
+        const row = await runOf(a.cid, date);
+        expect(row.resume_attempts).toBe(i);
+        expect(row.state).toBe(i < 5 ? 'PAUSED' : 'RESUME_FAILED');
+        const alerts = (await alertsOf(a.cid)).filter((x) => x.rule_code === 'NIGHT_PAUSE_RESUME_FAILED');
+        expect(alerts.length).toBe(i < 3 ? 0 : i < 5 ? 1 : 2);
+      }
+    } finally {
+      post.mockImplementation(realPost);
+    }
+    expect(actives(a.cid)).toHaveLength(5);
+    await skipBackoff(a.cid);
+    await service().run(pool, at(date, '07:00'));
+    expect(actives(a.cid)).toHaveLength(5);
+  });
+
+  it('linhas interrompidas: sem envio voltam; com envio a releitura decide', async () => {
+    const date = nextDay();
+    const a = await seed();
+    const b = await seed();
+    await service().run(pool, at(date, '00:01'));
+    // A: reativação interrompida antes do envio
+    await pool.query(`UPDATE night_pause_runs SET state = 'REACTIVATING', resume_started_at = NOW() - INTERVAL '10 minutes', resume_change_id = NULL WHERE meta_campaign_id = $1`, [a.cid]);
+    // B: reativação interrompida depois do envio (a Meta aplicou)
+    await pool.query(`UPDATE night_pause_runs SET state = 'REACTIVATING', resume_started_at = NOW() - INTERVAL '10 minutes', resume_change_id = $2 WHERE meta_campaign_id = $1`, [b.cid, crypto.randomUUID()]);
+    onMeta.get(b.cid)!.status = 'ACTIVE';
+    await service().run(pool, at(date, '06:30'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'REACTIVATED' });
+    expect(actives(a.cid)).toHaveLength(1);
+    expect(await runOf(b.cid, date)).toMatchObject({ state: 'REACTIVATED' });
+    expect(actives(b.cid)).toHaveLength(0);
+
+    // pausas interrompidas: sem envio → falhou; com envio e PAUSED na Meta → pausa nossa
+    const date2 = nextDay();
+    const c = await seed();
+    const d = await seed();
+    const insertStale = (x: any, changeId: string | null) =>
+      pool.query(
+        `INSERT INTO night_pause_runs (plan_id, plan_code, meta_campaign_id, night_date, window_start, window_end, state, previous_status, plan_daily_budget_at_pause, plan_cap_at_pause, pause_started_at, pause_change_id)
+         VALUES ($1, $2, $3, $4::date, '00:00', '06:00', 'PAUSING', 'ACTIVE', 30, 300, NOW() - INTERVAL '10 minutes', $5)`,
+        [x.plan.id, x.code, x.cid, date2, changeId]
+      );
+    await insertStale(c, null);
+    await insertStale(d, crypto.randomUUID());
+    onMeta.get(d.cid)!.status = 'PAUSED';
+    await service().run(pool, at(date2, '01:30'));
+    expect(await runOf(c.cid, date2)).toMatchObject({ state: 'PAUSE_FAILED' });
+    expect(await runOf(d.cid, date2)).toMatchObject({ state: 'PAUSED' });
+    expect((await runOf(d.cid, date2)).quiet_since).not.toBeNull();
+  });
+
+  it('corrida: dono pausa ou vigia marca CAPPED logo antes do envio → não reativa', async () => {
+    const date = nextDay();
+    const a = await seed();
+    const b = await seed();
+    await service().run(pool, at(date, '00:01'));
+    // durante a leitura do gasto (a última antes do envio) o dono pausa A pela tela e o vigia marca B
+    getHook = async (endpoint) => {
+      if (endpoint === `/${a.cid}/insights`) await pool.query(`UPDATE launch_plans SET operator_paused_at = NOW() WHERE id = $1`, [a.plan.id]);
+      if (endpoint === `/${b.cid}/insights`) await pool.query(`UPDATE launch_plans SET guard_state = 'CAPPED' WHERE id = $1`, [b.plan.id]);
+    };
+    await service().run(pool, at(date, '06:01'));
+    expect(actives(a.cid)).toHaveLength(0);
+    expect(actives(b.cid)).toHaveLength(0);
+    expect((await runOf(a.cid, date)).reason).toMatch(/pela tela/);
+    expect((await runOf(b.cid, date)).reason).toMatch(/vigia/);
+  });
+
+  it('corrida: alguém mexe no mesmo instante do envio → pausa de novo e aviso crítico', async () => {
+    const date = nextDay();
+    const a = await seed();
+    await service().run(pool, at(date, '00:01'));
+    postHook = async (endpoint, body) => {
+      if (endpoint === `/${a.cid}` && body.status === 'ACTIVE') {
+        await pool.query(
+          `INSERT INTO decision_events (correlation_id, phase, action, decision, plan_id, plan_code, actor_type, meta_ids)
+           VALUES ($1, 'REQUESTED', 'META_ENTITY_STATUS', 'CAMPAIGN:PAUSED', $2, $3, 'HUMAN', $4::jsonb)`,
+          [crypto.randomUUID(), a.plan.id, a.code, JSON.stringify([a.cid])]
+        );
+      }
+    };
+    await service().run(pool, at(date, '06:01'));
+    expect(postsTo(a.cid).map((p) => p.body.status)).toEqual(['PAUSED', 'ACTIVE', 'PAUSED']);
+    expect(onMeta.get(a.cid)!.status).toBe('PAUSED');
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'CANCELLED' });
+    expect((await alertsOf(a.cid)).map((x) => x.rule_code)).toContain('NIGHT_PAUSE_RACE');
+    expect(describeRule('NIGHT_PAUSE_RACE').severity).toBe('CRITICAL');
+  });
+
+  it('trava do plano: duas decisões no mesmo plano acontecem uma de cada vez', async () => {
+    const id = crypto.randomUUID();
+    const order: string[] = [];
+    const slow = (tag: string) => withPlanLock(pool, id, async () => {
+      order.push(`${tag}:in`);
+      await new Promise((r) => setTimeout(r, 50));
+      order.push(`${tag}:out`);
+    });
+    await Promise.all([slow('a'), slow('b')]);
+    expect([order.slice(0, 2), order.slice(2)].every((p) => p[0].split(':')[0] === p[1].split(':')[0])).toBe(true);
+  });
+
+  it('vigia à noite: campanha parada pela pausa noturna não vira CAPPED; sem pausa noturna vira', async () => {
+    const date = nextDay();
+    const a = await seed({ cap: 100, spend: 99 });
+    const b = await seed({ cap: 100, spend: 99, enabled: false });
+    await service().run(pool, at(date, '00:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'PAUSED' });
+    onMeta.get(b.cid)!.status = 'PAUSED';
+    const guard = new ExperimentGuardService(
+      () => ({
+        getCampaignLifetimeSpend: async (_id: string) => ({ spend: 99.9, effective_status: 'PAUSED', spend_cap: null }),
+        setEntityStatus: (async () => { throw new Error('não deveria pausar'); }) as any,
+        setCampaignSpendCap: (async () => { throw new Error('não deveria mexer no teto'); }) as any
+      }),
+      null
+    );
+    const ra = await guard.run(pool, { planId: a.plan.id, noProfitExtend: true });
+    const rb = await guard.run(pool, { planId: b.plan.id, noProfitExtend: true });
+    expect(ra.plans[0].night_pause).toBeTruthy();
+    expect((await pool.query(`SELECT guard_state FROM launch_plans WHERE id = $1`, [a.plan.id])).rows[0].guard_state).not.toBe('CAPPED');
+    expect(rb.plans[0].capped).toBeTruthy();
+    expect((await pool.query(`SELECT guard_state FROM launch_plans WHERE id = $1`, [b.plan.id])).rows[0].guard_state).toBe('CAPPED');
+    // de manhã a pausa noturna confere o teto e não reativa
+    onMeta.get(a.cid)!.spend = 100;
+    await service().run(pool, at(date, '06:01'));
+    expect(actives(a.cid)).toHaveLength(0);
+    expect((await runOf(a.cid, date)).reason).toMatch(/teto foi atingido/);
+  });
+
+  it('pausada pela tela à meia-noite e reativada pelo dono no meio da noite: não pausa', async () => {
+    const date = nextDay();
+    const a = await seed();
+    await pool.query(`UPDATE launch_plans SET operator_paused_at = NOW() WHERE id = $1`, [a.plan.id]);
+    onMeta.get(a.cid)!.status = 'PAUSED';
+    await service().run(pool, at(date, '00:01'));
+    expect(await runOf(a.cid, date)).toMatchObject({ state: 'SKIPPED' });
+    await pool.query(`UPDATE launch_plans SET operator_paused_at = NULL WHERE id = $1`, [a.plan.id]);
+    onMeta.get(a.cid)!.status = 'ACTIVE';
+    await service().run(pool, at(date, '00:30'));
+    await service().run(pool, at(date, '06:01'));
+    expect(postsTo(a.cid)).toHaveLength(0);
+  });
+
+  it('só pausa nos primeiros 60 minutos da janela', async () => {
+    const date = nextDay();
+    const a = await seed();
+    await service().run(pool, at(date, '01:00'));
+    expect(postsTo(a.cid)).toHaveLength(0);
+    expect(await runOf(a.cid, date)).toBeUndefined();
+    await service().run(pool, at(date, '00:59'));
+    expect(postsTo(a.cid)).toHaveLength(1);
+  });
+
+  it('Gerenciador: atividade do próprio NORQVA não conta; sem o registro de atividades, compara updated_time', async () => {
+    const date = nextDay();
+    const ours = await seed();
+    await service().run(pool, at(date, '00:01'));
+    // evento do próprio usuário do sistema (o mesmo do /me)
+    activities = [{ event_type: 'update_campaign_run_status', event_time: new Date().toISOString(), object_id: ours.cid, actor_id: 'u1' }];
+    await service().run(pool, at(date, '06:01'));
+    expect(await runOf(ours.cid, date)).toMatchObject({ state: 'REACTIVATED', activity_check: 'CLEAN' });
+
+    // outra noite, sem o registro de atividades: hora da última alteração (instantes comparados, não texto)
+    const date2 = nextDay();
+    const same = await seed();
+    const changed = await seed();
+    activities = [];
+    await service().run(pool, at(date2, '00:01'));
+    failActivities = true;
+    const before = String((await runOf(same.cid, date2)).meta_updated_time_at_pause);
+    onMeta.get(same.cid)!.updated_time = new Date(Date.parse(before.replace('+0000', 'Z'))).toISOString(); // mesmo instante, outro formato
+    onMeta.get(changed.cid)!.updated_time = '2027-06-01T10:00:00+0000';
+    await service().run(pool, at(date2, '06:01'));
+    expect(await runOf(same.cid, date2)).toMatchObject({ state: 'REACTIVATED', activity_check: 'UNAVAILABLE' });
+    expect(await runOf(changed.cid, date2)).toMatchObject({ state: 'CANCELLED', activity_check: 'UNAVAILABLE' });
+    expect(await runOf(changed.cid, date2)).toMatchObject({ meta_updated_time_at_resume: '2027-06-01T10:00:00+0000' });
+  });
+
   it('configuração: padrão ligada 00:00–06:00; só ADMIN salva; valida a janela', async () => {
     const a = await seed();
     await pool.query(`UPDATE launch_plans SET night_pause_enabled = DEFAULT, night_pause_start = DEFAULT, night_pause_end = DEFAULT WHERE id = $1`, [a.plan.id]);
@@ -505,6 +820,9 @@ describe.sequential('NORQVA-0118 — pausa noturna', () => {
     expect(denied.status).toBe(403);
     const bad = await request(app).post(`/api/campaigns/${a.plan.id}/night-pause?mode=real`).set('Authorization', `Bearer ${admin}`).send({ enabled: true, start: '06:00', end: '00:00' });
     expect(bad.status).toBe(400);
+    const late = await request(app).post(`/api/campaigns/${a.plan.id}/night-pause?mode=real`).set('Authorization', `Bearer ${admin}`).send({ enabled: true, start: '22:00', end: '23:58' });
+    expect(late.status).toBe(400);
+    expect(late.body.error).toMatch(/23:00/);
     const ok = await request(app).post(`/api/campaigns/${a.plan.id}/night-pause?mode=real`).set('Authorization', `Bearer ${admin}`).send({ enabled: true, start: '01:00', end: '05:30' });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ enabled: true, start: '01:00', end: '05:30' });
