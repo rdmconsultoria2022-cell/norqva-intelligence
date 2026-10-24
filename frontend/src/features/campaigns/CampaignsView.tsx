@@ -11,6 +11,7 @@ import { useGlobalPeriod, periodQuery } from '../../lib/globalPeriod';
 import { AdMetaSwap } from './AdMetaSwap';
 import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList, AudienceList, MetaObjectsEditor, NightPauseSettings } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
+import { ExternalNightPause } from './ExternalNightPause';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
 
@@ -535,6 +536,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             showSuccess={showSuccess}
             onChanged={() => loadList()}
           />
+        </div>
+      )}
+
+      {/* NORQVA-0121: pausa noturna das campanhas criadas direto na Meta (só ADMIN) */}
+      {isAdmin && (
+        <div className={hasSelection ? 'hidden lg:block' : ''}>
+          <ExternalNightPause apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
         </div>
       )}
 
