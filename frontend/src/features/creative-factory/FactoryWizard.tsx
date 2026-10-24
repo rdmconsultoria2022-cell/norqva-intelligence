@@ -1105,7 +1105,7 @@ function StepApproval({
           'Oferta liberada para compra',
           r.offerOk
             ? `Oferta ${page.offer_human_id || ''} ${page.offer_status === 'ATIVA' ? 'à venda' : 'em teste'}.`
-            : `Oferta ${page.offer_human_id || ''} em ${String(OFFER_STATUS[page.offer_status]?.label || page.offer_status || 'rascunho').toLowerCase()}. Em teste, quem tiver o link já consegue comprar.`,
+            : `Oferta ${page.offer_human_id || ''} em ${String(OFFER_STATUS[page.offer_status]?.label || page.offer_status || 'rascunho').toLowerCase()}. Em teste, quem tiver o link já consegue comprar.${r.fileOk ? '' : ' Primeiro ligue o PDF do produto (item acima).'}`,
           isAdmin && page.offer_id ? (
             <button
               type="button"
@@ -1126,7 +1126,9 @@ function StepApproval({
         {item(
           r.live,
           'Página no ar',
-          r.live ? 'O endereço da página já abre para o comprador.' : 'A campanha leva o comprador para esta página, então ela precisa estar no ar.',
+          r.live
+            ? 'O endereço da página já abre para o comprador.'
+            : `A campanha leva o comprador para esta página, então ela precisa estar no ar.${!r.approved || !r.offerOk || !r.fileOk ? ' Resolva os itens acima antes.' : ''}`,
           isAdmin ? (
             <button
               type="button"

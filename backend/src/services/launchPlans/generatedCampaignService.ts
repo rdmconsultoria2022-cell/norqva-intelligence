@@ -8,13 +8,14 @@
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
-import { LaunchPlanError, validateLaunchPlanInput, normalizeMetaIds, serializeLaunchPlan, generatedSlugFromUrl } from './launchPlanService';
+import { LaunchPlanError, validateLaunchPlanInput, normalizeMetaIds, serializeLaunchPlan, generatedSlugFromUrl, BR_STATES, ADVANTAGE_MAX_AGE_MIN, validateEndDate } from './launchPlanService';
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, META_MIN_DAILY_BUDGET_BRL, getMaxDailyBudgetBRL, getGeneratedPageHosts } from '../meta/metaMutatingClient';
 import { checkGeneratedAd } from '../creative/creativeFactoryService';
 import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
 import { STORAGE_PREFIX, storageRef } from '../creative/generatedImages';
 import { livePriceBlock, GenerationService } from '../creative/generationService';
-import { urlTagsFor } from '../aiTeam/launchSheet';
+import { urlTagsFor, DEFAULT_OFFER_BASE_URL } from '../aiTeam/launchSheet';
+import { isKitOffer } from './campaignEditorService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DEFAULT_DAILY_BUDGET_BRL = 30;
@@ -78,6 +79,12 @@ export function publicSiteUrl(): string {
 }
 
 export const pageUrl = (slug: string) => `${publicSiteUrl()}/v/${slug}`;
+
+/** NORQVA-0121: página da oferta de sempre (/p ou /kit), a mesma das outras campanhas. */
+export const offerPageUrl = (offer: { human_id: string; name?: string | null }) =>
+  `${DEFAULT_OFFER_BASE_URL}/${isKitOffer(offer) ? 'kit' : 'p'}/${offer.human_id}`;
+
+export type GeneratedDestination = 'PAGE' | 'OFFER_PAGE';
 
 /** UTMs iguais às de todo plano (urlTagsFor): venda atribuída por anúncio. */
 export const utmTags = (planCode: string, contentKey: string) => urlTagsFor(planCode, contentKey);
@@ -201,11 +208,15 @@ export async function assertGeneratedPlanReady(pool: Pool, planId: string): Prom
   // nome único entre os planos (nada de dois planos disputando o mesmo nome na Meta)
   const dupName = await pool.query(`SELECT code FROM launch_plans WHERE id <> $1 AND spec->'campaign'->>'name' = $2 LIMIT 1`, [row.id, String(spec?.campaign?.name || '')]);
   if (dupName.rows.length) throw new LaunchPlanError(409, `O plano ${dupName.rows[0].code} já usa o nome "${spec.campaign.name}". ${REBUILD_HINT}`);
+  // NORQVA-0121: destino = a página gerada (padrão) ou a página da oferta de sempre, todos iguais
   const url = pageUrl(page.slug);
+  const offerUrl = offerPageUrl(offer);
+  const okDest = (d: string) => (generatedSlugFromUrl(d) === page.slug && d === url) || d === offerUrl;
+  if (new Set(ads.map(a => String(a.destination_url))).size > 1) throw new LaunchPlanError(409, `Os anúncios levam a destinos diferentes. ${REBUILD_HINT}`);
   for (const ad of ads) {
     const label = `Anúncio ${ad.name}`;
     if (!ad.image_url) throw new LaunchPlanError(409, `${label}: sem imagem.`);
-    if (generatedSlugFromUrl(ad.destination_url) !== page.slug || String(ad.destination_url) !== url) throw new LaunchPlanError(409, `${label}: o destino não é a página ${url}.`);
+    if (!okDest(String(ad.destination_url))) throw new LaunchPlanError(409, `${label}: o destino não é a página ${url} nem a da oferta ${offerUrl}.`);
     if (!ad.factory_creative || !UUID_RE.test(String(ad.factory_creative))) throw new LaunchPlanError(409, `${label}: sem o criativo de origem. ${REBUILD_HINT}`);
     const c = (await pool.query('SELECT * FROM creatives WHERE id = $1', [ad.factory_creative])).rows[0];
     if (!c || c.approval_status === 'SUPERSEDED') throw new LaunchPlanError(409, `${label}: o criativo mudou (versão nova). ${REBUILD_HINT}`);
@@ -254,6 +265,27 @@ export interface GeneratedCampaignInput {
   age_min?: unknown;
   age_max?: unknown;
   creative_ids?: unknown;
+  /** NORQVA-0121: ajustes de publicação (contrato NORQVA-0118, etapa C). */
+  destination?: unknown;
+  regions?: unknown;
+  genders?: unknown;
+  placements?: unknown;
+  advantage_audience?: unknown;
+  end_date?: unknown;
+}
+
+/** NORQVA-0121: livro da coleção de cozinha = público 45+ (o do Trattoria). */
+export const isCookbook = (p: { collection_key?: string | null } | null | undefined) => !!p?.collection_key;
+
+/** Texto do público para a tela e o plano. */
+export function audienceSummary(t: { regions?: string[]; age_min: number; age_max: number; advantage_audience: boolean; genders?: string; placements?: string }): string {
+  const where = t.regions && t.regions.length ? t.regions.join(', ') : 'Brasil';
+  const hint = t.advantage_audience ? ' (sugestão)' : '';
+  const sex = t.genders === 'FEMALE' ? `, mulheres${hint}` : t.genders === 'MALE' ? `, homens${hint}` : '';
+  const age = t.advantage_audience && (t.age_min > ADVANTAGE_MAX_AGE_MIN || t.age_max < 65) ? `${t.age_min}–${t.age_max} (sugestão)` : `${t.age_min}–${t.age_max}`;
+  const adv = t.advantage_audience ? ', público Advantage' : ', público fechado';
+  const where2 = t.placements === 'FACEBOOK_INSTAGRAM' ? ', só Facebook e Instagram' : '';
+  return `${where}, ${age}${sex}${adv}${where2}`;
 }
 
 export class GeneratedCampaignService {
@@ -267,12 +299,12 @@ export class GeneratedCampaignService {
   private async names(page: any) {
     const r = (
       await this.pool.query(
-        `SELECT p.name AS product_name, p.brand_id, ref.human_id AS ref_human_id
+        `SELECT p.name AS product_name, p.brand_id, p.collection_key, ref.human_id AS ref_human_id
          FROM products p LEFT JOIN creative_references ref ON ref.id = $2 WHERE p.id = $1`,
         [page.product_id, page.reference_id]
       )
     ).rows[0] || {};
-    return { product: String(r.product_name || 'Produto'), brandId: r.brand_id || null, ref: String(r.ref_human_id || page.human_id) };
+    return { product: String(r.product_name || 'Produto'), brandId: r.brand_id || null, ref: String(r.ref_human_id || page.human_id), cookbook: isCookbook(r) };
   }
 
   private async nameTaken(name: string, exceptPlanId: string | null = null): Promise<boolean> {
@@ -309,10 +341,17 @@ export class GeneratedCampaignService {
     const max = getMaxDailyBudgetBRL();
     const daily = Math.min(DEFAULT_DAILY_BUDGET_BRL, max);
     const rebuildable = isRebuildable(plan);
+    const offer = await liveOffer(this.pool, page.offer_id);
     return {
       plan,
       rebuildable,
       page: { id: page.id, human_id: page.human_id, status: page.status, url: pageUrl(page.slug) },
+      destinations: [
+        { value: 'PAGE', label: 'Página gerada', url: pageUrl(page.slug), available: true },
+        { value: 'OFFER_PAGE', label: 'Página da oferta', url: offer ? offerPageUrl(offer) : null, available: !!offer },
+        { value: 'WHATSAPP', label: 'WhatsApp', url: null, available: false, reason: 'Fica disponível quando o número oficial estiver ativo.' }
+      ],
+      states: BR_STATES,
       mutation_enabled: isMutationEnabled(),
       images: images.length,
       ads: !plan || rebuildable ? await this.adsWithReasons(page) : [],
@@ -320,8 +359,14 @@ export class GeneratedCampaignService {
         campaign_name: await this.defaultName(page, n, plan?.id || null),
         daily_budget_brl: daily,
         max_spend_brl: daily * DEFAULT_CAP_DAYS,
-        age_min: 25,
+        age_min: n.cookbook ? 45 : 25,
         age_max: 65,
+        destination: 'PAGE',
+        regions: [],
+        genders: 'ALL',
+        placements: 'AUTOMATIC',
+        advantage_audience: true,
+        end_date: null,
         min_daily_budget_brl: META_MIN_DAILY_BUDGET_BRL,
         max_daily_budget_brl: max
       }
@@ -354,8 +399,18 @@ export class GeneratedCampaignService {
       throw new LaunchPlanError(400, `Orçamento diário entre R$ ${META_MIN_DAILY_BUDGET_BRL.toFixed(2)} e R$ ${max.toFixed(2)}.`);
     }
     const cap = body.max_spend_brl === undefined || body.max_spend_brl === null || body.max_spend_brl === '' ? daily * DEFAULT_CAP_DAYS : Number(body.max_spend_brl);
-    const ageMin = body.age_min === undefined ? 25 : Number(body.age_min);
-    const ageMax = body.age_max === undefined ? 65 : Number(body.age_max);
+    const ageMin = body.age_min === undefined || body.age_min === null || body.age_min === '' ? (n.cookbook ? 45 : 25) : Number(body.age_min);
+    const ageMax = body.age_max === undefined || body.age_max === null || body.age_max === '' ? 65 : Number(body.age_max);
+    // NORQVA-0121: ajustes de publicação
+    const destination: GeneratedDestination = body.destination === undefined || body.destination === null || body.destination === '' ? 'PAGE' : (String(body.destination) as GeneratedDestination);
+    if (destination !== 'PAGE' && destination !== 'OFFER_PAGE') throw new LaunchPlanError(400, 'Destino inválido: página gerada ou página da oferta. WhatsApp fica para quando o número oficial estiver ativo.');
+    const destinationUrl = destination === 'PAGE' ? pageUrl(page.slug) : offerPageUrl(offer);
+    const advantage = body.advantage_audience === undefined || body.advantage_audience === null ? true : body.advantage_audience === true || body.advantage_audience === 'true';
+    const targeting: Record<string, any> = { countries: ['BR'], age_min: ageMin, age_max: ageMax, advantage_audience: advantage };
+    if (body.regions !== undefined && body.regions !== null) targeting.regions = body.regions;
+    if (body.genders !== undefined && body.genders !== null && body.genders !== '') targeting.genders = String(body.genders);
+    if (body.placements !== undefined && body.placements !== null && body.placements !== '') targeting.placements = String(body.placements);
+    const endDate = validateEndDate(body.end_date, 'Campanha');
     const name = String(body.campaign_name || '').trim().slice(0, 200) || (await this.defaultName(page, n, existing?.id || null));
 
     // anúncios: os aprovados e liberados (ou os escolhidos, que também precisam estar liberados)
@@ -388,7 +443,7 @@ export class GeneratedCampaignService {
         headline: headlineOf(c),
         description: String(c.ad_description || '').trim().slice(0, 255) || undefined,
         cta: GENERATED_CTA,
-        destination_url: pageUrl(page.slug),
+        destination_url: destinationUrl,
         url_tags: utmTags(code, key)
       });
     }
@@ -400,8 +455,9 @@ export class GeneratedCampaignService {
       adsets: [{
         name: adsetName,
         daily_budget_brl: daily,
-        targeting: { countries: ['BR'], age_min: ageMin, age_max: ageMax, advantage_audience: true },
-        targeting_summary: `Brasil, ${ageMin}–${ageMax}, público Advantage`
+        targeting,
+        targeting_summary: 'Brasil',
+        ...(endDate ? { end_date: endDate } : {})
       }],
       ads,
       pause_rules: ['Pausar anúncio com 2× o CPA de equilíbrio gasto sem venda.', 'Pausar tudo ao atingir o teto de gasto do plano.'],
@@ -417,6 +473,11 @@ export class GeneratedCampaignService {
       },
       { allowGeneratedPage: true }
     );
+    // resumo do público a partir do que foi validado (estados, idade, sexo, Advantage, posicionamento)
+    input.spec.adsets[0].targeting_summary = audienceSummary(input.spec.adsets[0].targeting);
+    // a pergunta do "Sim" mostra também o público e o término (o que vai rodar de fato)
+    const endTxt = input.spec.adsets[0].end_date ? ` até ${input.spec.adsets[0].end_date.split('-').reverse().join('/')}` : '';
+    input.question_text = `${input.question_text.replace(/\?$/, '')}${endTxt}? Público: ${input.spec.adsets[0].targeting_summary}.`.slice(0, 500);
     if (await this.nameTaken(input.spec.campaign.name, existing?.id || null)) {
       throw new LaunchPlanError(409, `Já existe na conta ou em outro plano uma campanha chamada "${input.spec.campaign.name}". Use outro nome.`);
     }
