@@ -1228,17 +1228,45 @@ export class MetaMutatingClient {
    */
   public async readCampaignState(
     campaignMetaId: string
-  ): Promise<{ status: string | null; effective_status: string | null; daily_budget: number | null; updated_time: string | null }> {
+  ): Promise<{
+    status: string | null;
+    effective_status: string | null;
+    daily_budget: number | null;
+    updated_time: string | null;
+    spend_cap: number | null;
+    amount_spent: number | null;
+  }> {
     if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
-    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time' });
-    const raw = obj?.daily_budget;
-    const daily = raw !== undefined && raw !== null && String(raw) !== '' ? (parseFloat(raw) || 0) / 100 : null;
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'status,effective_status,daily_budget,updated_time,spend_cap,amount_spent' });
+    const cents = (v: any) => (v !== undefined && v !== null && String(v) !== '' ? (parseFloat(v) || 0) / 100 : null);
+    const cap = cents(obj?.spend_cap);
     return {
       status: obj?.status || null,
       effective_status: obj?.effective_status || null,
-      daily_budget: daily,
-      updated_time: obj?.updated_time ? String(obj.updated_time) : null
+      daily_budget: cents(obj?.daily_budget),
+      updated_time: obj?.updated_time ? String(obj.updated_time) : null,
+      // NORQVA-0121: limite de gastos da campanha (0 = sem limite) e o que já foi gasto contra ele
+      spend_cap: cap && cap > 0 ? cap : null,
+      amount_spent: cents(obj?.amount_spent)
     };
+  }
+
+  /** NORQVA-0121: IDs dos conjuntos e anúncios de uma campanha (só leitura), para o registro de atividades. */
+  public async readCampaignChildIds(campaignMetaId: string): Promise<string[]> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const out: string[] = [];
+    for (const edge of ['adsets', 'ads']) {
+      const res = await this.callTransportGet(`/${campaignMetaId}/${edge}`, { fields: 'id', limit: '500' });
+      for (const r of Array.isArray(res?.data) ? res.data : []) if (r?.id) out.push(String(r.id));
+    }
+    return out;
+  }
+
+  /** NORQVA-0121: nome e conta de anúncios de uma campanha (só leitura), para cadastrar na pausa noturna. */
+  public async readCampaignIdentity(campaignMetaId: string): Promise<{ id: string | null; name: string | null; account_id: string | null }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    const obj = await this.callTransportGet(`/${campaignMetaId}`, { fields: 'id,name,account_id' });
+    return { id: obj?.id ? String(obj.id) : null, name: obj?.name ? String(obj.name) : null, account_id: obj?.account_id ? String(obj.account_id) : null };
   }
 
   /**

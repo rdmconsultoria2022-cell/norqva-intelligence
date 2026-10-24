@@ -180,7 +180,7 @@ import { postKiwifyWebhook, importKiwifySale } from './controllers/kiwifyControl
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
-import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory, getCampaignNightPause, saveCampaignNightPause } from './controllers/campaignController';
+import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory, getCampaignNightPause, saveCampaignNightPause, listExternalNightPause, addExternalNightPause, updateExternalNightPause, removeExternalNightPause } from './controllers/campaignController';
 import { startNightPauseScheduler } from './services/campaigns/nightPauseService';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
@@ -552,6 +552,11 @@ app.get('/api/campaigns/:id/history', requireRole(CAMPAIGNS_READ), getCampaignHi
 // NORQVA-0120: pausa noturna (00h–06h por padrão, horário de Brasília); salvar só muda a configuração do plano
 app.get('/api/campaigns/:id/night-pause', requireRole(CAMPAIGNS_READ), getCampaignNightPause);
 app.post('/api/campaigns/:id/night-pause', requireRole(['ADMIN']), saveCampaignNightPause);
+// NORQVA-0121: pausa noturna das campanhas criadas fora do NORQVA (configuração; ler na Meta só para conferir)
+app.get('/api/night-pause/external', requireRole(['ADMIN']), listExternalNightPause);
+app.post('/api/night-pause/external', requireRole(['ADMIN']), addExternalNightPause);
+app.patch('/api/night-pause/external/:id', requireRole(['ADMIN']), updateExternalNightPause);
+app.delete('/api/night-pause/external/:id', requireRole(['ADMIN']), removeExternalNightPause);
 app.post('/api/campaigns/:id/fill', requireRole(['ADMIN']), fillCampaign);
 app.post('/api/campaigns/:id/fields', requireRole(['ADMIN']), saveCampaignFields);
 app.post('/api/campaigns/:id/ads/:index/creative', requireRole(['ADMIN']), chooseCampaignCreative);
