@@ -223,6 +223,7 @@ describe.sequential('NORQVA-0120 — pausa noturna', () => {
     applyThenThrow = null;
     // planos de outros testes (e de outras suítes) ficam fora desta noite
     await pool.query(`UPDATE launch_plans SET night_pause_enabled = FALSE`);
+    await pool.query(`UPDATE night_pause_external_campaigns SET enabled = FALSE`);
   });
 
   afterEach(() => {

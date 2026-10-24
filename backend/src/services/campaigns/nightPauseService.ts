@@ -260,8 +260,17 @@ async function planCampaignIds(pool: Pool): Promise<Set<string>> {
 // Serviço
 // ---------------------------------------------------------------------------------------------
 
+let defaultClientFactory: () => MetaMutatingClient = () => new MetaMutatingClient();
+/** Só para testes: cliente da Meta simulado para as rotas (que criam o serviço sem parâmetro). */
+export function setNightPauseClientFactoryForTesting(factory: (() => MetaMutatingClient) | null) {
+  defaultClientFactory = factory || (() => new MetaMutatingClient());
+}
+
 export class NightPauseService {
-  constructor(private clientFactory: () => MetaMutatingClient = () => new MetaMutatingClient()) {}
+  private clientFactory: () => MetaMutatingClient;
+  constructor(clientFactory?: () => MetaMutatingClient) {
+    this.clientFactory = clientFactory || (() => defaultClientFactory());
+  }
 
   private client(campaignId: string, direction?: 'PAUSED' | 'ACTIVE'): MetaMutatingClient {
     return this.clientFactory().withPayloadGuard(statusOnlyGuard(campaignId, direction));
