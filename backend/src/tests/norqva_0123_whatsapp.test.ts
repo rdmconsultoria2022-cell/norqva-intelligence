@@ -11,7 +11,7 @@ import { signSupabaseToken } from '../utils/token';
 import { AsaasPaymentProvider } from '../utils/payment';
 import { resetAllRateLimits } from '../middleware/rateLimiter';
 import { setWhatsAppProviderForTests, WhatsAppProvider, ProviderError } from '../services/whatsapp/provider';
-import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiReply } from '../services/whatsapp/attendant';
+import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiReply, promisesPhotos } from '../services/whatsapp/attendant';
 import { adReferralFromEvolution, adReferralFromCloud } from '../services/whatsapp/whatsappRefs';
 import { sampleKeyFor, setSampleFetchForTests, MAX_SAMPLE_IMAGES_PER_CONVERSATION } from '../services/whatsapp/samples';
 import { runWhatsAppPixReminders, pixReminderText, withinReminderHours } from '../services/whatsapp/pixReminder';
@@ -44,6 +44,14 @@ describe('NORQVA-0123 — regras puras', () => {
     expect(sampleKeyFor({ name: 'Volume III', collection_key: 'paes' })).toBe('paes');
     expect(sampleKeyFor({ name: 'Risotos & Polentas' })).toBe('risotos');
     expect(sampleKeyFor({ name: 'Desafio Seca Barriga' })).toBeNull();
+  });
+
+  it('NORQVA-0125: reconhece promessa de mandar fotos', () => {
+    expect(promisesPhotos('Claro! Vou te enviar algumas fotos de amostra dos nossos livros. Um momento! 📚')).toBe(true);
+    expect(promisesPhotos('Vou mandar as imagens agora')).toBe(true);
+    expect(promisesPhotos('Seguem as fotos do kit')).toBe(true);
+    expect(promisesPhotos('Posso te mandar fotos, quer ver?')).toBe(false);
+    expect(promisesPhotos('O Pix chega logo depois desta mensagem.')).toBe(false);
   });
 
   it('texto do lembrete e horário de Brasília', () => {
@@ -210,6 +218,28 @@ describe.sequential('NORQVA-0123 — anúncio, amostras e lembrete', () => {
     ];
     await processConversation(pool, conv.id, []);
     expect((provider.sendImage as any).mock.calls.length).toBe(0);
+  });
+
+  it('NORQVA-0125: a IA promete fotos sem chamar a ferramenta e as fotos do kit saem mesmo assim', async () => {
+    const jid = '5531944443333@s.whatsapp.net';
+    await inbound(jid, { conversation: 'Eu gostaria de ver as opções de receita' });
+    const conv = await convOf(jid);
+    script = [{ content: 'Claro! Vou te enviar algumas fotos de amostra dos nossos livros. Um momento! 📚', tool_calls: [] }];
+    await processConversation(pool, conv.id, []);
+    expect((provider.sendImage as any).mock.calls.length).toBe(MAX_SAMPLE_IMAGES_PER_CONVERSATION);
+    expect((provider.sendText as any).mock.calls.map((c: any[]) => c[2])).toContain('Claro! Vou te enviar algumas fotos de amostra dos nossos livros. Um momento! 📚');
+  });
+
+  it('NORQVA-0125: send_samples sem código usa o kit completo', async () => {
+    const jid = '5531922221111@s.whatsapp.net';
+    await inbound(jid, { conversation: 'tem fotos?' });
+    const conv = await convOf(jid);
+    script = [
+      { content: null, tool_calls: [{ id: 's9', name: 'send_samples', arguments: '{}' }] },
+      { content: 'Aqui estão.', tool_calls: [] }
+    ];
+    await processConversation(pool, conv.id, []);
+    expect((provider.sendImage as any).mock.calls.length).toBe(MAX_SAMPLE_IMAGES_PER_CONVERSATION);
   });
 
   it('C: foto que não é imagem (página do site) não é enviada', async () => {
