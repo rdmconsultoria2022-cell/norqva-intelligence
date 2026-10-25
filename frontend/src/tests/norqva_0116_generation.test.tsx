@@ -67,7 +67,10 @@ describe('NORQVA-0116 — página pública /v/:slug', () => {
     expect(screen.getByText('Para fazer em casa.')).toBeInTheDocument();
     expect(screen.getByText('Molhos')).toBeInTheDocument();
     expect(screen.getAllByTestId('generated-section')).toHaveLength(4);
-    expect(screen.getByTestId('generated-cta')).toHaveAttribute('href', '/p/OFF-000001?checkout=1&utm_source=meta&fbclid=abc');
+    // NORQVA-0129: botão na abertura, no cartão da oferta e no fim; todos com o mesmo link
+    const ctas = screen.getAllByTestId('generated-cta');
+    expect(ctas.length).toBeGreaterThanOrEqual(2);
+    for (const c of ctas) expect(c).toHaveAttribute('href', '/p/OFF-000001?checkout=1&utm_source=meta&fbclid=abc');
     expect(screen.getByTestId('generated-cta-sticky')).toHaveTextContent('Quero o meu');
     expect(screen.getByTestId('generated-page')).toHaveAttribute('data-look', 'light');
     await waitFor(() => expect(document.title).toBe('Trattoria em Casa'));
