@@ -353,3 +353,13 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - **Lembrete de Pix:** no máximo um por Pix, texto fixo, 30 a 120 min depois, 08h–22h de Brasília, conversa parada há 25 min, no BOT, dentro dos limites por hora, conferido no Asaas antes. Chave `WHATSAPP_PIX_REMINDER_ENABLED` (padrão desligada). Cartão fora.
   - **Fotos de amostra:** só as fotos do site (lista fixa por livro e kit), no máximo 4 por conversa, nunca páginas do PDF.
 - **Fica para depois:** evento de compra como evento de mensagem (Business Messaging) na Meta, segundo lembrete, lembrete de cartão.
+
+## D-0125 — WhatsApp para quem não concluiu o pagamento (2026-10-24)
+
+- **Contrato NORQVA-0125 aprovado pelo Ricardo em 24/10/2026 23h53.** Uma mensagem por pessoa para sempre (telefone normalizado: 55 + DDD + 8 últimos números), texto fixo sem IA, pelo número de atendimento da Evolution, para quem gerou cobrança nos últimos 30 dias e não pagou (pedido real, oferta ATIVA/TESTE, a pessoa nunca pagou por e-mail ou telefone, não pediu para parar).
+- **Quem escolhe é o dono:** tela Vendas → WhatsApp → "Pagamentos não concluídos" (só ADMIN), com exclusão manual, prévia exata e confirmação. O servidor recalcula tudo antes de pôr na fila e de novo antes de cada envio (com conferência no Asaas).
+- **Devagar:** uma pessoa a cada 2 a 4 minutos, 09h–20h de Brasília; sem número conectado ou com o atendente desligado nada sai e abre aviso na central.
+- **Atribuição:** link com `utm_source=whatsapp`, `utm_medium=recuperacao` e código em `whatsapp_refs` ligado à conversa.
+- **SAIR:** vale "sair", "parar", "não quero mais" em qualquer conversa (normalizado); depois da recuperação também "não quero". Quem sai nunca mais entra na lista; o atendente confirma uma vez.
+- **Número oficial fora:** sem modelo aprovado ele não alcança quem não escreveu nas últimas 24h.
+- Chave `WHATSAPP_RECOVERY_ENABLED` (padrão desligada).
