@@ -69,4 +69,30 @@ describe('NORQVA-0054 — botão do WhatsApp na página', () => {
     const body = JSON.parse(call[1].body);
     expect(body).toMatchObject({ offer_human_id: 'OFF-KIT' });
   });
+
+  // NORQVA-0130: botão flutuante
+  it('sem WhatsApp disponível, não há botão flutuante', async () => {
+    global.fetch = vi.fn().mockImplementation(() => Promise.resolve({ ok: true, json: async () => ({ ...kit, whatsapp: null }) })) as any;
+    renderKit();
+    await screen.findByTestId('kit-cta');
+    expect(screen.queryByTestId('whatsapp-fab')).toBeNull();
+  });
+
+  it('com WhatsApp: o botão flutuante abre a mesma conversa com código', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/public/whatsapp/ref')) {
+        return Promise.resolve({ ok: true, json: async () => ({ url: 'https://wa.me/5511922223333?text=Oi', code: 'K7F3A3' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ...kit, whatsapp: { available: true } }) });
+    });
+    global.fetch = fetchMock as any;
+    renderKit();
+    const fab = await screen.findByTestId('whatsapp-fab');
+    expect(fab).toHaveTextContent('Falar no WhatsApp');
+    // no topo da página fica escondido (sem foco)
+    expect(fab).toHaveAttribute('aria-hidden', 'true');
+    expect(fab).toHaveAttribute('tabindex', '-1');
+    fireEvent.click(fab);
+    await waitFor(() => expect(assigned).toBe('https://wa.me/5511922223333?text=Oi'));
+  });
 });
