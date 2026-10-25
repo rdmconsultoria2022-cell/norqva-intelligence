@@ -422,7 +422,32 @@ export const GenerationView: React.FC<{
           <ExternalLink className="h-4 w-4 shrink-0" /> {publicUrl}
         </a>
       )}
-      {page.status === 'PUBLISHED' && canEdit && <p className="text-nq-caption text-nq-subtle">No ar a página não pode ser mudada. Tire do ar para editar.</p>}
+      {page.status === 'PUBLISHED' && canEdit && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-nq-caption text-nq-subtle">No ar a página não pode ser mudada. Tire do ar para editar.</p>
+          {/* NORQVA-0131: na Fábrica os botões de situação ficam escondidos; sem este botão não havia como editar */}
+          {isAdmin && hideStatusActions && (
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    'A página sai do ar agora. Se uma campanha estiver levando pessoas para ela, elas verão "página fora do ar" até você aprovar e publicar de novo no passo 5. Continuar?'
+                  )
+                )
+                  return;
+                run('unpublish', () => post(`/generated-pages/${page.id}/unpublish`), 'Página tirada do ar. Edite; depois, no passo 5, aprove e publique de novo.');
+              }}
+              className={`${pill} bg-nq-raised text-nq-text`}
+              data-testid="factory-unpublish"
+            >
+              {busy === 'unpublish' ? 'Tirando do ar...' : 'Tirar do ar para editar'}
+            </button>
+          )}
+          {!isAdmin && hideStatusActions && <p className="text-nq-caption text-nq-subtle">Peça ao administrador para tirar do ar.</p>}
+        </div>
+      )}
 
       <Section title="Página de venda">
         {!isMobile && (

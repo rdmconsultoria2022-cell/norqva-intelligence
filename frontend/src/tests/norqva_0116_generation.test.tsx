@@ -207,6 +207,30 @@ describe('NORQVA-0116 — tela de geração', () => {
     expect(await screen.findByTestId('public-link')).toHaveTextContent('/v/livro-abc123');
     expect(screen.getByText('Tirar do ar')).toBeInTheDocument();
     expect(screen.queryByText('Aprovar página')).toBeNull();
+    expect(screen.queryByTestId('factory-unpublish')).toBeNull();
+  });
+
+  // NORQVA-0131: na Fábrica (botões de situação escondidos) a página no ar tem como sair do ar para editar
+  it('na Fábrica, página no ar: ADMIN vê "Tirar do ar para editar" e o clique tira do ar', async () => {
+    const apiFetch = vi.fn().mockImplementation(() => Promise.resolve(genData({ status: 'PUBLISHED' })));
+    render(<GenerationView apiFetch={apiFetch} pageId="g1" isAdmin canEdit hideStatusActions showError={vi.fn()} showSuccess={vi.fn()} onBack={vi.fn()} />);
+    const btn = await screen.findByTestId('factory-unpublish');
+    expect(screen.queryByText('Tirar do ar')).toBeNull();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    fireEvent.click(btn);
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalledWith('/generated-pages/g1/unpublish', expect.anything());
+    confirmSpy.mockReturnValueOnce(true);
+    fireEvent.click(btn);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/generated-pages/g1/unpublish', expect.objectContaining({ method: 'POST' })));
+    confirmSpy.mockRestore();
+  });
+
+  it('na Fábrica, CREATIVE não vê o botão de tirar do ar', async () => {
+    const apiFetch = vi.fn().mockImplementation(() => Promise.resolve(genData({ status: 'PUBLISHED' })));
+    render(<GenerationView apiFetch={apiFetch} pageId="g1" isAdmin={false} canEdit hideStatusActions showError={vi.fn()} showSuccess={vi.fn()} onBack={vi.fn()} />);
+    await screen.findByText(/No ar a página não pode ser mudada/);
+    expect(screen.queryByTestId('factory-unpublish')).toBeNull();
   });
 });
 
