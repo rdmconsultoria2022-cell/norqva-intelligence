@@ -8,12 +8,14 @@ import { RefreshCw, Send } from 'lucide-react';
 type ApiFetch = (url: string, options?: RequestInit) => Promise<any>;
 
 interface Person {
-  phone_key: string;
+  id: string;
   phone_masked: string;
   first_name: string | null;
   product_name: string;
   order_created_at: string;
   pending_orders: number;
+  selectable: boolean;
+  note: string | null;
   last_attempt: { status: string; reason: string | null } | null;
   preview: string;
 }
@@ -31,7 +33,7 @@ interface HistoryRow {
 
 interface Overview {
   enabled: boolean;
-  number: { label: string; phone: string | null; ready: boolean } | null;
+  number: { label: string; ready: boolean } | null;
   number_problem: string | null;
   window: { start: string; end: string; open: boolean };
   people: Person[];
@@ -65,8 +67,9 @@ export function RecoveryPanel({ api, showError, showSuccess }: { api: React.Muta
   useEffect(() => { load(); }, [load]);
 
   const people = data?.people || [];
-  const selected = useMemo(() => people.filter(p => !excluded.has(p.phone_key)), [people, excluded]);
-  const preview = people.find(p => p.phone_key === previewKey) || selected[0] || people[0] || null;
+  const selectable = useMemo(() => people.filter(p => p.selectable), [people]);
+  const selected = useMemo(() => selectable.filter(p => !excluded.has(p.id)), [selectable, excluded]);
+  const preview = people.find(p => p.id === previewKey) || selected[0] || people[0] || null;
 
   const toggle = (key: string) => {
     setExcluded(prev => {
@@ -79,7 +82,7 @@ export function RecoveryPanel({ api, showError, showSuccess }: { api: React.Muta
   const send = async () => {
     setSending(true);
     try {
-      const r = await api.current('/whatsapp/recovery/send', { method: 'POST', body: JSON.stringify({ phone_keys: selected.map(p => p.phone_key) }) });
+      const r = await api.current('/whatsapp/recovery/send', { method: 'POST', body: JSON.stringify({ ids: selected.map(p => p.id) }) });
       showSuccess(`${r?.queued ?? 0} pessoa(s) na fila. Uma mensagem a cada 2 a 4 minutos, das 09h às 20h.`);
       setConfirming(false);
       setExcluded(new Set());
@@ -111,7 +114,7 @@ export function RecoveryPanel({ api, showError, showSuccess }: { api: React.Muta
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-nq-text">Prontos para receber ({people.length})</h2>
+          <h2 className="text-base font-semibold text-nq-text">Prontos para receber ({selectable.length})</h2>
           <button onClick={load} className="min-h-[44px] rounded-full px-3 text-nq-aux text-nq-muted hover:text-nq-text inline-flex items-center gap-1" aria-label="Atualizar">
             <RefreshCw size={14} /> Atualizar
           </button>
@@ -121,15 +124,16 @@ export function RecoveryPanel({ api, showError, showSuccess }: { api: React.Muta
         ) : (
           <ul className="divide-y divide-nq-line/60 rounded border border-nq-line">
             {people.map(p => (
-              <li key={p.phone_key} className="flex items-center gap-3 p-2 text-sm text-nq-text">
+              <li key={p.id} className={`flex items-center gap-3 p-2 text-sm text-nq-text ${p.selectable ? '' : 'opacity-60'}`}>
                 <input
                   type="checkbox"
                   className="h-5 w-5 shrink-0"
-                  checked={!excluded.has(p.phone_key)}
-                  onChange={() => toggle(p.phone_key)}
+                  checked={p.selectable && !excluded.has(p.id)}
+                  disabled={!p.selectable}
+                  onChange={() => toggle(p.id)}
                   aria-label={`Incluir ${p.first_name || p.phone_masked}`}
                 />
-                <button className="min-w-0 flex-1 text-left" onClick={() => setPreviewKey(p.phone_key)} data-testid={`wa-recovery-person-${p.phone_key}`}>
+                <button className="min-w-0 flex-1 text-left" onClick={() => setPreviewKey(p.id)} data-testid={`wa-recovery-person-${p.id}`}>
                   <div className="break-words">
                     <span className="font-medium">{p.first_name || 'Sem nome'}</span>
                     <span className="text-nq-muted"> · {p.product_name}</span>
@@ -137,7 +141,7 @@ export function RecoveryPanel({ api, showError, showSuccess }: { api: React.Muta
                   <div className="text-[12px] text-nq-subtle">
                     Pedido em {fmtDate(p.order_created_at)} · {p.phone_masked}
                     {p.pending_orders > 1 ? ` · ${p.pending_orders} pedidos (mensagem sobre o mais recente)` : ''}
-                    {p.last_attempt ? ` · Última tentativa: ${RECOVERY_STATUS[p.last_attempt.status] || p.last_attempt.status}${p.last_attempt.reason ? ` (${p.last_attempt.reason})` : ''}` : ''}
+                    {p.note ? ` · ${p.note}` : p.last_attempt ? ` · Última tentativa: ${RECOVERY_STATUS[p.last_attempt.status] || p.last_attempt.status}${p.last_attempt.reason ? ` (${p.last_attempt.reason})` : ''}` : ''}
                   </div>
                 </button>
               </li>

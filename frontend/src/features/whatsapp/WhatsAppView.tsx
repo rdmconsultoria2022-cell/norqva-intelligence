@@ -14,6 +14,8 @@ export interface WhatsAppViewProps {
   apiFetch: ApiFetch;
   showError: (msg: string) => void;
   showSuccess: (msg: string) => void;
+  /** NORQVA-0125: abrir direto numa aba (aviso da central); o nonce reabre mesmo se já estiver na tela */
+  focusTab?: { tab: 'recovery'; nonce: number } | null;
 }
 
 interface WaNumber {
@@ -94,13 +96,16 @@ const fmtPhone = (p: string | null) => {
 };
 const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 
-export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: WhatsAppViewProps) {
+export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess, focusTab }: WhatsAppViewProps) {
   const isAdmin = currentUser?.role === 'ADMIN';
   const [tab, setTab] = useState<'numbers' | 'conversations' | 'conditions' | 'results' | 'recovery'>('conversations');
   // NORQVA-0125: "Pagamentos não concluídos" só para ADMIN
   const tabs = isAdmin ? (['conversations', 'numbers', 'conditions', 'results', 'recovery'] as const) : (['conversations', 'numbers', 'conditions', 'results'] as const);
   const api = useRef(apiFetch);
   api.current = apiFetch;
+  useEffect(() => {
+    if (focusTab && isAdmin) setTab(focusTab.tab);
+  }, [focusTab, isAdmin]);
 
   return (
     <div className="space-y-4" data-testid="whatsapp-view">

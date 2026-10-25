@@ -360,6 +360,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Quem escolhe é o dono:** tela Vendas → WhatsApp → "Pagamentos não concluídos" (só ADMIN), com exclusão manual, prévia exata e confirmação. O servidor recalcula tudo antes de pôr na fila e de novo antes de cada envio (com conferência no Asaas).
 - **Devagar:** uma pessoa a cada 2 a 4 minutos, 09h–20h de Brasília; sem número conectado ou com o atendente desligado nada sai e abre aviso na central.
 - **Atribuição:** link com `utm_source=whatsapp`, `utm_medium=recuperacao` e código em `whatsapp_refs` ligado à conversa.
-- **SAIR:** vale "sair", "parar", "não quero mais" em qualquer conversa (normalizado); depois da recuperação também "não quero". Quem sai nunca mais entra na lista; o atendente confirma uma vez.
+- **FALHOU é final:** envio com resultado incerto (tempo esgotado, 5xx) não é repetido; melhor perder uma mensagem do que mandar duas. Só "Pulada" antes do envio por motivo passageiro pode voltar à fila.
+- **Mesma pessoa:** telefone normalizado ou e-mail (`email_key`); pago inclui Kiwify e pagamento confirmado em qualquer pedido.
+- **SAIR:** a regra de sempre das outras conversas não muda. Depois da recuperação valem "sair/parar/pare/stop" escritos de qualquer jeito e, só na primeira resposta antes do atendente, "não quero", "não, obrigado", "sem interesse". Quem sai (ou já tinha pedido para parar em qualquer conversa) nunca entra na lista; o atendente confirma uma vez.
+- **Número da marca:** cada pessoa recebe pelo número da marca da oferta (ou sem marca); nunca pelo de outra marca.
+- **Dados no link (aprovado pelo Ricardo):** nome e e-mail vão no link para preencher o pagamento. Ficam fora da cópia guardada em Conversas e da resposta da tela (id opaco no lugar do telefone), mas aparecem no WhatsApp da pessoa, no servidor da Evolution e nos registros de acesso do site (endereço da página). O site tira os dois da barra de endereço ao abrir (NORQVA-0112).
 - **Número oficial fora:** sem modelo aprovado ele não alcança quem não escreveu nas últimas 24h.
 - Chave `WHATSAPP_RECOVERY_ENABLED` (padrão desligada).
