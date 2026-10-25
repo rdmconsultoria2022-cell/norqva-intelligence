@@ -52,6 +52,13 @@ describe('NORQVA-0123 — regras puras', () => {
     expect(promisesPhotos('Seguem as fotos do kit')).toBe(true);
     expect(promisesPhotos('Posso te mandar fotos, quer ver?')).toBe(false);
     expect(promisesPhotos('O Pix chega logo depois desta mensagem.')).toBe(false);
+    expect(promisesPhotos('Já te mando as fotos!')).toBe(true);
+    expect(promisesPhotos('Te envio as fotos agora')).toBe(true);
+    expect(promisesPhotos('Um momento que já mando as fotinhas')).toBe(true);
+    expect(promisesPhotos('Enviarei as fotos do kit')).toBe(true);
+    expect(promisesPhotos('Não vou mandar fotos do PDF antes do pagamento.')).toBe(false);
+    expect(promisesPhotos('Vou te mandar o link do livro, cheio de fotos lindas!')).toBe(false);
+    expect(promisesPhotos('Vou te enviar o Pix com a imagem do QR Code.')).toBe(false);
   });
 
   it('texto do lembrete e horário de Brasília', () => {
