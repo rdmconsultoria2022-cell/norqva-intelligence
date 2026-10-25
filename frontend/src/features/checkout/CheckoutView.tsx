@@ -10,7 +10,7 @@ import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallme
 import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit, toSaleBooks } from './collectionChoice';
 import type { CollectionSaleBook, CheckoutOffer } from './checkoutTypes';
 import { ExitOfferScreen } from './ExitOfferScreen';
-import { isFreshName, FRESH_BUTTON_STYLE } from '../../lib/productLook';
+import { isFreshName, FRESH_BUTTON_STYLE, isBordadoName, BORDADO_INFO } from '../../lib/productLook';
 
 type CheckoutFormProps = CheckoutViewProps & { onBack?: () => void };
 
@@ -504,12 +504,14 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
           const nFiles = Number(offer.delivery_files) || 0;
           // Capa e descrição de acordo com o livro comprado
           const lname = String(offer.name || '').toLowerCase();
-          const isKit = lname.includes('kit');
+          // NORQVA-0135: o Kit de Bordado não é o kit de livros de cozinha
+          const isBordado = isBordadoName(offer.name);
+          const isKit = !isBordado && lname.includes('kit');
           const isDolci = !isKit && lname.includes('dolci');
-          const covers = summary ? summary.covers : isKit
+          const covers = summary ? summary.covers : isBordado ? [BORDADO_INFO.cover] : isKit
             ? (fullKit ? SALE_BOOK_ORDER.map(k => SALE_BOOK_INFO[k].cover) : ['/images/kit/capa_trat.jpg', '/images/kit/capa_dolci.jpg'])
             : [isDolci ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg'];
-          const subtitle = summary ? summary.subtitle : isKit && fullKit ? `5 livros em PDF • ${FULL_KIT_RECIPES} receitas italianas`
+          const subtitle = summary ? summary.subtitle : isBordado ? BORDADO_INFO.subtitle : isKit && fullKit ? `5 livros em PDF • ${FULL_KIT_RECIPES} receitas italianas`
             : isKit ? 'Trattoria em Casa + Dolci della Nonna • 2 livros em PDF'
             : isDolci ? 'Doces italianos da nonna • Livro em PDF'
             : '28 receitas italianas • Livro em PDF';
@@ -533,7 +535,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   )}
                   <div>
                     <span className={`text-[10px] font-bold uppercase tracking-wider block ${tone.accentText}`}>
-                      {isBolso ? 'Método & Aplicativo Web' : fresh ? 'Programa digital' : summary ? summary.label : isKit ? 'Kit de livros digitais' : 'Livro digital'}
+                      {isBolso ? 'Método & Aplicativo Web' : fresh ? 'Programa digital' : summary ? summary.label : isBordado ? BORDADO_INFO.label : isKit ? 'Kit de livros digitais' : 'Livro digital'}
                     </span>
                     <h4 className={`text-sm font-bold leading-tight ${tone.heading}`}>
                       {offer.name}
@@ -623,6 +625,8 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   ? 'Você receberá os links e dados de acesso neste e-mail.'
                   : fresh
                     ? 'Os materiais em PDF chegam neste e-mail logo após o pagamento.'
+                  : isBordadoName(offer.name)
+                    ? 'O kit em PDF chega neste e-mail logo após o pagamento.'
                   : hasChoice || Number(offer.delivery_files) > 1 || String(offer.name || '').toLowerCase().includes('kit')
                     ? 'Os livros em PDF chegam neste e-mail logo após o pagamento.'
                     : 'O livro em PDF chega neste e-mail logo após o pagamento.'}
