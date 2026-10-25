@@ -497,7 +497,7 @@ describe.sequential('NORQVA-0116 — rotas, banco, publicação e página públi
     await post(`/api/generated-pages/${page.id}/publish`, {});
     const pub = await request(app).get(`/api/public/generated-pages/${page.slug}`);
     expect(pub.status).toBe(200);
-    expect(Object.keys(pub.body).sort()).toEqual(['meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
+    expect(Object.keys(pub.body).sort()).toEqual(['gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
     expect(pub.body.offer).toEqual({ human_id: `OFF-T116${tag}`, value: 19.9 });
     expect(Object.keys(pub.body.sections[0]).sort()).toEqual(['body', 'bullets', 'cta_label', 'headline', 'image_url', 'note', 'order', 'price', 'role']);
     const text = JSON.stringify(pub.body);

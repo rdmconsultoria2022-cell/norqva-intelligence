@@ -977,6 +977,34 @@ export function imageSlots(plan: Array<{ has_image: boolean; fixed?: any }>): nu
 
 type PriceBlock = ReturnType<typeof livePriceBlock>;
 
+// NORQVA-0129: seções que nunca recebem imagem do produto na hora de mostrar (preço, garantia, dúvidas, botão final e
+// as de texto aprovado, como depoimentos). Ordem de preferência para as outras imagens: conteúdo e benefícios primeiro.
+const NO_RENDER_IMAGE = new Set<string>(['OFFER_PRICE', 'GUARANTEE', 'FAQ', 'CTA', 'URGENCY', 'TESTIMONIALS', 'PROOF_RESULTS', 'AUTHORITY']);
+const RENDER_IMAGE_ORDER = ['CONTENTS', 'BENEFITS', 'PRODUCT_REVEAL', 'BONUS', 'MECHANISM', 'PAIN', 'AGITATION', 'OTHER'];
+
+/**
+ * NORQVA-0129: imagens na hora de mostrar (nada é gravado). Só quando NENHUMA seção tem imagem própria:
+ * a abertura recebe a primeira imagem do produto e as outras vão, uma para cada, às seções que combinam
+ * (conteúdo, benefícios, apresentação...), na ordem da página. Devolve a imagem de cada seção (ou null).
+ */
+export function renderImageFallback(sections: Array<{ role: string; image_url?: string | null; fixed?: boolean }>, images: string[]): Array<string | null> {
+  const own = sections.map(s => (s.image_url ? String(s.image_url) : null));
+  if (!images.length || !sections.length || own.some(Boolean)) return own;
+  const out: Array<string | null> = sections.map(() => null);
+  out[0] = images[0];
+  const rest = images.slice(1);
+  const candidates = sections
+    .map((s, i) => ({ i, rank: RENDER_IMAGE_ORDER.indexOf(String(s.role)) }))
+    .filter(c => c.i > 0 && c.rank >= 0 && !NO_RENDER_IMAGE.has(String(sections[c.i].role)) && !sections[c.i].fixed)
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .slice(0, rest.length)
+    .sort((a, b) => a.i - b.i);
+  candidates.forEach((c, n) => {
+    out[c.i] = rest[n];
+  });
+  return out;
+}
+
 const PUBLIC_SECTION = (s: GeneratedSection, image: string | null, price: PriceBlock | null) => ({
   order: s.order,
   role: s.role,
@@ -1184,17 +1212,20 @@ export class GenerationService {
       : null;
     const meta = (
       await this.pool.query(
-        `SELECT p.name AS product_name, o.human_id AS offer_human_id, o.name AS offer_name, o.status AS offer_status
+        `SELECT p.name AS product_name, p.collection_key AS product_collection_key, o.human_id AS offer_human_id, o.name AS offer_name, o.status AS offer_status
          FROM generated_pages g LEFT JOIN products p ON p.id = g.product_id LEFT JOIN offers o ON o.id = g.offer_id WHERE g.id = $1`,
         [id]
       )
     ).rows[0] || {};
     const offer = r.offer_id ? await this.liveOffer(r.offer_id) : null;
     const price = offer ? livePriceBlock(offer) : null;
+    // NORQVA-0129: sem imagem em nenhuma seção, a prévia mostra as do produto (como a página pública), sem gravar
+    const gallery = productImages({ name: meta.product_name, collection_key: meta.product_collection_key });
+    const shown = renderImageFallback(r.sections as GeneratedSection[], gallery);
     const sections = await Promise.all(
-      (r.sections as GeneratedSection[]).map(async s => ({
+      (r.sections as GeneratedSection[]).map(async (s, i) => ({
         ...s,
-        image_preview_url: await resolveImageUrl(s.image_url, 3600),
+        image_preview_url: await resolveImageUrl(shown[i], 3600),
         price: s.role === 'OFFER_PRICE' && price ? { price_text: price.price_text, installments_text: price.installments_text } : null
       }))
     );
@@ -1213,6 +1244,7 @@ export class GenerationService {
         offer_status: meta.offer_status || null,
         reference_id: r.reference_id,
         sections,
+        gallery,
         copy_check: r.copy_check,
         images_mode: r.images_mode,
         approved_at: r.approved_at,
@@ -1571,7 +1603,7 @@ export class GenerationService {
     if (!/^[a-z0-9-]{3,120}$/.test(s)) throw new GenerationError(404, 'Página não encontrada.');
     const r = (
       await this.pool.query(
-        `SELECT g.id, g.slug, g.theme, g.sections, g.offer_id, p.name AS product_name
+        `SELECT g.id, g.slug, g.theme, g.sections, g.offer_id, p.name AS product_name, p.collection_key AS product_collection_key
          FROM generated_pages g JOIN offers o ON o.id = g.offer_id JOIN products p ON p.id = g.product_id
          WHERE g.slug = $1 AND g.status = 'PUBLISHED' AND g.deleted_at IS NULL
            AND o.deleted_at IS NULL AND COALESCE(o.is_deleted, FALSE) = FALSE AND o.is_demo = FALSE AND o.status IN ('ATIVA', 'TESTE')
@@ -1584,13 +1616,17 @@ export class GenerationService {
     if (!offer) throw new GenerationError(404, 'Página não encontrada.');
     const price = livePriceBlock(offer);
     const sections = parseJsonCol(r.sections, []) as GeneratedSection[];
+    // NORQVA-0129: página sem imagens (gerada sem a KIE) mostra as do produto que já estão no site; nada é gravado
+    const gallery = productImages({ name: r.product_name, collection_key: r.product_collection_key });
+    const shown = renderImageFallback(sections, gallery);
     return {
       slug: r.slug,
       theme: r.theme === 'fresh' ? 'fresh' : 'light',
       title: r.product_name || '',
       offer: { human_id: String(offer.human_id), value: price.value },
       offer_id: r.offer_id as string,
-      sections: await Promise.all(sections.map(async x => PUBLIC_SECTION(x, await resolveImageUrl(x.image_url), price)))
+      sections: await Promise.all(sections.map(async (x, i) => PUBLIC_SECTION(x, await resolveImageUrl(shown[i]), price))),
+      gallery
     };
   }
 }
