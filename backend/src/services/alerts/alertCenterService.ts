@@ -40,8 +40,10 @@ const RULES: Record<string, RuleInfo> = {
   NIGHT_PAUSE_MIRROR_FAILED: { title: 'Pausa noturna não consegue preparar a campanha', severity: 'ATTENTION', action: 'Confira o ID e a conta da campanha; sem isso ela não será pausada à noite.', tab: 'results' },
   NIGHT_PAUSE_RACE: { title: 'Alguém mexeu na campanha durante a reativação', severity: 'CRITICAL', action: 'A pausa noturna pausou de novo. Confira a campanha agora e decida.', tab: 'results' },
   NIGHT_PAUSE_EXPIRED: { title: 'Campanha ficou pausada depois da pausa noturna', severity: 'CRITICAL', action: 'Reative pela tela se a campanha deve rodar.', tab: 'results' },
-  // NORQVA-0125: fila do WhatsApp para quem não concluiu o pagamento parada (número desconectado ou atendente desligado)
-  WHATSAPP_RECOVERY_BLOCKED: { title: 'Mensagens de recuperação paradas', severity: 'ATTENTION', action: 'Conecte o número do WhatsApp e ligue o atendente (Vendas → WhatsApp → Números). A fila espera e continua sozinha.', tab: 'results' }
+  // NORQVA-0125: WhatsApp para quem não concluiu o pagamento (abre Vendas → WhatsApp → Pagamentos não concluídos)
+  WHATSAPP_RECOVERY_BLOCKED: { title: 'Mensagens de recuperação paradas', severity: 'ATTENTION', action: 'Conecte o número do WhatsApp da marca e ligue o atendente (Vendas → WhatsApp → Números). A fila espera e continua sozinha.', tab: 'results' },
+  WHATSAPP_RECOVERY_STUCK: { title: 'Mensagem de recuperação sem confirmação', severity: 'ATTENTION', action: 'Confira a conversa da pessoa em WhatsApp → Conversas. O NORQVA não reenvia.', tab: 'results' },
+  WHATSAPP_RECOVERY_RECHECK_FAILED: { title: 'Recuperação: pagamento não conferido no Asaas', severity: 'INFO', action: 'A pessoa ficou de fora desta vez. Ela pode ser enviada de novo em Pagamentos não concluídos.', tab: 'results' }
 };
 
 export function describeRule(rule: string): RuleInfo {
@@ -249,6 +251,27 @@ function shape(row: any) {
           ? 'VISUALIZADA'
           : 'NOVA';
   const guard = isGuardRule(String(row.rule_code));
+  // NORQVA-0125: aviso do WhatsApp (não é anúncio nem campanha)
+  if (String(row.rule_code).startsWith('WHATSAPP_RECOVERY_')) {
+    return {
+      id: row.id,
+      rule_code: row.rule_code,
+      title: info.title,
+      description: row.message,
+      severity: info.severity,
+      recommended_action: info.action,
+      state,
+      read: !!row.read_by_me,
+      is_problem: info.severity !== 'INFO',
+      is_open: !resolved && !dismissed,
+      entity: { type: 'WHATSAPP', meta_campaign_id: null, campaign_name: row.campaign_name || null, meta_ad_id: null, ad_name: null, plan_code: null },
+      link: { tab: info.tab, meta_campaign_id: null, plan_code: null, section: 'whatsapp-recovery' },
+      resolution: row.resolution || null,
+      dismiss_reason: row.dismiss_reason || null,
+      created_at: row.created_at,
+      resolved_at: row.resolved_at || null
+    };
+  }
   const campaignId = row.meta_campaign_id ? String(row.meta_campaign_id) : guard ? String(row.meta_ad_id) : null;
   return {
     id: row.id,
