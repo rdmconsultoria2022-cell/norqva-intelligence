@@ -236,7 +236,7 @@ export async function prepareDelivery(pool: Pool, orderId: string): Promise<void
     `UPDATE order_deliveries
      SET status = 'ACTIVE',
          download_count = CASE WHEN status = 'EXPIRED' OR download_count >= max_downloads THEN 0 ELSE download_count END,
-         delivery_token_hash = NULL, delivery_token_expires_at = NULL, updated_at = NOW()
+         delivery_token_hash = NULL, delivery_token_expires_at = NULL, delivery_token_enc = NULL, delivery_token_enc_version = NULL, updated_at = NOW()
      WHERE order_id = $1 AND status <> 'REVOKED'
        AND (status = 'EXPIRED' OR download_count >= max_downloads)`,
     [orderId]

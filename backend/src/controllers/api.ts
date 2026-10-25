@@ -4246,24 +4246,43 @@ export async function getDeliveryTokens(req: any, res: Response) {
         const isActive = delivery.status === 'ACTIVE' && !isExhausted;
 
         if (isActive) {
-          // Generate fresh ephemeral raw token and rotate hash atomically
-          const rawToken = crypto.randomBytes(32).toString('hex');
-          const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-          const ttlHours = parseInt(process.env.DELIVERY_TOKEN_TTL_HOURS || '24', 10);
-          const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+          // NORQVA-0126: o link atual vale enquanto não vencer (com folga de 1 h). Abrir a página de novo
+          // (outra aba, F5, pré-visualização do Google) devolve o MESMO link, em vez de trocar e apagar o anterior.
+          const ttlParsed = parseInt(process.env.DELIVERY_TOKEN_TTL_HOURS || '24', 10);
+          const ttlHours = Number.isFinite(ttlParsed) && ttlParsed > 0 ? ttlParsed : 24;
+          // folga de 1 h (ou metade da validade, se a validade for curta) para o link não vencer na mão do comprador
+          const reuseMarginMs = Math.min(60 * 60 * 1000, (ttlHours * 60 * 60 * 1000) / 2);
+          let rawToken: string | null = null;
+          let expiresAt: Date | null = delivery.delivery_token_expires_at ? new Date(delivery.delivery_token_expires_at) : null;
+          if (delivery.delivery_token_enc && delivery.delivery_token_hash && expiresAt && expiresAt.getTime() - Date.now() > reuseMarginMs) {
+            try {
+              const kept = decryptData(delivery.delivery_token_enc, getEncryptionKey(), delivery.delivery_token_enc_version || 1);
+              if (crypto.createHash('sha256').update(kept).digest('hex') === delivery.delivery_token_hash) rawToken = kept;
+            } catch {
+              rawToken = null;
+            }
+          }
 
-          await client.query(
-            `UPDATE order_deliveries 
-             SET delivery_token_hash = $1, delivery_token_expires_at = $2, updated_at = NOW() 
-             WHERE id = $3`,
-            [tokenHash, expiresAt, delivery.id]
-          );
+          if (!rawToken) {
+            // sem link guardado (pedido antigo) ou vencido: gera um novo e guarda criptografado
+            rawToken = crypto.randomBytes(32).toString('hex');
+            const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+            expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+            const enc = encryptData(rawToken, getEncryptionKey());
+
+            await client.query(
+              `UPDATE order_deliveries 
+               SET delivery_token_hash = $1, delivery_token_expires_at = $2, delivery_token_enc = $3, delivery_token_enc_version = $4, updated_at = NOW() 
+               WHERE id = $5`,
+              [tokenHash, expiresAt, enc.encryptedText, enc.version, delivery.id]
+            );
+          }
 
           responseDeliveries.push({
             assetId: delivery.asset_id,
             assetTitle: delivery.asset_name || `Ativo Digital #${delivery.asset_id.substring(0, 8)}`,
             rawToken,
-            expiresAt: expiresAt.toISOString(),
+            expiresAt: (expiresAt as Date).toISOString(),
             downloadCount: delivery.download_count,
             maxDownloads: delivery.max_downloads,
             status: 'ACTIVE'
@@ -6137,6 +6156,8 @@ export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Respo
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      // NORQVA-0126: guarda o link criptografado para a página de entrega devolver este mesmo link
+      const remediationEnc = encryptData(rawToken, getEncryptionKey());
 
       const existingDel = await client.query('SELECT * FROM order_deliveries WHERE order_id = $1 ORDER BY created_at ASC', [orderId]);
 
@@ -6171,20 +6192,22 @@ export async function reissueOrderDelivery(req: AuthenticatedRequest, res: Respo
                download_count = 0,
                delivery_token_hash = $2,
                delivery_token_expires_at = $3,
+               delivery_token_enc = $6,
+               delivery_token_enc_version = $7,
                updated_at = NOW()
            WHERE id = $4 AND order_id = $5
            RETURNING *`,
-          [asset.id, tokenHash, expiresAt, target.id, orderId]
+          [asset.id, tokenHash, expiresAt, target.id, orderId, remediationEnc.encryptedText, remediationEnc.version]
         );
         deliveryRecord = updateRes.rows[0];
       } else {
         const itemRes = await client.query('SELECT id FROM order_items WHERE order_id = $1 ORDER BY is_bump ASC, created_at ASC LIMIT 1', [orderId]);
         const itemId = itemRes.rows[0]?.id || null;
         const insertRes = await client.query(
-          `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status, download_count, delivery_token_hash, delivery_token_expires_at)
-           VALUES ($1, $2, $3, 'ACTIVE', 0, $4, $5)
+          `INSERT INTO order_deliveries (order_id, order_item_id, asset_id, status, download_count, delivery_token_hash, delivery_token_expires_at, delivery_token_enc, delivery_token_enc_version)
+           VALUES ($1, $2, $3, 'ACTIVE', 0, $4, $5, $6, $7)
            RETURNING *`,
-          [orderId, itemId, asset.id, tokenHash, expiresAt]
+          [orderId, itemId, asset.id, tokenHash, expiresAt, remediationEnc.encryptedText, remediationEnc.version]
         );
         deliveryRecord = insertRes.rows[0];
       }
