@@ -12,7 +12,7 @@ import { LaunchPlanError, validateLaunchPlanInput, normalizeMetaIds, serializeLa
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, META_MIN_DAILY_BUDGET_BRL, getMaxDailyBudgetBRL, getGeneratedPageHosts } from '../meta/metaMutatingClient';
 import { checkGeneratedAd } from '../creative/creativeFactoryService';
 import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
-import { STORAGE_PREFIX, storageRef } from '../creative/generatedImages';
+import { STORAGE_PREFIX, storageRef, productImages } from '../creative/generatedImages';
 import { livePriceBlock, GenerationService } from '../creative/generationService';
 import { urlTagsFor, DEFAULT_OFFER_BASE_URL } from '../aiTeam/launchSheet';
 import { isKitOffer } from './campaignEditorService';
@@ -108,6 +108,16 @@ export function pageImageRefs(sections: any[]): string[] {
     else if (raw.startsWith(STORAGE_PREFIX) && storageRef(raw)) out.push(raw);
   }
   return Array.from(new Set(out));
+}
+
+/**
+ * NORQVA-0128: imagens dos anúncios. As da página primeiro; se a página não tem nenhuma (gerada sem KIE e
+ * sem imagens do produto na hora), usa as imagens do produto que já estão no site.
+ */
+export function adImageRefs(sections: any[], product: { name?: unknown; collection_key?: unknown }): string[] {
+  const fromPage = pageImageRefs(sections);
+  if (fromPage.length) return fromPage;
+  return Array.from(new Set(productImages(product).filter(u => u.startsWith('/images/')).map(u => `${publicSiteUrl()}${u}`)));
 }
 
 const parseJson = (v: any, fb: any) => {
@@ -304,7 +314,7 @@ export class GeneratedCampaignService {
         [page.product_id, page.reference_id]
       )
     ).rows[0] || {};
-    return { product: String(r.product_name || 'Produto'), brandId: r.brand_id || null, ref: String(r.ref_human_id || page.human_id), cookbook: isCookbook(r) };
+    return { product: String(r.product_name || 'Produto'), collectionKey: r.collection_key || null, brandId: r.brand_id || null, ref: String(r.ref_human_id || page.human_id), cookbook: isCookbook(r) };
   }
 
   private async nameTaken(name: string, exceptPlanId: string | null = null): Promise<boolean> {
@@ -337,7 +347,7 @@ export class GeneratedCampaignService {
     const page = await pageRow(this.pool, pageId);
     const plan = await this.planForPage(page.id);
     const n = await this.names(page);
-    const images = pageImageRefs(page.sections);
+    const images = adImageRefs(page.sections, { name: n.product, collection_key: n.collectionKey });
     const max = getMaxDailyBudgetBRL();
     const daily = Math.min(DEFAULT_DAILY_BUDGET_BRL, max);
     const rebuildable = isRebuildable(plan);
@@ -424,7 +434,7 @@ export class GeneratedCampaignService {
     if (!picked.length) throw new LaunchPlanError(409, 'Nenhum anúncio aprovado e liberado pela checagem para esta página.');
     if (picked.length > 10) throw new LaunchPlanError(400, 'No máximo 10 anúncios por campanha.');
 
-    const images = pageImageRefs(page.sections);
+    const images = adImageRefs(page.sections, { name: n.product, collection_key: n.collectionKey });
     const code = existing ? existing.code : `CMP-${page.human_id}`.toUpperCase().slice(0, 40);
     const adsetName = `${code}_AS01`;
     const ads = [];

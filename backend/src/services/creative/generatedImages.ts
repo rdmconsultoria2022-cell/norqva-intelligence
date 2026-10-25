@@ -248,13 +248,14 @@ export function productImages(p: { name?: unknown; collection_key?: unknown }): 
   const name = String(p.name || '').toLowerCase();
   if (/dolci/.test(name)) return ['/images/kit/capa_dolci.jpg', '/images/kit/dolci_tiramisu.jpg', '/images/kit/dolci_cannoli.jpg', '/images/kit/dolci_pannacotta.jpg'];
   if (/trattoria/.test(name)) return ['/images/kit/capa_trat.jpg', '/images/kit/trat_carbonara.jpg', '/images/kit/trat_ragu.jpg', '/images/kit/trat_ravioli.jpg'];
+  if (/bordado/.test(name)) return ['/images/bordado/capa.jpg', '/images/bordado/riscos.jpg', '/images/bordado/bichinhos.jpg', '/images/bordado/pontos.jpg'];
   if (/^kit\b/.test(name)) return ['/images/kit/capa_kit.jpg', '/images/kit/trat_pizza.jpg', '/images/kit/dolci_tiramisu.jpg', '/images/kit/trat_pesto.jpg'];
   return [];
 }
 
 /** Cenário das fotos dos livros de cozinha (D-0055) ou neutro para os outros produtos. */
 export function imageStyle(p: { name?: unknown; collection_key?: unknown; category?: unknown }): string {
-  const cooking = productImages(p).length > 0 || /receit|cozinha|culin/i.test(String(p.category || ''));
+  const cooking = (productImages(p).length > 0 && !/bordado/i.test(String(p.name || ''))) || /receit|cozinha|culin/i.test(String(p.category || ''));
   return cooking
     ? 'Foto realista de comida, prato creme com borda dourada sobre linho rosado, mesa escura, luz quente lateral, sem texto, sem marca, sem mãos, sem pessoas.'
     : 'Foto realista e limpa, luz natural, fundo claro, sem texto, sem marca, sem logotipo, sem pessoas reconhecíveis.';

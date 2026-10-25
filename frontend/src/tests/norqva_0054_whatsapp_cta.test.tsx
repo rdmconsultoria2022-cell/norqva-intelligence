@@ -70,7 +70,7 @@ describe('NORQVA-0054 — botão do WhatsApp na página', () => {
     expect(body).toMatchObject({ offer_human_id: 'OFF-KIT' });
   });
 
-  // NORQVA-0128: botão flutuante
+  // NORQVA-0130: botão flutuante
   it('sem WhatsApp disponível, não há botão flutuante', async () => {
     global.fetch = vi.fn().mockImplementation(() => Promise.resolve({ ok: true, json: async () => ({ ...kit, whatsapp: null }) })) as any;
     renderKit();

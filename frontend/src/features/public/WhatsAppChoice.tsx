@@ -126,7 +126,7 @@ export const BuyChoice: React.FC<{
   );
 };
 
-// NORQVA-0128: botão flutuante do WhatsApp (canto da tela), visível enquanto a pessoa rola a página.
+// NORQVA-0130: botão flutuante do WhatsApp (canto da tela), visível enquanto a pessoa rola a página.
 // Mesmo caminho do botão principal (código de origem); se o WhatsApp falhar, abre o pagamento da página.
 // No celular fica acima da barra fixa de "Ver ofertas".
 const FAB_CSS = `
