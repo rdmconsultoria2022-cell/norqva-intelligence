@@ -213,8 +213,14 @@ describe('NORQVA-0116 — tela de geração', () => {
     render(<GenerationView apiFetch={apiFetch} pageId="g1" isAdmin canEdit hideStatusActions showError={vi.fn()} showSuccess={vi.fn()} onBack={vi.fn()} />);
     const btn = await screen.findByTestId('factory-unpublish');
     expect(screen.queryByText('Tirar do ar')).toBeNull();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    fireEvent.click(btn);
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalledWith('/generated-pages/g1/unpublish', expect.anything());
+    confirmSpy.mockReturnValueOnce(true);
     fireEvent.click(btn);
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/generated-pages/g1/unpublish', expect.objectContaining({ method: 'POST' })));
+    confirmSpy.mockRestore();
   });
 
   it('na Fábrica, CREATIVE não vê o botão de tirar do ar', async () => {

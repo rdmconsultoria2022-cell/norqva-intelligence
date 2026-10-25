@@ -430,13 +430,22 @@ export const GenerationView: React.FC<{
             <button
               type="button"
               disabled={!!busy}
-              onClick={() => run('unpublish', () => post(`/generated-pages/${page.id}/unpublish`), 'Página tirada do ar. Edite e publique de novo no passo 5.')}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    'A página sai do ar agora. Se uma campanha estiver levando pessoas para ela, elas verão "página fora do ar" até você aprovar e publicar de novo no passo 5. Continuar?'
+                  )
+                )
+                  return;
+                run('unpublish', () => post(`/generated-pages/${page.id}/unpublish`), 'Página tirada do ar. Edite; depois, no passo 5, aprove e publique de novo.');
+              }}
               className={`${pill} bg-nq-raised text-nq-text`}
               data-testid="factory-unpublish"
             >
-              Tirar do ar para editar
+              {busy === 'unpublish' ? 'Tirando do ar...' : 'Tirar do ar para editar'}
             </button>
           )}
+          {!isAdmin && hideStatusActions && <p className="text-nq-caption text-nq-subtle">Peça ao administrador para tirar do ar.</p>}
         </div>
       )}
 
