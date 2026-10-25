@@ -17,3 +17,10 @@ Em 25/10/2026 uma compra paga abriu a página de entrega e o botão "Baixar" deu
 ## Regras
 
 Só pedido PAID com entrega ACTIVE recebe link (sem mudança). Limite de downloads e validade sem mudança. Testes em `norqva_0126_delivery_link.test.ts`; D13/D14 do 2.5D ajustados (troca agora só com link perto de vencer).
+
+## Revisão independente (aplicada)
+
+- Reenvio pelo administrador (remediação) também guarda o link criptografado, então a página do comprador devolve o mesmo link que o administrador mandou. Reativação (`salesService`) limpa a cópia guardada.
+- Folga de reaproveitamento = 1 h ou metade da validade, se a validade for curta; validade inválida volta a 24 h.
+- Testes novos: pedido não pago (403), entrega revogada, downloads esgotados, cópia corrompida ou de outra versão de chave; D14 confere que abrir de novo devolve o mesmo link.
+- A página de entrega passa a depender de `ENCRYPTION_KEY` (já obrigatória no Pix).

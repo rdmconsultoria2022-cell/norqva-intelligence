@@ -181,7 +181,40 @@ describe.sequential('NORQVA NORQVA-0126 link de download estável', () => {
   test('pedido não pago continua sem link', async () => {
     const { order } = await createTestOrderAndPayment();
     const r = await tokensOf(order);
-    const list = r.body.deliveries || [];
-    expect(list.every((d: any) => !d.rawToken)).toBe(true);
+    expect(r.status).toBe(403);
+    expect(r.body.deliveries).toBeUndefined();
+  });
+
+  test('entrega revogada (estorno/contestação) não devolve o link guardado e o antigo não baixa', async () => {
+    const order = await paidOrder();
+    const t1 = (await tokensOf(order)).body.deliveries[0].rawToken;
+    await pool.query("UPDATE order_deliveries SET status = 'REVOKED' WHERE order_id = $1", [order.id]);
+    const r = await tokensOf(order);
+    for (const d of r.body.deliveries || []) expect(d.rawToken).toBeFalsy();
+    const dl = await request(app).get(`/api/delivery/${t1}`);
+    expect(dl.status).not.toBe(200);
+  });
+
+  test('downloads esgotados: sem link', async () => {
+    const order = await paidOrder();
+    await tokensOf(order);
+    await pool.query('UPDATE order_deliveries SET download_count = max_downloads WHERE order_id = $1', [order.id]);
+    const r = await tokensOf(order);
+    for (const d of r.body.deliveries || []) expect(d.rawToken).toBeFalsy();
+  });
+
+  test('cópia guardada corrompida ou de outra versão de chave: gera link novo que baixa', async () => {
+    const order = await paidOrder();
+    const t1 = (await tokensOf(order)).body.deliveries[0].rawToken;
+    await pool.query("UPDATE order_deliveries SET delivery_token_enc = 'xx:yy:zz' WHERE order_id = $1", [order.id]);
+    const r = await tokensOf(order);
+    expect(r.status).toBe(200);
+    const t2 = r.body.deliveries[0].rawToken;
+    expect(t2).not.toBe(t1);
+    expect((await request(app).get(`/api/delivery/${t2}`)).status).toBe(200);
+    await pool.query('UPDATE order_deliveries SET delivery_token_enc_version = 99 WHERE order_id = $1', [order.id]);
+    const r3 = await tokensOf(order);
+    expect(r3.status).toBe(200);
+    expect((await request(app).get(`/api/delivery/${r3.body.deliveries[0].rawToken}`)).status).toBe(200);
   });
 });
