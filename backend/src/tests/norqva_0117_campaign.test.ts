@@ -416,8 +416,11 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect(r1.status).toBe(409);
     expect(r1.body.error).toContain('no ar');
 
+    // NORQVA-0127: sem imagem na página E sem imagem do produto no site (Trattoria tem fotos no site)
+    await pool.query(`UPDATE products SET name = 'Produto T117 sem fotos' WHERE id = $1`, [productId]);
     const noImg = await mkPage({ image: false });
     const r2 = await post(`/api/generated-pages/${noImg.pageId}/campaign`, {});
+    await pool.query(`UPDATE products SET name = 'Trattoria T117' WHERE id = $1`, [productId]);
     expect(r2.status).toBe(409);
     expect(r2.body.error).toContain('sem imagem');
 
