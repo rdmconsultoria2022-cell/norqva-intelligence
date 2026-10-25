@@ -369,9 +369,9 @@ async function raiseAlert(pool: Pool, problem: string) {
   try {
     await pool.query(
       `INSERT INTO ad_alerts (rule_code, meta_ad_id, ad_name, meta_campaign_id, campaign_name, spend, threshold, message, is_demo)
-       SELECT $1, $2, NULL, NULL, 'WhatsApp — pagamentos não concluídos', 0, 0, $3, FALSE
+       SELECT $1::varchar, $2::varchar, NULL, NULL, 'WhatsApp — pagamentos não concluídos', 0, 0, $3::text, FALSE
        WHERE NOT EXISTS (
-         SELECT 1 FROM ad_alerts WHERE rule_code = $1 AND meta_ad_id = $2 AND is_demo = FALSE
+         SELECT 1 FROM ad_alerts WHERE rule_code = $1::varchar AND meta_ad_id = $2::varchar AND is_demo = FALSE
            AND status IN ('OPEN', 'ACKNOWLEDGED') AND dismissed_at IS NULL
        )`,
       [RECOVERY_ALERT_RULE, ALERT_OBJECT, `Mensagens para quem não concluiu o pagamento estão paradas: ${problem}`.slice(0, 500)]
@@ -561,7 +561,17 @@ export async function runRecoveryQueue(pool: Pool, deps: RecoveryDeps = {}): Pro
       }
       person = (await computeRecoveryPeople(pool, { now, phoneKeys: [row.phone_key] })).find(p => p.phone_keys.includes(row.phone_key));
     }
-    if (!person) { await skipRow(pool, row.id, 'NOT_ELIGIBLE'); skipped++; continue; }
+    if (!person) {
+      // saiu da lista: se foi porque pagou, o motivo fica claro na tela
+      const paidNow = await pool.query(
+        `SELECT 1 FROM orders o WHERE o.status IN ('PAID', 'REFUNDED') AND o.is_demo = FALSE
+           AND (o.id = $1 OR ($2::uuid IS NOT NULL AND o.customer_id = $2::uuid)) LIMIT 1`,
+        [row.order_id, row.customer_id]
+      );
+      await skipRow(pool, row.id, paidNow.rows.length ? 'PAID' : 'NOT_ELIGIBLE');
+      skipped++;
+      continue;
+    }
     if (person.exclusion) { await skipRow(pool, row.id, person.exclusion); skipped++; continue; }
 
     const number = sendable.number;
