@@ -8,7 +8,7 @@ export const MAX_SAMPLE_IMAGES_PER_CONVERSATION = 4;
 export const SAMPLE_CAPTION_PREFIX = 'Amostra · ';
 const MAX_BYTES = 5 * 1024 * 1024;
 
-export type SampleKey = 'trattoria' | 'dolci' | 'kit2' | 'kit4' | 'kit5' | 'paes' | 'antipasti' | 'risotos';
+export type SampleKey = 'trattoria' | 'dolci' | 'kit2' | 'kit4' | 'kit5' | 'paes' | 'antipasti' | 'risotos' | 'bordado';
 
 /** Caminhos públicos do site (frontend/public). A ordem é a ordem de envio. */
 export const SAMPLE_IMAGES: Record<SampleKey, { path: string; caption: string }[]> = {
@@ -55,6 +55,13 @@ export const SAMPLE_IMAGES: Record<SampleKey, { path: string; caption: string }[
     { path: '/images/livros/antipasti/arancini.jpg', caption: 'Antipasti & Aperitivo: arancini' },
     { path: '/images/livros/antipasti/tagliere.jpg', caption: 'Antipasti & Aperitivo: tábua de frios e queijos' }
   ],
+  // NORQVA-0132: imagens tiradas do próprio PDF do kit (as mesmas dos anúncios)
+  bordado: [
+    { path: '/images/bordado/capa.jpg', caption: 'Kit de Bordado (capa)' },
+    { path: '/images/bordado/riscos.jpg', caption: 'Kit de Bordado: riscos para bordar' },
+    { path: '/images/bordado/bichinhos.jpg', caption: 'Kit de Bordado: riscos de bichinhos' },
+    { path: '/images/bordado/pontos.jpg', caption: 'Kit de Bordado: pontos passo a passo' }
+  ],
   risotos: [
     { path: '/images/livros/risotos/capa.jpg', caption: 'Risotos & Polentas (capa)' },
     { path: '/images/livros/risotos/milanese.jpg', caption: 'Risotos & Polentas: risoto alla milanese' },
@@ -70,6 +77,7 @@ export function sampleKeyFor(item: { name?: string | null; product_name?: string
   const ck = norm(item.collection_key);
   if (ck === 'paes' || ck === 'antipasti' || ck === 'risotos') return ck;
   const n = `${norm(item.name)} ${norm(item.product_name)}`;
+  if (/bordad/.test(n)) return 'bordado';
   if (/\+\s*4|\b4 livros|quatro livros/.test(n)) return 'kit4';
   if (/\bkit\b|colecao/.test(n)) return /complet|5 livros|cinco/.test(n) ? 'kit5' : 'kit2';
   if (/risoto|polenta/.test(n)) return 'risotos';

@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { GenerationService, GenerationError } from '../services/creative/generationService';
 import { resolveBrandPixelId } from '../services/brands/brandService';
+import { whatsappNumberForOffer } from '../services/whatsapp/whatsappRefs';
 
 // NORQVA-0116 (D-0116): Geração a partir de uma referência. Mesma trava da etapa 1 (CREATIVE_REFERENCES_ENABLED)
 // nas rotas internas. Gerar/editar: ADMIN e CREATIVE. Aprovar, publicar, tirar do ar e lixeira: ADMIN.
@@ -133,7 +134,9 @@ export async function getPublicGeneratedPage(req: AuthenticatedRequest, res: Res
   try {
     const page = await new GenerationService(pool).publicPage(String(req.params.slug || ''));
     const { offer_id, ...safe } = page;
-    return res.status(200).json({ ...safe, meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer_id }).catch(() => null) });
+    // NORQVA-0132: botão do WhatsApp só com número conectado e atendente ligado que atenda a marca da oferta
+    const wa = await whatsappNumberForOffer(pool, offer_id).catch(() => null);
+    return res.status(200).json({ ...safe, whatsapp: wa ? { available: true } : null, meta_pixel_id: await resolveBrandPixelId(pool, { offerId: offer_id }).catch(() => null) });
   } catch (e) {
     if (e instanceof GenerationError) return res.status(e.status).json({ error: e.message });
     console.error('Página gerada pública:', (e as any)?.message || e);

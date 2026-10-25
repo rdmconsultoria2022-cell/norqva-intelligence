@@ -71,6 +71,8 @@ function publicNumber(n: any) {
     label: n.label,
     brand_id: n.brand_id,
     brand_name: n.brand_name ?? null,
+    // NORQVA-0132: marcas que este número também atende
+    extra_brand_ids: Array.isArray(n.extra_brand_ids) ? n.extra_brand_ids.map(String) : [],
     phone: n.phone,
     profile_name: n.profile_name,
     status: n.status,
@@ -102,7 +104,31 @@ export async function listNumbers(pool: Pool) {
      WHERE n.is_deleted = FALSE
      ORDER BY n.created_at ASC`
   );
-  return { numbers: r.rows.map(publicNumber), max: MAX_WHATSAPP_NUMBERS };
+  const extras = await numberExtraBrands(pool, r.rows.map((n: any) => String(n.id)));
+  return { numbers: r.rows.map((n: any) => publicNumber({ ...n, extra_brand_ids: extras.get(String(n.id)) || [] })), max: MAX_WHATSAPP_NUMBERS };
+}
+
+/** NORQVA-0132: marcas extras de cada número (número → ids das marcas). */
+export async function numberExtraBrands(pool: Pool, numberIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!numberIds.length) return out;
+  const r = await pool.query('SELECT number_id, brand_id FROM whatsapp_number_brands WHERE number_id = ANY($1::uuid[]) ORDER BY created_at ASC', [numberIds]);
+  for (const row of r.rows) {
+    const k = String(row.number_id);
+    out.set(k, [...(out.get(k) || []), String(row.brand_id)]);
+  }
+  return out;
+}
+
+async function cleanExtraBrands(pool: Pool, raw: any, mainBrandId: string | null): Promise<string[]> {
+  if (!Array.isArray(raw)) throw new WhatsAppError(400, 'extra_brand_ids deve ser uma lista.');
+  if (raw.length > 10) throw new WhatsAppError(400, 'No máximo 10 marcas extras por número.');
+  const ids: string[] = [];
+  for (const v of raw) {
+    const id = await checkBrand(pool, v);
+    if (id && id !== mainBrandId && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 async function checkBrand(pool: Pool, brandId: any): Promise<string | null> {
@@ -162,6 +188,13 @@ export async function updateNumber(pool: Pool, id: string, body: any, userId: st
   if (n.provider === 'META_CLOUD' && (brandId || null) !== (n.brand_id || null)) {
     throw new WhatsAppError(409, 'A marca do número oficial é a da conta Meta. Para outra marca, use a conta Meta dela.');
   }
+  // NORQVA-0132: marcas extras (só número com marca principal e fora do oficial, que é isolado por conta Meta)
+  let extras: string[] | null = null;
+  if (body?.extra_brand_ids !== undefined) {
+    if (n.provider === 'META_CLOUD') throw new WhatsAppError(409, 'O número oficial atende só a marca da conta Meta dele.');
+    if (!brandId) throw new WhatsAppError(400, 'Escolha a marca principal do número antes das marcas extras.');
+    extras = await cleanExtraBrands(pool, body.extra_brand_ids, brandId);
+  }
   let bot = n.bot_enabled;
   if (body?.bot_enabled !== undefined) {
     if (typeof body.bot_enabled !== 'boolean') throw new WhatsAppError(400, 'bot_enabled deve ser verdadeiro ou falso.');
@@ -174,7 +207,28 @@ export async function updateNumber(pool: Pool, id: string, body: any, userId: st
   if (bot !== n.bot_enabled) {
     await writeAuditLog(pool, userId, bot ? 'WHATSAPP_BOT_ENABLED' : 'WHATSAPP_BOT_PAUSED', `Atendente automático ${bot ? 'ligado' : 'pausado'} no número "${label}".`, String(n.bot_enabled), String(bot));
   }
-  return publicNumber(r.rows[0]);
+  const before = (await numberExtraBrands(pool, [id])).get(id) || [];
+  // sem marca principal, sem marcas extras; marca principal nova sai da lista de extras
+  if (extras === null && (brandId || null) !== (n.brand_id || null)) extras = brandId ? before.filter(b => b !== brandId) : [];
+  if (extras !== null) {
+    // troca numa transação (sem janela em que o número fica sem as marcas)
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM whatsapp_number_brands WHERE number_id = $1', [id]);
+      for (const b of extras) await client.query('INSERT INTO whatsapp_number_brands (number_id, brand_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, b]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => null);
+      throw err;
+    } finally {
+      client.release();
+    }
+    if (JSON.stringify(before) !== JSON.stringify(extras)) {
+      await writeAuditLog(pool, userId, 'WHATSAPP_NUMBER_BRANDS_CHANGED', `Marcas extras do número "${label}" alteradas.`, JSON.stringify(before), JSON.stringify(extras));
+    }
+  }
+  return publicNumber({ ...r.rows[0], extra_brand_ids: extras ?? before });
 }
 
 /** Gera um segredo novo para o endereço do webhook e devolve a URL (o segredo antigo deixa de valer). */

@@ -30,6 +30,7 @@ import { API_BASE } from '../../lib/api';
 import { captureUrlAttribution } from '../../services/attribution';
 import { trackViewContent } from '../../services/metaPixel';
 import { FRESH } from '../../lib/productLook';
+import { FloatingWhatsApp, WhatsAppButton, goToWhatsApp } from './WhatsAppChoice';
 
 // NORQVA-0116 (D-0116): página de venda gerada (texto 100% nosso) e publicada pelo dono em /v/:slug.
 // Visual das páginas do comprador ('light' creme e terracota, ou 'fresh' do Seca Barriga). Preço e parcelas vêm da
@@ -66,6 +67,8 @@ export interface PublicGeneratedPage {
   /** NORQVA-0129: a oferta entrega um arquivo PDF (o selo "PDF para imprimir" só aparece com isto). */
   delivery_pdf?: boolean;
   meta_pixel_id?: string | null;
+  /** NORQVA-0132: WhatsApp de atendimento disponível para esta oferta (número conectado e atendente ligado). */
+  whatsapp?: { available: boolean } | null;
 }
 
 const PASS_PARAM = /^(utm_[a-z0-9_]+|fbclid|gclid|ref|src|campaign_id|adset_id|ad_id)$/i;
@@ -550,6 +553,7 @@ export const GeneratedPage: React.FC = () => {
   const tokens = (fresh ? FRESH_TOKENS : LIGHT) as unknown as React.CSSProperties;
   const href = checkoutHref(page.offer.human_id, location.search);
   const firstCta = page.sections.find(s => s.cta_label.trim())?.cta_label || 'Quero o meu';
+  const wa = !!page.whatsapp?.available;
   const allImages = (page.gallery || []).filter(Boolean);
   const pdf = page.delivery_pdf === true;
   const priceSection = page.sections.find(s => s.role === 'OFFER_PRICE' && s.price);
@@ -661,6 +665,11 @@ export const GeneratedPage: React.FC = () => {
               {s.note && <p className="mt-4 text-sm muted">{s.note}</p>}
               <div className="mt-7">
                 <Cta href={href} label={s.cta_label.trim() || firstCta} full />
+                {wa && (
+                  <div className="mt-3 flex justify-center">
+                    <WhatsAppButton offerHumanId={page.offer.human_id} fallbackHref={href} testId="generated-whatsapp-offer" />
+                  </div>
+                )}
                 <PayNote label={payLabel} center />
               </div>
             </div>
@@ -842,6 +851,11 @@ export const GeneratedPage: React.FC = () => {
               )}
               <div className="hero-act">
                 <Cta href={href} label={heroSection?.cta_label.trim() || firstCta} />
+                {wa && (
+                  <div className="mt-3">
+                    <WhatsAppButton offerHumanId={page.offer.human_id} fallbackHref={href} testId="generated-whatsapp-hero" />
+                  </div>
+                )}
                 <PayNote label={payLabel} />
                 <ul className="mt-5 flex flex-wrap gap-1.5 md:gap-2" aria-label="Como funciona a compra" data-testid="generated-trust">
                   {pdf && (
@@ -887,6 +901,7 @@ export const GeneratedPage: React.FC = () => {
         <Lightbox src={gallery[zoom]} alt={`${page.title}: imagem ${zoom + 1} de ${gallery.length}`} label={`${page.title}: imagem ${zoom + 1}`} onClose={closeZoom} />
       )}
       {/* celular: botão fixo embaixo (com o preço), acima da barra do sistema; escondido = fora da leitura e do Tab */}
+      <FloatingWhatsApp available={wa} visible={barOn && zoom === null} offerHumanId={page.offer.human_id} onCheckout={() => goToWhatsApp(href)} />
       <div className={`sbar ${barOn ? 'on' : ''}`} data-testid="generated-sticky-bar" aria-hidden={!barOn}>
         {price && (
           <div className="min-w-0 leading-tight">

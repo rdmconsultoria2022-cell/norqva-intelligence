@@ -179,3 +179,49 @@ export const FloatingWhatsApp: React.FC<{
     </>
   );
 };
+
+// NORQVA-0132: botão verde do WhatsApp para páginas em que o pagamento é um link (página gerada /v/<slug>).
+// Fica ao lado do botão de pagamento, sem substituir; se o WhatsApp falhar, segue para o pagamento.
+export const WhatsAppButton: React.FC<{ offerHumanId: string; fallbackHref: string; testId?: string }> = ({ offerHumanId, fallbackHref, testId }) => {
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      goToWhatsApp(await requestWhatsAppLink(offerHumanId));
+    } catch {
+      goToWhatsApp(fallbackHref);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={go}
+      aria-busy={busy}
+      data-testid={testId || 'whatsapp-cta'}
+      style={{
+        width: '100%',
+        maxWidth: 420,
+        minHeight: 54,
+        border: 'none',
+        borderRadius: 12,
+        background: WA_GREEN,
+        color: '#fff',
+        fontWeight: 700,
+        fontSize: 15,
+        cursor: busy ? 'wait' : 'pointer',
+        opacity: busy ? 0.75 : 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        boxShadow: '0 10px 24px rgba(31,143,78,.25)'
+      }}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d={WA_ICON_PATH} /></svg>
+      <span>{busy ? 'Abrindo o WhatsApp…' : 'Quero pelo WhatsApp'}</span>
+    </button>
+  );
+};
