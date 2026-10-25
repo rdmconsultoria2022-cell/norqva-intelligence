@@ -158,6 +158,8 @@ export function buildRecoveryAccessEmail(params: SendPurchaseAccessEmailParams):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
   <title>Recuperação de Acesso NORQVA</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9;">
@@ -183,9 +185,9 @@ export function buildRecoveryAccessEmail(params: SendPurchaseAccessEmailParams):
               </p>
               <table border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 24px 0;">
                 <tr>
-                  <td align="center" style="border-radius: 6px; background-color: #238636;">
-                    <a href="${escapeHtml(recoveryUrl)}" target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 6px;">
-                      Acessar Meu Produto
+                  <td align="center" bgcolor="#238636" style="border-radius: 6px; background-color: #238636; background-image: linear-gradient(#238636, #238636);">
+                    <a href="${escapeHtml(recoveryUrl)}" target="_blank" style="display: inline-block; padding: 12px 24px; font-size: 15px; font-weight: 600; color: #ffffff !important; -webkit-text-fill-color: #ffffff; text-decoration: none; border-radius: 6px; background-color: #238636; background-image: linear-gradient(#238636, #238636);">
+                      <span style="color: #ffffff; -webkit-text-fill-color: #ffffff;">Acessar Meu Produto</span>
                     </a>
                   </td>
                 </tr>
@@ -193,8 +195,8 @@ export function buildRecoveryAccessEmail(params: SendPurchaseAccessEmailParams):
               <p style="margin: 0 0 8px 0; font-size: 13px; color: #8b949e;">
                 Ou copie e cole o link abaixo em seu navegador:
               </p>
-              <p style="margin: 0 0 24px 0; font-size: 12px; color: #58a6ff; word-break: break-all;">
-                ${escapeHtml(recoveryUrl)}
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.5; word-break: break-all;">
+                <a href="${escapeHtml(recoveryUrl)}" target="_blank" style="color: #58a6ff; text-decoration: underline;">${escapeHtml(recoveryUrl)}</a>
               </p>
               <div style="padding: 16px; background-color: #0d1117; border-left: 3px solid #f0883e; border-radius: 4px; margin-bottom: 24px;">
                 <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #c9d1d9;">
@@ -346,6 +348,9 @@ export function buildPurchaseAccessEmail(params: SendPurchaseAccessEmailParams):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <style>:root { color-scheme: light; supported-color-schemes: light; }</style>
   <title>${escapeHtml(subject)}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #FBF7F0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: ${ink};">
@@ -365,13 +370,13 @@ export function buildPurchaseAccessEmail(params: SendPurchaseAccessEmailParams):
               <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: ${ink};">${files ? 'Seus arquivos' : 'Seu livro'}: <strong>${escapeHtml(offerName)}</strong></p>
               <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin: 0 auto 16px auto;">
                 <tr>
-                  <td align="center" style="border-radius: 10px; background-color: #B5472B;">
-                    <a href="${escapeHtml(url)}" target="_blank" style="display: inline-block; padding: 16px 32px; font-size: 18px; font-weight: 700; color: #FFFFFF; text-decoration: none; border-radius: 10px;">${files ? 'Baixar meus arquivos' : 'Baixar meu livro'}</a>
+                  <td align="center" bgcolor="#B5472B" style="border-radius: 10px; background-color: #B5472B; background-image: linear-gradient(#B5472B, #B5472B);">
+                    <a href="${escapeHtml(url)}" target="_blank" style="display: inline-block; padding: 16px 32px; font-size: 18px; font-weight: 700; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF; text-decoration: none; border-radius: 10px; background-color: #B5472B; background-image: linear-gradient(#B5472B, #B5472B);"><span style="color: #FFFFFF; -webkit-text-fill-color: #FFFFFF;">${files ? 'Baixar meus arquivos' : 'Baixar meu livro'}</span></a>
                   </td>
                 </tr>
               </table>
               <p style="margin: 0 0 6px 0; font-size: 13px; color: ${muted}; text-align: center;">Se o botão não abrir, copie e cole este link no navegador:</p>
-              <p style="margin: 0 0 24px 0; font-size: 12px; color: #B5472B; word-break: break-all; text-align: center;">${escapeHtml(url)}</p>
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.5; word-break: break-all; text-align: center;"><a href="${escapeHtml(url)}" target="_blank" style="color: #8A2F17; text-decoration: underline;">${escapeHtml(url)}</a></p>
               <p style="margin: 0 0 12px 0; padding: 12px 14px; background-color: #FBF7F0; border-radius: 8px; font-size: 13px; line-height: 1.5; color: ${ink};">${escapeHtml(validity)}</p>
               <p style="margin: 0 0 12px 0; font-size: 13px; line-height: 1.5; color: ${ink};">${escapeHtml(SPAM_HINT)}</p>
               <p style="margin: 0 0 20px 0; font-size: 13px; line-height: 1.5; color: ${muted};">${escapeHtml(help)}</p>
