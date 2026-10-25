@@ -120,7 +120,7 @@ describe.sequential('NORQVA-0129 — página pública e prévia com as imagens d
     const before = JSON.stringify((await pool.query('SELECT sections, version, updated_at FROM generated_pages WHERE id = $1', [pageB])).rows[0]);
     const res = await request(app).get(`/api/public/generated-pages/${slugB}`);
     expect(res.status).toBe(200);
-    expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
+    expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title', 'whatsapp']);
     expect(res.body.gallery).toEqual(BORDADO);
     expect(res.body.delivery_pdf).toBe(true);
     const img = Object.fromEntries(res.body.sections.map((s: any) => [s.role, s.image_url]));
