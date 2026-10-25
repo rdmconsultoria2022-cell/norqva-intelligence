@@ -154,6 +154,7 @@ const REASONS: Record<string, string> = {
   OFFER_INACTIVE: 'Oferta fora do ar',
   NOT_ELIGIBLE: 'Não está mais na lista (pagou, pedido antigo ou oferta fora do ar)',
   HUMAN_CONVERSATION: 'Conversa com uma pessoa da equipe',
+  PHONE_CHANGED: 'O pedido mais recente é de outro telefone (aparece de novo na lista)',
   SEND_BLOCKED: 'Envio bloqueado pelo NORQVA',
   SEND_FAILED: 'O WhatsApp não aceitou a mensagem',
   NO_LINK_BASE: 'Endereço do site não configurado'
@@ -573,6 +574,8 @@ export async function runRecoveryQueue(pool: Pool, deps: RecoveryDeps = {}): Pro
       continue;
     }
     if (person.exclusion) { await skipRow(pool, row.id, person.exclusion); skipped++; continue; }
+    // o pedido mais recente agora é de outro telefone: não manda para um número que não foi o escolhido na tela
+    if (person.phone_key !== row.phone_key) { await skipRow(pool, row.id, 'PHONE_CHANGED'); skipped++; continue; }
 
     const number = sendable.number;
     // limite por hora do número (o mesmo do atendente, contra bloqueio)
