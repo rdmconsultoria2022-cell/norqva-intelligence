@@ -11,7 +11,7 @@ import { signSupabaseToken } from '../utils/token';
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, resetMetaPreflightCacheForTesting, isGeneratedPageUrl } from '../services/meta/metaMutatingClient';
 import { setLaunchPlanClientFactoryForTesting } from '../controllers/launchPlanController';
 import { validateLaunchPlanInput } from '../services/launchPlans/launchPlanService';
-import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageRefs } from '../services/launchPlans/generatedCampaignService';
+import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageRefs, adImageRefs } from '../services/launchPlans/generatedCampaignService';
 import { setImageStorageForTests, resolveImageUrl, freshSignedUrl } from '../services/creative/generatedImages';
 import { metaIdsOfPlan } from '../db/decisionEvents';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
@@ -51,6 +51,18 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
       { role: 'HERO_HOOK', image_url: '/images/kit/capa_trat.jpg' }
     ]);
     expect(refs).toEqual(['https://acesso.norqva.com.br/images/kit/capa_trat.jpg', 'storage:creative-images/generated/p/2.png']);
+  });
+
+  it('NORQVA-0127: página sem imagem usa as imagens do produto no site; com imagem, só as da página', () => {
+    const none = [{ role: 'HERO_HOOK', image_url: null }];
+    expect(adImageRefs(none, { name: 'Bordado' })).toEqual([
+      'https://acesso.norqva.com.br/images/bordado/capa.jpg',
+      'https://acesso.norqva.com.br/images/bordado/riscos.jpg',
+      'https://acesso.norqva.com.br/images/bordado/bichinhos.jpg',
+      'https://acesso.norqva.com.br/images/bordado/pontos.jpg'
+    ]);
+    expect(adImageRefs(none, { name: 'Produto sem fotos' })).toEqual([]);
+    expect(adImageRefs([{ role: 'HERO_HOOK', image_url: '/images/kit/capa_trat.jpg' }], { name: 'Bordado' })).toEqual(['https://acesso.norqva.com.br/images/kit/capa_trat.jpg']);
   });
 
   it('link assinado: o guardado só serve se ainda valer pelo tempo pedido; para a Meta, sempre um novo', async () => {
