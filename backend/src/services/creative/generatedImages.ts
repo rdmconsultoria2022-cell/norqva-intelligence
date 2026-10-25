@@ -249,6 +249,7 @@ export const BORDADO_IMAGES = [
   '/images/bordado/bastidor_borboleta.jpg',
   '/images/bordado/bastidor_monograma.jpg',
   '/images/bordado/bastidor_frase.jpg',
+  '/images/bordado/bastidor_raposa.jpg',
   '/images/bordado/riscos.jpg'
 ];
 
