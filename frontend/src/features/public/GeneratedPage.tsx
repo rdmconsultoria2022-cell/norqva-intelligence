@@ -162,10 +162,10 @@ const CSS = `
 .gp .wrap{max-width:1120px;margin:0 auto;padding:0 20px;box-sizing:border-box}
 .gp .narrow{max-width:720px;margin-left:auto;margin-right:auto}
 .gp .disp{font-family:var(--display);font-weight:var(--display-weight);letter-spacing:-.01em;color:var(--ink);overflow-wrap:anywhere}
-.gp .h1{font-size:clamp(32px,8.4vw,58px);line-height:1.04;margin:0}
-.gp .h2{font-size:clamp(28px,6.6vw,44px);line-height:1.08;margin:0}
-.gp .lead{font-size:18px;line-height:1.65;color:var(--body);margin:0}
-.gp .txt{font-size:16.5px;line-height:1.75;color:var(--body);margin:0;white-space:pre-line}
+.gp .h1{font-size:clamp(34px,9vw,60px);line-height:1.04}
+.gp .h2{font-size:clamp(30px,7vw,46px);line-height:1.08}
+.gp .lead{font-size:18px;line-height:1.6;color:var(--body)}
+.gp .txt{font-size:16.5px;line-height:1.75;color:var(--body);white-space:pre-line}
 .gp .muted{color:var(--muted)}
 .gp .kicker{display:inline-flex;align-items:center;gap:10px;font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--kicker)}
 .gp .kicker .ico{width:34px;height:34px;border-radius:11px}
@@ -175,7 +175,7 @@ const CSS = `
 .gp .btn:active{transform:scale(.98)}
 .gp .btn:focus-visible,.gp button:focus-visible,.gp summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
 .gp .btn.inv{background:var(--band-ink);color:var(--band)}
-.gp .chip{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:13px;font-weight:700;color:var(--body);white-space:nowrap}
+.gp .chip{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:12.5px;font-weight:700;color:var(--body);white-space:nowrap}
 .gp .chip svg{color:var(--accent)}
 .gp .frame{position:relative;border-radius:24px;overflow:hidden;background:var(--card);box-shadow:0 22px 50px var(--shadow),0 0 0 1px var(--line)}
 .gp .frame img{display:block;width:100%;height:auto}
@@ -186,7 +186,7 @@ const CSS = `
 .gp .hero{position:relative;padding:28px 0 48px;background:radial-gradient(120% 70% at 85% 0%,var(--soft) 0%,rgba(255,255,255,0) 60%),var(--bg)}
 .gp .hero-grid{display:grid;gap:22px;grid-template-areas:"copy" "media" "act"}
 .gp .hero-copy{grid-area:copy}.gp .hero-media{grid-area:media}.gp .hero-act{grid-area:act}
-.gp .hero-media .frame{max-width:520px;margin:0 auto;transform:rotate(-1.2deg)}
+.gp .hero-media .frame{max-width:min(520px,82%);margin:0 auto;transform:rotate(-1.2deg)}
 .gp .brand{font-family:var(--display);font-weight:var(--display-weight);font-size:20px;color:var(--ink)}
 .gp .split{display:grid;gap:30px;align-items:center}
 .gp .offer{position:relative;max-width:520px;margin:0 auto;border-radius:28px;background:var(--card);border:2px solid var(--accent);box-shadow:0 30px 60px var(--shadow);padding:28px 22px;text-align:center}
@@ -208,7 +208,8 @@ const CSS = `
 .gp .band{background:var(--band);color:var(--band-ink)}
 .gp .band .disp{color:var(--band-ink)}
 .gp .band .txt{color:var(--band-ink);opacity:.86}
-.gp .sbar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;gap:12px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);box-shadow:0 -10px 28px var(--shadow)}
+.gp .sbar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;transform:translateY(120%);transition:transform .35s cubic-bezier(.2,.7,.2,1);align-items:center;gap:12px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--card);background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);box-shadow:0 -10px 28px var(--shadow)}
+.gp .sbar.on{transform:none}
 .gp .sbar .btn{flex:1 1 auto;min-height:50px;padding:0 16px;font-size:16px}
 .gp .lb{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,16,12,.86)}
 .gp .lb img{max-width:100%;max-height:86vh;border-radius:16px;box-shadow:0 30px 60px rgba(0,0,0,.4);background:#fff}
@@ -219,6 +220,8 @@ const CSS = `
   .gp .wrap{padding:0 32px}
   .gp .sec{padding:96px 0}
   .gp .hero{padding:40px 0 84px}
+  .gp .hero-media .frame{max-width:520px}
+  .gp .chip{padding:8px 13px;font-size:13px;gap:7px}
   .gp .hero-grid{grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);grid-template-areas:"copy media" "act media";column-gap:56px;row-gap:28px;align-items:center}
   .gp .hero-copy{align-self:end}.gp .hero-act{align-self:start}
   .gp .split{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:64px}
@@ -233,6 +236,7 @@ const CSS = `
   .gp .rv,.gp .rv.in{opacity:1;transform:none;transition:none}
   .gp .btn,.gp details{transition:none}
   .gp .hero-media .frame{transform:none}
+  .gp .sbar{transition:none}
 }
 `;
 
@@ -305,14 +309,15 @@ const Paragraphs: React.FC<{ list: string[]; className?: string }> = ({ list, cl
   </>
 );
 
-const Kicker: React.FC<{ role: string }> = ({ role }) => {
+/** Ícone do papel e, quando a seção tem título próprio, o nome do papel ao lado (sem repetir o título). */
+const Kicker: React.FC<{ role: string; withLabel: boolean }> = ({ role, withLabel }) => {
   const { label, Icon } = roleMeta(role);
   return (
     <div className="kicker">
       <span className="ico" aria-hidden="true">
         <Icon className="h-[18px] w-[18px]" />
       </span>
-      {label}
+      {withLabel && label}
     </div>
   );
 };
@@ -323,7 +328,7 @@ const SectionHead: React.FC<{ s: PublicGeneratedSection; center?: boolean; dark?
   const hasHeadline = !!s.headline.trim();
   return (
     <div className={center ? 'text-center flex flex-col items-center' : ''}>
-      {!dark && <Kicker role={s.role} />}
+      {!dark && <Kicker role={s.role} withLabel={hasHeadline} />}
       <h2 className={`disp h2 ${dark ? '' : 'mt-4'}`}>{hasHeadline ? s.headline : meta.label}</h2>
     </div>
   );
@@ -382,6 +387,16 @@ export const GeneratedPage: React.FC = () => {
   const fresh = page?.theme === 'fresh';
   useLightFonts(!!page && !fresh);
   useReveal(page);
+
+  // barra fixa do celular: aparece depois que o botão da abertura sai da tela (some de novo no topo)
+  const [barOn, setBarOn] = useState(false);
+  useEffect(() => {
+    if (!page) return;
+    const onScroll = () => setBarOn((window.scrollY || 0) > 420);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [page]);
 
   useEffect(() => {
     if (zoom === null) return;
@@ -449,7 +464,7 @@ export const GeneratedPage: React.FC = () => {
             <span className="ico" aria-hidden="true">
               <BookOpen className="h-[18px] w-[18px]" />
             </span>
-            Por dentro
+            Galeria
           </div>
           <h2 id="gp-gal" className="disp h2 mt-4">
             Veja por dentro
@@ -671,8 +686,8 @@ export const GeneratedPage: React.FC = () => {
                     </span>
                     Material digital
                   </div>
-                  <h1 className="disp h1 mt-4">{hero.headline.trim() || page.title}</h1>
-                  {heroParts.paragraphs[0] && <p className="lead mt-5">{heroParts.paragraphs[0]}</p>}
+                  <h1 className="disp h1 mt-5">{hero.headline.trim() || page.title}</h1>
+                  {heroParts.paragraphs[0] && <p className="lead mt-5 md:mt-6">{heroParts.paragraphs[0]}</p>}
                 </div>
                 {heroImage && (
                   <div className="hero-media">
@@ -684,7 +699,7 @@ export const GeneratedPage: React.FC = () => {
                 <div className="hero-act">
                   <Cta label={hero.cta_label.trim() || firstCta} />
                   <PayNote />
-                  <ul className="mt-5 flex flex-wrap gap-2" aria-label="Como funciona a compra" data-testid="generated-trust">
+                  <ul className="mt-5 flex flex-wrap gap-1.5 md:gap-2" aria-label="Como funciona a compra" data-testid="generated-trust">
                     <li className="chip">
                       <FileText aria-hidden="true" className="h-4 w-4" /> PDF para imprimir
                     </li>
@@ -699,8 +714,9 @@ export const GeneratedPage: React.FC = () => {
                 </div>
               </div>
               {(heroParts.paragraphs.length > 1 || heroItems.length > 0 || hero.note) && (
-                <div className="narrow mt-12 md:mt-16 rv">
-                  <Paragraphs list={heroParts.paragraphs.slice(1)} />
+                <div className="narrow mt-12 md:mt-20 rv text-center">
+                  <div className="mx-auto mb-6 h-px w-16" style={{ background: 'var(--gold)' }} aria-hidden="true" />
+                  <Paragraphs list={heroParts.paragraphs.slice(1)} className="lead" />
                   <Items items={heroItems} />
                   {hero.note && <p className="mt-4 text-sm muted">{hero.note}</p>}
                 </div>
@@ -718,7 +734,7 @@ export const GeneratedPage: React.FC = () => {
       </main>
       <footer className="py-10 text-center text-[13px] muted">
         <div className="wrap">
-          {page.title} · produto digital · {payLabel.toLowerCase()}
+          {page.title} · produto digital · {payLabel}
         </div>
       </footer>
       {zoom !== null && gallery[zoom] && (
@@ -730,7 +746,7 @@ export const GeneratedPage: React.FC = () => {
         </div>
       )}
       {/* celular: botão fixo embaixo (com o preço), acima da barra do sistema */}
-      <div className="sbar">
+      <div className={`sbar ${barOn ? 'on' : ''}`} data-testid="generated-sticky-bar">
         {price && (
           <div className="min-w-0 leading-tight">
             <div className="text-[11px] font-bold uppercase tracking-[.14em] muted">Valor</div>
