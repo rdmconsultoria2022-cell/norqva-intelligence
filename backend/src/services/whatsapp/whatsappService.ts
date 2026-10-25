@@ -208,10 +208,22 @@ export async function updateNumber(pool: Pool, id: string, body: any, userId: st
     await writeAuditLog(pool, userId, bot ? 'WHATSAPP_BOT_ENABLED' : 'WHATSAPP_BOT_PAUSED', `Atendente automático ${bot ? 'ligado' : 'pausado'} no número "${label}".`, String(n.bot_enabled), String(bot));
   }
   const before = (await numberExtraBrands(pool, [id])).get(id) || [];
-  if (extras === null && (brandId || null) !== (n.brand_id || null)) extras = before.filter(b => b !== brandId);
+  // sem marca principal, sem marcas extras; marca principal nova sai da lista de extras
+  if (extras === null && (brandId || null) !== (n.brand_id || null)) extras = brandId ? before.filter(b => b !== brandId) : [];
   if (extras !== null) {
-    await pool.query('DELETE FROM whatsapp_number_brands WHERE number_id = $1', [id]);
-    for (const b of extras) await pool.query('INSERT INTO whatsapp_number_brands (number_id, brand_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, b]);
+    // troca numa transação (sem janela em que o número fica sem as marcas)
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM whatsapp_number_brands WHERE number_id = $1', [id]);
+      for (const b of extras) await client.query('INSERT INTO whatsapp_number_brands (number_id, brand_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, b]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => null);
+      throw err;
+    } finally {
+      client.release();
+    }
     if (JSON.stringify(before) !== JSON.stringify(extras)) {
       await writeAuditLog(pool, userId, 'WHATSAPP_NUMBER_BRANDS_CHANGED', `Marcas extras do número "${label}" alteradas.`, JSON.stringify(before), JSON.stringify(extras));
     }

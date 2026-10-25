@@ -211,6 +211,52 @@ describe.sequential('NORQVA-0132 — número com marcas extras', () => {
     expect(lastSystem).not.toContain(cookCode);
   });
 
+  it('assunto travado nos livros e depois chega o código do bordado: o código novo vale', async () => {
+    const jid = '5531900000006@s.whatsapp.net';
+    await inbound(jid, { conversation: 'Oi' });
+    const conv = await convOf(jid);
+    await pool.query('UPDATE whatsapp_conversations SET focus_brand_id = $2 WHERE id = $1', [conv.id, cookBrand]);
+    await processConversation(pool, conv.id, []);
+    expect(lastSystem).not.toContain(craftCode);
+    const ref = await request(app).post('/api/public/whatsapp/ref').send({ offer_human_id: craftCode });
+    await inbound(jid, { conversation: ref.body.text });
+    await processConversation(pool, conv.id, []);
+    expect(lastSystem).toContain(craftCode);
+    expect(lastSystem).not.toContain(cookCode);
+    expect((await convOf(jid)).focus_brand_id).toBe(craftBrand);
+  });
+
+  it('condições do número (da marca principal) não entram na conversa do bordado; na conversa sem assunto vêm marcadas', async () => {
+    await pool.query("UPDATE whatsapp_numbers SET conditions = 'Ofereça primeiro o kit de 5 livros.' WHERE id = $1", [numberId]);
+    try {
+      const ref = await request(app).post('/api/public/whatsapp/ref').send({ offer_human_id: craftCode });
+      const jid = '5531900000007@s.whatsapp.net';
+      await inbound(jid, { conversation: ref.body.text });
+      await processConversation(pool, (await convOf(jid)).id, []);
+      expect(lastSystem).not.toContain('kit de 5 livros');
+      const jid2 = '5531900000008@s.whatsapp.net';
+      await inbound(jid2, { conversation: 'Olá' });
+      await processConversation(pool, (await convOf(jid2)).id, []);
+      expect(lastSystem).toContain('kit de 5 livros');
+      expect(lastSystem).toContain('valem só para o assunto "Cozinha 0132"');
+    } finally {
+      await pool.query("UPDATE whatsapp_numbers SET conditions = '' WHERE id = $1", [numberId]);
+    }
+  });
+
+  it('marca extra sem nada à venda: não pergunta o assunto', async () => {
+    await pool.query("UPDATE offers SET status = 'TESTE' WHERE id = $1", [craftOffer]);
+    try {
+      const jid = '5531900000009@s.whatsapp.net';
+      await inbound(jid, { conversation: 'Oi, boa tarde' });
+      await processConversation(pool, (await convOf(jid)).id, []);
+      expect(lastSystem).not.toContain('ASSUNTO DA CONVERSA');
+      expect(lastSystem).toContain(cookCode);
+    } finally {
+      await pool.query("UPDATE offers SET status = 'ATIVA' WHERE id = $1", [craftOffer]);
+    }
+  });
+
   it('anúncio de fora do NORQVA: fica com a marca principal do número', async () => {
     const jid = '5531900000004@s.whatsapp.net';
     await inbound(jid, { extendedTextMessage: { text: 'Quero saber mais', contextInfo: { externalAdReply: { sourceType: 'ad', sourceId: '120250149896859999' } } } });
@@ -241,10 +287,14 @@ describe.sequential('NORQVA-0132 — número com marcas extras', () => {
     }
   });
 
-  it('trocar a marca principal tira ela da lista de extras', async () => {
+  it('trocar a marca principal tira ela da lista de extras; sem marca, sem extras', async () => {
     const r = await patch({ brand_id: craftBrand });
     expect(r.status).toBe(200);
     expect(r.body.extra_brand_ids).toEqual([]);
+    await patch({ brand_id: cookBrand, extra_brand_ids: [craftBrand] });
+    const none = await patch({ brand_id: null });
+    expect(none.body.extra_brand_ids).toEqual([]);
+    expect((await pool.query('SELECT COUNT(*)::int AS n FROM whatsapp_number_brands WHERE number_id = $1', [numberId])).rows[0].n).toBe(0);
     await patch({ brand_id: cookBrand, extra_brand_ids: [craftBrand] });
   });
 });
