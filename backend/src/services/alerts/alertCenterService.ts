@@ -39,7 +39,9 @@ const RULES: Record<string, RuleInfo> = {
   NIGHT_PAUSE_RESUME_CANCELLED: { title: 'Reativação da manhã cancelada', severity: 'ATTENTION', action: 'Alguém ou o vigia mexeu na campanha à noite. Confira e reative pela tela se quiser.', tab: 'results' },
   NIGHT_PAUSE_MIRROR_FAILED: { title: 'Pausa noturna não consegue preparar a campanha', severity: 'ATTENTION', action: 'Confira o ID e a conta da campanha; sem isso ela não será pausada à noite.', tab: 'results' },
   NIGHT_PAUSE_RACE: { title: 'Alguém mexeu na campanha durante a reativação', severity: 'CRITICAL', action: 'A pausa noturna pausou de novo. Confira a campanha agora e decida.', tab: 'results' },
-  NIGHT_PAUSE_EXPIRED: { title: 'Campanha ficou pausada depois da pausa noturna', severity: 'CRITICAL', action: 'Reative pela tela se a campanha deve rodar.', tab: 'results' }
+  NIGHT_PAUSE_EXPIRED: { title: 'Campanha ficou pausada depois da pausa noturna', severity: 'CRITICAL', action: 'Reative pela tela se a campanha deve rodar.', tab: 'results' },
+  // NORQVA-0125: fila do WhatsApp para quem não concluiu o pagamento parada (número desconectado ou atendente desligado)
+  WHATSAPP_RECOVERY_BLOCKED: { title: 'Mensagens de recuperação paradas', severity: 'ATTENTION', action: 'Conecte o número do WhatsApp e ligue o atendente (Vendas → WhatsApp → Números). A fila espera e continua sozinha.', tab: 'results' }
 };
 
 export function describeRule(rule: string): RuleInfo {

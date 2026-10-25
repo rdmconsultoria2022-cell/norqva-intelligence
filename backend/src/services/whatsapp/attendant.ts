@@ -16,6 +16,7 @@ import { InboundMessage, recordOutgoing, findCpfs } from './whatsappService';
 import { writeAuditLog } from '../../db/audit';
 import { createCustomer, createOrder, checkoutPix, checkoutCard, publicCardTerms, reconcileAndFinalizePayment } from '../../controllers/api';
 import { shouldCheckProvider } from '../paymentCheckThrottle';
+import { acknowledgeRecoveryOptOut } from './paymentRecovery';
 import { sampleKeyFor, samplesSent, loadSampleImage, SAMPLE_IMAGES, MAX_SAMPLE_IMAGES_PER_CONVERSATION, SAMPLE_CAPTION_PREFIX } from './samples';
 
 export const BOT_REPLIES_PER_CONVERSATION_HOUR = 20;
@@ -669,7 +670,13 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
 /** Recebe as mensagens novas (webhook) e responde depois de uma pequena pausa, juntando mensagens seguidas. */
 export function attendantInboundHandler(pool: Pool, _numberId: string, msgs: InboundMessage[]): Promise<void> {
   const byConv = new Map<string, string[]>();
+  const acks: Promise<unknown>[] = [];
   for (const m of msgs) {
+    // NORQVA-0125: pediu para parar depois da recuperação: só a confirmação curta, sem IA
+    if (m.optOut) {
+      acks.push(acknowledgeRecoveryOptOut(pool, m.conversationId).catch(e => console.warn('[WhatsApp] confirmação do SAIR falhou:', e?.message || e)));
+      continue;
+    }
     const list = byConv.get(m.conversationId) || [];
     list.push(m.body);
     byConv.set(m.conversationId, list);
@@ -701,5 +708,5 @@ export function attendantInboundHandler(pool: Pool, _numberId: string, msgs: Inb
     p.timer = setTimeout(() => void fire(), debounce);
     pending.set(convId, p);
   }
-  return Promise.resolve();
+  return Promise.all(acks).then(() => undefined);
 }

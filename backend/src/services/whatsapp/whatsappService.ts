@@ -9,6 +9,7 @@ import { WhatsAppError } from './errors';
 import { providerForNumber, cloudErrorToWhatsApp, checkCloudNumber, createCloudNumber } from './cloudAccounts';
 import { isCloudProvider, SendBlockedError, CloudApiError } from './metaCloudProvider';
 import { isServiceWindowOpen } from './serviceWindow';
+import { isOptOutText, isRecoveryRefusal, conversationHadRecovery, recordRecoveryOptOut } from './paymentRecovery';
 
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
@@ -339,6 +340,8 @@ export interface InboundMessage {
   messageId: string;
   body: string;
   kind: string;
+  /** NORQVA-0125: pediu para parar depois da mensagem de recuperação (o atendente só confirma, com texto fixo) */
+  optOut?: boolean;
 }
 
 export async function handleWebhook(pool: Pool, numberId: string, secret: string, payload: any): Promise<{ inbound: InboundMessage[]; numberId: string | null }> {
@@ -480,8 +483,17 @@ export async function ingestInbound(pool: Pool, numberId: string, items: Normali
     if (!textRef && m.adReferral) {
       await linkAdReferral(pool, convId, n.id, m.adReferral).catch(err => console.warn('[WhatsApp] origem do anúncio:', err?.message || err));
     }
-    if (OPT_OUT_RE.test(body)) {
+    // NORQVA-0125: "SAIR", "Parar!", "não quero mais" (sem acento, maiúsculas ou pontuação também valem); depois da
+    // mensagem de recuperação, "não quero" também. Quem pede para parar fica fora da recuperação para sempre.
+    const plainOptOut = OPT_OUT_RE.test(body) || isOptOutText(body);
+    const recoveryOptOut = !plainOptOut && isRecoveryRefusal(body) && (await conversationHadRecovery(pool, convId).catch(() => false));
+    if (plainOptOut || recoveryOptOut) {
       await pool.query(`UPDATE whatsapp_conversations SET mode = 'OPTED_OUT', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [convId]);
+      await recordRecoveryOptOut(pool, convId, phone, jid).catch(err => console.warn('[WhatsApp] registro do SAIR:', err?.message || err));
+      // quem recebeu a recuperação ganha uma resposta curta do atendente (uma vez)
+      if (recoveryOptOut || (await conversationHadRecovery(pool, convId).catch(() => false))) {
+        inbound.push({ conversationId: convId, messageId: ins.rows[0].id, body, kind: content.kind, optOut: true });
+      }
       continue;
     }
     if (conv.rows[0].mode === 'OPTED_OUT') {

@@ -172,8 +172,9 @@ import {
   deleteWhatsAppNumber, getWhatsAppConversations, getWhatsAppMessages, postWhatsAppMessage, postWhatsAppConversationMode, postWhatsAppWebhook,
   getWhatsAppConditions, putWhatsAppConditions, getWhatsAppConditionHistory, setWhatsAppInboundHandler, getWhatsAppResults, getWhatsAppServerCheck,
   postPublicWhatsAppRef, getCloudAccounts, postCloudAccount, patchCloudAccount, deleteCloudAccountRoute, postCloudAccountCheck, postCloudNumber, postCloudNumberRegister,
-  getCloudWebhook, postCloudWebhook
+  getCloudWebhook, postCloudWebhook, getWhatsAppRecovery, postWhatsAppRecoverySend
 } from './controllers/whatsappController';
+import { startRecoveryScheduler } from './services/whatsapp/paymentRecovery';
 import { attendantInboundHandler } from './services/whatsapp/attendant';
 import { postKiwifyWebhook, importKiwifySale } from './controllers/kiwifyController';
 
@@ -440,6 +441,9 @@ app.put('/api/whatsapp/conditions', requireRole(['ADMIN']), putWhatsAppCondition
 app.get('/api/whatsapp/conditions/history', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppConditionHistory);
 app.get('/api/whatsapp/results', requireRole(['ADMIN', 'OPERATIONS']), getWhatsAppResults);
 app.get('/api/whatsapp/server-check', requireRole(['ADMIN']), getWhatsAppServerCheck);
+// NORQVA-0125 (contrato aprovado 24/10/2026 23h53): WhatsApp para quem não concluiu o pagamento. Só ADMIN.
+app.get('/api/whatsapp/recovery', requireRole(['ADMIN']), getWhatsAppRecovery);
+app.post('/api/whatsapp/recovery/send', requireRole(['ADMIN']), postWhatsAppRecoverySend);
 // NORQVA-0079 (contrato aprovado 15/10/2026 23h27): WhatsApp oficial. Contas e números: ADMIN. Ver contas: ADMIN e OPERATIONS.
 app.get('/api/whatsapp/cloud/webhook/:accountId', whatsappWebhookRateLimiter, getCloudWebhook);
 app.post('/api/whatsapp/cloud/webhook/:accountId', whatsappWebhookRateLimiter, postCloudWebhook);
@@ -749,6 +753,13 @@ async function startServer() {
       }));
     } catch (e: any) {
       console.error('[Server] Failed to start payment sweep (non-fatal):', e.message);
+    }
+
+    // NORQVA-0125: fila da mensagem para quem não concluiu o pagamento (WHATSAPP_RECOVERY_ENABLED=true liga)
+    try {
+      registerShutdownHook(startRecoveryScheduler(pool, { reconcile: reconcileAndFinalizePayment }));
+    } catch (e: any) {
+      console.error('[Server] Failed to start WhatsApp recovery (non-fatal):', e.message);
     }
 
     // NORQVA-0017: daily EU market collection (MARKET_EU_AUTO_ENABLED=true)
