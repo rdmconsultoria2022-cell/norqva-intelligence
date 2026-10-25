@@ -42,15 +42,19 @@ export async function whatsappNumberForOffer(pool: Pool, offerId: string): Promi
        AND ((COALESCE(n.provider, 'EVOLUTION') = 'EVOLUTION' AND $2::boolean)
             OR (n.provider = 'META_CLOUD' AND $3::boolean AND a.environment = 'PRODUCTION' AND a.status = 'VERIFIED' AND a.is_deleted = FALSE))
        AND n.phone IS NOT NULL AND n.phone <> ''
-       AND (n.brand_id IS NULL OR n.brand_id = o.brand_id)
-       -- a oferta precisa estar no catálogo que o atendente desse número enxerga (loadCatalog: 20 mais antigas)
+       -- NORQVA-0132: marca principal do número ou uma das marcas extras dele
+       AND (n.brand_id IS NULL OR n.brand_id = o.brand_id
+            OR (n.brand_id IS NOT NULL AND EXISTS (SELECT 1 FROM whatsapp_number_brands x WHERE x.number_id = n.id AND x.brand_id = o.brand_id)))
+       -- a oferta precisa estar no catálogo que o atendente enxerga para essa marca (loadCatalog: 20 mais antigas)
        AND o.id IN (
          SELECT o2.id FROM offers o2 JOIN products p2 ON p2.id = o2.product_id
          WHERE o2.status = 'ATIVA' AND o2.is_demo = FALSE AND o2.is_deleted = FALSE AND p2.is_deleted = FALSE
-           AND (n.brand_id IS NULL OR p2.brand_id = n.brand_id)
+           AND (n.brand_id IS NULL OR p2.brand_id = o.brand_id)
+           -- mesmo filtro do catálogo do atendente (NORQVA-0075: oferta de saída e depois da compra ficam fora)
+           AND NOT EXISTS (SELECT 1 FROM offers src WHERE src.exit_offer_id = o2.id OR src.post_purchase_offer_id = o2.id)
          ORDER BY o2.created_at ASC LIMIT 20
        )
-     ORDER BY (n.brand_id IS NULL) ASC,
+     ORDER BY CASE WHEN n.brand_id = o.brand_id THEN 0 WHEN n.brand_id IS NULL THEN 2 ELSE 1 END ASC,
               (SELECT COUNT(*) FROM whatsapp_conversations c WHERE c.number_id = n.id AND c.last_message_at > NOW() - INTERVAL '1 day') ASC,
               n.created_at ASC
      LIMIT 1`,
@@ -131,7 +135,8 @@ export async function linkRefFromText(pool: Pool, conversationId: string, number
     [conversationId, code, numberId, REF_MAX_AGE_DAYS]
   );
   if (!r.rows.length) return null;
-  await pool.query('UPDATE whatsapp_conversations SET ref_id = $2, updated_at = NOW() WHERE id = $1', [conversationId, r.rows[0].id]);
+  // NORQVA-0132: código novo da página vale também para o assunto (a pessoa veio de outro produto)
+  await pool.query('UPDATE whatsapp_conversations SET ref_id = $2, focus_brand_id = NULL, updated_at = NOW() WHERE id = $1', [conversationId, r.rows[0].id]);
   return r.rows[0].id;
 }
 
