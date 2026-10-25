@@ -15,3 +15,9 @@ A página `/v/bordado-b4d48e` só mostrava traço a lápis (riscos e páginas do
 - Testes 0117 e 0129 usam `BORDADO_IMAGES`.
 
 Nada muda em pagamento, entrega ou gasto. A campanha já criada na Meta continua com as imagens dela.
+
+## Revisão independente (aplicada)
+
+- Ordem final: capa, coleção, pontos, gato, riscos, borboleta, monograma, frase, raposa. Na página: abertura = capa, "Para quem é" = coleção, "Como funciona" = pontos, "O que você ganha" = gato, "O que vem no kit" = riscos (o produto de fato), final = borboleta. Nos anúncios novos o 3º usa a página de pontos (aceito: a página vem primeiro).
+- Aviso junto da galeria e do cartão da oferta (`image_note` na API pública, só no bordado): os bastidores são ilustrações; o kit é um PDF; linha, tecido e bastidor não acompanham.
+- Amostras do WhatsApp continuam com as páginas do PDF (mostram o que vem de fato).

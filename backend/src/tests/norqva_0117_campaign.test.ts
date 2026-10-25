@@ -12,10 +12,9 @@ import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, resetMetaPreflightCacheFo
 import { setLaunchPlanClientFactoryForTesting } from '../controllers/launchPlanController';
 import { validateLaunchPlanInput } from '../services/launchPlans/launchPlanService';
 import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageRefs, adImageRefs } from '../services/launchPlans/generatedCampaignService';
-import { setImageStorageForTests, resolveImageUrl, freshSignedUrl } from '../services/creative/generatedImages';
+import { setImageStorageForTests, resolveImageUrl, freshSignedUrl, BORDADO_IMAGES } from '../services/creative/generatedImages';
 import { metaIdsOfPlan } from '../db/decisionEvents';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
-import { BORDADO_IMAGES } from '../services/creative/generatedImages';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 

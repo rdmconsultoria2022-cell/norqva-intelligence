@@ -79,4 +79,15 @@ describe('NORQVA-0132 — WhatsApp na página gerada', () => {
     fireEvent.click(await screen.findByTestId('generated-whatsapp-hero'));
     await waitFor(() => expect(went).toContain('/p/OFF-000015?checkout=1'));
   });
+
+  // NORQVA-0133: aviso de ilustração junto da galeria e da oferta
+  it('mostra o aviso das imagens quando a API manda', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ ...page(null), gallery: ['/images/bordado/capa.jpg', '/images/bordado/colecao.jpg', '/images/bordado/bastidor_gato.jpg'], image_note: 'Os bastidores são ilustrações.' })
+    }) as any;
+    renderPage();
+    expect(await screen.findByTestId('generated-image-note')).toHaveTextContent('Os bastidores são ilustrações.');
+    expect(screen.getByTestId('generated-offer-image-note')).toHaveTextContent('Os bastidores são ilustrações.');
+  });
 });

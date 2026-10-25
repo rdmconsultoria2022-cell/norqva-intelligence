@@ -82,7 +82,6 @@ JOBS = [
     (26, '#9C83B8', 'bastidor_monograma'),
     (48, '#C99A3E', 'bastidor_frase'),
     (41, '#C46F5E', 'bastidor_raposa'),
-    (8, '#C46F5E', 'bastidor_buque'),
 ]
 
 

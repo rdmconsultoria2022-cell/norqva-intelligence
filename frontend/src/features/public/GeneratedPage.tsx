@@ -66,6 +66,8 @@ export interface PublicGeneratedPage {
   gallery?: string[];
   /** NORQVA-0129: a oferta entrega um arquivo PDF (o selo "PDF para imprimir" só aparece com isto). */
   delivery_pdf?: boolean;
+  /** NORQVA-0133: aviso junto das imagens (ex.: ilustração do bordado pronto; linha e bastidor não acompanham). */
+  image_note?: string | null;
   meta_pixel_id?: string | null;
   /** NORQVA-0132: WhatsApp de atendimento disponível para esta oferta (número conectado e atendente ligado). */
   whatsapp?: { available: boolean } | null;
@@ -600,6 +602,11 @@ export const GeneratedPage: React.FC = () => {
             Veja por dentro
           </h2>
           <p className="txt muted mt-3">Toque numa imagem para ver maior.</p>
+          {page.image_note && (
+            <p className="mt-2 max-w-xl text-sm muted" data-testid="generated-image-note">
+              {page.image_note}
+            </p>
+          )}
         </div>
         <div className="gal mt-8 rv" style={{ ['--n' as any]: Math.min(gallery.length, 4) }}>
           {gallery.map((src, i) => (
@@ -671,6 +678,7 @@ export const GeneratedPage: React.FC = () => {
                   </div>
                 )}
                 <PayNote label={payLabel} center />
+                {page.image_note && <p className="mt-3 text-xs muted text-center" data-testid="generated-offer-image-note">{page.image_note}</p>}
               </div>
             </div>
           </div>

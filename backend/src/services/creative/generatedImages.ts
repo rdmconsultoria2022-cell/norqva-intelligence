@@ -244,14 +244,22 @@ const BOOK_IMAGES: Record<string, string[]> = {
 export const BORDADO_IMAGES = [
   '/images/bordado/capa.jpg',
   '/images/bordado/colecao.jpg',
-  '/images/bordado/bastidor_gato.jpg',
   '/images/bordado/pontos.jpg',
+  '/images/bordado/bastidor_gato.jpg',
+  '/images/bordado/riscos.jpg',
   '/images/bordado/bastidor_borboleta.jpg',
   '/images/bordado/bastidor_monograma.jpg',
   '/images/bordado/bastidor_frase.jpg',
-  '/images/bordado/bastidor_raposa.jpg',
-  '/images/bordado/riscos.jpg'
+  '/images/bordado/bastidor_raposa.jpg'
 ];
+
+/** NORQVA-0133: aviso junto das imagens quando elas são ilustração (não foto) de algo que não vem no produto. */
+export function productImageNote(p: { name?: unknown; collection_key?: unknown }): string | null {
+  if (/bordado/.test(String(p.name || '').toLowerCase())) {
+    return 'Os bastidores são ilustrações de como o risco fica bordado. O kit é um PDF com os riscos e o guia; linha, tecido e bastidor não acompanham.';
+  }
+  return null;
+}
 
 /** Capa e fotos que já estão no site para este produto (vazio quando não há). */
 export function productImages(p: { name?: unknown; collection_key?: unknown }): string[] {
