@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageCircle, QrCode, RefreshCw, Trash2, Repeat, Send, X, UserCheck, Bot, Search, History, ChevronLeft } from 'lucide-react';
 import { UserObj } from '../../types';
 import { CloudAccountsPanel } from './CloudAccountsPanel';
+import { RecoveryPanel } from './RecoveryPanel';
 
 // NORQVA-0046: área WhatsApp — números (até 100), conexão por QR Code, troca de número e conversas.
 // Tudo operado aqui dentro; o servidor do WhatsApp fica escondido atrás do NORQVA.
@@ -95,7 +96,9 @@ const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString('pt-BR', {
 
 export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: WhatsAppViewProps) {
   const isAdmin = currentUser?.role === 'ADMIN';
-  const [tab, setTab] = useState<'numbers' | 'conversations' | 'conditions' | 'results'>('conversations');
+  const [tab, setTab] = useState<'numbers' | 'conversations' | 'conditions' | 'results' | 'recovery'>('conversations');
+  // NORQVA-0125: "Pagamentos não concluídos" só para ADMIN
+  const tabs = isAdmin ? (['conversations', 'numbers', 'conditions', 'results', 'recovery'] as const) : (['conversations', 'numbers', 'conditions', 'results'] as const);
   const api = useRef(apiFetch);
   api.current = apiFetch;
 
@@ -104,14 +107,14 @@ export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: 
       <div className="space-y-4">
         <h1 className="text-[28px] leading-[34px] font-semibold tracking-tight text-nq-text">WhatsApp</h1>
         <div className="-mx-4 px-4 lg:mx-0 lg:px-0 flex gap-2 overflow-x-auto no-scrollbar">
-          {(['conversations', 'numbers', 'conditions', 'results'] as const).map(t => (
+          {tabs.map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               aria-pressed={tab === t}
               className={`shrink-0 h-10 rounded-full px-4 text-nq-aux font-medium transition-colors ${tab === t ? 'bg-nq-text text-nq-bg' : 'bg-nq-surface text-nq-muted hover:text-nq-text'}`}
             >
-              {t === 'conversations' ? 'Conversas' : t === 'numbers' ? 'Números' : t === 'conditions' ? 'Condições de atendimento' : 'Resultados'}
+              {t === 'conversations' ? 'Conversas' : t === 'numbers' ? 'Números' : t === 'conditions' ? 'Condições de atendimento' : t === 'results' ? 'Resultados' : 'Pagamentos não concluídos'}
             </button>
           ))}
         </div>
@@ -122,6 +125,8 @@ export function WhatsAppView({ currentUser, apiFetch, showError, showSuccess }: 
           ? <ConditionsPanel isAdmin={isAdmin} api={api} showError={showError} showSuccess={showSuccess} />
           : tab === 'results'
             ? <ResultsPanel api={api} showError={showError} />
+            : tab === 'recovery' && isAdmin
+              ? <RecoveryPanel api={api} showError={showError} showSuccess={showSuccess} />
             : <ConversationsPanel api={api} showError={showError} />}
     </div>
   );
