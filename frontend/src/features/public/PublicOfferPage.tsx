@@ -35,7 +35,7 @@ import type { CheckoutOffer } from '../checkout/checkoutTypes';
 import { getPurchaseSessionByOffer, updatePurchaseSessionStatus, savePurchaseSession } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { wantsDirectCheckout, prefillFromSearch, stripPrefillFromWindowUrl } from '../checkout/checkoutPrefill';
-import { lookForNames, FRESH_BUTTON_STYLE } from '../../lib/productLook';
+import { lookForNames, FRESH_BUTTON_STYLE, isBordadoName } from '../../lib/productLook';
 
 export interface PublicOfferData {
   id: string;
@@ -823,7 +823,8 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
 
   // NORQVA-0112: link direto do pagamento (?checkout=1) e produtos que não são livros (Seca Barriga):
   // fundo neutro com nome, preço e o botão que reabre o pagamento; nada do material de venda dos livros.
-  if (directCheckout || offerLook === 'fresh') {
+  // NORQVA-0135: o Kit de Bordado não tem página de livro aqui (a venda é na página gerada): vai direto ao pagamento
+  if (directCheckout || offerLook === 'fresh' || isBordadoName(offer?.name)) {
     const fresh = offerLook === 'fresh';
     const paid = Boolean(existingSession && existingSession.status === 'PAID');
     return (

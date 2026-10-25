@@ -35,3 +35,16 @@ export function lookForNames(...names: Array<string | null | undefined>): Produc
   if (names.some(n => /bolso/i.test(String(n || '')))) return 'dark';
   return 'light';
 }
+
+/** NORQVA-0135: Kit de Bordado (não é livro de cozinha, mesmo com "Kit" no nome). */
+export function isBordadoName(...names: Array<string | null | undefined>): boolean {
+  return names.some(n => /bordad/i.test(String(n || '')));
+}
+
+export const BORDADO_INFO = {
+  title: 'Kit de Bordado NORQVA',
+  cover: '/images/bordado/capa.jpg',
+  label: 'Kit digital em PDF',
+  subtitle: '50 riscos para iniciantes • PDF para imprimir',
+  info: '50 riscos para iniciantes e guia de pontos (PDF)'
+};

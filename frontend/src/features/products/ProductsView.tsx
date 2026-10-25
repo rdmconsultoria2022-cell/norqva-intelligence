@@ -28,6 +28,8 @@ export function productCover(prd: any): string | null {
   const path = key && READY_BOOKS.has(key) ? COLLECTION_COVERS[key]
     : /dolci/.test(name) ? '/images/kit/capa_dolci.jpg'
     : /trattoria/.test(name) ? '/images/kit/capa_trat.jpg'
+    // NORQVA-0135: "Kit de Bordado" começa com "kit", mas não é o kit de livros de cozinha
+    : /bordad/.test(name) ? '/images/bordado/capa.jpg'
     : /^kit\b/.test(name) ? '/images/kit/capa_kit.jpg'
     : null;
   if (!path) return null;

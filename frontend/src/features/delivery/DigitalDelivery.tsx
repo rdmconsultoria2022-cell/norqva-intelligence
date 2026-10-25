@@ -4,7 +4,7 @@ import { DigitalDeliveryProps, DeliveryTokenItem } from './deliveryTypes';
 import { API_BASE } from '../../lib/api';
 import { trackPurchase } from '../../services/metaPixel';
 import { PostPurchaseOffer } from './PostPurchaseOffer';
-import { isFreshName, FRESH_BUTTON_STYLE } from '../../lib/productLook';
+import { isFreshName, FRESH_BUTTON_STYLE, isBordadoName, BORDADO_INFO } from '../../lib/productLook';
 
 export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   orderId,
@@ -134,7 +134,9 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   const orderName = String(orderData?.offer_name_snapshot || '').trim();
   const readyTitle = !orderName || /trattoria/i.test(orderName)
     ? 'Seu Trattoria em Casa está pronto!'
-    : /^kit\b/i.test(orderName)
+    : isBordadoName(orderName)
+      ? (/^kit\b/i.test(orderName) ? `Seu ${orderName} está pronto!` : 'Seu Kit de Bordado está pronto!')
+      : /^kit\b/i.test(orderName)
       ? `Seu ${orderName} está pronto!`
       : `Seu livro ${orderName} está pronto!`;
 
@@ -406,10 +408,12 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                   : /antipasti/i.test(item.assetTitle || '') ? { key: 'antipasti', title: 'Antipasti & Aperitivo', info: '12 receitas • Antepastos e aperitivo italiano (PDF)' }
                   : /risoto|polenta/i.test(item.assetTitle || '') ? { key: 'risotos', title: 'Risotos & Polentas', info: '12 receitas • Risotos e polentas (PDF)' }
                   : null;
-                const bookCover = collection ? `/images/livros/${collection.key}/capa.jpg` : isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
+                // NORQVA-0135: Kit de Bordado (pelo arquivo ou pelo nome do pedido)
+                const isBordadoItem = isBordadoName(item.assetTitle) || (!isDolciBook && !collection && !/trattoria/i.test(item.assetTitle || '') && isBordadoName(orderName));
+                const bookCover = isBordadoItem ? BORDADO_INFO.cover : collection ? `/images/livros/${collection.key}/capa.jpg` : isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
                 const isTrattBook = /trattoria/i.test(item.assetTitle || '');
-                const bookTitle = collection ? collection.title : isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
-                const bookInfo = collection ? collection.info : isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
+                const bookTitle = isBordadoItem ? BORDADO_INFO.title : collection ? collection.title : isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
+                const bookInfo = isBordadoItem ? BORDADO_INFO.info : collection ? collection.info : isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
 
                 return (
                   <div

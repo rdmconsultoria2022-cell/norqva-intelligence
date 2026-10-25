@@ -102,9 +102,11 @@ export async function offerOf(pool: Pool, offerHumanId: string) {
   return { ...offer, allowed_product_ids: Array.from(allowed) };
 }
 
-/** NORQVA-0048: oferta de kit (nome começa com "Kit") leva para a página /kit/. */
+/** NORQVA-0048: oferta de kit (nome começa com "Kit") leva para a página /kit/ (o kit de livros de cozinha).
+ *  NORQVA-0135: "Kit de Bordado" não é o kit de livros: segue para a página da oferta /p/. */
 export function isKitOffer(offer: { name?: string | null }): boolean {
-  return /^kit\b/i.test(String(offer?.name || '').trim());
+  const name = String(offer?.name || '').trim();
+  return /^kit\b/i.test(name) && !/bordad/i.test(name);
 }
 
 /** Versão aprovada mais nova da linhagem do criativo (revisões criam KEY-V2, KEY-V3...). */
