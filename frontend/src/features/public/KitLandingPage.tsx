@@ -788,7 +788,7 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       </div>
 
       <div style={{ background: '#f4eee4', borderTop: '1px solid #e6dccd' }}>
-        <div className="wrap" style={{ display: 'flex', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap', paddingTop: 40, paddingBottom: 40, fontSize: 13, color: '#6b6358' }}>
+        <div className="wrap" style={{ display: 'flex', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap', paddingTop: 40, paddingBottom: 96, fontSize: 13, color: '#6b6358' }}>
           <span className="serif" style={{ fontSize: 18, letterSpacing: '.14em', textTransform: 'uppercase', color: '#1f1b17' }}>Cozinha Italiana em Casa</span>
           <span>Atendimento: <a href="mailto:suporte@norqva.com">suporte@norqva.com</a></span>
           <span>© {new Date().getFullYear()} NORQVA Intelligence Ltda.</span>

@@ -102,7 +102,7 @@ export const BuyChoice: React.FC<{
         }}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-          <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.2-.3-.2-.5-.3Z" />
+          <path d={WA_ICON_PATH} />
         </svg>
         <span>{busy ? 'Abrindo o WhatsApp…' : 'Quero pelo WhatsApp'}</span>
       </button>
@@ -133,8 +133,9 @@ const FAB_CSS = `
 .nq-wa-fab{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));z-index:56;display:flex;align-items:center;gap:10px;
   border:none;border-radius:999px;background:${WA_GREEN};color:#fff;font-weight:700;font-size:14px;letter-spacing:.01em;
   padding:0 20px 0 16px;height:56px;box-shadow:0 12px 28px rgba(31,143,78,.35),0 2px 6px rgba(0,0,0,.12);cursor:pointer;
-  opacity:0;transform:translateY(16px) scale(.96);pointer-events:none;transition:opacity .3s ease,transform .3s ease}
-.nq-wa-fab.on{opacity:1;transform:none;pointer-events:auto}
+  opacity:0;visibility:hidden;transform:translateY(16px) scale(.96);pointer-events:none;
+  transition:opacity .3s ease,transform .3s ease,visibility 0s linear .3s}
+.nq-wa-fab.on{opacity:1;visibility:visible;transform:none;pointer-events:auto;transition-delay:0s}
 .nq-wa-fab:focus-visible{outline:3px solid #0b5d31;outline-offset:3px}
 @media (max-width:960px){.nq-wa-fab{bottom:calc(88px + env(safe-area-inset-bottom));right:14px;height:52px;padding:0 16px 0 14px;font-size:13.5px}}
 @media (prefers-reduced-motion:reduce){.nq-wa-fab{transition:none}}
@@ -150,6 +151,7 @@ export const FloatingWhatsApp: React.FC<{
   const [busy, setBusy] = useState(false);
   if (!available) return null;
   const go = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       goToWhatsApp(await requestWhatsAppLink(offerHumanId));
@@ -166,10 +168,9 @@ export const FloatingWhatsApp: React.FC<{
         type="button"
         className={`nq-wa-fab${visible ? ' on' : ''}`}
         onClick={go}
-        disabled={busy}
+        aria-busy={busy}
         aria-hidden={!visible}
         tabIndex={visible ? 0 : -1}
-        aria-label={label}
         data-testid="whatsapp-fab"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d={WA_ICON_PATH} /></svg>

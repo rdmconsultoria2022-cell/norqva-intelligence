@@ -89,6 +89,9 @@ describe('NORQVA-0054 — botão do WhatsApp na página', () => {
     renderKit();
     const fab = await screen.findByTestId('whatsapp-fab');
     expect(fab).toHaveTextContent('Falar no WhatsApp');
+    // no topo da página fica escondido (sem foco)
+    expect(fab).toHaveAttribute('aria-hidden', 'true');
+    expect(fab).toHaveAttribute('tabindex', '-1');
     fireEvent.click(fab);
     await waitFor(() => expect(assigned).toBe('https://wa.me/5511922223333?text=Oi'));
   });
