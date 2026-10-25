@@ -4246,24 +4246,41 @@ export async function getDeliveryTokens(req: any, res: Response) {
         const isActive = delivery.status === 'ACTIVE' && !isExhausted;
 
         if (isActive) {
-          // Generate fresh ephemeral raw token and rotate hash atomically
-          const rawToken = crypto.randomBytes(32).toString('hex');
-          const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-          const ttlHours = parseInt(process.env.DELIVERY_TOKEN_TTL_HOURS || '24', 10);
-          const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+          // NORQVA-0126: o link atual vale enquanto não vencer (com folga de 1 h). Abrir a página de novo
+          // (outra aba, F5, pré-visualização do Google) devolve o MESMO link, em vez de trocar e apagar o anterior.
+          const reuseMarginMs = 60 * 60 * 1000;
+          let rawToken: string | null = null;
+          let expiresAt: Date | null = delivery.delivery_token_expires_at ? new Date(delivery.delivery_token_expires_at) : null;
+          if (delivery.delivery_token_enc && delivery.delivery_token_hash && expiresAt && expiresAt.getTime() - Date.now() > reuseMarginMs) {
+            try {
+              const kept = decryptData(delivery.delivery_token_enc, getEncryptionKey(), delivery.delivery_token_enc_version || 1);
+              if (crypto.createHash('sha256').update(kept).digest('hex') === delivery.delivery_token_hash) rawToken = kept;
+            } catch {
+              rawToken = null;
+            }
+          }
 
-          await client.query(
-            `UPDATE order_deliveries 
-             SET delivery_token_hash = $1, delivery_token_expires_at = $2, updated_at = NOW() 
-             WHERE id = $3`,
-            [tokenHash, expiresAt, delivery.id]
-          );
+          if (!rawToken) {
+            // sem link guardado (pedido antigo) ou vencido: gera um novo e guarda criptografado
+            rawToken = crypto.randomBytes(32).toString('hex');
+            const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+            const ttlHours = parseInt(process.env.DELIVERY_TOKEN_TTL_HOURS || '24', 10);
+            expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+            const enc = encryptData(rawToken, getEncryptionKey());
+
+            await client.query(
+              `UPDATE order_deliveries 
+               SET delivery_token_hash = $1, delivery_token_expires_at = $2, delivery_token_enc = $3, delivery_token_enc_version = $4, updated_at = NOW() 
+               WHERE id = $5`,
+              [tokenHash, expiresAt, enc.encryptedText, enc.version, delivery.id]
+            );
+          }
 
           responseDeliveries.push({
             assetId: delivery.asset_id,
             assetTitle: delivery.asset_name || `Ativo Digital #${delivery.asset_id.substring(0, 8)}`,
             rawToken,
-            expiresAt: expiresAt.toISOString(),
+            expiresAt: (expiresAt as Date).toISOString(),
             downloadCount: delivery.download_count,
             maxDownloads: delivery.max_downloads,
             status: 'ACTIVE'
