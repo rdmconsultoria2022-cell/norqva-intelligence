@@ -982,20 +982,27 @@ type PriceBlock = ReturnType<typeof livePriceBlock>;
 const NO_RENDER_IMAGE = new Set<string>(['OFFER_PRICE', 'GUARANTEE', 'FAQ', 'CTA', 'URGENCY', 'TESTIMONIALS', 'PROOF_RESULTS', 'AUTHORITY']);
 const RENDER_IMAGE_ORDER = ['CONTENTS', 'BENEFITS', 'PRODUCT_REVEAL', 'BONUS', 'MECHANISM', 'PAIN', 'AGITATION', 'OTHER'];
 
+/** NORQVA-0129: papéis que não abrem a página (a abertura vira título + capa do produto). */
+export const NON_HERO_ROLES = new Set<string>(['OFFER_PRICE', 'GUARANTEE', 'FAQ', 'CTA']);
+
 /**
  * NORQVA-0129: imagens na hora de mostrar (nada é gravado). Só quando NENHUMA seção tem imagem própria:
- * a abertura recebe a primeira imagem do produto e as outras vão, uma para cada, às seções que combinam
- * (conteúdo, benefícios, apresentação...), na ordem da página. Devolve a imagem de cada seção (ou null).
+ * a capa (primeira imagem do produto) vai para a primeira seção que pode ter imagem (normalmente a abertura) e as
+ * outras vão, uma para cada, às seções que combinam (conteúdo, benefícios, apresentação...), na ordem da página.
+ * Devolve a imagem de cada seção (ou null).
  */
 export function renderImageFallback(sections: Array<{ role: string; image_url?: string | null; fixed?: boolean }>, images: string[]): Array<string | null> {
   const own = sections.map(s => (s.image_url ? String(s.image_url) : null));
   if (!images.length || !sections.length || own.some(Boolean)) return own;
   const out: Array<string | null> = sections.map(() => null);
-  out[0] = images[0];
+  const allowed = (i: number) => !NO_RENDER_IMAGE.has(String(sections[i].role)) && !sections[i].fixed;
+  const cover = sections.findIndex((_, i) => allowed(i));
+  if (cover < 0) return out;
+  out[cover] = images[0];
   const rest = images.slice(1);
   const candidates = sections
     .map((s, i) => ({ i, rank: RENDER_IMAGE_ORDER.indexOf(String(s.role)) }))
-    .filter(c => c.i > 0 && c.rank >= 0 && !NO_RENDER_IMAGE.has(String(sections[c.i].role)) && !sections[c.i].fixed)
+    .filter(c => c.i !== cover && c.rank >= 0 && allowed(c.i))
     .sort((a, b) => a.rank - b.rank || a.i - b.i)
     .slice(0, rest.length)
     .sort((a, b) => a.i - b.i);
@@ -1003,6 +1010,16 @@ export function renderImageFallback(sections: Array<{ role: string; image_url?: 
     out[c.i] = rest[n];
   });
   return out;
+}
+
+/** NORQVA-0129: a oferta entrega um PDF? (algum arquivo ligado à oferta termina em .pdf). Só sim/não sai daqui. */
+export async function offerDeliversPdf(db: Pool | PoolClient, offerId: string | null | undefined): Promise<boolean> {
+  if (!offerId || !UUID_RE.test(String(offerId))) return false;
+  const r = await db.query(
+    `SELECT a.name, a.storage_path, a.file_original_name FROM offer_digital_assets oda JOIN digital_assets a ON a.id = oda.asset_id WHERE oda.offer_id = $1`,
+    [offerId]
+  );
+  return r.rows.some((a: any) => [a.storage_path, a.file_original_name, a.name].some(v => /\.pdf$/i.test(String(v || '').trim())));
 }
 
 const PUBLIC_SECTION = (s: GeneratedSection, image: string | null, price: PriceBlock | null) => ({
@@ -1226,6 +1243,8 @@ export class GenerationService {
       (r.sections as GeneratedSection[]).map(async (s, i) => ({
         ...s,
         image_preview_url: await resolveImageUrl(shown[i], 3600),
+        // imagem do produto só na tela (não gravada na página)
+        image_fallback: !s.image_url && !!shown[i],
         price: s.role === 'OFFER_PRICE' && price ? { price_text: price.price_text, installments_text: price.installments_text } : null
       }))
     );
@@ -1245,6 +1264,7 @@ export class GenerationService {
         reference_id: r.reference_id,
         sections,
         gallery,
+        delivery_pdf: await offerDeliversPdf(this.pool, r.offer_id),
         copy_check: r.copy_check,
         images_mode: r.images_mode,
         approved_at: r.approved_at,
@@ -1626,7 +1646,8 @@ export class GenerationService {
       offer: { human_id: String(offer.human_id), value: price.value },
       offer_id: r.offer_id as string,
       sections: await Promise.all(sections.map(async (x, i) => PUBLIC_SECTION(x, await resolveImageUrl(shown[i]), price))),
-      gallery
+      gallery,
+      delivery_pdf: await offerDeliversPdf(this.pool, r.offer_id)
     };
   }
 }

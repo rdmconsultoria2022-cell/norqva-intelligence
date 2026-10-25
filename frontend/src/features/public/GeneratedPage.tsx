@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -63,6 +63,8 @@ export interface PublicGeneratedPage {
   sections: PublicGeneratedSection[];
   /** NORQVA-0129: imagens do produto que já estão no site (capa e páginas), para "Veja por dentro". */
   gallery?: string[];
+  /** NORQVA-0129: a oferta entrega um arquivo PDF (o selo "PDF para imprimir" só aparece com isto). */
+  delivery_pdf?: boolean;
   meta_pixel_id?: string | null;
 }
 
@@ -81,28 +83,51 @@ export function checkoutHref(offerHumanId: string, search: string): string {
 
 const LIST_LINE = /^\s*(?:[-•*–—]|\d{1,2}[.)])\s+(.+)$/;
 
-/** Texto da seção em parágrafos e itens de lista (linhas que começam com "-", "•" ou "1."). Só reorganiza o nosso texto. */
-export function splitBody(text: string): { paragraphs: string[]; items: string[] } {
-  const paragraphs: string[] = [];
-  const items: string[] = [];
-  let buf: string[] = [];
-  const flush = () => {
-    const p = buf.join('\n').trim();
-    if (p) paragraphs.push(p);
-    buf = [];
+export type BodyBlock = { kind: 'p'; text: string } | { kind: 'list'; items: string[] };
+
+const cleanItem = (t: string) => t.trim().replace(/[;,]\s*$/, '');
+
+/**
+ * Texto da seção em blocos, na ordem do texto: parágrafos e listas (linhas que começam com "-", "•" ou "1.").
+ * Linha comum logo depois de um item continua esse item. Só reorganiza o nosso texto.
+ */
+export function bodyBlocks(text: string): BodyBlock[] {
+  const out: BodyBlock[] = [];
+  let para: string[] = [];
+  let list: string[] | null = null;
+  const flushPara = () => {
+    const p = para.join('\n').trim();
+    if (p) out.push({ kind: 'p', text: p });
+    para = [];
   };
-  for (const line of String(text || '').split('\n')) {
-    const m = line.match(LIST_LINE);
+  const flushList = () => {
+    if (list && list.length) out.push({ kind: 'list', items: list.map(cleanItem).filter(Boolean) });
+    list = null;
+  };
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    const m = raw.match(LIST_LINE);
     if (m) {
-      flush();
-      const it = m[1].trim().replace(/[;,]\s*$/, '');
-      if (it) items.push(it);
-    } else if (!line.trim()) flush();
-    else buf.push(line.trim());
+      flushPara();
+      if (!list) list = [];
+      list.push(m[1].trim());
+    } else if (!line) {
+      flushPara();
+      flushList();
+    } else if (list && list.length) {
+      list[list.length - 1] = `${list[list.length - 1]} ${line}`;
+    } else {
+      para.push(line);
+    }
   }
-  flush();
-  return { paragraphs, items };
+  flushPara();
+  flushList();
+  return out.filter(b => b.kind === 'p' || b.items.length > 0);
 }
+
+/** Atalhos: só os parágrafos / só os itens (na ordem). */
+export const paragraphsOf = (blocks: BodyBlock[]) => blocks.flatMap(b => (b.kind === 'p' ? [b.text] : []));
+export const itemsOf = (blocks: BodyBlock[]) => blocks.flatMap(b => (b.kind === 'list' ? b.items : []));
 
 /** "Pergunta? Resposta." -> pergunta e resposta (sem "?" seguido de texto, fica só a pergunta). */
 export function splitQa(item: string): { q: string; a: string } {
@@ -110,6 +135,34 @@ export function splitQa(item: string): { q: string; a: string } {
   const i = t.indexOf('?');
   if (i > 0 && i < t.length - 1) return { q: t.slice(0, i + 1).trim(), a: t.slice(i + 1).trim() };
   return { q: t, a: '' };
+}
+
+/** Parágrafo cuja primeira linha termina em "?" vira pergunta (primeira linha) e resposta (o resto). */
+export function paragraphQa(text: string): { q: string; a: string } | null {
+  const lines = String(text || '').split('\n');
+  const first = lines[0].trim();
+  if (!first.endsWith('?')) return null;
+  const rest = lines.slice(1).join('\n').trim();
+  return rest ? { q: first, a: rest } : null;
+}
+
+/** Itens da seção de dúvidas, na ordem: perguntas (de itens "- pergunta? resposta" ou de parágrafos) e textos soltos. */
+export type FaqEntry = { kind: 'qa'; q: string; a: string } | { kind: 'text'; text: string } | { kind: 'item'; text: string };
+export function faqEntries(blocks: BodyBlock[], bullets: string[] = []): FaqEntry[] {
+  const out: FaqEntry[] = [];
+  const pushItem = (it: string) => {
+    const qa = splitQa(it);
+    out.push(qa.a ? { kind: 'qa', q: qa.q, a: qa.a } : { kind: 'item', text: qa.q });
+  };
+  for (const b of blocks) {
+    if (b.kind === 'list') b.items.forEach(pushItem);
+    else {
+      const qa = paragraphQa(b.text);
+      out.push(qa ? { kind: 'qa', ...qa } : { kind: 'text', text: b.text });
+    }
+  }
+  bullets.forEach(pushItem);
+  return out;
 }
 
 function safeSlug(raw: string): string | null {
@@ -142,6 +195,9 @@ const ROLE_META: Record<string, { label: string; Icon: LucideIcon }> = {
   OTHER: { label: 'Bom saber', Icon: Info }
 };
 const roleMeta = (role: string) => ROLE_META[role] || ROLE_META.OTHER;
+
+/** Papéis que não abrem a página: com eles primeiro, a abertura usa o título da página e a capa do produto. */
+export const NON_HERO_ROLES = new Set(['OFFER_PRICE', 'GUARANTEE', 'FAQ', 'CTA']);
 
 type Tokens = Record<string, string>;
 const LIGHT: Tokens = {
@@ -248,15 +304,30 @@ const reducedMotion = () => {
   }
 };
 
-/** Entrada suave ao rolar (classe "rv"). Sem IntersectionObserver ou com "reduzir movimento": tudo já visível. */
+/** Tempo máximo escondido: depois disso tudo aparece, mesmo sem o observador disparar. */
+export const REVEAL_SAFETY_MS = 1500;
+
+/**
+ * Entrada suave ao rolar (classe "rv"). Só anima o que está abaixo da primeira tela; o que já aparece fica parado.
+ * Sem IntersectionObserver ou com "reduzir movimento": tudo visível na hora. Rede de segurança: tudo visível em 1,5 s.
+ */
 function useReveal(dep: unknown) {
   useEffect(() => {
     const els = Array.from(document.querySelectorAll<HTMLElement>('.gp .rv:not(.in)'));
     if (!els.length) return;
+    const showAll = () => els.forEach(e => e.classList.add('in'));
     if (typeof window === 'undefined' || !('IntersectionObserver' in window) || reducedMotion()) {
-      els.forEach(e => e.classList.add('in'));
+      showAll();
       return;
     }
+    const vh = window.innerHeight || 800;
+    const below = els.filter(e => {
+      if (e.getBoundingClientRect().top < vh) {
+        e.classList.add('in');
+        return false;
+      }
+      return true;
+    });
     const io = new IntersectionObserver(
       entries => {
         for (const en of entries) {
@@ -268,26 +339,38 @@ function useReveal(dep: unknown) {
       },
       { threshold: 0.1, rootMargin: '0px 0px -5% 0px' }
     );
-    els.forEach(e => io.observe(e));
-    return () => io.disconnect();
+    below.forEach(e => io.observe(e));
+    const safety = window.setTimeout(showAll, REVEAL_SAFETY_MS);
+    return () => {
+      io.disconnect();
+      window.clearTimeout(safety);
+    };
   }, [dep]);
 }
 
-const FONT_LINK_ID = 'gp-fonts';
-function useLightFonts(active: boolean) {
+const LIGHT_FONTS = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap';
+const FRESH_FONTS = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
+
+/** Fontes do visual da página (light: Cormorant + Manrope; fresh: Inter), com preconnect. */
+function usePageFonts(look: 'light' | 'fresh' | null) {
   useEffect(() => {
-    if (!active || document.getElementById(FONT_LINK_ID)) return;
-    const l = document.createElement('link');
-    l.id = FONT_LINK_ID;
-    l.rel = 'stylesheet';
-    l.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap';
-    document.head.appendChild(l);
-  }, [active]);
+    if (!look) return;
+    const add = (id: string, attrs: Record<string, string>) => {
+      if (document.getElementById(id)) return;
+      const l = document.createElement('link');
+      l.id = id;
+      for (const [k, v] of Object.entries(attrs)) l.setAttribute(k, v);
+      document.head.appendChild(l);
+    };
+    add('gp-preconnect-api', { rel: 'preconnect', href: 'https://fonts.googleapis.com' });
+    add('gp-preconnect', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' });
+    add(`gp-fonts-${look}`, { rel: 'stylesheet', href: look === 'fresh' ? FRESH_FONTS : LIGHT_FONTS });
+  }, [look]);
 }
 
 const Items: React.FC<{ items: string[]; two?: boolean }> = ({ items, two }) =>
   items.length ? (
-    <ul className={`mt-6 ${two ? 'items2 space-y-3 md:space-y-0' : 'space-y-3'}`} data-testid="generated-items">
+    <ul className={`mt-6 first:mt-0 ${two ? 'items2 space-y-3 md:space-y-0' : 'space-y-3'}`} data-testid="generated-items">
       {items.map((b, k) => (
         <li key={k} className="item">
           <span className="tick" aria-hidden="true">
@@ -299,13 +382,18 @@ const Items: React.FC<{ items: string[]; two?: boolean }> = ({ items, two }) =>
     </ul>
   ) : null;
 
-const Paragraphs: React.FC<{ list: string[]; className?: string }> = ({ list, className = 'txt' }) => (
+/** Blocos do texto na ordem: parágrafos e listas em cartões. */
+const Blocks: React.FC<{ blocks: BodyBlock[]; pClass?: string; two?: boolean }> = ({ blocks, pClass = 'txt', two }) => (
   <>
-    {list.map((p, k) => (
-      <p key={k} className={`${className} ${k ? 'mt-4' : ''}`}>
-        {p}
-      </p>
-    ))}
+    {blocks.map((b, k) =>
+      b.kind === 'p' ? (
+        <p key={k} className={`${pClass} ${k ? 'mt-4' : ''}`}>
+          {b.text}
+        </p>
+      ) : (
+        <Items key={k} items={b.items} two={two && b.items.length > 3} />
+      )
+    )}
   </>
 );
 
@@ -334,6 +422,56 @@ const SectionHead: React.FC<{ s: PublicGeneratedSection; center?: boolean; dark?
   );
 };
 
+/** Botão principal: sempre o link do pagamento (mesmo para todos os botões). */
+const Cta: React.FC<{ href: string; label: string; inv?: boolean; full?: boolean }> = ({ href, label, inv, full }) => (
+  <a href={href} className={`btn ${inv ? 'inv' : ''} ${full ? 'w-full' : 'w-full sm:w-auto'}`} data-testid="generated-cta">
+    {label}
+    <ArrowRight aria-hidden="true" className="h-5 w-5" />
+  </a>
+);
+
+const PayNote: React.FC<{ label: string; center?: boolean; dark?: boolean }> = ({ label, center, dark }) => (
+  <p className={`mt-3 flex items-center gap-1.5 text-[13px] ${center ? 'justify-center' : ''} ${dark ? 'opacity-80' : 'muted'}`}>
+    <Lock aria-hidden="true" className="h-3.5 w-3.5" /> {label}
+  </p>
+);
+
+/** Imagem ampliada: foco no X, Tab preso no diálogo, rolagem da página travada; ao fechar, o foco volta a quem abriu. */
+const Lightbox: React.FC<{ src: string; alt: string; label: string; onClose: () => void }> = ({ src, alt, label, onClose }) => {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'Tab') {
+        e.preventDefault();
+        closeRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      try {
+        opener?.focus?.();
+      } catch {
+        /* nada */
+      }
+    };
+  }, [onClose]);
+  return (
+    <div className="lb" role="dialog" aria-modal="true" aria-label={label} onClick={onClose} data-testid="generated-lightbox">
+      <img src={src} alt={alt} onClick={e => e.stopPropagation()} />
+      <button ref={closeRef} type="button" onClick={onClose} aria-label="Fechar imagem">
+        <X className="h-5 w-5" aria-hidden="true" />
+      </button>
+    </div>
+  );
+};
+
 export const GeneratedPage: React.FC = () => {
   const params = useParams<{ slug?: string }>();
   const location = useLocation();
@@ -341,7 +479,7 @@ export const GeneratedPage: React.FC = () => {
   const [page, setPage] = useState<PublicGeneratedPage | null>(null);
   const [error, setError] = useState<string | null>(slug ? null : 'Página não encontrada.');
   const [zoom, setZoom] = useState<number | null>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const closeZoom = useCallback(() => setZoom(null), []);
 
   useEffect(() => {
     captureUrlAttribution();
@@ -385,7 +523,7 @@ export const GeneratedPage: React.FC = () => {
   }, [page?.title]);
 
   const fresh = page?.theme === 'fresh';
-  useLightFonts(!!page && !fresh);
+  usePageFonts(page ? (fresh ? 'fresh' : 'light') : null);
   useReveal(page);
 
   // barra fixa do celular: aparece depois que o botão da abertura sai da tela (some de novo no topo)
@@ -397,16 +535,6 @@ export const GeneratedPage: React.FC = () => {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, [page]);
-
-  useEffect(() => {
-    if (zoom === null) return;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setZoom(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [zoom]);
 
   if (error || !page) {
     return (
@@ -422,17 +550,28 @@ export const GeneratedPage: React.FC = () => {
   const tokens = (fresh ? FRESH_TOKENS : LIGHT) as unknown as React.CSSProperties;
   const href = checkoutHref(page.offer.human_id, location.search);
   const firstCta = page.sections.find(s => s.cta_label.trim())?.cta_label || 'Quero o meu';
-  const gallery = (page.gallery || []).filter(Boolean);
+  const allImages = (page.gallery || []).filter(Boolean);
+  const pdf = page.delivery_pdf === true;
   const priceSection = page.sections.find(s => s.role === 'OFFER_PRICE' && s.price);
   const price = priceSection?.price || null;
   // forma de pagamento: só o que a oferta aceita (parcelas existem = cartão ligado)
   const card = price ? !!price.installments_text : null;
   const payLabel = card === false ? 'Pagamento seguro por Pix' : card ? 'Pagamento seguro por Pix ou cartão' : 'Pagamento seguro';
-  const [hero, ...rest] = page.sections;
-  const heroImage = hero?.image_url || gallery[0] || null;
-  const heroParts = splitBody(hero?.body || '');
-  const heroItems = [...heroParts.items, ...(hero?.bullets || [])];
-  const thumb = gallery[0] || heroImage;
+
+  // abertura: a 1ª seção, se for de abrir; senão, título da página + capa do produto e todas as seções seguem normais
+  const first = page.sections[0];
+  const heroSection = first && !NON_HERO_ROLES.has(first.role) ? first : null;
+  const rest = heroSection ? page.sections.slice(1) : page.sections;
+  const usedInSections = new Set(rest.map(s => s.image_url).filter(Boolean) as string[]);
+  const heroImage = heroSection?.image_url || allImages.find(i => !usedInSections.has(i)) || allImages[0] || null;
+  const heroBlocks = bodyBlocks(heroSection?.body || '');
+  const heroLead = heroBlocks[0]?.kind === 'p' ? heroBlocks[0].text : null;
+  const heroMore: BodyBlock[] = [...(heroLead ? heroBlocks.slice(1) : heroBlocks), ...(heroSection?.bullets.length ? [{ kind: 'list' as const, items: heroSection.bullets }] : [])];
+  const heroTitle = heroSection?.headline.trim() || page.title;
+  // galeria sem repetir a imagem da abertura; miniaturas da oferta e do fecho com outra imagem quando houver
+  const gallery = allImages.filter(i => i !== heroImage);
+  const thumb = allImages.find(i => i !== heroImage) || allImages[0] || heroImage;
+  const firstOfferOrder = page.sections.find(s => s.role === 'OFFER_PRICE')?.order;
 
   // "Veja por dentro": depois da primeira seção de conteúdo/apresentação; sem ela, antes da oferta
   const galleryAfter = (() => {
@@ -442,19 +581,6 @@ export const GeneratedPage: React.FC = () => {
     const o = rest.findIndex(s => s.role === 'OFFER_PRICE' || s.role === 'CTA');
     return o > 0 ? o - 1 : o === 0 ? -2 : rest.length - 1;
   })();
-
-  const Cta: React.FC<{ label?: string; inv?: boolean; full?: boolean }> = ({ label, inv, full }) => (
-    <a href={href} className={`btn ${inv ? 'inv' : ''} ${full ? 'w-full' : 'w-full sm:w-auto'}`} data-testid="generated-cta">
-      {label || firstCta}
-      <ArrowRight aria-hidden="true" className="h-5 w-5" />
-    </a>
-  );
-
-  const PayNote: React.FC<{ center?: boolean; dark?: boolean }> = ({ center, dark }) => (
-    <p className={`mt-3 flex items-center gap-1.5 text-[13px] ${center ? 'justify-center' : ''} ${dark ? 'opacity-80' : 'muted'}`}>
-      <Lock aria-hidden="true" className="h-3.5 w-3.5" /> {payLabel}
-    </p>
-  );
 
   const renderGallery = () => (
     <section className="sec" aria-labelledby="gp-gal" data-testid="generated-gallery">
@@ -475,7 +601,7 @@ export const GeneratedPage: React.FC = () => {
           {gallery.map((src, i) => (
             <button key={src + i} type="button" onClick={() => setZoom(i)} aria-label={`Ver maior: ${page.title}, imagem ${i + 1} de ${gallery.length}`}>
               <span className="frame block">
-                <img src={src} alt={`${page.title}: imagem ${i + 1} de ${gallery.length}`} loading="lazy" decoding="async" />
+                <img src={src} alt={`${page.title}: imagem ${i + 1} de ${gallery.length}`} width={1080} height={1080} loading="lazy" decoding="async" />
                 <span className="zoom" aria-hidden="true">
                   <ZoomIn className="h-4 w-4" />
                 </span>
@@ -489,29 +615,34 @@ export const GeneratedPage: React.FC = () => {
 
   let alt = 0;
   const renderSection = (s: PublicGeneratedSection) => {
-    const parts = splitBody(s.body);
-    const items = [...parts.items, ...s.bullets];
+    const blocks = bodyBlocks(s.body);
+    const paragraphs = paragraphsOf(blocks);
+    const items = [...itemsOf(blocks), ...s.bullets];
     const imgAlt = s.headline.trim() || `${page.title}: ${roleMeta(s.role).label.toLowerCase()}`;
 
     if (s.role === 'OFFER_PRICE') {
-      const included = items.length ? items : ['Arquivo em PDF para imprimir', 'Acesso enviado por e-mail'];
+      const included = items.length ? items : [...(pdf ? ['Arquivo em PDF para imprimir'] : []), 'Acesso enviado por e-mail'];
       return (
-        <section key={s.order} id="oferta" data-testid="generated-section" className="sec alt" style={{ background: 'linear-gradient(180deg,var(--alt),var(--bg))' }}>
+        <section
+          key={s.order}
+          id={s.order === firstOfferOrder ? 'oferta' : undefined}
+          data-testid="generated-section"
+          className="sec alt"
+          style={{ background: 'linear-gradient(180deg,var(--alt),var(--bg))' }}
+        >
           <div className="wrap">
             <div className="offer rv" data-testid="generated-offer">
               <span className="tagp">{roleMeta('OFFER_PRICE').label}</span>
-              {thumb && (
-                <img src={thumb} alt={page.title} loading="lazy" className="mx-auto mb-5 h-28 w-28 rounded-2xl object-cover shadow-md ring-1 ring-black/5" />
-              )}
+              {thumb && <img src={thumb} alt={page.title} width={112} height={112} loading="lazy" className="mx-auto mb-5 h-28 w-28 rounded-2xl object-cover shadow-md ring-1 ring-black/5" />}
               <h2 className="disp h2" style={{ fontSize: 'clamp(26px,6vw,36px)' }}>
                 {s.headline.trim() || page.title}
               </h2>
-              {parts.paragraphs.length > 0 && (
+              {paragraphs.length > 0 && (
                 <div className="mt-3">
-                  <Paragraphs list={parts.paragraphs} className="txt muted" />
+                  <Blocks blocks={paragraphs.map(text => ({ kind: 'p' as const, text }))} pClass="txt muted" />
                 </div>
               )}
-              <ul className="mx-auto mt-6 max-w-sm space-y-2.5 text-left">
+              <ul className="mx-auto mt-6 max-w-sm space-y-2.5 text-left" data-testid="generated-offer-items">
                 {included.map((b, k) => (
                   <li key={k} className="flex items-start gap-2.5 text-[15.5px] leading-snug" style={{ color: 'var(--body)' }}>
                     <Check aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" style={{ color: 'var(--accent)' }} strokeWidth={2.6} />
@@ -529,8 +660,8 @@ export const GeneratedPage: React.FC = () => {
               )}
               {s.note && <p className="mt-4 text-sm muted">{s.note}</p>}
               <div className="mt-7">
-                <Cta label={s.cta_label.trim() || firstCta} full />
-                <PayNote center />
+                <Cta href={href} label={s.cta_label.trim() || firstCta} full />
+                <PayNote label={payLabel} center />
               </div>
             </div>
           </div>
@@ -551,12 +682,12 @@ export const GeneratedPage: React.FC = () => {
                   {s.headline.trim() || roleMeta('GUARANTEE').label}
                 </h2>
                 {s.note && <p className="mt-1 text-[15px] font-semibold leading-snug" style={{ color: 'var(--body)' }}>{s.note}</p>}
-                {parts.paragraphs.length > 0 && (
+                {blocks.length > 0 && (
                   <div className="mt-2">
-                    <Paragraphs list={parts.paragraphs} className="text-[14.5px] leading-relaxed muted whitespace-pre-line" />
+                    <Blocks blocks={blocks} pClass="text-[14.5px] leading-relaxed muted whitespace-pre-line" />
                   </div>
                 )}
-                <Items items={items} />
+                <Items items={s.bullets} />
               </div>
             </div>
           </div>
@@ -565,7 +696,7 @@ export const GeneratedPage: React.FC = () => {
     }
 
     if (s.role === 'FAQ') {
-      const qas = items.map(splitQa);
+      const entries = faqEntries(blocks, s.bullets);
       const bg = alt++ % 2 ? 'alt' : '';
       return (
         <section key={s.order} data-testid="generated-section" className={`sec ${bg}`}>
@@ -573,23 +704,22 @@ export const GeneratedPage: React.FC = () => {
             <div className="rv">
               <SectionHead s={s} center />
             </div>
-            {parts.paragraphs.length > 0 && (
-              <div className="mt-5 text-center rv">
-                <Paragraphs list={parts.paragraphs} className="txt muted" />
-              </div>
-            )}
-            {qas.length > 0 && (
+            {entries.length > 0 && (
               <div className="mt-8 space-y-3 rv" data-testid="generated-faq">
-                {qas.map((qa, k) =>
-                  qa.a ? (
+                {entries.map((e, k) =>
+                  e.kind === 'qa' ? (
                     <details key={k}>
-                      <summary>{qa.q}</summary>
-                      <div className="ans">{qa.a}</div>
+                      <summary>{e.q}</summary>
+                      <div className="ans whitespace-pre-line">{e.a}</div>
                     </details>
-                  ) : (
+                  ) : e.kind === 'item' ? (
                     <div key={k} className="item">
-                      <span>{qa.q}</span>
+                      <span>{e.text}</span>
                     </div>
+                  ) : (
+                    <p key={k} className="txt muted text-center">
+                      {e.text}
+                    </p>
                   )
                 )}
               </div>
@@ -604,19 +734,19 @@ export const GeneratedPage: React.FC = () => {
       return (
         <section key={s.order} data-testid="generated-section" className="sec band">
           <div className="wrap narrow text-center flex flex-col items-center rv">
-            {thumb && <img src={thumb} alt="" aria-hidden="true" loading="lazy" className="mb-7 h-24 w-24 rounded-2xl object-cover shadow-xl ring-4 ring-white/10" />}
+            {thumb && <img src={thumb} alt="" aria-hidden="true" width={96} height={96} loading="lazy" className="mb-7 h-24 w-24 rounded-2xl object-cover shadow-xl ring-4 ring-white/10" />}
             <SectionHead s={s} center dark />
-            {parts.paragraphs.length > 0 && (
-              <div className="mt-4">
-                <Paragraphs list={parts.paragraphs} />
+            {blocks.length > 0 && (
+              <div className="mt-4 w-full">
+                <Blocks blocks={blocks} />
               </div>
             )}
-            <Items items={items} />
+            <Items items={s.bullets} />
             {s.note && <p className="mt-4 text-sm opacity-80">{s.note}</p>}
             <div className="mt-8 w-full sm:w-auto">
-              <Cta label={s.cta_label.trim() || firstCta} inv />
+              <Cta href={href} label={s.cta_label.trim() || firstCta} inv />
               {price && <p className="mt-3 text-[15px] font-semibold opacity-90">{price.price_text}{price.installments_text ? ` · ${price.installments_text}` : ''}</p>}
-              <PayNote center dark />
+              <PayNote label={payLabel} center dark />
             </div>
           </div>
         </section>
@@ -630,17 +760,17 @@ export const GeneratedPage: React.FC = () => {
     const textBlock = (
       <div className="rv">
         <SectionHead s={s} />
-        {parts.paragraphs.length > 0 && (
+        {blocks.length > 0 && (
           <div className="mt-5">
-            <Paragraphs list={parts.paragraphs} />
+            <Blocks blocks={blocks} two={contents && !s.image_url} />
           </div>
         )}
-        <Items items={items} two={contents && !s.image_url && items.length > 3} />
+        <Items items={s.bullets} two={contents && !s.image_url && s.bullets.length > 3} />
         {s.note && <p className="mt-4 text-sm muted">{s.note}</p>}
         {s.cta_label.trim() && (
           <div className="mt-8">
-            <Cta label={s.cta_label} />
-            <PayNote />
+            <Cta href={href} label={s.cta_label} />
+            <PayNote label={payLabel} />
           </div>
         )}
       </div>
@@ -665,65 +795,81 @@ export const GeneratedPage: React.FC = () => {
     );
   };
 
+  const heroExtra = heroMore.length > 0 || !!heroSection?.note;
+
   return (
     <div className="gp min-h-screen pb-28 md:pb-0" style={tokens} data-testid="generated-page" data-look={fresh ? 'fresh' : 'light'}>
       <style>{CSS}</style>
       <main>
-        {hero && (
-          <section key={hero.order} data-testid="generated-section" className="hero">
-            <div className="wrap">
-              <div className="mb-6 flex items-center justify-between gap-4 md:mb-10">
-                <span className="brand">{page.title}</span>
-                <a href={href} className="hidden text-sm font-bold underline-offset-4 hover:underline md:inline" style={{ color: 'var(--accent)' }}>
-                  {firstCta}
-                </a>
-              </div>
-              <div className="hero-grid">
-                <div className="hero-copy">
-                  <div className="kicker">
-                    <span className="ico" aria-hidden="true">
-                      <Sparkles className="h-[18px] w-[18px]" />
-                    </span>
-                    Material digital
-                  </div>
-                  <h1 className="disp h1 mt-5">{hero.headline.trim() || page.title}</h1>
-                  {heroParts.paragraphs[0] && <p className="lead mt-5 md:mt-6">{heroParts.paragraphs[0]}</p>}
+        <section
+          data-testid={heroSection ? 'generated-section' : 'generated-hero'}
+          data-hero={heroSection ? 'section' : 'title'}
+          className="hero"
+        >
+          <div className="wrap">
+            <div className="mb-6 flex items-center justify-between gap-4 md:mb-10">
+              <span className="brand">{page.title}</span>
+              <a href={href} className="hidden text-sm font-bold underline-offset-4 hover:underline md:inline" style={{ color: 'var(--accent)' }}>
+                {firstCta}
+              </a>
+            </div>
+            <div className="hero-grid">
+              <div className="hero-copy">
+                <div className="kicker">
+                  <span className="ico" aria-hidden="true">
+                    <Sparkles className="h-[18px] w-[18px]" />
+                  </span>
+                  Material digital
                 </div>
-                {heroImage && (
-                  <div className="hero-media">
-                    <div className="frame">
-                      <img src={heroImage} alt={hero.headline.trim() || page.title} loading="eager" decoding="async" data-testid="generated-hero-image" />
-                    </div>
+                <h1 className="disp h1 mt-5">{heroTitle}</h1>
+                {heroLead && <p className="lead mt-5 md:mt-6 whitespace-pre-line">{heroLead}</p>}
+              </div>
+              {heroImage && (
+                <div className="hero-media">
+                  <div className="frame">
+                    <img
+                      src={heroImage}
+                      alt={heroTitle}
+                      width={1080}
+                      height={1080}
+                      loading="eager"
+                      decoding="async"
+                      {...({ fetchpriority: 'high' } as Record<string, string>)}
+                      data-testid="generated-hero-image"
+                    />
                   </div>
-                )}
-                <div className="hero-act">
-                  <Cta label={hero.cta_label.trim() || firstCta} />
-                  <PayNote />
-                  <ul className="mt-5 flex flex-wrap gap-1.5 md:gap-2" aria-label="Como funciona a compra" data-testid="generated-trust">
+                </div>
+              )}
+              <div className="hero-act">
+                <Cta href={href} label={heroSection?.cta_label.trim() || firstCta} />
+                <PayNote label={payLabel} />
+                <ul className="mt-5 flex flex-wrap gap-1.5 md:gap-2" aria-label="Como funciona a compra" data-testid="generated-trust">
+                  {pdf && (
                     <li className="chip">
                       <FileText aria-hidden="true" className="h-4 w-4" /> PDF para imprimir
                     </li>
-                    <li className="chip">
-                      <Mail aria-hidden="true" className="h-4 w-4" /> Acesso por e-mail
-                    </li>
-                    <li className="chip">
-                      {card === false ? <QrCode aria-hidden="true" className="h-4 w-4" /> : <CreditCard aria-hidden="true" className="h-4 w-4" />}
-                      {card === false ? 'Pix' : card ? 'Pix ou cartão' : 'Pagamento seguro'}
-                    </li>
-                  </ul>
-                </div>
+                  )}
+                  <li className="chip">
+                    <Mail aria-hidden="true" className="h-4 w-4" /> Acesso por e-mail
+                  </li>
+                  <li className="chip">
+                    {card === false ? <QrCode aria-hidden="true" className="h-4 w-4" /> : <CreditCard aria-hidden="true" className="h-4 w-4" />}
+                    {card === false ? 'Pix' : card ? 'Pix ou cartão' : 'Pagamento seguro'}
+                  </li>
+                </ul>
               </div>
-              {(heroParts.paragraphs.length > 1 || heroItems.length > 0 || hero.note) && (
-                <div className="narrow mt-12 md:mt-20 rv text-center">
-                  <div className="mx-auto mb-6 h-px w-16" style={{ background: 'var(--gold)' }} aria-hidden="true" />
-                  <Paragraphs list={heroParts.paragraphs.slice(1)} className="lead" />
-                  <Items items={heroItems} />
-                  {hero.note && <p className="mt-4 text-sm muted">{hero.note}</p>}
-                </div>
-              )}
             </div>
-          </section>
-        )}
+            {heroExtra && (
+              <div className="narrow mt-12 md:mt-20 rv text-center">
+                <div className="mx-auto mb-6 h-px w-16" style={{ background: 'var(--gold)' }} aria-hidden="true" />
+                <div className="text-left md:text-center">
+                  <Blocks blocks={heroMore} pClass="lead" />
+                </div>
+                {heroSection?.note && <p className="mt-4 text-sm muted">{heroSection.note}</p>}
+              </div>
+            )}
+          </div>
+        </section>
         {galleryAfter === -2 && renderGallery()}
         {rest.map((s, i) => (
           <React.Fragment key={s.order}>
@@ -738,15 +884,10 @@ export const GeneratedPage: React.FC = () => {
         </div>
       </footer>
       {zoom !== null && gallery[zoom] && (
-        <div className="lb" role="dialog" aria-modal="true" aria-label={`${page.title}: imagem ${zoom + 1}`} onClick={() => setZoom(null)} data-testid="generated-lightbox">
-          <img src={gallery[zoom]} alt={`${page.title}: imagem ${zoom + 1} de ${gallery.length}`} onClick={e => e.stopPropagation()} />
-          <button ref={closeRef} type="button" onClick={() => setZoom(null)} aria-label="Fechar imagem">
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
+        <Lightbox src={gallery[zoom]} alt={`${page.title}: imagem ${zoom + 1} de ${gallery.length}`} label={`${page.title}: imagem ${zoom + 1}`} onClose={closeZoom} />
       )}
-      {/* celular: botão fixo embaixo (com o preço), acima da barra do sistema */}
-      <div className={`sbar ${barOn ? 'on' : ''}`} data-testid="generated-sticky-bar">
+      {/* celular: botão fixo embaixo (com o preço), acima da barra do sistema; escondido = fora da leitura e do Tab */}
+      <div className={`sbar ${barOn ? 'on' : ''}`} data-testid="generated-sticky-bar" aria-hidden={!barOn}>
         {price && (
           <div className="min-w-0 leading-tight">
             <div className="text-[11px] font-bold uppercase tracking-[.14em] muted">Valor</div>
@@ -755,7 +896,7 @@ export const GeneratedPage: React.FC = () => {
             </div>
           </div>
         )}
-        <a href={href} className="btn" data-testid="generated-cta-sticky">
+        <a href={href} className="btn" data-testid="generated-cta-sticky" tabIndex={barOn ? undefined : -1}>
           {firstCta}
         </a>
       </div>

@@ -497,8 +497,11 @@ describe.sequential('NORQVA-0116 — rotas, banco, publicação e página públi
     await post(`/api/generated-pages/${page.id}/publish`, {});
     const pub = await request(app).get(`/api/public/generated-pages/${page.slug}`);
     expect(pub.status).toBe(200);
-    expect(Object.keys(pub.body).sort()).toEqual(['gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
+    expect(Object.keys(pub.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
     expect(pub.body.offer).toEqual({ human_id: `OFF-T116${tag}`, value: 19.9 });
+    // NORQVA-0129: a oferta tem o PDF ligado (x.pdf): só o sim/não sai, nunca o arquivo
+    expect(pub.body.delivery_pdf).toBe(true);
+    expect(JSON.stringify(pub.body)).not.toContain('x.pdf');
     expect(Object.keys(pub.body.sections[0]).sort()).toEqual(['body', 'bullets', 'cta_label', 'headline', 'image_url', 'note', 'order', 'price', 'role']);
     const text = JSON.stringify(pub.body);
     for (const internal of ['copy_check', 'reference', 'image_prompt', 'removed_fields', 'created_by', 'human_id":"GEN', refId, page.id]) {

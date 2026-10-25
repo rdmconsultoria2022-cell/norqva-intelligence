@@ -258,11 +258,16 @@ export const GenerationView: React.FC<{
       <Surface className="p-4 space-y-3" as="div">
         <div className="flex items-center justify-between gap-2">
           <div className="text-nq-caption text-nq-subtle">Nossa seção {s.order}</div>
-          {s.image_status && s.image_status !== 'NONE' && (
+          {s.image_status && s.image_status !== 'NONE' ? (
             <span className="inline-flex items-center gap-1 text-nq-caption text-nq-muted">
               <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" /> {IMAGE_LABEL[s.image_status] || ''}
             </span>
-          )}
+          ) : s.image_fallback ? (
+            // NORQVA-0129: imagem do produto posta na hora de mostrar (não gravada na página)
+            <span className="inline-flex items-center gap-1 text-nq-caption text-nq-muted" data-testid={`image-fallback-${s.order}`}>
+              <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" /> Imagem do produto (só na tela)
+            </span>
+          ) : null}
         </div>
         {s.image_preview_url && <img src={s.image_preview_url} alt="" className="w-full rounded aspect-[3/2] object-cover" />}
         {s.image_error && <p className="text-nq-caption text-nq-attention break-words">{s.image_error}</p>}
