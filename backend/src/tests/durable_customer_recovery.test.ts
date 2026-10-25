@@ -108,6 +108,8 @@ describe('NORQVA — Durable Customer Recovery V1 Security & Functional Test Sui
         max_downloads INT NOT NULL DEFAULT 5,
         delivery_token_hash VARCHAR(64),
         delivery_token_expires_at TIMESTAMPTZ,
+        delivery_token_enc TEXT,
+        delivery_token_enc_version INTEGER,
         last_download_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()

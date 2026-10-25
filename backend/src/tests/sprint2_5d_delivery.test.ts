@@ -937,7 +937,15 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
         .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
         .set('x-checkout-token', order.checkout_token);
       const token1 = res1.body.deliveries[0].rawToken;
+      // NORQVA-0126: abrir de novo com o link ainda válido devolve o mesmo link
+      const resSame = await request(app)
+        .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
+        .set('x-checkout-token', order.checkout_token);
+      expect(resSame.body.deliveries[0].rawToken).toBe(token1);
       const hash1 = (await pool.query('SELECT delivery_token_hash FROM order_deliveries WHERE order_id = $1', [order.id])).rows[0].delivery_token_hash;
+
+      // NORQVA-0126: o link só é trocado quando está perto de vencer (ou foi revogado)
+      await pool.query("UPDATE order_deliveries SET delivery_token_expires_at = NOW() + INTERVAL '30 minutes' WHERE order_id = $1", [order.id]);
 
       const res2 = await request(app)
         .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
@@ -964,6 +972,9 @@ describe.sequential('NORQVA Sprint 2.5 Gate 2.5D - Webhook & Deliveries Integrat
         .get(`/api/checkout/orders/${order.id}/delivery-tokens`)
         .set('x-checkout-token', order.checkout_token);
       const oldToken = res1.body.deliveries[0].rawToken;
+
+      // NORQVA-0126: o link só é trocado quando está perto de vencer (ou foi revogado)
+      await pool.query("UPDATE order_deliveries SET delivery_token_expires_at = NOW() + INTERVAL '30 minutes' WHERE order_id = $1", [order.id]);
 
       // Reissue (generates new token)
       await request(app)

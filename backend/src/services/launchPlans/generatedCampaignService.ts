@@ -111,7 +111,7 @@ export function pageImageRefs(sections: any[]): string[] {
 }
 
 /**
- * NORQVA-0127: imagens dos anúncios. As da página primeiro; se a página não tem nenhuma (gerada sem KIE e
+ * NORQVA-0128: imagens dos anúncios. As da página primeiro; se a página não tem nenhuma (gerada sem KIE e
  * sem imagens do produto na hora), usa as imagens do produto que já estão no site.
  */
 export function adImageRefs(sections: any[], product: { name?: unknown; collection_key?: unknown }): string[] {
