@@ -195,8 +195,8 @@ export function buildRecoveryAccessEmail(params: SendPurchaseAccessEmailParams):
               <p style="margin: 0 0 8px 0; font-size: 13px; color: #8b949e;">
                 Ou copie e cole o link abaixo em seu navegador:
               </p>
-              <p style="margin: 0 0 24px 0; font-size: 12px; color: #58a6ff; word-break: break-all;">
-                ${escapeHtml(recoveryUrl)}
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.5; word-break: break-all;">
+                <a href="${escapeHtml(recoveryUrl)}" target="_blank" style="color: #58a6ff; text-decoration: underline;">${escapeHtml(recoveryUrl)}</a>
               </p>
               <div style="padding: 16px; background-color: #0d1117; border-left: 3px solid #f0883e; border-radius: 4px; margin-bottom: 24px;">
                 <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #c9d1d9;">

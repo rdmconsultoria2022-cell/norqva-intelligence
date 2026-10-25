@@ -18,9 +18,10 @@ describe('NORQVA-0124 — e-mail de acesso no modo escuro', () => {
   });
 
   test('e-mail de recuperação também pede cores claras e mantém o botão legível', () => {
-    const e = buildRecoveryAccessEmail({ email: 'a@b.c', offerName: 'Kit Trattoria Completo', recoveryUrl: url, kind: 'RESEND', validityHours: 168 } as any);
+    const e = buildRecoveryAccessEmail({ email: 'a@b.c', offerName: 'Kit Trattoria Completo', recoveryUrl: url, kind: 'RECOVERY', validityHours: 168, senderName: 'Trattoria em Casa' });
     expect(e.html).toContain('<meta name="color-scheme" content="light">');
     expect(e.html).toContain('background-image: linear-gradient(#238636, #238636)');
-    expect(e.html).toContain(`href="${url}"`);
+    // botão e link escrito clicáveis, para o mesmo endereço
+    expect(e.html.split(`href="${url}"`).length - 1).toBe(2);
   });
 });
