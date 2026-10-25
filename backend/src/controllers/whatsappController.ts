@@ -39,6 +39,7 @@ import { verifyCloudWebhook, signatureValid, processCloudWebhook } from '../serv
 import { cloudSendEnabled, allowedCloudEnvironments } from '../services/whatsapp/metaCloudProvider';
 import { evolutionEnabled } from '../services/whatsapp/provider';
 import { secretsKeyConfigured } from '../utils/secretBox';
+import { recoveryOverview, queueRecovery } from '../services/whatsapp/paymentRecovery';
 
 function handle(res: Response, err: any, fallback: string) {
   if (err instanceof WhatsAppError) return res.status(err.status).json({ error: err.message });
@@ -355,5 +356,23 @@ export async function postPublicWhatsAppRef(req: Request, res: Response) {
     if (err instanceof WhatsAppRefError) return res.status(err.status).json({ error: err.message });
     console.error('[WhatsApp] código de origem falhou:', err?.message || err);
     return res.status(500).json({ error: 'Falha ao abrir o WhatsApp. Compre direto na página.' });
+  }
+}
+
+// ---------- NORQVA-0125: pagamentos não concluídos (só ADMIN) ----------
+
+export async function getWhatsAppRecovery(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await recoveryOverview(db(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao carregar os pagamentos não concluídos.');
+  }
+}
+
+export async function postWhatsAppRecoverySend(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await queueRecovery(db(req), req.body, uid(req)));
+  } catch (err) {
+    return handle(res, err, 'Falha ao colocar as mensagens na fila.');
   }
 }

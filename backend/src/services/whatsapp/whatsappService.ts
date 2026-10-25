@@ -9,6 +9,7 @@ import { WhatsAppError } from './errors';
 import { providerForNumber, cloudErrorToWhatsApp, checkCloudNumber, createCloudNumber } from './cloudAccounts';
 import { isCloudProvider, SendBlockedError, CloudApiError } from './metaCloudProvider';
 import { isServiceWindowOpen } from './serviceWindow';
+import { isExplicitStop, isRecoveryRefusal, isFirstReplyToRecovery, recoveryForReply, carryRecoveryRef, recordRecoveryOptOut } from './paymentRecovery';
 
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
@@ -339,6 +340,8 @@ export interface InboundMessage {
   messageId: string;
   body: string;
   kind: string;
+  /** NORQVA-0125: pediu para parar depois da mensagem de recuperação (o atendente só confirma, com texto fixo) */
+  optOut?: boolean;
 }
 
 export async function handleWebhook(pool: Pool, numberId: string, secret: string, payload: any): Promise<{ inbound: InboundMessage[]; numberId: string | null }> {
@@ -480,8 +483,22 @@ export async function ingestInbound(pool: Pool, numberId: string, items: Normali
     if (!textRef && m.adReferral) {
       await linkAdReferral(pool, convId, n.id, m.adReferral).catch(err => console.warn('[WhatsApp] origem do anúncio:', err?.message || err));
     }
-    if (OPT_OUT_RE.test(body)) {
+    // NORQVA-0125: resposta de quem recebeu a mensagem de recuperação (procurada pelo telefone normalizado, então
+    // vale também se a pessoa responder de um jid sem o 9 ou @lid). A conversa herda a origem da recuperação.
+    const rec = phone || jid ? await recoveryForReply(pool, convId, phone, jid).catch(() => null) : null;
+    if (rec) await carryRecoveryRef(pool, convId, rec).catch(err => console.warn('[WhatsApp] origem da recuperação:', err?.message || err));
+    // "parar" de sempre (sem mudança para as outras conversas). Depois da recuperação também valem "sair", "pare",
+    // "stop" escritos de qualquer jeito e, só na primeira resposta (antes de o atendente falar), "não quero" e parecidos.
+    const plainOptOut = OPT_OUT_RE.test(body);
+    const recoveryOptOut = !plainOptOut && !!rec && (
+      isExplicitStop(body) || (isRecoveryRefusal(body) && (await isFirstReplyToRecovery(pool, convId, rec.sent_at).catch(() => false)))
+    );
+    if (plainOptOut || recoveryOptOut) {
       await pool.query(`UPDATE whatsapp_conversations SET mode = 'OPTED_OUT', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [convId]);
+      // quem pediu para parar fica fora da recuperação para sempre
+      await recordRecoveryOptOut(pool, convId, phone, jid, rec?.email_key || null).catch(err => console.warn('[WhatsApp] registro do SAIR:', err?.message || err));
+      // quem recebeu a recuperação ganha uma resposta curta do atendente (uma vez)
+      if (rec) inbound.push({ conversationId: convId, messageId: ins.rows[0].id, body, kind: content.kind, optOut: true });
       continue;
     }
     if (conv.rows[0].mode === 'OPTED_OUT') {

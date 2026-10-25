@@ -17,7 +17,7 @@ export interface AlertNotification {
   read: boolean;
   is_problem: boolean;
   is_open: boolean;
-  entity: { type: 'AD' | 'CAMPAIGN'; meta_campaign_id: string | null; campaign_name: string | null; meta_ad_id?: string | null; ad_name: string | null; plan_code: string | null };
+  entity: { type: 'AD' | 'CAMPAIGN' | 'WHATSAPP'; meta_campaign_id: string | null; campaign_name: string | null; meta_ad_id?: string | null; ad_name: string | null; plan_code: string | null };
   link: { tab: 'results' | 'cap'; meta_campaign_id: string | null; plan_code: string | null; section?: string | null };
   resolution: string | null;
   dismiss_reason: string | null;
@@ -165,6 +165,16 @@ export function AlertCard({
       )}
 
       <div className="flex flex-wrap gap-2 pt-1">
+        {onOpenCampaign && n.link.section === 'whatsapp-recovery' && (
+          <button
+            type="button"
+            onClick={() => onOpenCampaign(n)}
+            className="min-h-[44px] px-4 rounded-full bg-nq-text text-nq-bg text-nq-aux font-semibold flex items-center gap-1.5"
+          >
+            Abrir pagamentos não concluídos
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
+          </button>
+        )}
         {onOpenCampaign && n.link.meta_campaign_id && (
           <button
             type="button"

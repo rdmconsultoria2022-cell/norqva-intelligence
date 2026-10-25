@@ -353,3 +353,17 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
   - **Lembrete de Pix:** no máximo um por Pix, texto fixo, 30 a 120 min depois, 08h–22h de Brasília, conversa parada há 25 min, no BOT, dentro dos limites por hora, conferido no Asaas antes. Chave `WHATSAPP_PIX_REMINDER_ENABLED` (padrão desligada). Cartão fora.
   - **Fotos de amostra:** só as fotos do site (lista fixa por livro e kit), no máximo 4 por conversa, nunca páginas do PDF.
 - **Fica para depois:** evento de compra como evento de mensagem (Business Messaging) na Meta, segundo lembrete, lembrete de cartão.
+
+## D-0125 — WhatsApp para quem não concluiu o pagamento (2026-10-24)
+
+- **Contrato NORQVA-0125 aprovado pelo Ricardo em 24/10/2026 23h53.** Uma mensagem por pessoa para sempre (telefone normalizado: 55 + DDD + 8 últimos números), texto fixo sem IA, pelo número de atendimento da Evolution, para quem gerou cobrança nos últimos 30 dias e não pagou (pedido real, oferta ATIVA/TESTE, a pessoa nunca pagou por e-mail ou telefone, não pediu para parar).
+- **Quem escolhe é o dono:** tela Vendas → WhatsApp → "Pagamentos não concluídos" (só ADMIN), com exclusão manual, prévia exata e confirmação. O servidor recalcula tudo antes de pôr na fila e de novo antes de cada envio (com conferência no Asaas).
+- **Devagar:** uma pessoa a cada 2 a 4 minutos, 09h–20h de Brasília; sem número conectado ou com o atendente desligado nada sai e abre aviso na central.
+- **Atribuição:** link com `utm_source=whatsapp`, `utm_medium=recuperacao` e código em `whatsapp_refs` ligado à conversa.
+- **FALHOU é final:** envio com resultado incerto (tempo esgotado, 5xx) não é repetido; melhor perder uma mensagem do que mandar duas. Só "Pulada" antes do envio por motivo passageiro pode voltar à fila.
+- **Mesma pessoa:** telefone normalizado ou e-mail (`email_key`); pago inclui Kiwify e pagamento confirmado em qualquer pedido.
+- **SAIR:** a regra de sempre das outras conversas não muda. Depois da recuperação valem "sair/parar/pare/stop" escritos de qualquer jeito e, só na primeira resposta antes do atendente, "não quero", "não, obrigado", "sem interesse". Quem sai (ou já tinha pedido para parar em qualquer conversa) nunca entra na lista; o atendente confirma uma vez.
+- **Número da marca:** cada pessoa recebe pelo número da marca da oferta (ou sem marca); nunca pelo de outra marca.
+- **Dados no link (aprovado pelo Ricardo):** nome e e-mail vão no link para preencher o pagamento. Ficam fora da cópia guardada em Conversas e da resposta da tela (id opaco no lugar do telefone), mas aparecem no WhatsApp da pessoa, no servidor da Evolution e nos registros de acesso do site (endereço da página). O site tira os dois da barra de endereço ao abrir (NORQVA-0112).
+- **Número oficial fora:** sem modelo aprovado ele não alcança quem não escreveu nas últimas 24h.
+- Chave `WHATSAPP_RECOVERY_ENABLED` (padrão desligada).

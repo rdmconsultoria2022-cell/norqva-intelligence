@@ -250,6 +250,7 @@ export default function App() {
   const [alertCenter, setAlertCenter] = useState<AlertCenterData | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [campaignFocus, setCampaignFocus] = useState<CampaignFocus | null>(null);
+  const [whatsAppFocus, setWhatsAppFocus] = useState<{ tab: 'recovery'; nonce: number } | null>(null);
   // NORQVA-0117: "Abrir em Gerenciar campanha" a partir da tela de geração (evento com o código do plano)
   useEffect(() => {
     const open = (e: Event) => {
@@ -884,7 +885,7 @@ export default function App() {
           )}
 
           {activeTab === 'whatsapp' && (
-            <WhatsAppView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
+            <WhatsAppView currentUser={currentUser} apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} focusTab={whatsAppFocus} />
           )}
 
           {activeTab === 'brands' && (
@@ -915,6 +916,12 @@ export default function App() {
           onClose={() => setAlertsOpen(false)}
           onOpenCampaign={(n) => {
             setAlertsOpen(false);
+            // NORQVA-0125: aviso do WhatsApp abre Vendas → WhatsApp → Pagamentos não concluídos
+            if (n.link.section === 'whatsapp-recovery') {
+              setActiveTab('whatsapp');
+              setWhatsAppFocus({ tab: 'recovery', nonce: Date.now() });
+              return;
+            }
             setActiveTab('campaigns');
             setCampaignFocus(focusOf(n));
           }}
