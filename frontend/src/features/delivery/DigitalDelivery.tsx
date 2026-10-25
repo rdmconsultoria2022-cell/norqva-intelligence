@@ -134,8 +134,8 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   const orderName = String(orderData?.offer_name_snapshot || '').trim();
   const readyTitle = !orderName || /trattoria/i.test(orderName)
     ? 'Seu Trattoria em Casa está pronto!'
-    : /^kit\b/i.test(orderName)
-      ? `Seu ${orderName} está pronto!`
+    : /^kit\b|bordad/i.test(orderName)
+      ? `Seu ${/bordad/i.test(orderName) && !/^kit\b/i.test(orderName) ? 'Kit de Bordado' : orderName} está pronto!`
       : `Seu livro ${orderName} está pronto!`;
 
   return (
