@@ -5,7 +5,7 @@ import { CheckoutView } from '../checkout/CheckoutView';
 import { PaymentStatus } from '../payment/PaymentStatus';
 import { rateLabel } from '../../lib/cardInstallments';
 import { captureUrlAttribution, sendFunnelEvent } from '../../services/attribution';
-import { BuyChoice } from './WhatsAppChoice';
+import { BuyChoice, FloatingWhatsApp } from './WhatsAppChoice';
 import { updatePurchaseSessionStatus } from '../../services/purchaseSession';
 import { trackViewContent } from '../../services/metaPixel';
 import { COLLECTION_COVERS, READY_BOOKS } from './bookPages';
@@ -802,6 +802,8 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
         </div>
         <a className="btn shine" href="#oferta" tabIndex={barOn ? 0 : -1} data-testid="kit-sticky-cta">Ver ofertas</a>
       </div>
+
+      <FloatingWhatsApp available={!!offer.whatsapp?.available} visible={barOn} offerHumanId={offer.human_id} onCheckout={openCheckout} />
 
       {showCheckout && (
         <CheckoutView
