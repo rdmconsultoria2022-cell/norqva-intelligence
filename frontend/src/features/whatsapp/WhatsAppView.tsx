@@ -23,6 +23,8 @@ interface WaNumber {
   label: string;
   brand_id: string | null;
   brand_name: string | null;
+  /** NORQVA-0132: marcas que o número também atende */
+  extra_brand_ids?: string[];
   phone: string | null;
   status: 'NEW' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'BANNED';
   status_reason: string | null;
@@ -148,7 +150,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
   const [busy, setBusy] = useState<string | null>(null);
   const [qr, setQr] = useState<{ id: string; label: string; base64: string | null } | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; kind: 'swap' | 'delete' } | null>(null);
-  const [editing, setEditing] = useState<{ id: string; label: string; brand_id: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; label: string; brand_id: string; extra: string[]; official: boolean } | null>(null);
   const [check, setCheck] = useState<{ ok: boolean; problem: string | null; version: string | null; host: string | null } | null>(null);
   // NORQVA-0102: ativar número oficial na API (PIN de 6 números, não fica salvo)
   const [pinFor, setPinFor] = useState<string | null>(null);
@@ -270,7 +272,10 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
   });
 
   const saveEdit = () => editing && run(`edit-${editing.id}`, async () => {
-    await api.current(`/whatsapp/numbers/${editing.id}`, { method: 'PATCH', body: JSON.stringify({ label: editing.label.trim(), brand_id: editing.brand_id || null }) });
+    const body: any = { label: editing.label.trim(), brand_id: editing.brand_id || null };
+    // NORQVA-0132: marcas extras só em número com marca principal e fora do oficial
+    if (!editing.official && editing.brand_id) body.extra_brand_ids = editing.extra.filter(b => b !== editing.brand_id);
+    await api.current(`/whatsapp/numbers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(body) });
     setEditing(null);
     await load();
   });
@@ -352,6 +357,22 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                       <option value="">Sem marca</option>
                       {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
+                    {!editing.official && editing.brand_id && brands.filter(b => b.id !== editing.brand_id).length > 0 && (
+                      <fieldset className="space-y-1 rounded-xl bg-nq-bg p-2" data-testid="wa-extra-brands">
+                        <legend className="px-1 text-[12px] text-nq-muted">Também atende as marcas</legend>
+                        {brands.filter(b => b.id !== editing.brand_id).map(b => (
+                          <label key={b.id} className="flex min-h-[36px] items-center gap-2 text-sm text-nq-text">
+                            <input
+                              type="checkbox"
+                              checked={editing.extra.includes(b.id)}
+                              onChange={e => setEditing({ ...editing, extra: e.target.checked ? [...editing.extra, b.id] : editing.extra.filter(x => x !== b.id) })}
+                            />
+                            {b.name}
+                          </label>
+                        ))}
+                        <p className="px-1 text-[11px] text-nq-subtle">O atendente fala só da marca de onde a pessoa veio (botão da página ou anúncio). Sem origem, ele pergunta o assunto.</p>
+                      </fieldset>
+                    )}
                     <div className="flex gap-2">
                       <button onClick={saveEdit} disabled={!editing.label.trim()} className="rounded-full bg-nq-positive/15 px-2 py-1 text-[12px] text-nq-positive-text disabled:opacity-40 min-h-[44px]">Salvar</button>
                       <button onClick={() => setEditing(null)} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text min-h-[44px]">Cancelar</button>
@@ -362,6 +383,11 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                     <div>
                       <div className="text-sm font-semibold text-nq-text">{n.label}</div>
                       <div className="text-[12px] text-nq-muted">{n.brand_name || 'Sem marca'} · {fmtPhone(n.phone)}</div>
+                      {(n.extra_brand_ids || []).length > 0 && (
+                        <div className="text-[12px] text-nq-muted" data-testid="wa-number-extra">
+                          Também atende: {(n.extra_brand_ids || []).map(id => brands.find(b => b.id === id)?.name || 'marca').join(', ')}
+                        </div>
+                      )}
                       {official && (
                         <div className="mt-0.5 text-[12px] text-nq-info" data-testid="wa-number-official">
                           Oficial (Meta) · {n.cloud_environment === 'PRODUCTION' ? 'produção' : 'teste'}{n.quality_rating ? ` · qualidade ${n.quality_rating}` : ''}
@@ -413,7 +439,7 @@ function NumbersPanel({ isAdmin, api, showError, showSuccess }: { isAdmin: boole
                         </button>
                       </>
                     )}
-                    <button onClick={() => setEditing({ id: n.id, label: n.label, brand_id: n.brand_id || '' })} disabled={!!busy} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]">
+                    <button onClick={() => setEditing({ id: n.id, label: n.label, brand_id: n.brand_id || '', extra: n.extra_brand_ids || [], official: n.provider === 'META_CLOUD' })} disabled={!!busy} className="rounded-full border border-nq-line px-2 py-1 text-[12px] text-nq-text disabled:opacity-40 min-h-[44px]">
                       Editar
                     </button>
                     <button onClick={() => setConfirm({ id: n.id, kind: 'delete' })} disabled={!!busy} className="inline-flex items-center gap-1 rounded-full border border-nq-critical/40 px-2 py-1 text-[12px] text-nq-critical-text disabled:opacity-40 min-h-[44px]">

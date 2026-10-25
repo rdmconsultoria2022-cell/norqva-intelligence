@@ -497,7 +497,9 @@ describe.sequential('NORQVA-0116 — rotas, banco, publicação e página públi
     await post(`/api/generated-pages/${page.id}/publish`, {});
     const pub = await request(app).get(`/api/public/generated-pages/${page.slug}`);
     expect(pub.status).toBe(200);
-    expect(Object.keys(pub.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
+    expect(Object.keys(pub.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title', 'whatsapp']);
+    // NORQVA-0132: sem número de WhatsApp para esta marca, o botão não aparece
+    expect(pub.body.whatsapp).toBeNull();
     expect(pub.body.offer).toEqual({ human_id: `OFF-T116${tag}`, value: 19.9 });
     // NORQVA-0129: a oferta tem o PDF ligado (x.pdf): só o sim/não sai, nunca o arquivo
     expect(pub.body.delivery_pdf).toBe(true);

@@ -367,3 +367,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Dados no link (aprovado pelo Ricardo):** nome e e-mail vão no link para preencher o pagamento. Ficam fora da cópia guardada em Conversas e da resposta da tela (id opaco no lugar do telefone), mas aparecem no WhatsApp da pessoa, no servidor da Evolution e nos registros de acesso do site (endereço da página). O site tira os dois da barra de endereço ao abrir (NORQVA-0112).
 - **Número oficial fora:** sem modelo aprovado ele não alcança quem não escreveu nas últimas 24h.
 - Chave `WHATSAPP_RECOVERY_ENABLED` (padrão desligada).
+
+## D-0132 — Um número de WhatsApp para mais de uma marca (2026-10-25)
+
+- **Contrato NORQVA-0132 aprovado pelo Ricardo em 25/10/2026 02h31.** O 5642 (marca principal Trattoria em Casa) passa a atender também o Kit de Bordado; perfil do WhatsApp neutro "NORQVA Atendimento" (sugestão do Ricardo, trocado por ele no celular).
+- **Marcas extras por número:** tabela `whatsapp_number_brands` (migration 084), editada em Vendas → WhatsApp → Editar ("Também atende as marcas"). Só em número com marca principal e fora do oficial (o oficial continua isolado pela conta Meta).
+- **Assunto pela origem, sem misturar:** escolha gravada (`whatsapp_conversations.focus_brand_id`) → código do botão da página (oferta) → anúncio de plano do NORQVA (`launch_plans.meta_ids.ads`) → anúncio de fora do NORQVA = marca principal. Sem origem, o atendente se apresenta como NORQVA, pergunta o assunto e grava quando a pessoa escolhe (fotos ou cobrança). Depois disso o catálogo é só daquela marca: o outro produto nem aparece para a IA.
+- **Sem assunto, sem adivinhar:** fotos de amostra sem produto escolhido não saem.
+- **O que não muda:** só oferta ATIVA entra no catálogo e no botão (oferta em TESTE é do dono testando); preço, Pix, cartão, entrega e liberação iguais; a recuperação de pagamento (D-0125) continua só pelo número da marca principal.
+- **Botão na página gerada** (`/v/<slug>`): "Quero pelo WhatsApp" na abertura e na oferta, mais o flutuante, ao lado do botão de pagamento; a API pública devolve `whatsapp` só com número que atende a marca.
