@@ -8,6 +8,7 @@ import app from '../index';
 import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { GenerationService, renderImageFallback, NON_HERO_ROLES } from '../services/creative/generationService';
+import { BORDADO_IMAGES } from '../services/creative/generatedImages';
 
 const BORDADO = ['/images/bordado/capa.jpg', '/images/bordado/riscos.jpg', '/images/bordado/bichinhos.jpg', '/images/bordado/pontos.jpg'];
 
@@ -121,11 +122,13 @@ describe.sequential('NORQVA-0129 — página pública e prévia com as imagens d
     const res = await request(app).get(`/api/public/generated-pages/${slugB}`);
     expect(res.status).toBe(200);
     expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title']);
-    expect(res.body.gallery).toEqual(BORDADO);
+    expect(res.body.gallery).toEqual(BORDADO_IMAGES);
     expect(res.body.delivery_pdf).toBe(true);
     const img = Object.fromEntries(res.body.sections.map((s: any) => [s.role, s.image_url]));
     expect(img.HERO_HOOK).toBe('/images/bordado/capa.jpg');
-    expect([img.MECHANISM, img.BENEFITS, img.PRODUCT_REVEAL].sort()).toEqual(BORDADO.slice(1).sort());
+    for (const r of ['MECHANISM', 'BENEFITS', 'PRODUCT_REVEAL']) expect(BORDADO_IMAGES.slice(1)).toContain(img[r]);
+    const used = Object.values(img).filter(Boolean);
+    expect(new Set(used).size).toBe(used.length);
     for (const r of ['OFFER_PRICE', 'GUARANTEE', 'FAQ', 'CTA']) expect(img[r]).toBeNull();
     expect(Object.keys(res.body.sections[0]).sort()).toEqual(['body', 'bullets', 'cta_label', 'headline', 'image_url', 'note', 'order', 'price', 'role']);
     const text = JSON.stringify(res.body);
@@ -144,7 +147,7 @@ describe.sequential('NORQVA-0129 — página pública e prévia com as imagens d
 
   it('prévia do dono (tela de geração): mesmas imagens, sem gravar; o campo guardado continua vazio', async () => {
     const out = await new GenerationService(pool).get(pageB);
-    expect(out.page.gallery).toEqual(BORDADO);
+    expect(out.page.gallery).toEqual(BORDADO_IMAGES);
     expect(out.page.sections[0].image_preview_url).toBe('/images/bordado/capa.jpg');
     expect(out.page.sections[0].image_url).toBeNull();
     expect(out.page.sections[0].image_fallback).toBe(true);

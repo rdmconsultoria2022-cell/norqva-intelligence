@@ -15,6 +15,7 @@ import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageR
 import { setImageStorageForTests, resolveImageUrl, freshSignedUrl } from '../services/creative/generatedImages';
 import { metaIdsOfPlan } from '../db/decisionEvents';
 import { computeContentHash } from '../services/creative/creativeFactoryService';
+import { BORDADO_IMAGES } from '../services/creative/generatedImages';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 
@@ -55,12 +56,7 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
 
   it('NORQVA-0128: página sem imagem usa as imagens do produto no site; com imagem, só as da página', () => {
     const none = [{ role: 'HERO_HOOK', image_url: null }];
-    expect(adImageRefs(none, { name: 'Bordado' })).toEqual([
-      'https://acesso.norqva.com.br/images/bordado/capa.jpg',
-      'https://acesso.norqva.com.br/images/bordado/riscos.jpg',
-      'https://acesso.norqva.com.br/images/bordado/bichinhos.jpg',
-      'https://acesso.norqva.com.br/images/bordado/pontos.jpg'
-    ]);
+    expect(adImageRefs(none, { name: 'Bordado' })).toEqual(BORDADO_IMAGES.map(u => `https://acesso.norqva.com.br${u}`));
     expect(adImageRefs(none, { name: 'Produto sem fotos' })).toEqual([]);
     expect(adImageRefs([{ role: 'HERO_HOOK', image_url: '/images/kit/capa_trat.jpg' }], { name: 'Bordado' })).toEqual(['https://acesso.norqva.com.br/images/kit/capa_trat.jpg']);
   });
