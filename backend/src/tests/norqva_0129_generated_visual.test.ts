@@ -8,8 +8,10 @@ import app from '../index';
 import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { GenerationService, renderImageFallback, NON_HERO_ROLES } from '../services/creative/generationService';
+import { BORDADO_IMAGES } from '../services/creative/generatedImages';
 
-const BORDADO = ['/images/bordado/capa.jpg', '/images/bordado/riscos.jpg', '/images/bordado/bichinhos.jpg', '/images/bordado/pontos.jpg'];
+// lista de 4 imagens para os testes da regra (não é a lista do site)
+const FOUR_IMAGES = ['/images/bordado/capa.jpg', '/images/bordado/riscos.jpg', '/images/bordado/bichinhos.jpg', '/images/bordado/pontos.jpg'];
 
 const sec = (order: number, role: string, over: any = {}) => ({
   order, ref_order: null, role, replaced_from: null, fixed: false, fixed_note: null, headline: `Seção ${order}`, body: 'Texto.', bullets: [], cta_label: '',
@@ -19,9 +21,28 @@ const sec = (order: number, role: string, over: any = {}) => ({
 // esqueleto real da página do Bordado (GEN-000001)
 const BORDADO_ROLES = ['HERO_HOOK', 'PAIN', 'MECHANISM', 'BENEFITS', 'PRODUCT_REVEAL', 'OFFER_PRICE', 'GUARANTEE', 'CTA', 'OTHER', 'FAQ'];
 
+describe('NORQVA-0133 — imagens do site do Bordado no esqueleto real', () => {
+  it('cada seção recebe a imagem certa e a capa só na abertura', () => {
+    const out = renderImageFallback(BORDADO_ROLES.map(role => ({ role, image_url: null })), BORDADO_IMAGES);
+    const byRole = Object.fromEntries(BORDADO_ROLES.map((r, i) => [r, out[i]]));
+    expect(byRole).toEqual({
+      HERO_HOOK: '/images/bordado/capa.jpg',
+      PAIN: '/images/bordado/colecao.jpg',
+      MECHANISM: '/images/bordado/pontos.jpg',
+      BENEFITS: '/images/bordado/bastidor_gato.jpg',
+      PRODUCT_REVEAL: '/images/bordado/riscos.jpg',
+      OFFER_PRICE: null,
+      GUARANTEE: null,
+      CTA: null,
+      OTHER: '/images/bordado/bastidor_borboleta.jpg',
+      FAQ: null
+    });
+  });
+});
+
 describe('NORQVA-0129 — imagens na hora de mostrar', () => {
   it('abertura recebe a capa; as outras vão para conteúdo/benefícios/apresentação, nunca preço, garantia, dúvidas ou botão final', () => {
-    const out = renderImageFallback(BORDADO_ROLES.map(role => ({ role, image_url: null })), BORDADO);
+    const out = renderImageFallback(BORDADO_ROLES.map(role => ({ role, image_url: null })), FOUR_IMAGES);
     expect(out[0]).toBe('/images/bordado/capa.jpg');
     const byRole = Object.fromEntries(BORDADO_ROLES.map((r, i) => [r, out[i]]));
     // ordem da página: BENEFITS (4ª) e PRODUCT_REVEAL (5ª) entram antes de MECHANISM (3ª), mas aparecem na ordem da página
@@ -33,27 +54,27 @@ describe('NORQVA-0129 — imagens na hora de mostrar', () => {
 
   it('conteúdo e benefícios têm preferência; sem repetir imagem', () => {
     const roles = ['HERO_HOOK', 'PAIN', 'AGITATION', 'CONTENTS', 'BENEFITS', 'OFFER_PRICE'];
-    const out = renderImageFallback(roles.map(role => ({ role })), BORDADO);
+    const out = renderImageFallback(roles.map(role => ({ role })), FOUR_IMAGES);
     // CONTENTS e BENEFITS sempre; a terceira vai para a dor (antes da agitação); preço nunca
     expect(out).toEqual(['/images/bordado/capa.jpg', '/images/bordado/riscos.jpg', null, '/images/bordado/bichinhos.jpg', '/images/bordado/pontos.jpg', null]);
     expect(new Set(out.filter(Boolean)).size).toBe(4);
   });
 
   it('seção de texto aprovado (fixa) e depoimentos não recebem imagem', () => {
-    const out = renderImageFallback([{ role: 'HERO_HOOK' }, { role: 'TESTIMONIALS', fixed: true }, { role: 'BONUS', fixed: true }, { role: 'CONTENTS' }], BORDADO);
+    const out = renderImageFallback([{ role: 'HERO_HOOK' }, { role: 'TESTIMONIALS', fixed: true }, { role: 'BONUS', fixed: true }, { role: 'CONTENTS' }], FOUR_IMAGES);
     expect(out).toEqual(['/images/bordado/capa.jpg', null, null, '/images/bordado/riscos.jpg']);
   });
 
   it('página que abre com preço/garantia/dúvidas/botão: a capa vai para a primeira seção que pode ter imagem', () => {
-    expect(renderImageFallback([{ role: 'OFFER_PRICE' }, { role: 'GUARANTEE' }, { role: 'PAIN' }, { role: 'CONTENTS' }], BORDADO)).toEqual([
+    expect(renderImageFallback([{ role: 'OFFER_PRICE' }, { role: 'GUARANTEE' }, { role: 'PAIN' }, { role: 'CONTENTS' }], FOUR_IMAGES)).toEqual([
       null, null, '/images/bordado/capa.jpg', '/images/bordado/riscos.jpg'
     ]);
-    expect(renderImageFallback([{ role: 'CTA' }, { role: 'FAQ' }], BORDADO)).toEqual([null, null]);
+    expect(renderImageFallback([{ role: 'CTA' }, { role: 'FAQ' }], FOUR_IMAGES)).toEqual([null, null]);
     expect(NON_HERO_ROLES.has('OFFER_PRICE') && NON_HERO_ROLES.has('CTA') && !NON_HERO_ROLES.has('HERO_HOOK')).toBe(true);
   });
 
   it('página que já tem imagem própria fica como está; produto sem imagens não ganha nenhuma', () => {
-    expect(renderImageFallback([{ role: 'HERO_HOOK', image_url: 'storage:b/x.png' }, { role: 'CONTENTS', image_url: null }], BORDADO)).toEqual(['storage:b/x.png', null]);
+    expect(renderImageFallback([{ role: 'HERO_HOOK', image_url: 'storage:b/x.png' }, { role: 'CONTENTS', image_url: null }], FOUR_IMAGES)).toEqual(['storage:b/x.png', null]);
     expect(renderImageFallback([{ role: 'HERO_HOOK' }, { role: 'CONTENTS' }], [])).toEqual([null, null]);
   });
 });
@@ -120,12 +141,17 @@ describe.sequential('NORQVA-0129 — página pública e prévia com as imagens d
     const before = JSON.stringify((await pool.query('SELECT sections, version, updated_at FROM generated_pages WHERE id = $1', [pageB])).rows[0]);
     const res = await request(app).get(`/api/public/generated-pages/${slugB}`);
     expect(res.status).toBe(200);
-    expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title', 'whatsapp']);
-    expect(res.body.gallery).toEqual(BORDADO);
+    expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'image_note', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title', 'whatsapp']);
+    expect(res.body.gallery).toEqual(BORDADO_IMAGES);
+    // NORQVA-0133: ilustração, não foto; linha, tecido e bastidor não acompanham
+    expect(res.body.image_note).toMatch(/ilustra[çc][õo]es/);
+    expect(res.body.image_note).toMatch(/não acompanham/);
     expect(res.body.delivery_pdf).toBe(true);
     const img = Object.fromEntries(res.body.sections.map((s: any) => [s.role, s.image_url]));
     expect(img.HERO_HOOK).toBe('/images/bordado/capa.jpg');
-    expect([img.MECHANISM, img.BENEFITS, img.PRODUCT_REVEAL].sort()).toEqual(BORDADO.slice(1).sort());
+    for (const r of ['MECHANISM', 'BENEFITS', 'PRODUCT_REVEAL']) expect(BORDADO_IMAGES.slice(1)).toContain(img[r]);
+    const used = Object.values(img).filter(Boolean);
+    expect(new Set(used).size).toBe(used.length);
     for (const r of ['OFFER_PRICE', 'GUARANTEE', 'FAQ', 'CTA']) expect(img[r]).toBeNull();
     expect(Object.keys(res.body.sections[0]).sort()).toEqual(['body', 'bullets', 'cta_label', 'headline', 'image_url', 'note', 'order', 'price', 'role']);
     const text = JSON.stringify(res.body);
@@ -139,12 +165,13 @@ describe.sequential('NORQVA-0129 — página pública e prévia com as imagens d
     expect(res.status).toBe(200);
     expect(res.body.gallery).toEqual([]);
     expect(res.body.delivery_pdf).toBe(false);
+    expect(res.body.image_note).toBeUndefined();
     expect(res.body.sections.every((s: any) => s.image_url === null)).toBe(true);
   });
 
   it('prévia do dono (tela de geração): mesmas imagens, sem gravar; o campo guardado continua vazio', async () => {
     const out = await new GenerationService(pool).get(pageB);
-    expect(out.page.gallery).toEqual(BORDADO);
+    expect(out.page.gallery).toEqual(BORDADO_IMAGES);
     expect(out.page.sections[0].image_preview_url).toBe('/images/bordado/capa.jpg');
     expect(out.page.sections[0].image_url).toBeNull();
     expect(out.page.sections[0].image_fallback).toBe(true);

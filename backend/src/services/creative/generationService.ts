@@ -31,6 +31,7 @@ import {
   imagesBucketReady,
   bucketMissingMessage,
   productImages,
+  productImageNote,
   imageStyle,
   resolveImageUrl,
   KIE_MISSING_MESSAGE,
@@ -1639,6 +1640,7 @@ export class GenerationService {
     // NORQVA-0129: página sem imagens (gerada sem a KIE) mostra as do produto que já estão no site; nada é gravado
     const gallery = productImages({ name: r.product_name, collection_key: r.product_collection_key });
     const shown = renderImageFallback(sections, gallery);
+    const imageNote = gallery.length ? productImageNote({ name: r.product_name, collection_key: r.product_collection_key }) : null;
     return {
       slug: r.slug,
       theme: r.theme === 'fresh' ? 'fresh' : 'light',
@@ -1647,6 +1649,7 @@ export class GenerationService {
       offer_id: r.offer_id as string,
       sections: await Promise.all(sections.map(async (x, i) => PUBLIC_SECTION(x, await resolveImageUrl(shown[i]), price))),
       gallery,
+      ...(imageNote ? { image_note: imageNote } : {}),
       delivery_pdf: await offerDeliversPdf(this.pool, r.offer_id)
     };
   }

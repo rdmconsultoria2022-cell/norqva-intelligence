@@ -241,6 +241,26 @@ const BOOK_IMAGES: Record<string, string[]> = {
   risotos: ['/images/livros/risotos/capa.jpg', '/images/livros/risotos/funghi.jpg', '/images/livros/risotos/milanese.jpg', '/images/livros/risotos/polenta_grelhada.jpg']
 };
 
+export const BORDADO_IMAGES = [
+  '/images/bordado/capa.jpg',
+  '/images/bordado/colecao.jpg',
+  '/images/bordado/pontos.jpg',
+  '/images/bordado/bastidor_gato.jpg',
+  '/images/bordado/riscos.jpg',
+  '/images/bordado/bastidor_borboleta.jpg',
+  '/images/bordado/bastidor_monograma.jpg',
+  '/images/bordado/bastidor_frase.jpg',
+  '/images/bordado/bastidor_raposa.jpg'
+];
+
+/** NORQVA-0133: aviso junto das imagens quando elas são ilustração (não foto) de algo que não vem no produto. */
+export function productImageNote(p: { name?: unknown; collection_key?: unknown }): string | null {
+  if (/bordado/.test(String(p.name || '').toLowerCase())) {
+    return 'Os bastidores são ilustrações de como o risco fica bordado. O kit é um PDF com os riscos e o guia; linha, tecido e bastidor não acompanham.';
+  }
+  return null;
+}
+
 /** Capa e fotos que já estão no site para este produto (vazio quando não há). */
 export function productImages(p: { name?: unknown; collection_key?: unknown }): string[] {
   const key = String(p.collection_key || '').trim().toLowerCase();
@@ -248,7 +268,8 @@ export function productImages(p: { name?: unknown; collection_key?: unknown }): 
   const name = String(p.name || '').toLowerCase();
   if (/dolci/.test(name)) return ['/images/kit/capa_dolci.jpg', '/images/kit/dolci_tiramisu.jpg', '/images/kit/dolci_cannoli.jpg', '/images/kit/dolci_pannacotta.jpg'];
   if (/trattoria/.test(name)) return ['/images/kit/capa_trat.jpg', '/images/kit/trat_carbonara.jpg', '/images/kit/trat_ragu.jpg', '/images/kit/trat_ravioli.jpg'];
-  if (/bordado/.test(name)) return ['/images/bordado/capa.jpg', '/images/bordado/riscos.jpg', '/images/bordado/bichinhos.jpg', '/images/bordado/pontos.jpg'];
+  // NORQVA-0133: capa, os riscos do kit "bordados" no bastidor (gerar_imagens_site.py) e páginas do PDF
+  if (/bordado/.test(name)) return BORDADO_IMAGES;
   if (/^kit\b/.test(name)) return ['/images/kit/capa_kit.jpg', '/images/kit/trat_pizza.jpg', '/images/kit/dolci_tiramisu.jpg', '/images/kit/trat_pesto.jpg'];
   return [];
 }
