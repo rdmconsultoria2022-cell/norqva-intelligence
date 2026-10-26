@@ -384,3 +384,7 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Freio:** gasto ≥ R$ 750 sem oferta com 5 vendas e CPA dentro do máximo, ou resultado ≤ −R$ 750, ou capital esgotado: pausa tudo e avisa. Fim do prazo: pausa e encerra.
 - **Subir orçamento:** 48 h entre subidas, até +20%, 5 vendas pagas nos últimos 3 dias com CPA ≤ 80% do máximo. Baixar sempre. Das 22h às 8h só pausar. Pausar sempre; ativar só com o mandato ativo e sem freio.
 - **Caminho único:** toda alteração passa pela ficha de alteração (mesmas travas das telas) e fica registrada no mandato. Vendas só de pedidos PAID confirmados pelo Asaas.
+- **Teto diário conferível:** orçamento total ou desconhecido numa campanha ou conjunto ativo do mandato bloqueia ativar e subir orçamento. Ativar conjunto pausado com orçamento alto só é limitado pelo teto diário (a regra de +20% é para subidas). A Meta pode gastar até ~75% acima do orçamento diário num dia; a trava firme é o freio (a cada 15 min).
+- **Capital não volta:** tirar campanha da lista não devolve o gasto dela ao capital (conta de quando entrou até quando saiu).
+- **Plano pausado:** o operador reativa campanha de plano sem o código do plano só quando ela está num mandato ativo; pela tela o código continua obrigatório.
+- **Noite:** das 22h às 8h só pausar, inclusive baixar orçamento é recusado.

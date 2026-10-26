@@ -397,4 +397,100 @@ describe.sequential('NORQVA-0137 — mandato do operador (HTTP)', () => {
     const out = await op().post(`/api/operator/campaign/${a.cmp}/status`, { status: 'PAUSED' });
     expect(out.status).toBe(403);
   });
+
+  // ------------------------------ correções da revisão independente ------------------------------
+
+  it('orçamento total (ou conjunto sem orçamento diário) bloqueia ativar e subir: o teto não pode ser conferido', async () => {
+    const a = await seed({ adsetBudget: 20 });
+    const lifeDb = crypto.randomUUID();
+    const life = digits();
+    await pool.query(
+      `INSERT INTO meta_campaigns (id, meta_campaign_id, ad_account_id, name, status, effective_status, lifetime_budget, is_demo)
+       VALUES ($1, $2, $3, 'Campanha orçamento total', 'PAUSED', 'PAUSED', 500, FALSE)`,
+      [lifeDb, life, accountDbId]
+    );
+    onMeta.set(life, { status: 'PAUSED' });
+    spend.set(life, 0);
+    await createMandate([a.cmp, life]);
+    const r = await op().post(`/api/operator/campaign/${life}/status`, { status: 'ACTIVE' });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/orçamento total/);
+    expect(post).not.toHaveBeenCalled();
+
+    // conjunto ativo sem orçamento diário (não sincronizado): também recusa
+    const b = await seed({ adsetBudget: 20 });
+    await pool.query(`UPDATE meta_ad_sets SET daily_budget = NULL WHERE meta_adset_id = $1`, [b.set]);
+    await as(admin).put('/api/mandate/campaigns?mode=real', { campaigns: [a.cmp, b.cmp] });
+    const up = await op().post(`/api/operator/campaign/${a.cmp}/status`, { status: 'ACTIVE' });
+    expect(up.status).toBe(409);
+    expect(up.body.error).toMatch(/sem orçamento diário/);
+  });
+
+  it('corrida: mandato freado depois da conferência e antes da trava → ativar é recusado', async () => {
+    const { cmp, set } = await seed({ adsetStatus: 'PAUSED' });
+    await createMandate([cmp]);
+    const stale = (await pool.query(`SELECT * FROM operator_mandates WHERE status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`)).rows[0];
+    await pool.query(`UPDATE operator_mandates SET status = 'BRAKED', stop_reason = 'teste de corrida' WHERE id = $1`, [stale.id]);
+    const spy = vi.spyOn(MandateService.prototype, 'check').mockImplementation(async () => ({ mandate: stale, snapshot: { spent: 0, campaigns: [] }, error: null, verdict: null }));
+    try {
+      const r = await op().post(`/api/operator/adset/${set}/status`, { status: 'ACTIVE' });
+      expect(r.status).toBe(409);
+      expect(r.body.error).toMatch(/freio/i);
+      expect(post).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('tirar campanha da lista não devolve capital: o gasto dela até sair continua contando para o freio', async () => {
+    const a = await seed();
+    const b = await seed();
+    await createMandate([{ meta_campaign_id: a.cmp, offer_human_id: offerHuman }, b.cmp]);
+    spend.set(a.cmp, 400);
+    spend.set(b.cmp, 400);
+    await as(admin).put('/api/mandate/campaigns?mode=real', { campaigns: [{ meta_campaign_id: a.cmp, offer_human_id: offerHuman }] });
+    const r = await new MandateService(pool).check(noon());
+    expect(r.snapshot?.spent).toBe(800);
+    expect(r.verdict).toMatchObject({ stop: true, status: 'BRAKED' });
+  });
+
+  it('campanha de plano pausada pelo operador: o operador reativa sem o código (mandato ativo); a tela continua pedindo o código', async () => {
+    const { cmp, set } = await seed();
+    const code = `T137-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    await pool.query(
+      `INSERT INTO launch_plans (code, status, spec, meta_ids, daily_budget_brl, max_spend_brl, question_text)
+       VALUES ($1, 'ACTIVE', $2, $3, 30, 300, 'teste 0137')`,
+      [code, JSON.stringify({ campaign: { name: code }, adsets: [{ name: 'Conj', daily_budget_brl: 30 }], ads: [] }), JSON.stringify({ campaign: { [code]: cmp }, adsets: { Conj: set }, ads: {} })]
+    );
+    await createMandate([cmp]);
+    expect((await op().post(`/api/operator/campaign/${cmp}/status`, { status: 'PAUSED' })).status).toBe(200);
+    const paused = await pool.query(`SELECT operator_paused_at FROM launch_plans WHERE code = $1`, [code]);
+    expect(paused.rows[0].operator_paused_at).not.toBeNull();
+
+    const screen = await as(admin).post(`/api/meta-control/campaign/${cmp}/status?mode=real`, { status: 'ACTIVE' });
+    expect(screen.status).toBe(409);
+    expect(screen.body.needs_confirm_code).toBe(code);
+
+    const r = await op().post(`/api/operator/campaign/${cmp}/status`, { status: 'ACTIVE' });
+    expect(r.status).toBe(200);
+    expect(onMeta.get(cmp)?.status).toBe('ACTIVE');
+  });
+
+  it('aviso de leitura falhando abre a partir da 3.ª falha (inclusive depois dela)', async () => {
+    const { cmp } = await seed();
+    await createMandate([cmp]);
+    await pool.query(`UPDATE ad_alerts SET status = 'RESOLVED' WHERE rule_code = 'MANDATE_READ_FAILED'`);
+    await pool.query(`UPDATE operator_mandates SET read_failures = 5 WHERE status = 'ACTIVE'`);
+    setMandateReaderForTesting(() => ({
+      spendBetween: async () => {
+        throw new Error('[META TIMEOUT EXCEPTION]: x');
+      },
+      adInsightsDaily: async () => ({ rows: [], truncated: false }),
+      hourly: async () => []
+    }));
+    const r = await new MandateService(pool).check(noon());
+    expect(r.error).toMatch(/TIMEOUT/);
+    const alert = await pool.query(`SELECT 1 FROM ad_alerts WHERE rule_code = 'MANDATE_READ_FAILED' AND status = 'OPEN'`);
+    expect(alert.rows.length).toBe(1);
+  });
 });

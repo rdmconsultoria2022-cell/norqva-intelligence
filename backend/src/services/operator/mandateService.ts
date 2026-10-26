@@ -347,6 +347,22 @@ export class MandateService {
     return r.rows;
   }
 
+  /**
+   * Todas as campanhas que já estiveram no mandato (também as tiradas da lista), com o período em que contaram:
+   * de quando entraram (ou da ativação) até quando saíram (ou agora). Tirar da lista não devolve capital.
+   * Uma campanha tirada e posta de volta conta desde a primeira entrada (mais conservador).
+   */
+  async everCampaigns(mandateId: string): Promise<any[]> {
+    const r = await this.pool.query(
+      `SELECT mc.meta_campaign_id, COALESCE(c.name, mc.name) AS name, mc.offer_human_id, c.status, mc.created_at AS added_at, mc.removed_at
+       FROM operator_mandate_campaigns mc
+       LEFT JOIN meta_campaigns c ON c.meta_campaign_id = mc.meta_campaign_id AND c.is_demo = FALSE
+       WHERE mc.mandate_id = $1 ORDER BY mc.created_at`,
+      [mandateId]
+    );
+    return r.rows;
+  }
+
   async offers(humanIds: string[]): Promise<Map<string, { human_id: string; name: string; price: number; max_cpa: number }>> {
     const out = new Map<string, { human_id: string; name: string; price: number; max_cpa: number }>();
     if (humanIds.length === 0) return out;
@@ -401,13 +417,31 @@ export class MandateService {
 
   /** Gasto (Meta), vendas e receita (Asaas) desde a ativação, por campanha e por oferta. Lança se a Meta não responder. */
   async snapshot(m: any, now = clock()) {
-    const camps = await this.campaigns(m.id);
+    const camps = await this.everCampaigns(m.id);
     const ids = camps.map((c) => String(c.meta_campaign_id));
+    const activated = new Date(m.activated_at).getTime();
     const since = spClock(new Date(m.activated_at)).date;
     const until = spClock(now).date;
+    // período de cada campanha no mandato (gasto por dia na Meta; vendas pelo instante da confirmação)
+    const period = new Map<string, { from: number; to: number | null }>();
+    for (const c of camps) {
+      period.set(String(c.meta_campaign_id), {
+        from: Math.max(activated, new Date(c.added_at).getTime()),
+        to: c.removed_at ? new Date(c.removed_at).getTime() : null
+      });
+    }
     const spend = new Map<string, number>();
-    for (const id of ids) spend.set(id, r2(await this.reader.spendBetween(id, since, until)));
-    const sales = await attributedSales(this.pool, ids, new Date(m.activated_at).toISOString());
+    for (const id of ids) {
+      const p = period.get(id)!;
+      const s0 = spClock(new Date(p.from)).date;
+      const s1 = p.to === null ? until : spClock(new Date(p.to)).date;
+      spend.set(id, s1 < s0 ? 0 : r2(await this.reader.spendBetween(id, s0, s1)));
+    }
+    const sales = (await attributedSales(this.pool, ids, new Date(m.activated_at).toISOString())).filter((s) => {
+      const p = period.get(s.meta_campaign_id);
+      const t = new Date(s.confirmed_at).getTime();
+      return !!p && t >= p.from && (p.to === null || t <= p.to);
+    });
 
     // oferta de cada campanha: a definida no mandato ou, sem ela, a mais vendida pela campanha
     const offerOf = new Map<string, { id: string | null; source: 'CONFIGURED' | 'INFERRED' | null }>();
@@ -435,6 +469,7 @@ export class MandateService {
         meta_campaign_id: id,
         name: c.name || null,
         status: c.status || null,
+        removed: Boolean(c.removed_at),
         offer_human_id: off.id,
         offer_source: off.source,
         max_cpa: info?.max_cpa ?? null,
@@ -511,7 +546,7 @@ export class MandateService {
           `UPDATE operator_mandates SET read_failures = read_failures + 1, last_check_error = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
           [m.id, msg]
         );
-        if (Number(r.rows[0]?.read_failures) === READ_FAILURES_ALERT) {
+        if (Number(r.rows[0]?.read_failures) >= READ_FAILURES_ALERT) {
           await this.alert('MANDATE_READ_FAILED', null, m.name, `O freio do mandato não consegue ler o gasto na Meta (${READ_FAILURES_ALERT} tentativas seguidas): ${msg}. Enquanto isso o operador só pode pausar.`);
         }
         return { mandate: r.rows[0], snapshot: null, error: msg, verdict: null };
@@ -571,6 +606,9 @@ export class MandateService {
   ): Promise<{ state: string; error: string | null; id: string | null; http_status?: number }> {
     const id = crypto.randomUUID();
     const req = systemReq(this.pool, actor === 'OPERATOR' ? OPERATOR_NAME : actor === 'BRAKE' ? BRAKE_NAME : 'Administrador (mandato)');
+    // só o operador: marca (que não vem de HTTP) para reativar campanha de plano pausada sem o código do plano,
+    // quando ela está num mandato ativo (o mandato aprovado pelo Ricardo é a autorização)
+    if (actor === 'OPERATOR') req.mandateOperator = true;
     let change: any;
     try {
       const r = await new MetaChangeService(this.pool).create(req, { id, entity_type: type.toLowerCase(), meta_id: metaId, kind, value, scope_campaign: campaignId });
@@ -612,29 +650,65 @@ export class MandateService {
 
   /**
    * Soma dos orçamentos diários que podem gastar (campanha ativa; orçamento da campanha ou dos conjuntos ativos).
-   * `override` simula a mudança pedida. Campanha do mandato sem cópia no banco → null (não dá para conferir).
+   * `override` simula a mudança pedida. Se algo que pode gastar não tem orçamento diário conhecido (orçamento total,
+   * ou campanha/conjunto não sincronizado), a soma não pode ser conferida: total null e o motivo.
    */
-  async dailyBudgetSum(mandateId: string, override?: { type: EntityType; metaId: string; status?: string; budget?: number }): Promise<number | null> {
+  async budgetSum(
+    mandateId: string,
+    override?: { type: EntityType; metaId: string; status?: string; budget?: number }
+  ): Promise<{ total: number | null; problem: string | null }> {
     const camps = await this.campaigns(mandateId);
+    const has = (v: unknown) => v !== null && v !== undefined && v !== '';
+    const isOv = (t: EntityType, id: string) => !!override && override.type === t && override.metaId === String(id);
     let total = 0;
     for (const c of camps) {
-      const row = (await this.pool.query(`SELECT id, meta_campaign_id, status, daily_budget FROM meta_campaigns WHERE meta_campaign_id = $1 AND is_demo = FALSE LIMIT 1`, [c.meta_campaign_id])).rows[0];
-      if (!row) return null;
-      const isOv = (t: EntityType, id: string) => override && override.type === t && override.metaId === String(id);
+      const row = (
+        await this.pool.query(`SELECT id, meta_campaign_id, name, status, daily_budget, lifetime_budget FROM meta_campaigns WHERE meta_campaign_id = $1 AND is_demo = FALSE LIMIT 1`, [
+          c.meta_campaign_id
+        ])
+      ).rows[0];
+      if (!row) return { total: null, problem: `A campanha ${c.meta_campaign_id} do mandato ainda não foi sincronizada no NORQVA. Sincronize a Meta antes.` };
       const cStatus = isOv('CAMPAIGN', row.meta_campaign_id) && override!.status ? override!.status : String(row.status || '').toUpperCase();
       if (cStatus !== 'ACTIVE') continue;
-      if (row.daily_budget !== null && row.daily_budget !== undefined) {
-        total += isOv('CAMPAIGN', row.meta_campaign_id) && override!.budget !== undefined ? override!.budget! : num(row.daily_budget);
+      if (isOv('CAMPAIGN', row.meta_campaign_id) && override!.budget !== undefined) {
+        total += override!.budget!;
         continue;
       }
-      const sets = await this.pool.query(`SELECT meta_adset_id, status, daily_budget FROM meta_ad_sets WHERE campaign_id = $1 AND is_demo = FALSE`, [row.id]);
-      for (const s of sets.rows) {
-        const sStatus = isOv('ADSET', s.meta_adset_id) && override!.status ? override!.status : String(s.status || '').toUpperCase();
+      if (has(row.daily_budget)) {
+        total += num(row.daily_budget);
+        continue;
+      }
+      if (has(row.lifetime_budget)) {
+        return { total: null, problem: `A campanha "${row.name || row.meta_campaign_id}" usa orçamento total, não diário: o teto diário do mandato não pode ser conferido. O operador não ativa nem sobe orçamento enquanto isso.` };
+      }
+      const sets = await this.pool.query(`SELECT meta_adset_id, name, status, daily_budget, lifetime_budget FROM meta_ad_sets WHERE campaign_id = $1 AND is_demo = FALSE`, [row.id]);
+      if (sets.rows.length === 0) {
+        return { total: null, problem: `A campanha "${row.name || row.meta_campaign_id}" não tem orçamento diário nem conjuntos sincronizados. Sincronize a Meta antes.` };
+      }
+      for (const st of sets.rows) {
+        const sStatus = isOv('ADSET', st.meta_adset_id) && override!.status ? override!.status : String(st.status || '').toUpperCase();
         if (sStatus !== 'ACTIVE') continue;
-        total += isOv('ADSET', s.meta_adset_id) && override!.budget !== undefined ? override!.budget! : num(s.daily_budget);
+        if (isOv('ADSET', st.meta_adset_id) && override!.budget !== undefined) {
+          total += override!.budget!;
+          continue;
+        }
+        if (!has(st.daily_budget)) {
+          return {
+            total: null,
+            problem: has(st.lifetime_budget)
+              ? `O conjunto "${st.name || st.meta_adset_id}" usa orçamento total, não diário: o teto diário do mandato não pode ser conferido. O operador não ativa nem sobe orçamento enquanto isso.`
+              : `O conjunto "${st.name || st.meta_adset_id}" está sem orçamento diário no NORQVA. Sincronize a Meta antes.`
+          };
+        }
+        total += num(st.daily_budget);
       }
     }
-    return r2(total);
+    return { total: r2(total), problem: null };
+  }
+
+  /** Só o total (null quando não dá para conferir). */
+  async dailyBudgetSum(mandateId: string, override?: { type: EntityType; metaId: string; status?: string; budget?: number }): Promise<number | null> {
+    return (await this.budgetSum(mandateId, override)).total;
   }
 
   /** Horas desde a última subida de orçamento deste objeto (fichas de qualquer origem). null = nenhuma. */
@@ -725,11 +799,19 @@ export class MandateService {
     if (isQuietHours(now)) return refuse(409, 'Das 22h às 8h (Brasília) só pausar é permitido.');
 
     return withPlanLock(this.pool, `mandate:${m.id}`, async () => {
+      // com a trava: relê o mandato e a lista (o freio, o prazo ou o administrador podem ter mudado depois da conferência)
+      const now2 = (await this.pool.query(`SELECT status, stop_reason FROM operator_mandates WHERE id = $1`, [m.id])).rows[0];
+      if (!now2 || now2.status !== 'ACTIVE') {
+        return refuse(409, now2?.status === 'BRAKED' ? `Mandato com freio acionado (${now2.stop_reason || 'sem motivo'}). Só pausar é permitido.` : 'Mandato encerrado. Só pausar é permitido.');
+      }
+      const still = await this.pool.query(`SELECT 1 FROM operator_mandate_campaigns WHERE mandate_id = $1 AND meta_campaign_id = $2 AND removed_at IS NULL LIMIT 1`, [m.id, campaignId]);
+      if (!still.rows.length) return refuse(403, 'Esta campanha não está no mandato. O operador só mexe nas campanhas da lista. Nada foi alterado.');
       const cap = num(m.daily_cap_brl);
       if (!isBudget) {
         // ativar: a soma dos orçamentos com este objeto ativo precisa caber no teto diário
-        const sum = await this.dailyBudgetSum(m.id, { type, metaId, status: 'ACTIVE' });
-        if (sum === null) return refuse(409, 'Há campanha do mandato que o NORQVA ainda não sincronizou. Sincronize a Meta antes de ativar.');
+        const b = await this.budgetSum(m.id, { type, metaId, status: 'ACTIVE' });
+        if (b.total === null) return refuse(409, `${b.problem} Nada foi ativado.`);
+        const sum = b.total;
         if (sum > cap + 0.005) return refuse(409, `Ativar deixaria a soma dos orçamentos diários em ${brl(sum)}, acima do teto do mandato (${brl(cap)}/dia).`);
         const ch = await this.execute(m, 'OPERATOR', type, metaId, campaignId, 'STATUS', 'ACTIVE', ent.status ? String(ent.status).toUpperCase() : null);
         return { change: ch, mandate_status: m.status };
@@ -739,8 +821,9 @@ export class MandateService {
       if (previous === null) return refuse(400, 'Este objeto não tem orçamento diário próprio (o orçamento fica no outro nível). Nada foi alterado.');
       const value = amount as number;
       if (value > previous + 0.005) {
-        const sum = await this.dailyBudgetSum(m.id, { type, metaId, budget: value });
-        if (sum === null) return refuse(409, 'Há campanha do mandato que o NORQVA ainda não sincronizou. Sincronize a Meta antes de subir orçamento.');
+        const b = await this.budgetSum(m.id, { type, metaId, budget: value });
+        if (b.total === null) return refuse(409, `${b.problem} Nada foi alterado.`);
+        const sum = b.total;
         if (sum > cap + 0.005) return refuse(409, `Com essa subida a soma dos orçamentos diários iria a ${brl(sum)}, acima do teto do mandato (${brl(cap)}/dia).`);
         const why = judgeIncrease({
           previous,

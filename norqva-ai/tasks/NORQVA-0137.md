@@ -66,8 +66,19 @@ Migration 085 (só aditiva): `operator_mandates`, `operator_mandate_campaigns`, 
 
 `backend/src/tests/norqva_0137_operator_mandate.test.ts` (Meta simulada): token (sem chave, sem token, token errado, token não abre outras rotas), CPA máximo, teto diário, +20%/48 h, critério de lucro, janela da noite, campanha fora do mandato, freio pausando e recusando ativar, prejuízo pelo agendador, leitura da Meta falhando, encerrar, editar lista. `frontend/src/tests/norqva_0137_operator_mandate.test.tsx`: cartão.
 
+## Revisão independente (aplicada)
+
+- **Orçamento total ou desconhecido:** se uma campanha ativa (ou um conjunto ativo) do mandato usa orçamento total ou está sem orçamento diário no NORQVA, a soma do teto diário não pode ser conferida: ativar e subir orçamento são recusados com o motivo (antes contava como zero).
+- **Corrida:** com a trava do mandato, o servidor relê a situação do mandato e a lista antes de ativar ou mudar orçamento. Freio, prazo ou administrador que mudaram algo no meio barram a escrita.
+- **Tirar da lista não devolve capital:** o gasto conta para todas as campanhas que já estiveram no mandato, de quando entraram até quando saíram (ou até agora). Campanha tirada e posta de volta conta desde a primeira entrada (mais conservador).
+- **Campanha de plano pausada pelo operador:** a pausa marca o plano como "pausado pela tela" e reativar pedia o código do plano. Agora o operador reativa sem o código **só** quando a campanha está num mandato ativo (o mandato aprovado pelo Ricardo é a autorização). Pela tela continua pedindo o código.
+- **Aviso de leitura falhando:** abre a partir da 3.ª falha seguida (antes só exatamente na 3.ª).
+
 ## Limites conhecidos
 
 - O gasto "desde a ativação" conta o dia inteiro da ativação (a Meta soma por dia).
 - Campanha precisa estar sincronizada no NORQVA (`meta_campaigns`) para entrar no mandato e ser pausada.
 - Pedido sem origem ou com origem ambígua não conta como venda da campanha (mais conservador).
+- Ativar um conjunto pausado com orçamento alto só é limitado pelo teto diário de R$ 100 (a regra de +20% vale para subir orçamento, não para ativar).
+- A Meta pode gastar até cerca de 75% acima do orçamento diário num dia. O teto diário limita orçamento, não o gasto do dia: a trava firme é o freio, conferido a cada 15 min.
+- Das 22h às 8h também baixar orçamento é recusado (só pausar). Mantido de propósito: pausar já reduz o gasto.

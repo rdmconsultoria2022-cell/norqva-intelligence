@@ -244,6 +244,20 @@ function isPlanCampaign(plan: any, metaId: string): boolean {
   return Object.values(parseIds(plan.meta_ids).campaign || {}).map(String).includes(metaId);
 }
 
+/** NORQVA-0137: a campanha está na lista de um mandato ativo? Na dúvida (erro de leitura), não. */
+async function inActiveMandate(pool: Pool, metaCampaignId: string): Promise<boolean> {
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM operator_mandate_campaigns mc JOIN operator_mandates m ON m.id = mc.mandate_id
+       WHERE mc.meta_campaign_id = $1 AND mc.removed_at IS NULL AND m.status = 'ACTIVE' LIMIT 1`,
+      [String(metaCampaignId)]
+    );
+    return r.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Response) {
   const pool: Pool = req.app.get('db');
   const entityType = ENTITY_TYPES[String(req.params.entityType || '').toLowerCase()];
@@ -306,7 +320,9 @@ export async function setMetaEntityStatus(req: AuthenticatedRequest, res: Respon
     }
     if (owner && entityType === 'CAMPAIGN' && owner.plan.operator_paused_at && isPlanCampaign(owner.plan, owner.metaId)) {
       const code = String(req.body?.confirm_code || '').trim().toUpperCase();
-      if (code !== String(owner.plan.code).toUpperCase()) {
+      // NORQVA-0137: o operador do mandato reativa sem o código quando a campanha está num mandato ativo
+      const byMandate = (req as any).mandateOperator === true && (await inActiveMandate(pool, owner.metaId));
+      if (!byMandate && code !== String(owner.plan.code).toUpperCase()) {
         const error = `A campanha do plano ${owner.plan.code} foi pausada pela tela. Para reativar, digite o código ${owner.plan.code}: vale como um novo Sim.`;
         await decision.finish('REJECTED', { result: { http_status: 409 }, error });
         return res.status(409).json({ error, needs_confirm_code: owner.plan.code });
@@ -359,7 +375,7 @@ async function syncPlanPauseStateLocked(pool: Pool, req: AuthenticatedRequest, o
     }
     if (status === 'ACTIVE' && p.operator_paused_at) {
       await pool.query(`UPDATE launch_plans SET operator_paused_at = NULL, operator_paused_by = NULL, updated_at = NOW() WHERE id = $1`, [p.id]);
-      await writeAuditLog(pool, req.user?.id || null, 'LAUNCH_PLAN_RESUMED_BY_OPERATOR', `Plano ${p.code}: campanha reativada pela tela com o código do plano.`, 'PAUSED', 'ACTIVE');
+      await writeAuditLog(pool, req.user?.id || null, 'LAUNCH_PLAN_RESUMED_BY_OPERATOR', (req as any).mandateOperator === true ? `Plano ${p.code}: campanha reativada pelo operador do mandato (mandato ativo).` : `Plano ${p.code}: campanha reativada pela tela com o código do plano.`, 'PAUSED', 'ACTIVE');
       return { plan_resumed: p.code };
     }
     return {};
