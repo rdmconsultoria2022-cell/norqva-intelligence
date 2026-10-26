@@ -64,5 +64,23 @@ Cena final de todos: "Peça pelo WhatsApp e receba os livros na conversa / Pagam
 `TR-M01-assets/TR-M01-H0N-M1-C1.mp4` (2 a 4 MB cada) e `TR-M01-assets/TR-M01-H0N-M1-C1-feed.jpg`.
 Para refazer: `python3 norqva-ai/creative-batches/TR-M01-assets/tools/build_trm01.py <pasta de saída> [CHAVE ...]` (gera os PDFs que faltarem; precisa de Playwright + Chromium, Pillow, numpy/scipy, `pdftoppm` e `ffmpeg`).
 
+## Versão C2: campanha de vendas com destino na página do kit (NORQVA-0141, 26/10/2026)
+
+**Campanha:** vendas (conversão), destino na página do kit de 5 livros `/kit/OFF-000010` ("Kit Trattoria Completo — 5 livros").
+**Botão:** **Saiba mais** (LEARN_MORE).
+
+Os 4 vídeos C2 são **iguais aos C1** (mesmas cenas, tempos e trilha); só muda o fechamento: no lugar da conversa do WhatsApp entram as 5 capas reais, o título "5 livros de receitas em PDF", a linha "Trattoria · Dolci · Pães · Antipasti · Risotos" e o botão desenhado "Toque em Saiba mais" (mesmo padrão do KIT-B01). Nada de WhatsApp, Pix, canal de entrega ou preço (D-0053). Os arquivos C1 não mudaram. A imagem de feed C2 troca só a última linha para "Toque em Saiba mais e veja o kit".
+
+| Chave | Título (≤40) | Texto principal (≤125) | Botão |
+|---|---|---|---|
+| TR-M01-H01-M1-C2 | Veja por dentro: 5 livros em PDF | Massas, doces, pães, antipasti e risotos em 5 livros de receitas em PDF. Toque em Saiba mais e veja o kit. | Saiba mais (LEARN_MORE) |
+| TR-M01-H02-M1-C2 | Sobremesas italianas em PDF | Tiramisù, panna cotta e cannoli em taça, passo a passo, e mais 4 livros no kit. Toque em Saiba mais e veja o kit. | Saiba mais (LEARN_MORE) |
+| TR-M01-H03-M1-C2 | Carbonara passo a passo, em PDF | Carbonara, ragù e mais 72 receitas italianas em 5 livros digitais. Toque em Saiba mais e veja o kit. | Saiba mais (LEARN_MORE) |
+| TR-M01-H04-M1-C2 | Medidas exatas e passo a passo | Gramas, ml e, na maioria das receitas, também xícaras. São 5 livros em PDF. Toque em Saiba mais e veja o kit. | Saiba mais (LEARN_MORE) |
+
+Claims da C2: as 1 a 4 acima (a 5, do WhatsApp, não vale aqui). Antes de ativar: conferir que a OFF-000010 está ATIVA e entrega os 5 PDFs.
+Arquivos: `TR-M01-assets/TR-M01-H0N-M1-C2.mp4` e `TR-M01-H0N-M1-C2-feed.jpg`. Para refazer: `python3 norqva-ai/creative-batches/TR-M01-assets/tools/build_trm01.py <pasta de saída> --pagina [CHAVE ...]`.
+Quadros conferidos em 0,3 s, 3 s, 8 s, 12,5 s e 14,5 s de cada vídeo C2; 1080x1920, 15 s, H.264 + AAC, -14,0 LUFS medidos.
+
 ## Próximo passo do Ricardo
 Assistir, escolher os que aprova, anexar na Fábrica de Criativos e verificar as claims (principalmente a 6). Subir na campanha clique-para-WhatsApp com o botão "Enviar mensagem", tudo pausado; ativar só com o "sim" dele.

@@ -3,7 +3,10 @@
 campanha clique-para-WhatsApp. Mostra as PÁGINAS REAIS dos PDFs num celular desenhado aqui (sem marca),
 os pratos com as fotos dos próprios livros e o fechamento "peça pelo WhatsApp". Sem preço (D-0053).
 
-Uso: python3 build_trm01.py <saida_dir> [CHAVE ...]
+Uso: python3 build_trm01.py <saida_dir> [--pagina] [CHAVE ...]
+- --pagina: versão C2 (NORQVA-0141) para a campanha de VENDAS com destino na página do kit (/kit/OFF-000010):
+  mesmos vídeos, mas o fechamento troca a conversa do WhatsApp pelas 5 capas, "5 livros de receitas em PDF" e
+  "Toque em Saiba mais". Sem WhatsApp, sem canal de entrega e sem preço. Sem a opção, gera a C1 (WhatsApp).
 - Gera os PDFs que faltarem com os scripts de norqva-ai/produtos/* e rasteriza as páginas com pdftoppm.
 - Trilha: music.py do lote KIT-B01 (original), normalizada a -14 LUFS.
 """
@@ -15,7 +18,9 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 PROD = os.path.join(ROOT, "norqva-ai", "produtos")
 IMGS = os.path.join(ROOT, "frontend", "public", "images")
 MUSIC = os.path.join(ROOT, "norqva-ai", "creative-batches", "KIT-B01-assets", "tools", "music.py")
-OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
+PAGINA = "--pagina" in sys.argv[1:]          # C2: destino na página do kit (botão Saiba mais)
+ARGS = [a for a in sys.argv[1:] if a != "--pagina"]
+OUT = os.path.abspath(ARGS[0] if ARGS else ".")
 CACHE = os.path.join(OUT, "_paginas")
 
 W, H, FPS, DUR, XF = 1080, 1920, 30, 15.0, 0.35
@@ -326,6 +331,38 @@ def scene_frame(sc, t, first):
                 ld.rounded_rectangle((W // 2 - pw // 2, y, W // 2 + pw // 2, y + ph), radius=48, fill=GOLD + (255,))
                 ld.text((W // 2, y + ph // 2), "Toque em Enviar mensagem", font=font(SANS_B, 40), fill=BG + (255,), anchor="mm")
             lay = text_layer(pill, b, int((1 - b) * 30))
+    elif kind == "final":
+        # C2: fechamento para a página do kit, as 5 capas reais + "Toque em Saiba mais" (sem WhatsApp, sem preço)
+        probe = ImageDraw.Draw(Image.new("RGB", (W, 10)))
+        n_title = len(wrap(probe, sc["title"], font(SERIF_B, 80), 960))
+        top = 290 + n_title * int(80 * 1.08) + 12 + int(42 * 1.12) + 46
+        cw, ch, gap = 272, 408, 22
+        xs1 = [(W - (3 * cw + 2 * gap)) // 2 + i * (cw + gap) for i in range(3)]
+        xs2 = [(W - (2 * cw + gap)) // 2 + i * (cw + gap) for i in range(2)]
+        for i, c in enumerate(COVERS):
+            k = 1.0 if first else ease((t - 0.1 * i) / 0.45)
+            if k <= 0:
+                continue
+            im = load(c).resize((cw, ch), Image.LANCZOS)
+            x, y = (xs1[i], top) if i < 3 else (xs2[i - 3], top + ch + gap)
+            y += int((1 - k) * 40)
+            if k < 1:
+                canvas.paste(Image.blend(Image.new("RGB", (cw, ch), BG), im, k), (x, y))
+            else:
+                canvas.paste(im, (x, y))
+        lay = text_layer(lambda ld, d: header(ld, d, sc["title"], sc.get("sub"), y0=235, tsize=80), a, dy)
+        canvas.paste(lay, (0, 0), lay)
+        pill_y = top + 2 * ch + gap + 90
+        b = ease((t - 1.0) / 0.4)
+        lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        if b > 0:
+            def pill(ld, d):
+                pw, ph = 560, 96
+                y = pill_y + d
+                ld.rounded_rectangle((W // 2 - pw // 2 + 6, y + 8, W // 2 + pw // 2 + 6, y + ph + 8), radius=48, fill=(0, 0, 0, 150))
+                ld.rounded_rectangle((W // 2 - pw // 2, y, W // 2 + pw // 2, y + ph), radius=48, fill=GOLD + (255,))
+                ld.text((W // 2, y + ph // 2), "Toque em Saiba mais", font=font(SANS_B, 42), fill=BG + (255,), anchor="mm")
+            lay = text_layer(pill, b, int((1 - b) * 30))
     elif kind == "covers":
         cw, ch, gap = 300, 450, 22
         xs1 = [(W - (3 * cw + 2 * gap)) // 2 + i * (cw + gap) for i in range(3)]
@@ -384,6 +421,13 @@ CHAT = dict(kind="chat", title="Peça pelo WhatsApp e receba os livros na conver
             sub="Pagamento por Pix. O link para baixar chega aqui.")
 
 
+# C2 (--pagina): fechamento para a página do kit, no lugar da conversa
+FINAL = dict(kind="final", title="5 livros de receitas em PDF",
+             sub="Trattoria · Dolci · Pães · Antipasti · Risotos")
+CLOSE = FINAL if PAGINA else CHAT
+SUFFIX = "C2" if PAGINA else "C1"
+
+
 def covers(dur, title, sub):
     return dict(kind="covers", dur=dur, title=title, sub=sub)
 
@@ -393,7 +437,7 @@ def photo(dur, img, title, sub, fx=0.5):
 
 
 def build_videos():
-    return {
+    v = {
         # H01: veja por dentro, rolando o Trattoria de verdade
         "TR-M01-H01-M1-C1": [
             pdf_scene(6.4, "trat", [1, 2, 25, 26], lambda d: [
@@ -403,7 +447,7 @@ def build_videos():
                 (4.85, d.view(3, fy=0.055, fx=0.235, zoom=2.5)), (6.4, d.view(3, fy=0.1, fx=0.235, zoom=2.5))],
                 "Veja por dentro os livros de receitas em PDF", "Trattoria em Casa · 67 páginas"),
             covers(4.1, "São 5 livros no kit", "74 receitas · 187 páginas em PDF"),
-            dict(CHAT, dur=4.5),
+            dict(CLOSE, dur=4.5),
         ],
         # H02: sobremesas (renovação do H05), abrindo com o Dolci no celular
         "TR-M01-H02-M1-C1": [
@@ -415,7 +459,7 @@ def build_videos():
             photo(2.4, dish("dolci", "02_panna_cotta.jpg"), "Panna cotta", "com calda de frutas vermelhas"),
             photo(2.4, dish("dolci", "10_cannoli.jpg"), "Cannoli em taça", "Dolci della Nonna", fx=0.55),
             covers(2.1, "E mais 4 livros no kit", "massas, pães, antipasti e risotos"),
-            dict(CHAT, dur=3.5),
+            dict(CLOSE, dur=3.5),
         ],
         # H03: o jantar de hoje: página da receita, depois o prato
         "TR-M01-H03-M1-C1": [
@@ -427,7 +471,7 @@ def build_videos():
             photo(2.4, dish("trattoria", "10_carbonara.jpg"), "Carbonara", "sem creme de leite, como em Roma"),
             photo(2.4, dish("trattoria", "08_ragu.jpg"), "Ragù alla bolognese", "no mesmo livro: Trattoria em Casa"),
             covers(2.0, "5 livros · 74 receitas", "massas, doces, pães, antipasti e risotos"),
-            dict(CHAT, dur=3.3),
+            dict(CLOSE, dur=3.3),
         ],
         # H04: medidas e passo a passo (zoom na página real do tiramisù)
         "TR-M01-H04-M1-C1": [
@@ -438,9 +482,10 @@ def build_videos():
                 "Receitas em PDF com medidas e passo a passo", "Gramas, ml e xícaras, como neste tiramisù"),
             photo(2.5, dish("dolci", "01_tiramisu.jpg"), "Tiramisù", "a foto da receita, no mesmo livro", fx=0.6),
             covers(2.5, "5 livros · 74 receitas", "passo a passo numerado, em PDF"),
-            dict(CHAT, dur=4.0),
+            dict(CLOSE, dur=4.0),
         ],
     }
+    return {k.replace("-C1", "-" + SUFFIX): sc for k, sc in v.items()}
 
 
 def render(key, scenes, out_mp4, wav):
@@ -479,7 +524,7 @@ FEED = {
 
 
 def feed_image(key, out):
-    book, pages, v, title = FEED[key]
+    book, pages, v, title = FEED[key.replace("-C2", "-C1")]
     dc = doc(book, pages)
     canvas = Image.new("RGB", (FW, FH), BG)
     d = ImageDraw.Draw(canvas)
@@ -505,14 +550,15 @@ def feed_image(key, out):
     canvas.paste(solid, (0, band_y), band.getchannel("A"))
     d = ImageDraw.Draw(canvas)
     d.text((FW // 2, FH - 128), "5 livros em PDF · 74 receitas", font=font(SERIF_B, 50), fill=CREAM, anchor="mm")
-    d.text((FW // 2, FH - 62), "Peça pelo WhatsApp e receba os livros na conversa", font=font(SERIF_I, 38), fill=GOLD, anchor="mm")
+    tail = "Toque em Saiba mais e veja o kit" if PAGINA else "Peça pelo WhatsApp e receba os livros na conversa"
+    d.text((FW // 2, FH - 62), tail, font=font(SERIF_I, 38), fill=GOLD, anchor="mm")
     canvas.save(out, quality=92)
 
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     videos = build_videos()
-    only = sys.argv[2:] if len(sys.argv) > 2 else list(videos)
+    only = ARGS[1:] if len(ARGS) > 1 else list(videos)
     raw = os.path.join(OUT, "_trilha.wav")
     wav = os.path.join(OUT, "_trilha_14lufs.wav")
     subprocess.run([sys.executable, MUSIC, str(DUR), raw], check=True)
