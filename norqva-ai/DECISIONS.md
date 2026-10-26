@@ -381,6 +381,6 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (Ricardo, "Aprovado" em 26/10/2026 14h23):** oferta nova "Coleção Trattoria Completa" = os 5 livros do kit (OFF-000010) + o bônus "Cardápio italiano de 4 semanas com lista de compras", por R$ 47,00. O kit de 5 continua a R$ 29,90.
 - **Preço:** "de" = soma real dos 5 livros avulsos (hoje R$ 94,50, regra da D-0080); o bônus não tem preço avulso e não entra na soma. Cartão como os livros: 1x sem acréscimo, 2,99% a.m. acima, parcela mínima R$ 5,00 (até 10x).
-- **Nasce em RASCUNHO** (migration 085), com os 5 PDFs do kit. O PDF do bônus é enviado pela tela ("Adicionar mais PDFs") e só então o Ricardo ativa.
+- **Nasce em RASCUNHO** (migration 086), com os 5 PDFs do kit. O PDF do bônus é enviado pela tela ("Adicionar mais PDFs") e só então o Ricardo ativa.
 - **WhatsApp:** a coleção é apresentada primeiro, como recomendada, e o kit de 5 logo depois como alternativa; o cliente escolhe e o atendente cobra o que ele escolher. Destaque e alternativa ficam no cadastro da oferta (`offers.attendant_featured`, `offers.attendant_alternative_offer_id`), não em texto fixo. Só oferta ATIVA entra no catálogo. As condições de atendimento continuam do Ricardo (parágrafo sugerido na NORQVA-0138).
 - **Bônus:** só receitas dos 5 livros, conferidas no build contra os arquivos de conteúdo; sem preço, sem "acesso vitalício", sem promessa de saúde.

@@ -1,6 +1,6 @@
 // NORQVA-0138: Coleção Trattoria Completa (5 livros + bônus do cardápio) a R$ 47,00.
 // - preço e parcelas (D-0080), sem nada que dependa de campanha;
-// - migration 085 (bloco DO: só no PostgreSQL do CI): oferta em RASCUNHO com os 5 PDFs do kit, "de" = soma real dos avulsos;
+// - migration 086 (bloco DO: só no PostgreSQL do CI): oferta em RASCUNHO com os 5 PDFs do kit, "de" = soma real dos avulsos;
 // - entrega dos 6 PDFs (5 livros + bônus enviado pela tela) só com PAID;
 // - atendente: com as duas ATIVAS, a coleção vem primeiro e o kit de 5 é a alternativa; RASCUNHO nunca é oferecido.
 // IA, WhatsApp, Asaas e armazenamento simulados.
@@ -29,7 +29,7 @@ process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_32_byte_key_
 process.env.ASAAS_API_KEY = process.env.ASAAS_API_KEY || 'MOCK';
 process.env.CPF_CNPJ_HASH_SECRET = process.env.CPF_CNPJ_HASH_SECRET || 'test_hash_secret_0138';
 
-const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/085_colecao_trattoria_completa.sql'), 'utf8');
+const SQL = fs.readFileSync(path.join(__dirname, '../db/migrations/086_colecao_trattoria_completa.sql'), 'utf8');
 const pdf = (label: string) => Buffer.from(`%PDF-1.7\n% ${label}\n1 0 obj << /Type /Catalog >> endobj\ntrailer << >>\n%%EOF\n`, 'latin1');
 
 class FakeStorage implements StorageClient {
@@ -79,7 +79,7 @@ describe('NORQVA-0138 — preço e parcelas da coleção (D-0080)', () => {
   });
 });
 
-describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0138 — migration 085', () => {
+describe.skipIf(!process.env.DATABASE_URL_TEST || isDbInMemory())('NORQVA-0138 — migration 086', () => {
   let pool: Pool;
   beforeAll(async () => {
     pool = initializeDB();

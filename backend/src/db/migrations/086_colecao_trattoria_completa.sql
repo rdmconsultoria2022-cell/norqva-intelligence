@@ -1,4 +1,4 @@
--- Migration 085 (NORQVA-0138): Coleção Trattoria Completa em RASCUNHO, a R$ 47,00.
+-- Migration 086 (NORQVA-0138): Coleção Trattoria Completa em RASCUNHO, a R$ 47,00.
 -- Aprovado pelo Ricardo em 26/10/2026 14h23: os 5 livros do kit de 5 (OFF-000010) + o bônus "Cardápio italiano de 4
 --   semanas com lista de compras". No WhatsApp a coleção vem primeiro, em destaque, e o kit de 5 é a alternativa.
 -- Só aditiva. Colunas novas em offers (o atendente lê, a tela não muda):
@@ -62,7 +62,7 @@ BEGIN
 
   IF reason IS NOT NULL THEN
     INSERT INTO audit_logs (id, user_id, event_type, description, previous_value, new_value, is_demo)
-    VALUES (gen_random_uuid(), NULL, 'COLLECTION_FULL_SKIPPED', 'Migration 085: Coleção Trattoria Completa não criada, ' || reason, NULL, NULL, FALSE);
+    VALUES (gen_random_uuid(), NULL, 'COLLECTION_FULL_SKIPPED', 'Migration 086: Coleção Trattoria Completa não criada, ' || reason, NULL, NULL, FALSE);
     RETURN;
   END IF;
 
@@ -113,7 +113,7 @@ BEGIN
 
   INSERT INTO audit_logs (id, user_id, event_type, description, previous_value, new_value, is_demo)
   VALUES (gen_random_uuid(), NULL, 'COLLECTION_FULL_CREATED',
-          'Migration 085: Coleção Trattoria Completa criada em RASCUNHO (' || off_human || ', produto ' || prd_human || '), de R$ '
+          'Migration 086: Coleção Trattoria Completa criada em RASCUNHO (' || off_human || ', produto ' || prd_human || '), de R$ '
           || replace(full_price::text, '.', ',') || ' por R$ 47,00, com os 5 PDFs do kit ' || kit.human_id
           || '. Falta enviar o PDF do bônus pela tela antes de ativar.',
           NULL, off_human, FALSE);

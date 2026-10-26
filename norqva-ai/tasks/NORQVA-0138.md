@@ -29,7 +29,7 @@ primeiro a coleção (recomendada) e o kit de 5 como alternativa mais em conta; 
 - Quantidades para 4 pessoas: receita de 4 porções entra 1 vez; de 2 a 3 ou de 3 porções, 1½ vez; de 2 porções, em dobro.
   Itens sem medida no livro aparecem como "a gosto". Despensa (sal, azeite, farinha, açúcar, fermento) em bloco próprio, "confira".
 
-### 2. Oferta (migration 085, só aditiva)
+### 2. Oferta (migration 086, só aditiva)
 
 - Colunas novas em `offers`: `attendant_featured` (o atendente apresenta primeiro) e `attendant_alternative_offer_id`
   (a alternativa mais em conta que ele apresenta logo depois, só se estiver ATIVA).
@@ -92,7 +92,7 @@ troque esse trecho por:
 
 - Preço e parcelas: "de" R$ 94,50, R$ 47,00 com 1x sem acréscimo e até 10x de R$ 5,51 (parcela mínima respeitada).
 - Ordem do atendente (`orderForAttendant`): destaque, alternativa, resto; alternativa fora do catálogo não é inventada.
-- Migration 085 (PostgreSQL do CI): cria em RASCUNHO com os valores acima, os 5 PDFs do kit, kit intacto, não duplica; kit com 4 PDFs não cria nada.
+- Migration 086 (PostgreSQL do CI): cria em RASCUNHO com os valores acima, os 5 PDFs do kit, kit intacto, não duplica; kit com 4 PDFs não cria nada.
 - Entrega: o bônus entra pela tela como 6º arquivo; pedido pendente não recebe nada; depois de PAID, 6 acessos.
 - Atendente: coleção em RASCUNHO fora do catálogo e cobrança recusada; as duas ATIVAS, coleção primeiro e recomendada, kit logo
   depois como alternativa; o cliente escolhe e o Pix sai com R$ 29,90 ou R$ 47,00; kit pausado; coleção de volta a RASCUNHO some.
