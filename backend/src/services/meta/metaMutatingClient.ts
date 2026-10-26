@@ -1395,6 +1395,36 @@ export class MetaMutatingClient {
     return Math.round(rows.reduce((s, r) => s + (parseFloat(r?.spend) || 0), 0) * 100) / 100;
   }
 
+  /**
+   * NORQVA-0137: números da Meta por anúncio e por dia de uma campanha (só leitura), para o relatório do
+   * operador do mandato. `truncated` = a Meta tinha mais linhas do que o limite pedido.
+   */
+  public async getCampaignAdInsightsDaily(campaignMetaId: string, since: string, until: string): Promise<{ rows: any[]; truncated: boolean }> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error('[VALIDATION EXCEPTION]: Invalid date range.');
+    const ins = await this.callTransportGet(`/${campaignMetaId}/insights`, {
+      level: 'ad',
+      fields: 'campaign_id,adset_id,adset_name,ad_id,ad_name,date_start,spend,impressions,clicks,inline_link_clicks,actions',
+      time_range: JSON.stringify({ since, until }),
+      time_increment: '1',
+      limit: '500'
+    });
+    return { rows: Array.isArray(ins?.data) ? ins.data : [], truncated: Boolean(ins?.paging?.next) };
+  }
+
+  /** NORQVA-0137: números da Meta por hora do dia (fuso da conta), somados no período (só leitura). */
+  public async getCampaignHourlyInsights(campaignMetaId: string, since: string, until: string): Promise<any[]> {
+    if (!/^\d{5,25}$/.test(String(campaignMetaId))) throw new Error('[VALIDATION EXCEPTION]: Invalid campaign id.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error('[VALIDATION EXCEPTION]: Invalid date range.');
+    const ins = await this.callTransportGet(`/${campaignMetaId}/insights`, {
+      fields: 'spend,impressions,clicks,actions',
+      breakdowns: 'hourly_stats_aggregated_by_advertiser_time_zone',
+      time_range: JSON.stringify({ since, until }),
+      limit: '100'
+    });
+    return Array.isArray(ins?.data) ? ins.data : [];
+  }
+
   public async findLaunchObjectsByName(
     context: MetaMutatingSecurityContext,
     parent: 'ACCOUNT' | string,

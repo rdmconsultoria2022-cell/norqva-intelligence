@@ -43,6 +43,11 @@ const RULES: Record<string, RuleInfo> = {
   // NORQVA-0125: WhatsApp para quem não concluiu o pagamento (abre Vendas → WhatsApp → Pagamentos não concluídos)
   WHATSAPP_RECOVERY_BLOCKED: { title: 'Mensagens de recuperação paradas', severity: 'ATTENTION', action: 'Conecte o número do WhatsApp da marca e ligue o atendente (Vendas → WhatsApp → Números). A fila espera e continua sozinha.', tab: 'results' },
   WHATSAPP_RECOVERY_STUCK: { title: 'Mensagem de recuperação sem confirmação', severity: 'ATTENTION', action: 'Confira a conversa da pessoa em WhatsApp → Conversas. O NORQVA não reenvia.', tab: 'results' },
+  // NORQVA-0137: mandato do operador (abre a tela Campanhas, cartão do mandato)
+  MANDATE_BRAKED: { title: 'Freio do mandato acionado', severity: 'CRITICAL', action: 'As campanhas do mandato foram pausadas. Confira o cartão do mandato em Campanhas e decida.', tab: 'results' },
+  MANDATE_ENDED: { title: 'Mandato encerrado pelo prazo', severity: 'ATTENTION', action: 'As campanhas do mandato foram pausadas. Confira o resultado no cartão do mandato.', tab: 'results' },
+  MANDATE_PAUSE_FAILED: { title: 'O freio do mandato não conseguiu pausar', severity: 'CRITICAL', action: 'Pausar a campanha manualmente agora.', tab: 'results' },
+  MANDATE_READ_FAILED: { title: 'O freio do mandato não consegue ler o gasto', severity: 'CRITICAL', action: 'Conferir o gasto na Meta. O operador só pode pausar enquanto isso.', tab: 'results' },
   WHATSAPP_RECOVERY_RECHECK_FAILED: { title: 'Recuperação: pagamento não conferido no Asaas', severity: 'INFO', action: 'A pessoa ficou de fora desta vez. Ela pode ser enviada de novo em Pagamentos não concluídos.', tab: 'results' }
 };
 
@@ -52,7 +57,7 @@ export function describeRule(rule: string): RuleInfo {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // alertas de campanha (vigia do teto e pausa noturna): o objeto é a campanha, não um anúncio
-const isGuardRule = (rule: string) => rule.startsWith('EXPERIMENT_') || rule.startsWith('NIGHT_PAUSE_');
+const isGuardRule = (rule: string) => rule.startsWith('EXPERIMENT_') || rule.startsWith('NIGHT_PAUSE_') || rule.startsWith('MANDATE_');
 const CENTER_DAYS = 30;
 
 export class AlertCenterService {
@@ -272,7 +277,9 @@ function shape(row: any) {
       resolved_at: row.resolved_at || null
     };
   }
-  const campaignId = row.meta_campaign_id ? String(row.meta_campaign_id) : guard ? String(row.meta_ad_id) : null;
+  // NORQVA-0137: aviso do mandato inteiro (meta_ad_id = 'mandato') não aponta para uma campanha
+  const mandateWide = String(row.rule_code).startsWith('MANDATE_') && !row.meta_campaign_id;
+  const campaignId = row.meta_campaign_id ? String(row.meta_campaign_id) : guard && !mandateWide ? String(row.meta_ad_id) : null;
   return {
     id: row.id,
     rule_code: row.rule_code,
@@ -297,7 +304,7 @@ function shape(row: any) {
       tab: info.tab,
       meta_campaign_id: campaignId,
       plan_code: guard ? row.ad_name || null : null,
-      section: String(row.rule_code).startsWith('NIGHT_PAUSE_') && !row.ad_name ? 'external-night-pause' : null
+      section: String(row.rule_code).startsWith('NIGHT_PAUSE_') && !row.ad_name ? 'external-night-pause' : String(row.rule_code).startsWith('MANDATE_') ? 'mandate' : null
     },
     resolution: row.resolution || null,
     dismiss_reason: row.dismiss_reason || null,

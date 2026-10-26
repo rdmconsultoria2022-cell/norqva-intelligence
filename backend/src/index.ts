@@ -183,6 +183,9 @@ if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundH
 import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory, getCampaignNightPause, saveCampaignNightPause, listExternalNightPause, addExternalNightPause, updateExternalNightPause, removeExternalNightPause } from './controllers/campaignController';
 import { startNightPauseScheduler } from './services/campaigns/nightPauseService';
+import { requireOperatorToken, getOperatorMandate, getOperatorReport, postOperatorStatus, postOperatorBudget, getMandate, postMandate, putMandateCampaigns, postMandateEnd, postMandateCheck, getMandateActions } from './controllers/operatorController';
+import { startMandateBrakeScheduler } from './services/operator/mandateService';
+import { createRateLimiter } from './middleware/rateLimiter';
 import { getAccountCredit } from './controllers/accountCreditController';
 import { getAdPreview } from './controllers/adPreviewController';
 import { createMetaChange, listMetaChanges, approveMetaChange, rejectMetaChange, cancelMetaChange, verifyMetaChange } from './controllers/metaChangeController';
@@ -524,6 +527,22 @@ app.post('/api/meta-control/:entityType/:id/budget', requireRole(['ADMIN']), set
 // NORQVA-0098: renomear (campanha, conjunto, anúncio) e data de término do conjunto
 app.post('/api/meta-control/:entityType/:id/name', requireRole(['ADMIN']), setMetaEntityName);
 app.post('/api/meta-control/adset/:id/end-time', requireRole(['ADMIN']), setMetaAdSetEndTime);
+
+// NORQVA-0137 (D-0137): operador do mandato. Só o token NORQVA_OPERATOR_TOKEN, só em /api/operator/*
+// (sem login de pessoa); limite de chamadas antes de conferir o token. Regras no mandateService.
+const operatorRateLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 30, name: 'operator', message: 'Muitas chamadas do operador. Espere um minuto.' });
+app.use('/api/operator', operatorRateLimiter, requireOperatorToken);
+app.get('/api/operator/mandate', getOperatorMandate);
+app.get('/api/operator/report', getOperatorReport);
+app.post('/api/operator/:entityType/:id/status', postOperatorStatus);
+app.post('/api/operator/:entityType/:id/budget', postOperatorBudget);
+// administrador: criar/ativar, campanhas, encerrar, conferir agora e registro
+app.get('/api/mandate', requireRole(['ADMIN']), getMandate);
+app.post('/api/mandate', requireRole(['ADMIN']), postMandate);
+app.put('/api/mandate/campaigns', requireRole(['ADMIN']), putMandateCampaigns);
+app.post('/api/mandate/end', requireRole(['ADMIN']), postMandateEnd);
+app.post('/api/mandate/check', requireRole(['ADMIN']), postMandateCheck);
+app.get('/api/mandate/actions', requireRole(['ADMIN']), getMandateActions);
 // NORQVA-0097: fichas de alteração (pedir → autorizar → enviar → confirmar relendo a Meta)
 app.get('/api/meta-changes', requireRole(['ADMIN', 'INTELLIGENCE', 'PRODUCT', 'CREATIVE', 'PERFORMANCE', 'OPERATIONS']), listMetaChanges);
 app.post('/api/meta-changes', requireRole(['ADMIN', 'PERFORMANCE']), createMetaChange);
@@ -743,6 +762,13 @@ async function startServer() {
       registerShutdownHook(startNightPauseScheduler(pool));
     } catch (e: any) {
       console.error('[Server] Failed to start night pause (non-fatal):', e.message);
+    }
+
+    // NORQVA-0137: freio do mandato do operador a cada 15 min
+    try {
+      registerShutdownHook(startMandateBrakeScheduler(pool));
+    } catch (e: any) {
+      console.error('[Server] Failed to start mandate brake (non-fatal):', e.message);
     }
 
     // NORQVA-0023: varredura de pagamentos e e-mails de acesso (PAYMENT_SWEEP_ENABLED=false desliga)

@@ -175,6 +175,16 @@ export function AlertCard({
             <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </button>
         )}
+        {onOpenCampaign && n.link.section === 'mandate' && !n.link.meta_campaign_id && (
+          <button
+            type="button"
+            onClick={() => onOpenCampaign(n)}
+            className="min-h-[44px] px-4 rounded-full bg-nq-text text-nq-bg text-nq-aux font-semibold flex items-center gap-1.5"
+          >
+            Abrir mandato
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
+          </button>
+        )}
         {onOpenCampaign && n.link.meta_campaign_id && (
           <button
             type="button"
