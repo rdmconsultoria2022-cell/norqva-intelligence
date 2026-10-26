@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Gera CARDAPIO_ITALIANO_4_SEMANAS.pdf: bônus da Coleção Trattoria Completa (NORQVA-0138).
+"""Gera CARDAPIO_ITALIANO_4_SEMANAS.pdf: bônus da Coleção Trattoria Completa (NORQVA-0138; fotos dos pratos NORQVA-0140).
 
 Mesmo visual dos livros da coleção (paes/build_paes.py). Roda no Linux e no Windows: as fontes Liberation são usadas
 quando existem; no Windows entram Times New Roman e Arial, que têm as mesmas medidas. O Chromium é o do Playwright,
@@ -79,7 +79,19 @@ SHORT = {
     ("R", "limao"): "Risoto de limão-siciliano", ("R", "funghi"): "Risoto de cogumelos", ("R", "camarao"): "Risoto de camarão",
     ("R", "ragu"): "Polenta com ragù de cogumelos", ("R", "milanese"): "Risoto alla milanese", ("R", "abobora"): "Risoto de abóbora",
     ("R", "linguica"): "Risoto de linguiça",
+    ("T", "semola"): "Cavatelli (massa de sêmola)", ("A", "arancini"): "Arancini", ("R", "grelhada"): "Polenta grelhada",
+    ("T", "cannelloni"): "Cannelloni de frango", ("T", "nhoque"): "Nhoque de batata",
 }
+
+
+# ─────────────── pratos de cada dia ───────────────
+def dishes_of(dishes):
+    """(livro, receita, vezes, observação, itens que não entram na compra) de cada prato do dia."""
+    return [(d[0], d[1], d[2], d[3], tuple(d[4]) if len(d) > 4 else ()) for d in dishes]
+
+
+def extras_of(w):
+    return [(e[0], e[1], e[2], tuple(e[3]) if len(e) > 3 else ()) for e in w["extras"]]
 
 
 # ─────────────── conferência contra os livros ───────────────
@@ -91,9 +103,9 @@ errors = []
 used = set()
 for w in WEEKS:
     for _d, dishes, _o in w["days"]:
-        for b, s, _f, _n in dishes:
+        for b, s, _f, _n, _x in dishes_of(dishes):
             used.add((b, s))
-    for b, s, _f in w["extras"]:
+    for b, s, _f, _x in extras_of(w):
         used.add((b, s))
 used.add(("P", "fermento"))
 for b, s, _t in VARIAR_FDS + VARIAR_DOCES:
@@ -119,8 +131,11 @@ for key in sorted(used):
         if not any(ent[0] in ln for ent in ING[key]):
             errors.append(f"{key}: linha do livro sem destino na lista: {ln!r}")
 for key in ING:
-    if key not in used:
-        errors.append(f"ingredientes mapeados de receita que não está no cardápio: {key}")
+    # receitas mapeadas que saíram do cardápio continuam conferidas contra o livro (podem voltar)
+    if key not in used and key in RECIPE:
+        for ent in ING[key]:
+            if not any(ent[0] in ln for ln in lines_of(key)):
+                errors.append(f"{key}: trecho não está na receita: {ent[0]!r}")
 if sum(len(w["days"]) for w in WEEKS) != 28:
     errors.append("o cardápio precisa de 28 jantares")
 if errors:
@@ -134,10 +149,10 @@ def week_uses(w):
     """(receita, fator) de tudo o que se cozinha na semana, inclusive bases (massa, caldo, bechamel)."""
     out = []
     for _d, dishes, _o in w["days"]:
-        for b, s, f, _n in dishes:
-            out.append(((b, s), f))
-    for b, s, f in w["extras"]:
-        out.append(((b, s), f))
+        for b, s, f, _n, skip in dishes_of(dishes):
+            out.append(((b, s), f, skip))
+    for b, s, f, skip in extras_of(w):
+        out.append(((b, s), f, skip))
     return out
 
 
@@ -149,10 +164,10 @@ def shopping(w):
             d["_free"] = True
         else:
             d[unit] = d.get(unit, 0) + qty
-    for key, f in week_uses(w):
+    for key, f, skip in week_uses(w):
         for ent in ING[key]:
             src, item, qty, unit = ent[:4]
-            if item is REF:
+            if item is REF or item in skip:
                 continue
             add(item, None if qty is None else qty * f, unit)
     start, feeds = FERMENTO[w["n"]]
@@ -243,6 +258,60 @@ def fmt_qty(item, d):
     return txt
 
 
+# ─────────────── fotos: a mesma foto que o livro usa para a receita ───────────────
+# Trattoria: campo "img" da receita (build_trattoria.py). Dolci: o mesmo mapa de dolci/build2.py.
+# Pães, Antipasti e Risotos: NN_slug.jpg, com NN = posição da receita (build_paes/antipasti/risotos.py).
+# Antipasti e Risotos guardam as fotos no computador do Ricardo (jpg/ fora do git): sem elas, vale a cópia da mesma
+# foto que está no site (frontend/public/images/livros/...). Prato sem foto da própria receita: o build para.
+DOLCI_IMG = {'tiramisu': '01_tiramisu', 'pannacotta': '02_panna_cotta', 'nonna': '03_torta_della_nonna', 'caprese': '04_torta_caprese',
+             'cantucci': '05_cantucci', 'affogato': '06_affogato', 'zabaione': '07_zabaione', 'crostata': '08_crostata',
+             'budino': '09_budino', 'cannoli': '10_cannoli'}
+SITE = os.path.join(os.path.dirname(os.path.dirname(ROOT)), "frontend", "public", "images", "livros")
+SITE_COPY = {("A", "caponata"): "antipasti/caponata.jpg", ("A", "arancini"): "antipasti/arancini.jpg",
+             ("A", "tagliere"): "antipasti/tagliere.jpg", ("R", "milanese"): "risotos/milanese.jpg",
+             ("R", "funghi"): "risotos/funghi.jpg", ("R", "grelhada"): "risotos/polenta_grelhada.jpg"}
+FOLDER = {"T": "trattoria", "D": "dolci", "P": "paes", "A": "antipasti", "R": "risotos"}
+CACHE = os.path.join(HERE, "_fotos")
+
+
+def photo_source(key):
+    b, slug = key
+    rc = RECIPE[key]
+    if b == "T":
+        name = rc["r"]["img"]
+    elif b == "D":
+        name = DOLCI_IMG[slug]
+    else:
+        name = f"{rc['num']:02d}_{slug}"
+    book = os.path.join(ROOT, FOLDER[b], "jpg", name + ".jpg")
+    if os.path.exists(book):
+        return book, f"{FOLDER[b]}/jpg/{name}.jpg"
+    if key in SITE_COPY and os.path.exists(os.path.join(SITE, SITE_COPY[key])):
+        return os.path.join(SITE, SITE_COPY[key]), f"site: images/livros/{SITE_COPY[key]}"
+    return None, None
+
+
+PHOTO_LOG = OrderedDict()
+
+
+def photo(key, width=760):
+    """Endereço da foto reduzida (JPEG leve) da receita; para o build se ela não existir."""
+    src, label = photo_source(key)
+    if not src:
+        print(f"FOTO FALTANDO: {key} {RECIPE[key]['title']}")
+        sys.exit(3)
+    from PIL import Image
+    os.makedirs(CACHE, exist_ok=True)
+    out = os.path.join(CACHE, f"{key[0]}_{key[1]}_{width}.jpg")
+    if not os.path.exists(out) or os.path.getmtime(out) < os.path.getmtime(src):
+        im = Image.open(src).convert("RGB")
+        if im.width > width:
+            im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+        im.save(out, "JPEG", quality=78, optimize=True, progressive=True)
+    PHOTO_LOG[key] = label
+    return uri(out)
+
+
 # ─────────────── visual (o mesmo dos livros) ───────────────
 def uri(path):
     return Path(path).resolve().as_uri()
@@ -330,6 +399,26 @@ table.plan .obs{font-family:'DSerif';font-style:italic;font-size:8.6pt;color:var
 .prep .card{padding:3.2mm 4mm}
 .prep .card .label{margin-bottom:1mm}
 .prep .card p{font-size:8.6pt;line-height:1.42}
+/* cartões com foto (NORQVA-0140) */
+.dcard{display:flex;gap:5mm;background:#fff;border:.6pt solid var(--rule);padding:3.2mm;margin-bottom:3.2mm;break-inside:avoid}
+.dcard .ph{flex:none;width:50mm;height:34mm;background-size:cover;background-position:center;border-radius:1mm}
+.dcard.big .ph{width:72mm;height:49mm}
+.dcard .tx{flex:1;min-width:0}
+.dcard .dday{font-family:'DSerif';font-weight:700;font-size:8pt;letter-spacing:.24em;color:var(--gold);text-transform:uppercase}
+.dcard .dname{font-family:'DSerif';font-weight:700;font-size:13.5pt;line-height:1.15;margin-top:.8mm}
+.dcard.big .dname{font-size:15.5pt}
+.dcard .dref{font-size:8.6pt;color:var(--gray);margin-top:1mm}
+.dcard .dref b{color:var(--terra)}
+.dcard .dnote{font-size:9pt;line-height:1.35;margin-top:.8mm}
+.dcard .obs{font-family:'DSerif';font-style:italic;font-size:9.4pt;color:var(--gray);margin-top:1.4mm;line-height:1.35}
+.dcard .sub{display:flex;gap:3mm;margin-top:2.2mm;padding-top:2.2mm;border-top:.5pt dotted #d8cfc0}
+.dcard .sub .sph{flex:none;width:24mm;height:16mm;background-size:cover;background-position:center;border-radius:.8mm}
+.dcard .sub .sname{font-family:'DSerif';font-weight:700;font-size:10.5pt;line-height:1.2}
+.vrow{display:flex;gap:3.5mm;margin-bottom:3mm;break-inside:avoid}
+.vrow .sph{flex:none;width:30mm;height:20mm;background-size:cover;background-position:center;border-radius:.8mm}
+.vrow .vt{font-size:9pt;line-height:1.35}
+.vrow .vt b{font-family:'DSerif';font-size:10.5pt}
+.vrow .vt .small b{font-family:'DSans';font-size:8pt}
 /* lista */
 .shop{column-count:2;column-gap:8mm;margin-top:1mm}
 .shop .grp{break-inside:avoid;margin-bottom:3mm}
@@ -404,7 +493,7 @@ pages.append(f'''<section class="page cover" style="background-image:url('{cov}'
 <div class="compl">Bônus da Coleção Trattoria Completa · Cozinha Italiana em Casa</div></div></section>''')
 
 P_USO, P_MES, P_W0 = 2, 3, 4
-P_VAR = P_W0 + 2 * len(WEEKS)
+P_VAR = P_W0 + 3 * len(WEEKS)
 P_IDX, P_FIM = P_VAR + 1, P_VAR + 2
 
 # 2. como usar
@@ -416,13 +505,14 @@ Nos dias de semana, pratos rápidos; no fim de semana, o forno, o pão e a sobre
 <div style="margin:4mm 0">{orn(40)}</div>
 <div class="two prose"><div>
 <div class="sec">Como ler cada semana</div>
-<p>Cada semana tem <b>duas páginas</b>: o plano dos 7 jantares e a lista de compras. A semana começa no <b>sábado</b>,
-com as compras da manhã, e termina na sexta.</p>
-<p>Ao lado de cada prato está onde a receita fica: o <b>livro</b>, o <b>número da receita</b> e a <b>página</b>.
-Na mesma linha, quantas vezes fazer a receita para 4 pessoas.</p>
+<p>Cada semana tem <b>três páginas</b>: o fim de semana, os dias de semana (cada jantar com a foto do prato, a mesma do livro)
+e a lista de compras. A semana começa no <b>sábado</b>, com as compras da manhã, e termina na sexta.</p>
+<p>Ao lado de cada foto está onde a receita fica: o <b>livro</b>, o <b>número da receita</b> e a <b>página</b>,
+e quantas vezes fazer a receita para 4 pessoas.</p>
 <div class="sec" style="margin-top:4mm">Para 4 pessoas</div>
 <p>As receitas de 4 porções entram uma vez. As de 2 a 3 porções ou de 3 porções entram <b>1½ vez</b>; as de 2 porções,
-<b>em dobro</b>. Receitas que rendem mais (lasanha, sobremesas, almôndegas) entram uma vez e a sobra vai para outro dia.</p>
+<b>em dobro</b>. Receitas que rendem mais (lasanha, sobremesas, tábua de frios) entram uma vez e a sobra vai para outro dia.
+Na última semana, alguns pratos rápidos voltam de propósito: são os preferidos do mês.</p>
 <div class="sec" style="margin-top:4mm">Os cinco livros</div>
 <table class="idx"><tr><th>Vol.</th><th>Livro</th><th></th></tr>{book_rows}</table>
 </div><div>
@@ -431,12 +521,12 @@ Na mesma linha, quantas vezes fazer a receita para 4 pessoas.</p>
 separadas por seção do mercado. O que o livro manda usar "a gosto" aparece assim, sem número.</p>
 <p>O bloco <b>Despensa</b> traz o que normalmente já está em casa (sal, azeite, farinha, açúcar, fermento).
 Confira a quantidade antes de sair.</p>
-<p>Massa fresca, caldo, bechamel e polenta que servem de base para outro prato já estão na lista da semana em que são feitos.</p>
+<p>Massa fresca, caldo, bechamel e molho pomodoro que servem de base para outro prato já estão na lista da semana em que são feitos.</p>
 <div class="tip" style="margin-top:4mm"><div class="label">{leaf()} Sobras planejadas</div>
-<p>O ragù da semana 1 vira a lasanha da semana 2. O pão de domingo vira bruschetta e almôndegas.
-O caldo de legumes é feito no fim de semana e serve os risotos dos dias seguintes.</p></div>
+<p>O ragù da semana 1 vira a lasanha da semana 2. O pão rústico de domingo vira bruschetta.
+O caldo de legumes é feito no fim de semana, serve os risotos dos dias seguintes e o que sobra fica congelado para a semana 4.</p></div>
 <div class="card" style="margin-top:4mm"><h3>Conservação</h3><p>Siga as notas de conservação de cada receita no livro.
-Caldo, ragù e almôndegas congelam bem; esfrie antes de guardar e escreva a data no pote.</p></div>
+Caldo e ragù congelam bem; esfrie antes de guardar e escreva a data no pote.</p></div>
 </div></div>'''
 pages.append(page(uso, P_USO, "Como usar"))
 
@@ -447,7 +537,7 @@ mrows = ""
 for w in WEEKS:
     cells = ""
     for _d, dishes, _o in w["days"]:
-        cells += '<td>' + ''.join(f'<div>{E(SHORT.get((b, s), RECIPE[(b, s)]["title"]))}</div>' for b, s, _f, _n in dishes) + '</td>'
+        cells += '<td>' + ''.join(f'<div>{E(SHORT.get((b, s), RECIPE[(b, s)]["title"]))}</div>' for b, s, _f, _n, _x in dishes_of(dishes)) + '</td>'
     mrows += f'<tr><td class="wk">Semana {w["n"]}</td>{cells}</tr>'
 bread = [("1", "Fermento natural começa no sábado (dia 1)", "Piadina (quinta)"),
          ("2", "Fermento segue até ficar ativo", "Ciabatta com biga (domingo)"),
@@ -455,7 +545,7 @@ bread = [("1", "Fermento natural começa no sábado (dia 1)", "Piadina (quinta)"
          ("4", "Fermento na geladeira, 1 alimentação por semana", "Pão de azeitonas (domingo)")]
 brows = ''.join(f'<tr><td class="c"><b>{a}</b></td><td>{E(b)}</td><td>{E(c)}</td></tr>' for a, b, c in bread)
 sweets = ''.join(f'<tr><td class="c"><b>{w["n"]}</b></td><td>{E(SHORT[k])}</td><td>{ref(k)}</td></tr>'
-                 for w in WEEKS for k in [(b, s) for _d, dishes, _o in w["days"] for b, s, _f, _n in dishes if b == "D"])
+                 for w in WEEKS for k in [(b, s) for _d, dishes, _o in w["days"] for b, s, _f, _n, _x in dishes_of(dishes) if b == "D"])
 mes = f'''<div class="kicker" style="margin-top:3mm">Visão geral</div><h1 class="big">O mês em uma página</h1>
 <p class="lead" style="max-width:158mm">Prato principal de cada jantar. Os detalhes, as sobras e o que adiantar estão no plano de cada semana.</p>
 <table class="month"><tr>{head}</tr>{mrows}</table>
@@ -469,26 +559,37 @@ semanas usam pães de fermento biológico seco.</p></div><div>
 <p class="small" style="margin-top:2.5mm">Todas rendem 6 a 10 porções: o que sobra é sobremesa para os primeiros dias da semana.</p></div></div>'''
 pages.append(page(mes, P_MES, "Visão geral"))
 
-# 4 a 11. semanas
+# 4 a 15. semanas: plano em 2 páginas (fim de semana e dias de semana, com a foto de cada prato) e a lista
+def day_card(day, dishes, obs, big=False):
+    ds = dishes_of(dishes)
+    b, s_, f, note, _skip = ds[0]
+    key = (b, s_)
+    subs = ""
+    for b2, s2, f2, n2, _x in ds[1:]:
+        k2 = (b2, s2)
+        subs += (f'<div class="sub"><div class="sph" style="background-image:url(\'{photo(k2, 360)}\')"></div><div>'
+                 f'<div class="sname">{E(RECIPE[k2]["title"])}</div><div class="dref">{ref(k2)} · {times_for(k2, f2)}</div>'
+                 f'{f"<div class=dnote>{E(n2)}</div>" if n2 else ""}</div></div>')
+    return (f'<div class="dcard{" big" if big else ""}"><div class="ph" style="background-image:url(\'{photo(key)}\')"></div><div class="tx">'
+            f'<div class="dday">{E(day)}</div><div class="dname">{E(RECIPE[key]["title"])}</div>'
+            f'<div class="dref">{ref(key)} · {times_for(key, f)}</div>'
+            f'{f"<div class=dnote>{E(note)}</div>" if note else ""}{subs}'
+            f'{f"<div class=obs>{E(obs)}</div>" if obs else ""}</div></div>')
+
+
 for wi, w in enumerate(WEEKS):
-    p_plan = P_W0 + 2 * wi
-    rows = ""
-    for day, dishes, obs in w["days"]:
-        cell = ""
-        for b, s, f, note in dishes:
-            key = (b, s)
-            dnote = f' <span class="dnote">— {E(note)}</span>' if note else ""
-            cell += (f'<div class="dish"><span class="dn">{E(RECIPE[key]["title"])}</span>{dnote}'
-                     f'<div class="ref">{ref(key)} &nbsp;·&nbsp; <span class="x">{times_for(key, f)}</span></div></div>')
-        if obs:
-            cell += f'<div class="obs">{E(obs)}</div>'
-        rows += f'<tr><td class="day">{E(day)}</td><td>{cell}</td></tr>'
+    p_plan = P_W0 + 3 * wi
+    days = w["days"]
     cards = ''.join(f'<div class="card"><div class="label">{E(k)}</div><p>{E(v)}</p></div>' for k, v in w["prep"])
     body = f'''<div class="kicker" style="margin-top:2mm">Semana {w["n"]} · de sábado a sexta</div><h1 class="big" style="font-size:21pt">{E(w["title"])}</h1>
-<p class="lead" style="font-size:10pt;max-width:165mm">{E(w["lead"])}</p>
-<table class="plan"><tr><th>Dia</th><th>Jantar, onde está a receita e quantas vezes fazer para 4 pessoas</th></tr>{rows}</table>
+<p class="lead" style="font-size:10pt;max-width:165mm;margin-bottom:3mm">{E(w["lead"])}</p>
+{''.join(day_card(d, ds, o, big=True) for d, ds, o in days[:2])}
 <div class="prep">{cards}</div>'''
-    pages.append(page(body, p_plan, f"Semana {w['n']} — plano"))
+    pages.append(page(body, p_plan, f"Semana {w['n']} — fim de semana"))
+    body2 = f'''<div class="kicker" style="margin-top:2mm">Semana {w["n"]} · de segunda a sexta</div>
+<p class="small" style="margin:1mm 0 3mm">Ao lado de cada foto: onde está a receita (livro, número e página) e quantas vezes fazer para 4 pessoas.</p>
+{''.join(day_card(d, ds, o) for d, ds, o in days[2:])}'''
+    pages.append(page(body2, p_plan + 1, f"Semana {w['n']} — dias de semana"))
 
     tot = shopping(w)
     groups = ""
@@ -500,26 +601,27 @@ for wi, w in enumerate(WEEKS):
         rws = ''.join(f'<div class="row"><span class="n">{E(n)}</span><span class="q">{E(q)}</span></div>' for n, q in its)
         groups += f'<div class="grp{" desp" if sec == "desp" else ""}"><div class="sec">{E(title)}</div>{rws}</div>'
     used_here = []
-    for key, f in week_uses(w):
+    for key, f, _skip in week_uses(w):
         if key not in [u for u, _ in used_here]:
             used_here.append((key, f))
     lst = f'''<div class="kicker" style="margin-top:2mm">Semana {w["n"]} · lista de compras</div><h1 class="big" style="font-size:19pt">Para os 7 jantares, 4 pessoas</h1>
 <p class="small" style="margin-bottom:3mm">Soma dos ingredientes de {len(used_here)} receitas da semana, já multiplicadas para 4 pessoas (inclui as bases:
 massa fresca, caldo, bechamel). Marque o que já tem em casa antes de sair.</p>
 <div class="shop">{groups}</div>'''
-    pages.append(page(lst, p_plan + 1, f"Semana {w['n']} — lista de compras"))
+    pages.append(page(lst, p_plan + 2, f"Semana {w['n']} — lista de compras"))
 
 # para variar
 def var_rows(lst):
-    return ''.join(f'<li><b>{E(RECIPE[(b, s)]["title"])}</b><br><span class="small">{ref((b, s), True)}</span><br>{E(t)}</li>' for b, s, t in lst)
+    return ''.join(f'<div class="vrow"><div class="sph" style="background-image:url(\'{photo((b, s), 400)}\')"></div><div class="vt">'
+                   f'<b>{E(RECIPE[(b, s)]["title"])}</b><br><span class="small">{ref((b, s), True)}</span><br>{E(t)}</div></div>' for b, s, t in lst)
 
 
 var = f'''<div class="kicker" style="margin-top:3mm">Para variar</div><h1 class="big">Outros fins de semana e outras sobremesas</h1>
 <p class="lead" style="max-width:158mm">Quando quiser trocar um prato, estas receitas da coleção cabem no mesmo ritmo do cardápio.
 Elas não estão nas listas de compras: confira os ingredientes no livro.</p>
 <div style="margin:4mm 0">{orn(40)}</div>
-<div class="two"><div><div class="sec">Fim de semana</div><ul class="dots">{var_rows(VARIAR_FDS)}</ul></div>
-<div><div class="sec">Sobremesas</div><ul class="dots">{var_rows(VARIAR_DOCES)}</ul>
+<div class="two"><div><div class="sec">Fim de semana</div>{var_rows(VARIAR_FDS)}</div>
+<div><div class="sec">Sobremesas</div>{var_rows(VARIAR_DOCES)}
 <div class="tip" style="margin-top:4mm"><div class="label">{leaf()} Na semana</div>
 <p>Affogato e budino são as sobremesas mais rápidas da coleção. Os cantucci, assados num domingo, acompanham o café da semana inteira.</p></div>
 </div></div>'''
@@ -528,7 +630,7 @@ pages.append(page(var, P_VAR, "Para variar"))
 # índice das receitas usadas
 weeks_of = {}
 for w in WEEKS:
-    for key, _f in week_uses(w):
+    for key, _f, _skip in week_uses(w):
         weeks_of.setdefault(key, set()).add(w["n"])
 weeks_of.setdefault(("P", "fermento"), set()).update({1, 2, 3, 4})
 idx_rows = ""
@@ -589,4 +691,7 @@ with sync_playwright() as p:
 if bad:
     print("ATENÇÃO: há páginas com conteúdo cortado")
     sys.exit(2)
-print("ok:", OUT_PDF, f"({len(pages)} páginas)")
+print("fotos usadas:")
+for k, v in PHOTO_LOG.items():
+    print(f"  {BOOKS[k[0]]['short']} {RECIPE[k]['num']:02d} {RECIPE[k]['title']}  <-  {v}")
+print("ok:", OUT_PDF, f"({len(pages)} páginas, {os.path.getsize(OUT_PDF) / 1e6:.1f} MB)")
