@@ -151,7 +151,7 @@ async function invoke(pool: Pool, handler: (req: any, res: any) => any, opts: { 
 export async function loadCatalog(pool: Pool, brands: string | string[] | null) {
   const list = brands === null ? null : (Array.isArray(brands) ? brands : [brands]).filter(Boolean);
   const one = async (brandId: string | null) =>
-    (
+    orderForAttendant((
       await pool.query(
         `SELECT o.*, p.name AS product_name, p.description AS product_description, p.collection_key, p.brand_id AS product_brand_id, b.name AS product_brand_name
          FROM offers o JOIN products p ON p.id = o.product_id LEFT JOIN brands b ON b.id = p.brand_id
@@ -159,11 +159,12 @@ export async function loadCatalog(pool: Pool, brands: string | string[] | null) 
            AND ($1::uuid IS NULL OR p.brand_id = $1::uuid)
            -- NORQVA-0075: oferta de saída e oferta depois da compra não entram no catálogo do atendente
            AND NOT EXISTS (SELECT 1 FROM offers src WHERE src.exit_offer_id = o.id OR src.post_purchase_offer_id = o.id)
-         ORDER BY o.created_at ASC
+         -- NORQVA-0138: a oferta em destaque vem primeiro (e nunca fica de fora do limite)
+         ORDER BY COALESCE(o.attendant_featured, FALSE) DESC, o.created_at ASC
          LIMIT 20`,
         [brandId]
       )
-    ).rows;
+    ).rows);
   const rows: any[] = [];
   if (list === null) rows.push(...(await one(null)));
   else for (const b of list) rows.push(...(await one(b)));
@@ -183,14 +184,41 @@ export async function loadCatalog(pool: Pool, brands: string | string[] | null) 
       brandName: (o.product_brand_name ? String(o.product_brand_name) : null) as string | null,
       pix,
       from,
-      card
+      card,
+      // NORQVA-0138: oferta recomendada (apresentar primeiro) e a alternativa mais em conta dela, se estiver à venda
+      featured: Boolean(o.attendant_featured),
+      alternativeCode: (o.attendant_alternative_offer_id
+        ? rows.find(r => String(r.id) === String(o.attendant_alternative_offer_id))?.human_id || null
+        : null) as string | null
     };
   });
 }
 
+/**
+ * NORQVA-0138: ordem do catálogo. Ofertas em destaque (offers.attendant_featured) primeiro, cada uma seguida da
+ * sua alternativa mais em conta (offers.attendant_alternative_offer_id), se ela também estiver no catálogo; depois
+ * as demais na ordem de antes. Só reordena: o que não está ATIVA nunca chega aqui.
+ */
+export function orderForAttendant<T extends { id: any; attendant_featured?: any; attendant_alternative_offer_id?: any }>(rows: T[]): T[] {
+  const out: T[] = [];
+  const seen = new Set<string>();
+  const push = (r: T | undefined) => {
+    if (!r || seen.has(String(r.id))) return;
+    seen.add(String(r.id));
+    out.push(r);
+  };
+  for (const r of rows) {
+    if (!r.attendant_featured) continue;
+    push(r);
+    if (r.attendant_alternative_offer_id) push(rows.find(x => String(x.id) === String(r.attendant_alternative_offer_id)));
+  }
+  for (const r of rows) push(r);
+  return out;
+}
+
 const brl = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`;
 
-function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, grouped = false): string {
+export function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, grouped = false): string {
   if (!catalog.length) return 'Nenhum produto à venda agora neste número. Não ofereça nada; diga que logo teremos novidades e chame uma pessoa (request_human) se o cliente insistir.';
   if (grouped) {
     // NORQVA-0132: um bloco por assunto (marca), para a IA não misturar
@@ -203,9 +231,13 @@ function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, grouped =
       })
       .join('\n\n');
   }
+  const alternativeOf = new Map<string, string>();
+  for (const c of catalog) {
+    if (c.featured && c.alternativeCode && catalog.some(x => x.code === c.alternativeCode)) alternativeOf.set(c.alternativeCode, c.code);
+  }
   return catalog.map(c => {
     const lines = [
-      `- Código ${c.code}: ${c.name}`,
+      `- Código ${c.code}: ${c.name}${c.featured ? ' [RECOMENDADO]' : ''}`,
       `  Pix (à vista): ${brl(c.pix)}${c.from ? ` (preço cheio ${brl(c.from)})` : ''}`
     ];
     if (c.card) {
@@ -218,6 +250,17 @@ function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, grouped =
     }
     if (c.description) lines.push(`  Sobre: ${c.description}`);
     if (c.bonus) lines.push(`  Bônus: ${c.bonus}`);
+    // NORQVA-0138: destaque e alternativa vêm do cadastro da oferta (nada de texto fixo por produto)
+    if (c.featured) {
+      const alt = c.alternativeCode && catalog.find(x => x.code === c.alternativeCode);
+      lines.push(
+        alt
+          ? `  Como apresentar: ofereça este PRIMEIRO, em destaque, como a opção recomendada. Logo depois, apresente o código ${alt.code} (${alt.name}) como alternativa mais em conta. O cliente escolhe; gere a cobrança do que ele escolher.`
+          : '  Como apresentar: ofereça este PRIMEIRO, em destaque, como a opção recomendada.'
+      );
+    }
+    const featuredCode = alternativeOf.get(c.code);
+    if (featuredCode) lines.push(`  Como apresentar: é a alternativa mais em conta ao código ${featuredCode}. Apresente depois dele, nunca antes.`);
     lines.push(c.sample ? '  Fotos de amostra: disponíveis (send_samples).' : '  Fotos de amostra: não há.');
     return lines.join('\n');
   }).join('\n');

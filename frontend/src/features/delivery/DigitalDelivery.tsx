@@ -132,7 +132,10 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
 
   // NORQVA-0061: livros da coleção vendidos separadamente têm título próprio no aviso de entrega
   const orderName = String(orderData?.offer_name_snapshot || '').trim();
-  const readyTitle = !orderName || /trattoria/i.test(orderName)
+  // NORQVA-0138: a Coleção Trattoria Completa (6 PDFs) não é o livro Trattoria em Casa
+  const readyTitle = /^cole[cç][aã]o\b/i.test(orderName)
+    ? `Sua ${orderName} está pronta!`
+    : !orderName || /trattoria/i.test(orderName)
     ? 'Seu Trattoria em Casa está pronto!'
     : isBordadoName(orderName)
       ? (/^kit\b/i.test(orderName) ? `Seu ${orderName} está pronto!` : 'Seu Kit de Bordado está pronto!')
