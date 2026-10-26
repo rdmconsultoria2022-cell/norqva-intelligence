@@ -83,8 +83,7 @@ troque esse trecho por:
 
 ## Fora do escopo
 
-- Página pública `/p/<código>` da coleção: a oferta abre a página de venda padrão (a do Trattoria). A venda prevista é pelo
-  WhatsApp; uma página própria (ou no `/kit/`) é outra tarefa.
+- Página de venda própria da coleção (hoje `/p/<código>` mostra a versão simples com WhatsApp; ver revisão).
 - Tela para ligar/desligar o destaque e escolher a alternativa (hoje só pelo banco/migration).
 - Anúncios e campanha da coleção.
 
@@ -94,12 +93,26 @@ troque esse trecho por:
 - Ordem do atendente (`orderForAttendant`): destaque, alternativa, resto; alternativa fora do catálogo não é inventada.
 - Migration 086 (PostgreSQL do CI): cria em RASCUNHO com os valores acima, os 5 PDFs do kit, kit intacto, não duplica; kit com 4 PDFs não cria nada.
 - Entrega: o bônus entra pela tela como 6º arquivo; pedido pendente não recebe nada; depois de PAID, 6 acessos.
+- Ativar: recusa sem o 6º PDF; ativa com ele; oferta com bônus sem destaque segue como antes.
+- Frontend (`norqva_0138_colecao_completa.test.tsx`): entrega com título da coleção e cartão do bônus; página `/p/` simples com WhatsApp.
 - Atendente: coleção em RASCUNHO fora do catálogo e cobrança recusada; as duas ATIVAS, coleção primeiro e recomendada, kit logo
   depois como alternativa; o cliente escolhe e o Pix sai com R$ 29,90 ou R$ 47,00; kit pausado; coleção de volta a RASCUNHO some.
 
 ## Revisão independente
 
-(preencher)
+Revisor independente (26/10/2026), PR #187: **nada bloqueante**. Pedidos aplicados, com testes:
+
+1. **Ativar só com o bônus enviado:** `PUT /api/offers/:id` (único caminho que põe uma oferta em ATIVA) recusa com
+   409 "Envie o PDF do bônus antes de ativar." quando a oferta tem bônus preenchido, está em destaque do atendente ou tem
+   alternativa, e não entrega nenhum PDF além dos da alternativa (na coleção: os 5 do kit sem o 6º). Oferta com bônus
+   sem destaque nem alternativa segue a regra de antes.
+2. **Cartão do bônus na entrega:** arquivo com "Cardápio italiano" no título usa a capa própria
+   (`frontend/public/images/kit/capa_cardapio.jpg`, a capa do PDF) e o texto "Bônus: 28 jantares com lista de compras";
+   o texto de abertura diz "5 livros e o bônus". O "Cardápio Acumulador" do Seca Barriga não é afetado.
+3. **Página `/p/<código>` da coleção:** a API pública devolve `whatsapp_first` (= `attendant_featured`); a página mostra a
+   versão simples (nome, R$ 47,00, descrição, bônus) com o botão "Quero pelo WhatsApp" como caminho principal e "pagar aqui
+   mesmo" como opção; sem WhatsApp disponível, o botão de pagamento. Nada do material do livro Trattoria.
+4. Migration renumerada para **086** (a 085 é da NORQVA-0137, PR #186).
 
 ## Execução
 

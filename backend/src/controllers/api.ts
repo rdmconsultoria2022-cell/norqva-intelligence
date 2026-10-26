@@ -1011,6 +1011,21 @@ export async function updateOffer(req: AuthenticatedRequest, res: Response) {
     const updatedUpsell = upsell !== undefined ? (upsell === null || upsell.trim() === '' ? null : upsell.trim()) : existingOffer.upsell;
     const updatedCross = cross_sell !== undefined ? (cross_sell === null || cross_sell.trim() === '' ? null : cross_sell.trim()) : existingOffer.cross_sell;
     const updatedStatus = status !== undefined ? status : existingOffer.status;
+    // NORQVA-0138: oferta com bônus que o atendente apresenta em destaque (ou com alternativa) só vai para ATIVA
+    // depois que o PDF do bônus foi ligado: precisa entregar pelo menos um arquivo além dos da alternativa.
+    if (updatedStatus === 'ATIVA' && existingOffer.status !== 'ATIVA' && updatedBonus &&
+        (existingOffer.attendant_featured || existingOffer.attendant_alternative_offer_id)) {
+      const extra = await client.query(
+        `SELECT COUNT(*)::int AS n FROM offer_digital_assets a
+         WHERE a.offer_id = $1
+           AND ($2::uuid IS NULL OR a.asset_id NOT IN (SELECT b.asset_id FROM offer_digital_assets b WHERE b.offer_id = $2::uuid))`,
+        [existingOffer.id, existingOffer.attendant_alternative_offer_id || null]
+      );
+      if (!(Number(extra.rows[0]?.n) > 0)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Envie o PDF do bônus antes de ativar.' });
+      }
+    }
     const updatedProductId = req.body.product_id !== undefined ? req.body.product_id : existingOffer.product_id;
     const updatedDataProvenance = req.body.data_provenance !== undefined ? req.body.data_provenance : existingOffer.data_provenance;
 
@@ -1066,6 +1081,7 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
     const query = `
       SELECT id, human_id, name, description, price, promotional_price, bonus, status, is_demo,
              card_enabled, card_max_installments, card_total_price, card_free_installments, card_interest_monthly,
+             COALESCE(attendant_featured, FALSE) AS attendant_featured,
              (SELECT p.name FROM products p WHERE p.id = offers.product_id) AS product_name,
              (SELECT p.collection_key FROM products p WHERE p.id = offers.product_id) AS collection_key,
              (SELECT x.human_id FROM offers x WHERE x.id = offers.exit_offer_id AND x.is_deleted = FALSE AND x.status = 'ATIVA' AND x.is_demo = offers.is_demo) AS exit_offer_human_id
@@ -1103,6 +1119,9 @@ export async function getPublicOffer(req: AuthenticatedRequest, res: Response) {
       card: publicCardTerms(offer),
       // NORQVA-0054: WhatsApp da marca disponível agora (conectado e com o atendente ligado)
       whatsapp: (await whatsappNumberForOffer(pool, offer.id).catch(() => null)) ? { available: true } : null,
+      // NORQVA-0138: oferta em destaque do atendente (Coleção Trattoria Completa) ainda sem página própria:
+      // a página mostra só nome, preço, bônus e o botão do WhatsApp (nada do livro Trattoria)
+      whatsapp_first: Boolean(offer.attendant_featured),
       // NORQVA-0069: oferta de saída (preço menor) para o botão Voltar do pagamento; null = não há
       exit_offer: offer.exit_offer_human_id ? { human_id: offer.exit_offer_human_id } : null,
       // NORQVA-0063: quantos PDFs a oferta entrega (a página do kit mostra 2 ou 5 livros a partir disso)

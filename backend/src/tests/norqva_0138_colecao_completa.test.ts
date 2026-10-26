@@ -522,3 +522,88 @@ describe.sequential('NORQVA-0138 — atendente: coleção primeiro, kit de 5 com
     expect(catalogText(catalog)).not.toContain('[RECOMENDADO]');
   });
 });
+
+describe.sequential('NORQVA-0138 — ativar a coleção só depois do PDF do bônus', () => {
+  let pool: Pool;
+  let admin: string;
+  const tag = crypto.randomUUID().slice(0, 6).toUpperCase();
+  const productId = crypto.randomUUID();
+  const kitId = crypto.randomUUID();
+  const colId = crypto.randomUUID();
+  const plainId = crypto.randomUUID();
+  const assets: string[] = [];
+
+  beforeAll(async () => {
+    pool = initializeDB();
+    await runMigrations(pool);
+    const u = await pool.query(
+      `INSERT INTO users (id, auth_user_id, email, name, role, status) VALUES (gen_random_uuid(), $1, 'admin.norqva0138c@norqva.test', 'Admin 0138', 'ADMIN', 'ACTIVE')
+       ON CONFLICT (email) DO UPDATE SET role = 'ADMIN', status = 'ACTIVE' RETURNING auth_user_id, email`,
+      [crypto.randomUUID()]
+    );
+    admin = signSupabaseToken({ sub: u.rows[0].auth_user_id, email: u.rows[0].email, role: 'ADMIN' });
+    await pool.query(
+      `INSERT INTO products (id, human_id, name, category, description, status, is_demo, data_provenance)
+       VALUES ($1, $2, 'Coleção 0138c', 'Receitas', 'x', 'PLANEJADO', false, 'COMMERCIAL_PRODUCTION')`,
+      [productId, `PRD-F${tag}`]
+    );
+    for (let i = 0; i < 6; i++) {
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO digital_assets (id, name, storage_provider, storage_bucket, storage_path, is_demo) VALUES ($1, $2, 'SUPABASE', 'digital-products', $3, false)`,
+        [id, `arquivo ${i}`, `books/0138c-${tag}-${i}.pdf`]
+      );
+      assets.push(id);
+    }
+    await pool.query(
+      `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo, data_provenance)
+       VALUES ($1, $2, 'Kit 0138c', $3, 94.50, 29.90, 'ATIVA', 'Os 5 livros', false, 'COMMERCIAL_PRODUCTION'),
+              ($4, $5, 'Livro com bônus 0138c', $3, 19.90, NULL, 'RASCUNHO', 'Livro', false, 'COMMERCIAL_PRODUCTION')`,
+      [kitId, `OFF-G${tag}`, productId, plainId, `OFF-P${tag}`]
+    );
+    await pool.query(`UPDATE offers SET bonus = 'Um bônus' WHERE id = $1`, [plainId]);
+    await pool.query(
+      `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, bonus, status, description, is_demo, data_provenance,
+                           attendant_featured, attendant_alternative_offer_id)
+       VALUES ($1, $2, 'Coleção 0138c', $3, 94.50, 47.00, 'Cardápio italiano de 4 semanas com lista de compras (PDF)', 'RASCUNHO', 'Os 5 livros e o bônus',
+               false, 'COMMERCIAL_PRODUCTION', TRUE, $4)`,
+      [colId, `OFF-H${tag}`, productId, kitId]
+    );
+    for (const a of assets.slice(0, 5)) {
+      await pool.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [kitId, a]);
+      await pool.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [colId, a]);
+    }
+  });
+
+  afterAll(async () => {
+    if (!pool) return;
+    const q = (s: string, p: any[]) => pool.query(s, p).catch(() => {});
+    await q('DELETE FROM offer_digital_assets WHERE offer_id = ANY($1::uuid[])', [[kitId, colId, plainId]]);
+    await q('DELETE FROM digital_assets WHERE id = ANY($1::uuid[])', [assets]);
+    await q('UPDATE offers SET attendant_alternative_offer_id = NULL WHERE id = $1', [colId]);
+    await q('DELETE FROM offers WHERE id = ANY($1::uuid[])', [[colId, kitId, plainId]]);
+    await q('DELETE FROM products WHERE id = $1', [productId]);
+  });
+
+  const activate = (id: string) => request(app).put(`/api/offers/${id}`).set('Authorization', `Bearer ${admin}`).send({ status: 'ATIVA' });
+
+  it('só com os 5 PDFs do kit: recusa com "Envie o PDF do bônus antes de ativar"', async () => {
+    const r = await activate(colId);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toBe('Envie o PDF do bônus antes de ativar.');
+    expect((await pool.query('SELECT status FROM offers WHERE id = $1', [colId])).rows[0].status).toBe('RASCUNHO');
+  });
+
+  it('com o 6º PDF (o bônus) ligado: ativa', async () => {
+    await pool.query('INSERT INTO offer_digital_assets (offer_id, asset_id) VALUES ($1, $2)', [colId, assets[5]]);
+    const r = await activate(colId);
+    expect(r.status).toBe(200);
+    expect(r.body.offer.status).toBe('ATIVA');
+  });
+
+  it('oferta com bônus mas sem destaque nem alternativa: a regra antiga continua', async () => {
+    const r = await activate(plainId);
+    expect(r.status).toBe(200);
+    expect(r.body.offer.status).toBe('ATIVA');
+  });
+});

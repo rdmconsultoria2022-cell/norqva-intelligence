@@ -6,6 +6,14 @@ import { trackPurchase } from '../../services/metaPixel';
 import { PostPurchaseOffer } from './PostPurchaseOffer';
 import { isFreshName, FRESH_BUTTON_STYLE, isBordadoName, BORDADO_INFO } from '../../lib/productLook';
 
+
+// NORQVA-0138: o bônus "Cardápio italiano de 4 semanas" tem capa e texto próprios na entrega
+export const CARDAPIO_COVER = '/images/kit/capa_cardapio.jpg';
+export function isCardapioTitle(title: string | null | undefined): boolean {
+  // só o cardápio italiano (o Seca Barriga também tem "Cardápio ..." e usa outra tela)
+  return /card[aá]pio italiano/i.test(String(title || ''));
+}
+
 export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
   orderId,
   checkoutToken,
@@ -393,7 +401,9 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
           <div className="space-y-6">
             
             <div className="text-sm text-stone-700 leading-relaxed">
-              {tokens.length > 1
+              {tokens.length > 1 && tokens.some(t => isCardapioTitle(t.assetTitle))
+                ? <>Seus <strong>{tokens.length - tokens.filter(t => isCardapioTitle(t.assetTitle)).length} livros e o bônus</strong> já estão disponíveis para leitura no celular, tablet ou computador. Cada arquivo tem o seu botão: ele abre em uma nova aba e esta página continua aberta para você baixar o próximo.</>
+                : tokens.length > 1
                 ? <>Seus <strong>{tokens.length} livros</strong> já estão disponíveis para leitura no celular, tablet ou computador. Cada livro tem o seu botão: o livro abre em uma nova aba e esta página continua aberta para você baixar o próximo.</>
                 : <>O seu livro já está disponível para leitura no seu celular, tablet ou computador. Ele abre em uma nova aba.</>}
             </div>
@@ -413,10 +423,12 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                   : null;
                 // NORQVA-0135: Kit de Bordado (pelo arquivo ou pelo nome do pedido)
                 const isBordadoItem = isBordadoName(item.assetTitle) || (!isDolciBook && !collection && !/trattoria/i.test(item.assetTitle || '') && isBordadoName(orderName));
-                const bookCover = isBordadoItem ? BORDADO_INFO.cover : collection ? `/images/livros/${collection.key}/capa.jpg` : isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
+                // NORQVA-0138: bônus da Coleção Trattoria Completa (cardápio de 4 semanas)
+                const isCardapio = isCardapioTitle(item.assetTitle);
+                const bookCover = isCardapio ? CARDAPIO_COVER : isBordadoItem ? BORDADO_INFO.cover : collection ? `/images/livros/${collection.key}/capa.jpg` : isDolciBook ? '/images/kit/capa_dolci.jpg' : '/images/kit/capa_trat.jpg';
                 const isTrattBook = /trattoria/i.test(item.assetTitle || '');
-                const bookTitle = isBordadoItem ? BORDADO_INFO.title : collection ? collection.title : isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
-                const bookInfo = isBordadoItem ? BORDADO_INFO.info : collection ? collection.info : isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
+                const bookTitle = isCardapio ? (item.assetTitle || 'Cardápio italiano de 4 semanas') : isBordadoItem ? BORDADO_INFO.title : collection ? collection.title : isDolciBook ? 'Dolci della Nonna' : isTrattBook ? 'Trattoria em Casa' : (item.assetTitle || 'Trattoria em Casa');
+                const bookInfo = isCardapio ? 'Bônus: 28 jantares com lista de compras' : isBordadoItem ? BORDADO_INFO.info : collection ? collection.info : isDolciBook ? 'Doces italianos da nonna (PDF)' : '28 receitas • Massas, molhos e pizzas italianas (PDF)';
 
                 return (
                   <div
