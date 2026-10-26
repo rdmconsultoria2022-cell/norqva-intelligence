@@ -376,3 +376,11 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Sem assunto, sem adivinhar:** fotos de amostra sem produto escolhido não saem.
 - **O que não muda:** só oferta ATIVA entra no catálogo e no botão (oferta em TESTE é do dono testando); preço, Pix, cartão, entrega e liberação iguais; a recuperação de pagamento (D-0125) continua só pelo número da marca principal.
 - **Botão na página gerada** (`/v/<slug>`): "Quero pelo WhatsApp" na abertura e na oferta, mais o flutuante, ao lado do botão de pagamento; a API pública devolve `whatsapp` só com número que atende a marca.
+
+## D-0137 — Mandato de operação das campanhas Trattoria (2026-10-26)
+
+- **Contrato "NORQVA-0136 — Operação autônoma das campanhas Trattoria" aprovado pelo Ricardo em 26/10/2026 14h21.** O Claude opera as campanhas da lista do mandato pelas rotas `/api/operator/*` (token `NORQVA_OPERATOR_TOKEN`), com os limites conferidos no servidor (NORQVA-0137).
+- **Números:** capital R$ 1.500 em até 21 dias; soma dos orçamentos diários até R$ 100; CPA máximo = preço − 6% − R$ 1,99.
+- **Freio:** gasto ≥ R$ 750 sem oferta com 5 vendas e CPA dentro do máximo, ou resultado ≤ −R$ 750, ou capital esgotado: pausa tudo e avisa. Fim do prazo: pausa e encerra.
+- **Subir orçamento:** 48 h entre subidas, até +20%, 5 vendas pagas nos últimos 3 dias com CPA ≤ 80% do máximo. Baixar sempre. Das 22h às 8h só pausar. Pausar sempre; ativar só com o mandato ativo e sem freio.
+- **Caminho único:** toda alteração passa pela ficha de alteração (mesmas travas das telas) e fica registrada no mandato. Vendas só de pedidos PAID confirmados pelo Asaas.

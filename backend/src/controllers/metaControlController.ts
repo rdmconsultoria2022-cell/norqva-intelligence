@@ -45,7 +45,8 @@ const isDemoReq = (req: AuthenticatedRequest) => req.query.mode === 'demo';
 
 function contextFor(req: AuthenticatedRequest): MetaMutatingSecurityContext {
   return {
-    userId: req.user?.id || '',
+    // NORQVA-0137: o operador do mandato e o freio não têm usuário: null (não '') para o registro de auditoria gravar
+    userId: req.user?.id || (null as unknown as string),
     userRole: req.user?.role || '',
     isDemo: isDemoReq(req)
   };

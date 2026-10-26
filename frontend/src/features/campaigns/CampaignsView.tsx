@@ -12,6 +12,7 @@ import { AdMetaSwap } from './AdMetaSwap';
 import { CampaignOverview, CampaignHistory, PauseBar, MetaChangesList, AudienceList, MetaObjectsEditor, NightPauseSettings } from './CampaignManage';
 import { CTA_LABEL } from './ctaLabels';
 import { ExternalNightPause } from './ExternalNightPause';
+import { OperatorMandate } from './OperatorMandate';
 import { getMetaDeliveryStatus } from '../acquisition/MetaAdsView';
 import { Disclosure, StatusPill, Tone, brl as brlFmt, int, multiple } from '../../components/ui/premium';
 
@@ -219,6 +220,12 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const openFromAlert = useCallback(
     (f: { metaCampaignId: string | null; planCode: string | null; tab: 'results' | 'cap'; section?: string | null }) => {
       // NORQVA-0122: aviso da pausa noturna de campanha criada fora do NORQVA → seção dessas campanhas
+      // NORQVA-0137: aviso do mandato do operador → cartão do mandato
+      if (f.section === 'mandate' && isAdmin) {
+        setSelectedId(null);
+        setTimeout(() => document.querySelector('[data-testid="operator-mandate"]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 0);
+        return true;
+      }
       if (f.section === 'external-night-pause' && isAdmin) {
         setSelectedId(null);
         setTimeout(() => document.querySelector('[data-testid="external-night-pause"]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 0);
@@ -542,6 +549,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
             showSuccess={showSuccess}
             onChanged={() => loadList()}
           />
+        </div>
+      )}
+
+      {/* NORQVA-0137: mandato de operação (só ADMIN) */}
+      {isAdmin && (
+        <div className={hasSelection ? 'hidden lg:block' : ''}>
+          <OperatorMandate apiFetch={apiFetch} showError={showError} showSuccess={showSuccess} />
         </div>
       )}
 
