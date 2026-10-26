@@ -45,14 +45,14 @@ export async function whatsappNumberForOffer(pool: Pool, offerId: string): Promi
        -- NORQVA-0132: marca principal do número ou uma das marcas extras dele
        AND (n.brand_id IS NULL OR n.brand_id = o.brand_id
             OR (n.brand_id IS NOT NULL AND EXISTS (SELECT 1 FROM whatsapp_number_brands x WHERE x.number_id = n.id AND x.brand_id = o.brand_id)))
-       -- a oferta precisa estar no catálogo que o atendente enxerga para essa marca (loadCatalog: 20 mais antigas)
+       -- a oferta precisa estar no catálogo que o atendente enxerga para essa marca (loadCatalog: destaque primeiro e as 20 mais antigas)
        AND o.id IN (
          SELECT o2.id FROM offers o2 JOIN products p2 ON p2.id = o2.product_id
          WHERE o2.status = 'ATIVA' AND o2.is_demo = FALSE AND o2.is_deleted = FALSE AND p2.is_deleted = FALSE
            AND (n.brand_id IS NULL OR p2.brand_id = o.brand_id)
            -- mesmo filtro do catálogo do atendente (NORQVA-0075: oferta de saída e depois da compra ficam fora)
            AND NOT EXISTS (SELECT 1 FROM offers src WHERE src.exit_offer_id = o2.id OR src.post_purchase_offer_id = o2.id)
-         ORDER BY o2.created_at ASC LIMIT 20
+         ORDER BY COALESCE(o2.attendant_featured, FALSE) DESC, o2.created_at ASC LIMIT 20
        )
      ORDER BY CASE WHEN n.brand_id = o.brand_id THEN 0 WHEN n.brand_id IS NULL THEN 2 ELSE 1 END ASC,
               (SELECT COUNT(*) FROM whatsapp_conversations c WHERE c.number_id = n.id AND c.last_message_at > NOW() - INTERVAL '1 day') ASC,

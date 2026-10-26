@@ -48,6 +48,8 @@ export interface PublicOfferData {
   is_demo: boolean;
   meta_pixel_id?: string | null;
   whatsapp?: { available: boolean } | null;
+  // NORQVA-0138: oferta em destaque do atendente, sem página de venda própria (página simples com WhatsApp)
+  whatsapp_first?: boolean;
   // NORQVA-0061: livro da coleção (null = página do Trattoria)
   book?: string | null;
   // NORQVA-0080: adicional (Dolci) e cartão, para a oferta dos dois livros
@@ -824,7 +826,9 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
   // NORQVA-0112: link direto do pagamento (?checkout=1) e produtos que não são livros (Seca Barriga):
   // fundo neutro com nome, preço e o botão que reabre o pagamento; nada do material de venda dos livros.
   // NORQVA-0135: o Kit de Bordado não tem página de livro aqui (a venda é na página gerada): vai direto ao pagamento
-  if (directCheckout || offerLook === 'fresh' || isBordadoName(offer?.name)) {
+  // NORQVA-0138: Coleção Trattoria Completa (destaque do atendente) também, com o WhatsApp como caminho principal
+  const whatsappFirst = Boolean(offer?.whatsapp_first);
+  if (directCheckout || offerLook === 'fresh' || isBordadoName(offer?.name) || whatsappFirst) {
     const fresh = offerLook === 'fresh';
     const paid = Boolean(existingSession && existingSession.status === 'PAID');
     return (
@@ -849,17 +853,35 @@ export const PublicOfferPage: React.FC<PublicOfferPageProps> = ({
               {offer.card ? 'Pix ou cartão de crédito • Pagamento único' : 'Pagamento único via Pix'}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleOpenCheckout}
-            data-testid="direct-checkout-open"
-            className={`w-full min-h-[48px] rounded-xl px-6 py-3.5 text-sm font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 ${fresh ? 'hover:brightness-95 shadow-emerald-600/20' : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-[#B83B1E]/20'}`}
-            style={fresh ? FRESH_BUTTON_STYLE : undefined}
-          >
-            {paid ? <CheckCircle2 className="h-4 w-4" /> : null}
-            <span>{paid ? 'Acessar minha compra' : 'Continuar para o pagamento'}</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
+          {whatsappFirst && (
+            <div className="text-sm text-stone-600 leading-relaxed space-y-2" data-testid="direct-checkout-about">
+              {offer.description ? <p>{offer.description}</p> : null}
+              {offer.bonus ? <p className="font-semibold text-stone-800">Bônus: {offer.bonus}</p> : null}
+            </div>
+          )}
+          {(() => {
+            const payButton = (
+              <button
+                type="button"
+                onClick={handleOpenCheckout}
+                data-testid="direct-checkout-open"
+                className={`w-full min-h-[48px] rounded-xl px-6 py-3.5 text-sm font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 ${fresh ? 'hover:brightness-95 shadow-emerald-600/20' : 'bg-[#B83B1E] hover:bg-[#8F2810] shadow-[#B83B1E]/20'}`}
+                style={fresh ? FRESH_BUTTON_STYLE : undefined}
+              >
+                {paid ? <CheckCircle2 className="h-4 w-4" /> : null}
+                <span>{paid ? 'Acessar minha compra' : 'Continuar para o pagamento'}</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            );
+            // NORQVA-0138: na coleção, o WhatsApp é o caminho principal (o atendente apresenta as opções)
+            return whatsappFirst && !paid ? (
+              <div className="flex justify-center">
+                <BuyChoice available={!!offer?.whatsapp?.available} offerHumanId={offer?.human_id || humanId} onCheckout={handleOpenCheckout} dark={false}>
+                  {payButton}
+                </BuyChoice>
+              </div>
+            ) : payButton;
+          })()}
           {!paid && (
             <button
               type="button"
