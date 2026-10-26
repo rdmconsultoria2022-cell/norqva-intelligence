@@ -41,6 +41,8 @@ ITEMS = {
     "cogumelos_mix": ("Cogumelos-de-paris e shiitake", "hort"),
     "cogumelos_variados": ("Cogumelos frescos variados (paris, shimeji ou portobello)", "hort"),
     "espinafre": ("Espinafre", "hort"),
+    "batata": ("Batata Asterix (casca rosada)", "hort"),
+    "cebolinha": ("Cebolinha", "hort"),
     "rucula": ("Rúcula", "hort"),
     "limao_siciliano": ("Limão-siciliano", "hort"),
     "limao": ("Limão", "hort"),
@@ -58,6 +60,7 @@ ITEMS = {
     "guanciale": ("Guanciale (ou bacon), em peça", "acou"),
     "linguica": ("Linguiça toscana", "acou"),
     "camarao": ("Camarão médio com casca e cabeça", "acou"),
+    "frango": ("Peito de frango (para cozinhar e desfiar)", "acou"),
     # laticínios, frios e ovos
     "ovos": ("Ovos grandes", "lati"),
     "leite": ("Leite integral", "lati"),
@@ -73,6 +76,7 @@ ITEMS = {
     "queijo_mole": ("Queijo cremoso ou de casca mole (gorgonzola, brie)", "lati"),
     "provolone": ("Provolone (ou pecorino jovem)", "lati"),
     "queijo_cremoso": ("Queijo fresco cremoso", "lati"),
+    "requeijao": ("Requeijão cremoso (ou ricota temperada)", "lati"),
     "presunto_cru": ("Presunto cru fatiado fino", "lati"),
     "salame": ("Salame italiano fatiado", "lati"),
     "mortadela": ("Mortadela, em peça", "lati"),
@@ -131,6 +135,7 @@ ITEMS = {
     "bicarbonato": ("Bicarbonato de sódio", "desp"),
     "amido": ("Amido de milho", "desp"),
     "baunilha": ("Essência de baunilha", "desp"),
+    "oleo": ("Óleo de soja, girassol ou canola (para fritar)", "desp"),
     "vinagre_tinto": ("Vinagre de vinho tinto", "desp"),
     "vinagre_branco": ("Vinagre de vinho branco", "desp"),
     "cafe": ("Café para coar (forte)", "desp"),
@@ -658,6 +663,53 @@ ING = {
         ("1 receita de polenta cremosa", REF, None, "", "polenta da receita 09"),
         ("Parmesão ralado a gosto", "parmesao", None, ""),
     ],
+
+    # ── NORQVA-0140: receitas novas no cardápio (todas com foto no livro) ──
+    ("T", "nhoque"): [
+        ("800 g de batata Asterix", "batata", 800, "g"),
+        ("120–150 g de farinha de trigo tipo 00", "farinha_trigo", 150, "g"),
+        ("1 gema de ovo grande", "ovos", 1, "gema"),
+        ("1 colher (café) de sal fino", "sal", None, ""),
+        ("Noz-moscada ralada a gosto", "noz_moscada", None, ""),
+    ],
+    ("T", "semola"): [
+        ("350 g de sêmola de trigo duro", "semola", 350, "g"),
+        ("170 ml de água morna", REF, None, "", "água"),
+        ("1 pitada de sal marinho fino", "sal", None, ""),
+    ],
+    ("T", "cannelloni"): [
+        ("400 g de peito de frango cozido e bem desfiado", "frango", 400, "g já cozido e desfiado"),
+        ("200 g de requeijão cremoso ou ricota temperada", "requeijao", 200, "g"),
+        ("2 colheres (sopa) de ervas frescas picadas (salsinha e cebolinha)", "salsinha", 1, "cs picada"),
+        ("2 colheres (sopa) de ervas frescas picadas (salsinha e cebolinha)", "cebolinha", 1, "cs picada"),
+        ("Sal e noz-moscada a gosto", "sal", None, ""),
+        ("Sal e noz-moscada a gosto", "noz_moscada", None, ""),
+        ("10 folhas de massa fresca aos ovos", REF, None, "", "massa da receita 01"),
+        ("400 ml de molho pomodoro (receita 07)", REF, None, "", "molho da receita 07"),
+        ("50 g de parmesão ralado", "parmesao", 50, "g"),
+    ],
+    ("A", "arancini"): [
+        ("300 g de arroz arbóreo ou carnaroli", "arroz", 300, "g"),
+        ("900 ml de caldo de legumes quente", REF, None, "", "caldo de legumes (Risotos, receita 01)"),
+        ("1 envelope de açafrão verdadeiro em pó", "acafrao", 1, "envelope"),
+        ("30 g de manteiga (2 colheres de sopa)", "manteiga", 30, "g"),
+        ("50 g de parmesão ralado fino", "parmesao", 50, "g"),
+        ("Sal a gosto", "sal", None, ""),
+        ("120 g de muçarela em 12 cubos", "mucarela", 120, "g"),
+        ("60 g de farinha de trigo", "farinha_trigo", 60, "g"),
+        ("100 ml de água", REF, None, "", "água"),
+        ("150 g de farinha de rosca fina", "farinha_rosca", 150, "g"),
+        ("1 litro de óleo de soja, girassol ou canola", "oleo", 1000, "ml"),
+    ],
+    ("R", "grelhada"): [
+        ("1 litro de água", REF, None, "", "água"),
+        ("6 g de sal fino", "sal", None, ""),
+        ("250 g de fubá para polenta", "fuba", 250, "g"),
+        ("30 g de manteiga (2 colheres de sopa)", "manteiga", 30, "g"),
+        ("40 g de parmesão ralado fino", "parmesao", 40, "g"),
+        ("45 ml de azeite (3 colheres de sopa)", "azeite", 45, "ml"),
+        ("Cobertura a gosto", "gorgonzola", None, ""),
+    ],
 }
 
 # Fermento natural: (receitas iniciais do dia 1, alimentações de 50 g de farinha) em cada semana.
@@ -667,26 +719,26 @@ ING = {
 FERMENTO = {1: (1, 10), 2: (0, 14), 3: (0, 3), 4: (0, 3)}
 
 # ─────────────────────────── o mês ───────────────────────────
-# Cada prato: (livro, receita, vezes a receita para 4 pessoas, observação curta)
+# Cada prato: (livro, receita, vezes a receita para 4 pessoas, observação curta[, itens que não entram na compra])
+# NORQVA-0140: todo prato do plano tem a foto da própria receita no livro (ver FOTOS em build_cardapio.py).
 WEEKS = [
     dict(
         n=1, title="Fermento e ragù",
         lead="A semana começa no sábado, com as compras da manhã. É a semana de dar a partida no fermento natural "
              "e de deixar o ragù pronto também para a lasanha da semana que vem.",
         days=[
-            ("Sábado", [("A", "caponata", 1, "de manhã: fica melhor no dia seguinte"),
-                        ("T", "ragu", 2, "faça em dobro: metade hoje, metade congelada para a lasanha da semana 2"),
-                        ("T", "pappardelle", 1, "com 1 receita da massa 01")],
+            ("Sábado", [("T", "ragu", 2, "faça em dobro: metade hoje, metade congelada para a lasanha da semana 2"),
+                        ("T", "pappardelle", 1, "com 1 receita da massa 01"),
+                        ("A", "caponata", 1, "de manhã: fica melhor no dia seguinte")],
              "Dia 1 do fermento natural (Pães, receita 01)."),
-            ("Domingo", [("T", "focaccia", 1, "massa à tarde, assa no fim do dia"),
+            ("Domingo", [("T", "focaccia", 1, "massa à tarde, assa no fim do dia; com a caponata de sábado"),
                          ("D", "tiramisu", 1, "monte de manhã: precisa de 6 h de geladeira")],
-             "Jantar: focaccia com a caponata de sábado. À tarde, o caldo da semana (Risotos, receita 01)."),
-            ("Segunda", [("T", "aglio-olio", 2, "receita em dobro")], "Sobrou focaccia? Vai junto."),
-            ("Terça", [("R", "limao", 1, "com o caldo de domingo")], ""),
-            ("Quarta", [("T", "gorgonzola", 1.5, "1½ receita")], "À noite, adiante a massa da piadina: aguenta 1 dia na geladeira."),
+             "À tarde, o caldo da semana (Risotos, receita 01)."),
+            ("Segunda", [("T", "aglio-olio", 2, "")], "Sobrou focaccia? Vai junto."),
+            ("Terça", [("R", "funghi", 1, "com o caldo de domingo")], ""),
+            ("Quarta", [("T", "gorgonzola", 1.5, "")], "À noite, adiante a massa da piadina: aguenta 1 dia na geladeira."),
             ("Quinta", [("P", "piadina", 1, "6 piadinas recheadas")], "Recheio a gosto, como o livro sugere."),
-            ("Sexta", [("A", "funghi", 1, ""), ("A", "bruschetta", 1, "com pão italiano da padaria")],
-             "Noite de antepastos. O fermento ainda não está pronto."),
+            ("Sexta", [("T", "puttanesca", 1, "")], ""),
         ],
         extras=[("T", "massa-ovos", 1), ("R", "caldo", 1)],
         prep=[
@@ -695,7 +747,8 @@ WEEKS = [
             ("Pão e fermento", "Sábado é o dia 1 do fermento natural. Nos dias 2 e 3, uma alimentação por dia; "
                                "do dia 4 em diante, a cada 12 horas (Pães, receita 01). Ele leva de 7 a 10 dias para ficar ativo."),
             ("Sobremesa de domingo", "Tiramisù (Dolci, receita 01). Rende 8 porções: sobra para a semana."),
-            ("Caldo", "O caldo de domingo rende cerca de 2 litros: o risoto de terça usa 1,2 litro. Congele o resto (até 3 meses)."),
+            ("Caldo", "O caldo de domingo rende cerca de 2 litros: o risoto de terça usa 1,2 litro. Congele o resto (até 3 meses): "
+                      "ele vale para a semana 4."),
         ],
     ),
     dict(
@@ -705,17 +758,16 @@ WEEKS = [
         days=[
             ("Sábado", [("T", "lasanha", 1, "com o ragù congelado, 1 receita da massa 01 e 1½ receita de bechamel")],
              "À noite, a biga da ciabatta (16 h de descanso)."),
-            ("Domingo", [("P", "ciabatta", 1, "massa ao meio-dia, assa no fim da tarde"),
-                         ("A", "tagliere", 1, "com a ciabatta no lugar dos grissini"),
+            ("Domingo", [("A", "tagliere", 1, "com a ciabatta no lugar dos grissini"),
+                         ("P", "ciabatta", 1, "massa ao meio-dia, assa no fim da tarde"),
                          ("D", "caprese", 1, "asse à tarde")], ""),
-            ("Segunda", [("T", "pesto", 1, "")], "Enquanto janta, o caldo da semana cozinha (1 h em fogo mínimo)."),
-            ("Terça", [("R", "funghi", 1, "com o caldo de segunda")], ""),
-            ("Quarta", [("T", "sugo-cereja", 1.5, "1½ receita")], ""),
-            ("Quinta", [("A", "polpettine", 1, "com a ciabatta amanhecida de domingo")],
-             "Rendem 6 porções: as que sobrarem congelam por até 3 meses."),
-            ("Sexta", [("T", "puttanesca", 1, "")], ""),
+            ("Segunda", [("T", "pesto", 1, "")], ""),
+            ("Terça", [("T", "carbonara", 1.5, "")], "Use o termômetro: o molho vai a 70 °C."),
+            ("Quarta", [("T", "sugo-cereja", 1.5, "")], ""),
+            ("Quinta", [("T", "amatriciana", 1, "")], ""),
+            ("Sexta", [("T", "cacio-pepe", 1.5, "")], ""),
         ],
-        extras=[("T", "massa-ovos", 1), ("T", "bechamel", 1.5), ("R", "caldo", 1)],
+        extras=[("T", "massa-ovos", 1), ("T", "bechamel", 1.5)],
         prep=[
             ("Adiante", "Tire o ragù do congelador na sexta à noite e deixe descongelar na geladeira. "
                         "A lasanha rende 6 a 8 porções: a sobra é almoço de domingo."),
@@ -723,78 +775,79 @@ WEEKS = [
                                "O fermento natural segue com alimentações a cada 12 horas até dobrar de volume em 4 a 8 horas, "
                                "3 dias seguidos. Depois, pode ir para a geladeira com uma alimentação por semana."),
             ("Sobremesa de domingo", "Torta caprese, de chocolate e amêndoas, sem farinha de trigo (Dolci, receita 04)."),
-            ("Caldo", "O caldo de segunda rende cerca de 2 litros: o risoto de terça usa 1,2 litro. Congele o resto."),
+            ("Semana rápida", "De segunda a sexta, só molhos rápidos do Trattoria: cada um fica pronto no tempo de cozimento da massa."),
         ],
     ),
     dict(
         n=3, title="O primeiro pão de fermento natural",
-        lead="Com o fermento ativo, sai o pão rústico de casca crocante. A semana tem risoto de camarão no sábado "
-             "e polenta com ragù de cogumelos no domingo.",
+        lead="Com o fermento ativo, sai o pão rústico de casca crocante. Sábado tem arancini; domingo, nhoque feito à mão "
+             "na manteiga com sálvia.",
         days=[
-            ("Sábado", [("R", "camarao", 1, "com o caldo feito pela manhã")],
+            ("Sábado", [("A", "arancini", 1.5, "18 arancini: o arroz esfria 2 h antes de modelar")],
              "Pão rústico: alimente o fermento cedo, faça a massa no início da tarde e leve à geladeira à noite."),
-            ("Domingo", [("P", "rustico", 1, "assa de manhã, direto da geladeira"),
-                         ("R", "ragu", 1, "com 1 receita da polenta cremosa (receita 09)"),
+            ("Domingo", [("T", "nhoque", 1, ""),
+                         ("T", "burro-salvia", 1, "o molho do nhoque"),
+                         ("P", "rustico", 1, "assa de manhã, direto da geladeira"),
                          ("D", "pannacotta", 1, "faça no sábado: mínimo 4 h de geladeira")], ""),
-            ("Segunda", [("T", "bruschetta", 2, "12 fatias do pão rústico"), ("A", "frittata", 1, "")], "Jantar leve."),
-            ("Terça", [("T", "amatriciana", 1, "")], ""),
-            ("Quarta", [("T", "cacio-pepe", 1.5, "1½ receita")], ""),
-            ("Quinta", [("R", "milanese", 1, "com o caldo congelado no sábado")],
-             "Depois do jantar, monte os rolinhos de berinjela: o livro permite montar na véspera."),
-            ("Sexta", [("A", "involtini", 1, "montados na quinta: só assar, 5 a 10 minutos a mais")], ""),
+            ("Segunda", [("T", "pomodoro", 1, ""), ("T", "bruschetta", 1, "6 fatias do pão rústico")], ""),
+            ("Terça", [("T", "cogumelos", 1.5, "")], ""),
+            ("Quarta", [("R", "milanese", 1, "com o caldo congelado no sábado")],
+             "Depois do jantar, faça a polenta firme de sexta: fica até 4 dias na geladeira."),
+            ("Quinta", [("T", "semola", 1, "cavatelli, 20 min de descanso"),
+                        ("T", "sugo-cereja", 1.5, "o molho dos cavatelli", ("massa_seca",))], ""),
+            ("Sexta", [("R", "grelhada", 1, "com gorgonzola por cima, uma das coberturas do livro")], ""),
         ],
-        extras=[("R", "polenta", 1), ("R", "caldo", 1.5)],
+        extras=[("R", "caldo", 1.5)],
         prep=[
-            ("Adiante", "Sábado de manhã, faça 1½ receita do caldo (cerca de 3 litros): 1,3 litro vai para o risoto de camarão "
-                        "e uma porção de 1,2 litro vai para o congelador, para o risoto de quinta."),
+            ("Adiante", "Sábado de manhã, faça 1½ receita do caldo (cerca de 3 litros): cerca de 1,35 litro vai para os arancini "
+                        "e uma porção de 1,2 litro vai para o congelador, para o risoto de quarta."),
             ("Pão e fermento", "Sábado 7 h: alimente o fermento. Quando dobrar (4 a 8 h), faça a massa do pão rústico, "
                                "com dobras nas 2 primeiras horas. À noite, modele e leve à geladeira (12 a 16 h). "
                                "Domingo de manhã: forno a 250 °C com a panela dentro por 45 minutos e asse (Pães, receita 02)."),
             ("Sobremesa de domingo", "Panna cotta com calda de frutas vermelhas (Dolci, receita 02), feita no sábado."),
-            ("Caldo", "O que sobrar dos 3 litros, congele em porções. Ele vale para a semana 4."),
+            ("Fritura", "Arancini: óleo até a metade da panela, a 170 a 175 °C, e nunca deixe a panela sozinha. "
+                        "Prefere sem fritar? O livro ensina a versão assada (nota da receita 09)."),
         ],
     ),
     dict(
-        n=4, title="Ravioli e torta da nonna",
-        lead="A última semana fecha o mês com massa recheada feita à mão, pão de azeitonas e a torta della nonna "
-             "na sobremesa de domingo.",
+        n=4, title="Ravioli, cannelloni e os preferidos",
+        lead="Fim de semana de massa recheada feita à mão. Nos dias de semana, voltam os pratos rápidos mais pedidos "
+             "do mês, agora com a mão treinada.",
         days=[
             ("Sábado", [("T", "ravioli", 1, "com 1 receita da massa 01"),
                         ("T", "burro-salvia", 1, "o molho dos ravioli")],
              "Pão de azeitonas: mesma rotina do pão rústico (massa à tarde, geladeira à noite)."),
-            ("Domingo", [("P", "azeitonas", 1, "assa de manhã"),
-                         ("R", "abobora", 1, "com o caldo de sábado"),
+            ("Domingo", [("T", "cannelloni", 1, "com 1 receita da massa 01 e o molho da receita 07"),
+                         ("P", "azeitonas", 1, "assa de manhã"),
                          ("D", "nonna", 1, "massa frola de manhã, assa à tarde")], ""),
-            ("Segunda", [("T", "pomodoro", 1, "")], ""),
-            ("Terça", [("T", "cogumelos", 1.5, "1½ receita")], ""),
-            ("Quarta", [("R", "linguica", 1, "com o caldo congelado")], ""),
-            ("Quinta", [("T", "carbonara", 1.5, "1½ receita")], "Use o termômetro: o molho vai a 70 °C."),
-            ("Sexta", [("A", "crostini", 1, ""), ("A", "peperoni", 1, "")],
-             "Aperitivo de encerramento. Os pimentões podem ser assados na quinta: marinados, ficam até 4 dias na geladeira, em pote fechado."),
+            ("Segunda", [("T", "aglio-olio", 2, "")], ""),
+            ("Terça", [("R", "funghi", 1, "com o caldo congelado das semanas 1 e 3")], ""),
+            ("Quarta", [("T", "amatriciana", 1, "")], ""),
+            ("Quinta", [("T", "carbonara", 1.5, "")], "Use o termômetro: o molho vai a 70 °C."),
+            ("Sexta", [("P", "piadina", 1, "6 piadinas recheadas")],
+             "Massa feita na quinta à noite (aguenta 1 dia na geladeira). Com o pão de azeitonas que sobrou, fecha o mês."),
         ],
-        extras=[("T", "massa-ovos", 1), ("R", "caldo", 1.5)],
+        extras=[("T", "massa-ovos", 2), ("T", "pomodoro", 1, ("massa_seca",))],
         prep=[
-            ("Adiante", "Sábado, faça 1½ receita do caldo (cerca de 3 litros): 1,2 litro para domingo e 1 litro congelado "
-                        "para quarta. Se guardou caldo congelado nas semanas anteriores, use-o e compre menos legumes."),
+            ("Adiante", "Cannelloni de domingo: no sábado, enquanto a massa dos ravioli descansa, cozinhe e desfie o frango "
+                        "e faça o molho pomodoro (só o molho da receita 07). Guarde na geladeira."),
             ("Pão e fermento", "Sábado: alimente o fermento cedo e faça a massa do pão de azeitonas quando ele dobrar; "
                                "as azeitonas entram nas dobras. Geladeira à noite (12 h) e forno no domingo (Pães, receita 05)."),
             ("Sobremesa de domingo", "Torta della Nonna, com massa frola e creme de limão-siciliano (Dolci, receita 03)."),
-            ("Ravioli", "Crus, os ravioli são cozidos no mesmo dia. Para adiantar, congele-os numa assadeira polvilhada com sêmola "
-                        "e cozinhe sem descongelar (nota de conservação da receita 15)."),
+            ("Caldo", "O risoto de terça usa o caldo congelado nas semanas 1 e 3 (cerca de 1,2 litro). Sem caldo guardado, "
+                      "o livro ensina a versão rápida com caldo em cubo ou em pó (nota da receita 01)."),
         ],
     ),
 ]
 
-# Para variar: (livro, receita, frase)
+# Para variar: (livro, receita, frase). Fora das listas de compras.
 VARIAR_FDS = [
-    ("T", "nhoque", "Com o burro e salvia (Trattoria, receita 13), num sábado sem pressa."),
     ("T", "tortellini", "Dobrados à mão, no lugar dos ravioli da semana 4."),
-    ("T", "nhoque-4-queijos", "Gratinado em 12 a 15 minutos de forno."),
-    ("R", "forno", "Em camadas com molho de tomate e queijos; pode ser montada na véspera."),
-    ("A", "arancini", "Bolinhos de arroz com coração de queijo, para um aperitivo especial."),
+    ("T", "nhoque-4-queijos", "Gratinado em 12 a 15 minutos de forno, com o nhoque da receita 06."),
+    ("T", "rondelli", "Rocambole de massa recheado de queijos, fatiado e assado no molho rosé."),
+    ("T", "massa-espinafre", "Massa verde para um tagliatelle diferente ou uma lasanha verde."),
     ("P", "pugliese", "De sêmola, na mesma rotina do pão rústico."),
     ("P", "barese", "Com batata na massa, tomate-cereja e azeitonas, de fermento biológico."),
-    ("A", "spritz", "Para abrir o jantar de sexta, com a versão sem álcool para quem não bebe."),
 ]
 VARIAR_DOCES = [
     ("D", "affogato", "5 minutos: sorvete e café quente, para um dia de semana."),
