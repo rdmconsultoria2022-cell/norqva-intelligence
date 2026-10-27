@@ -21,7 +21,7 @@ Este arquivo é a passagem de bastão entre tarefas. Leia inteiro antes de come�
 
 Na dúvida, trate como "com aprovação".
 
-**Exceção (D-0142, 26/10/2026 22h16):** pausar anúncio ou campanha no prejuízo, pelas regras da D-0142, não precisa de aprovação (avisar o Ricardo no mesmo dia). Ativar, subir orçamento e criar campanha continuam com ele (ou com o mandato da D-0137).
+**Exceção (D-0142, 26/10/2026 22h16):** pausar anúncio ou campanha no prejuízo, pelas regras da D-0142, não precisa de aprovação (avisar o Ricardo no mesmo dia). Ativar, subir orçamento e criar campanha continuam com ele (ou com o mandato da D-0137), salvo dentro dos limites da D-0143.
 
 **Autonomia de gestão (D-0143, 26/10/2026 22h34):** o Ricardo deu autonomia total para gerir o NORQVA. Dentro dos limites da D-0143 (teto de gasto, freio e lista do que continua com ele) o Claude decide e executa sem pedir "Aprovado", inclusive ativar, subir orçamento e criar campanha, e avisa no relatório diário. Fora desses limites, vale a regra acima.
 
@@ -43,7 +43,7 @@ Decisões duradouras vão para `norqva-ai/DECISIONS.md`.
 - CPF criptografado e apagado depois do Pix.
 - Nada de Purchase falso nem pagamento simulado apresentado como real.
 - Migrations **só aditivas**. Comentários SQL **sem ";"** (o pg-mem dos testes separa por ";"). Reclassificar dados só em bloco `DO $$ ... $$;` com checagem de quantidade (modelo: 028 e 048).
-- Tudo nasce **PAUSADO** na Meta. Ativar e gastar dinheiro só com o "sim" do Ricardo; ações de gasto real ficam com ele.
+- Tudo nasce **PAUSADO** na Meta. Ativar e gastar dinheiro só com o "sim" do Ricardo; ações de gasto real ficam com ele, salvo pelo mandato da D-0137 e dentro do teto e do freio da D-0143.
 - Não alterar credenciais nem produção sem autorização.
 - Testes nunca falam com Meta, Asaas ou Supabase (sempre simulados).
 - Não apagar arquivos do computador do Ricardo sem permissão.
