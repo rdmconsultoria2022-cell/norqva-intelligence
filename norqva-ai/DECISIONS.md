@@ -409,3 +409,15 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Como pausar:** pela ficha de alteração do NORQVA (`meta_change_requests`), que registra tudo. Se for bloqueado, avisar o Ricardo com o passo exato.
 - **Aviso no mesmo dia** de toda pausa, no relatório diário.
 - **Relatório diário curto:** gasto, vendas pagas e resultado (dia e 7 dias), o que foi pausado e por quê, e até 3 melhorias, marcando as que precisam de "Aprovado". Melhorias de texto, tela, PDF e correção de erro seguem o fluxo normal sem aprovação.
+
+## D-0143 — Autonomia de gestão do NORQVA (2026-10-26)
+
+- **Ricardo, 26/10/2026 22h34:** "eu aprovo que você tenha autonomia para gerenciar o sistema NORQVA totalmente". Os números abaixo foram definidos pelo Claude (o Ricardo pede que ele decida os parâmetros técnicos) e informados ao Ricardo na mesma conversa; ele pode mudá-los a qualquer momento.
+- **Substitui na D-0142** só a linha "Nunca ativar, subir orçamento, criar campanha…": essas três ações passam a ser permitidas dentro dos limites daqui. O resto da D-0142 (regras de pausa, relatório) continua valendo.
+- **Pode sem aprovação:** pausar (regras da D-0142); ativar anúncio, conjunto ou campanha pausada; criar campanha (nasce pausada e pode ser ativada em seguida); trocar criativo, texto, página, público e posicionamentos; baixar orçamento; subir orçamento só como na D-0137 (48 h entre subidas, até +20%, 5 vendas pagas nos últimos 3 dias com CPA ≤ 80% do máximo); textos, telas, PDFs e correções pelo fluxo normal.
+- **Teto de gasto:** soma dos orçamentos diários de todas as campanhas e conjuntos ativos fora do mandato Trattoria (inclusive a campanha do WhatsApp) até **R$ 60 por dia**. Campanha de teste nova começa com no máximo **R$ 20 por dia**. Orçamento total (vitalício) ou desconhecido numa campanha ou conjunto ativo bloqueia ativar e subir orçamento.
+- **Freio:** resultado acumulado desde 27/10/2026 (não zera) das campanhas fora do mandato, com receita líquida = preço − 6% − R$ 1,99 por venda paga, menos o gasto. Chegando a **−R$ 500**: pausar todas as campanhas fora do mandato, não ativar mais nada e pedir ao Ricardo. O freio é conferido na gestão diária; a Meta pode gastar até ~75% acima do orçamento num dia, então entre duas conferências o limite pode ser passado em até cerca de R$ 105.
+- **Noite:** das 22h às 8h só pausar.
+- **Mandato Trattoria (D-0137):** as campanhas dele seguem só o mandato; a gestão diária só lê e comenta.
+- **Continua com o Ricardo:** ativar oferta ou produto (começa a cobrar e entregar); preço e condições de pagamento; Asaas, Pix e pedidos; entrega ao comprador; dados de clientes; credenciais e configurações do Render, da Meta e do GitHub; aumentar o teto ou o freio; exclusões e qualquer coisa que não possa ser desfeita. Também ficam com ele as ações que o sistema de segurança do Claude bloquear: não contornar e passar o passo exato.
+- **Sempre:** venda só conta se for PAID confirmado pelo Asaas; nada de compra simulada; toda alteração pelas fichas do NORQVA, conferida relendo na Meta, e contada no relatório diário.
