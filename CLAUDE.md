@@ -23,6 +23,8 @@ Na dúvida, trate como "com aprovação".
 
 **Exceção (D-0142, 26/10/2026 22h16):** pausar anúncio ou campanha no prejuízo, pelas regras da D-0142, não precisa de aprovação (avisar o Ricardo no mesmo dia). Ativar, subir orçamento e criar campanha continuam com ele (ou com o mandato da D-0137).
 
+**Autonomia de gestão (D-0143, 26/10/2026 22h34):** o Ricardo deu autonomia total para gerir o NORQVA. Dentro dos limites da D-0143 (teto de gasto, freio e lista do que continua com ele) o Claude decide e executa sem pedir "Aprovado", inclusive ativar, subir orçamento e criar campanha, e avisa no relatório diário. Fora desses limites, vale a regra acima.
+
 ## Fluxo de mudança no código
 
 1. Se precisar de aprovação: contrato no Claude Docs → "Aprovado" do Ricardo → registrar data e hora no contrato.

@@ -409,3 +409,13 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Como pausar:** pela ficha de alteração do NORQVA (`meta_change_requests`), que registra tudo. Se for bloqueado, avisar o Ricardo com o passo exato.
 - **Aviso no mesmo dia** de toda pausa, no relatório diário.
 - **Relatório diário curto:** gasto, vendas pagas e resultado (dia e 7 dias), o que foi pausado e por quê, e até 3 melhorias, marcando as que precisam de "Aprovado". Melhorias de texto, tela, PDF e correção de erro seguem o fluxo normal sem aprovação.
+
+## D-0143 — Autonomia de gestão do NORQVA (2026-10-26)
+
+- **Ricardo, 26/10/2026 22h34:** "eu aprovo que você tenha autonomia para gerenciar o sistema NORQVA totalmente". Amplia a D-0142. O Claude decide e executa sem pedir "Aprovado", dentro dos limites abaixo, e conta tudo no relatório diário.
+- **Pode sem aprovação:** pausar (regras da D-0142); ativar anúncio ou campanha pausada; criar campanha nova (nasce pausada e pode ser ativada em seguida); trocar criativo, texto, página, público e posicionamentos; baixar orçamento; ativar oferta ou produto já pronto (página funcionando e PDF de entrega ligado e conferido); textos, telas, PDFs e correções pelo fluxo normal (branch, PR, revisão, CI, merge).
+- **Teto de gasto (fora do mandato Trattoria da D-0137, que tem os limites dele):** soma dos orçamentos diários ativos até **R$ 60 por dia**; campanha de teste nova começa com no máximo **R$ 20 por dia**; subir orçamento só como na D-0137 (48 h entre subidas, até +20%, 5 vendas pagas nos últimos 3 dias com CPA ≤ 80% do máximo).
+- **Freio:** se o resultado (receita líquida das vendas pagas − gasto) das campanhas fora do mandato chegar a **−R$ 500 no mês**, pausar o que estiver no prejuízo, parar de ativar e pedir ao Ricardo. Das 22h às 8h só pausar.
+- **Continua com o Ricardo:** preço e condições de pagamento; Asaas, Pix e pedidos; regras de entrega ao comprador; dados de clientes; credenciais e configurações do Render, da Meta e do GitHub; aumentar o teto ou o freio acima; exclusões e qualquer coisa que não possa ser desfeita. Também ficam com ele as ações que o sistema de segurança do Claude bloquear: nesse caso, não contornar e passar o passo exato.
+- **Sempre:** venda só conta se for PAID confirmado pelo Asaas; nada de compra simulada; tudo registrado pelas fichas de alteração do NORQVA.
+
