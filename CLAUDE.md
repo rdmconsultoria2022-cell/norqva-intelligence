@@ -21,6 +21,8 @@ Este arquivo é a passagem de bastão entre tarefas. Leia inteiro antes de come�
 
 Na dúvida, trate como "com aprovação".
 
+**Exceção (D-0142, 26/10/2026 22h16):** pausar anúncio ou campanha no prejuízo, pelas regras da D-0142, não precisa de aprovação (avisar o Ricardo no mesmo dia). Ativar, subir orçamento e criar campanha continuam com ele (ou com o mandato da D-0137).
+
 ## Fluxo de mudança no código
 
 1. Se precisar de aprovação: contrato no Claude Docs → "Aprovado" do Ricardo → registrar data e hora no contrato.

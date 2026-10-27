@@ -397,3 +397,15 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **WhatsApp:** a coleção é apresentada primeiro, como recomendada, e o kit de 5 logo depois como alternativa; o cliente escolhe e o atendente cobra o que ele escolher. Destaque e alternativa ficam no cadastro da oferta (`offers.attendant_featured`, `offers.attendant_alternative_offer_id`), não em texto fixo. Só oferta ATIVA entra no catálogo. As condições de atendimento continuam do Ricardo (parágrafo sugerido na NORQVA-0138).
 - **Trava ao ativar:** oferta com bônus em destaque do atendente (ou com alternativa) só vai para ATIVA se entregar pelo menos um PDF além dos da alternativa ("Envie o PDF do bônus antes de ativar"). Página `/p/` da coleção: versão simples com o WhatsApp como caminho principal.
 - **Bônus:** só receitas dos 5 livros, conferidas no build contra os arquivos de conteúdo; sem preço, sem "acesso vitalício", sem promessa de saúde.
+
+## D-0142 — Gestão diária do NORQVA e pausa sem aprovação (2026-10-26)
+
+- **Pedido do Ricardo (26/10/2026 22h16):** o Claude assume a gestão diária do NORQVA a partir de 27/10, buscando os pontos que levam a operação ao lucro. Autorizou pausar sozinho o que dá prejuízo ("Sim, pode pausar"). Tarefa agendada "Gestão diária NORQVA", todo dia às 08h39 de Brasília, no computador do Ricardo (sessões do NORQVA e da Meta no navegador do Claude).
+- **CPA máximo** = preço da oferta de destino do anúncio − 6% − R$ 1,99 (mesma conta da D-0137); se o destino tem mais de uma oferta, vale a de menor preço. Venda só conta se for pedido PAID confirmado pelo Asaas e ligado ao anúncio ou à campanha pela UTM (`utm_content` = nome do anúncio) ou pela origem do WhatsApp (`whatsapp_refs`).
+- **Pausar anúncio:** gasto desde que entrou no ar ≥ 2× o CPA máximo, sem nenhuma venda paga.
+- **Pausar campanha:** nos últimos 7 dias, gasto ≥ 4× o CPA máximo e (sem venda paga, ou CPA acima do máximo). Campanha com menos de 48 h no ar (aprendizado) só é pausada se não teve nenhuma venda paga; CPA alto sozinho não pausa nesse período.
+- **Campanhas criadas direto na Meta** entram nas mesmas regras; se a ficha de alteração não alcançar a campanha, avisar o Ricardo com o passo exato.
+- **Fora do alcance:** campanhas do mandato Trattoria (D-0137) são operadas pelo mandato; a gestão diária só lê e comenta. Nunca ativar, subir orçamento, criar campanha, mexer em preço, oferta, pagamento ou entrega sem o "Aprovado" (D-0037).
+- **Como pausar:** pela ficha de alteração do NORQVA (`meta_change_requests`), que registra tudo. Se for bloqueado, avisar o Ricardo com o passo exato.
+- **Aviso no mesmo dia** de toda pausa, no relatório diário.
+- **Relatório diário curto:** gasto, vendas pagas e resultado (dia e 7 dias), o que foi pausado e por quê, e até 3 melhorias, marcando as que precisam de "Aprovado". Melhorias de texto, tela, PDF e correção de erro seguem o fluxo normal sem aprovação.
