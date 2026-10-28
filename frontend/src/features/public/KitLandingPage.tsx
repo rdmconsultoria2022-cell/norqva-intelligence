@@ -517,17 +517,17 @@ export const KitLandingPage: React.FC<{ showError: (m: string) => void; showSucc
       <section id="mestre" className="wrap" style={{ paddingTop: 104, paddingBottom: 104 }} data-testid="kit-chef">
         <div className="strip" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.15fr) minmax(0,.85fr)', gap: 72, alignItems: 'center' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="kicker rv">Quem ensina</div>
-            <h2 className="h2 rv" style={{ ['--d' as any]: '80ms' }}>Mestre Tito, o guardião da cozinha de família</h2>
+            <div className="kicker rv">O anfitrião da coleção</div>
+            <h2 className="h2 rv" style={{ ['--d' as any]: '80ms' }}>Conheça o Mestre Tito</h2>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#6b6358' }} data-testid="kit-chef-disclaimer">
+              Mestre Tito é um personagem virtual criado pela NORQVA. As receitas foram desenvolvidas e revisadas pela nossa equipe.
+            </p>
             <p className="lead rv" style={{ ['--d' as any]: '140ms' }}>
-              Neto de imigrantes italianos no interior de São Paulo, Tito aprendeu com a nonna nos almoços de domingo. Nos livros, ele conta a história de cada prato e explica o passo a passo sem pressa, do jeito que se ensina em casa.
+              Tito representa o jeito da cozinha de família italiana: comida feita sem pressa, com história e com o passo a passo bem explicado, como você encontra em cada livro da coleção.
             </p>
             <blockquote className="serif rv" style={{ margin: 0, fontSize: 30, lineHeight: 1.25, fontStyle: 'italic', color: '#8a3a26', borderLeft: '2px solid #b89b72', paddingLeft: 22, ['--d' as any]: '200ms' }}>
               “Risoto não se abandona, meu amigo. Fica do lado dele.”
             </blockquote>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#6b6358' }} data-testid="kit-chef-disclaimer">
-              Mestre Tito é um personagem virtual criado pela NORQVA. As receitas foram desenvolvidas e revisadas pela nossa equipe.
-            </p>
           </div>
           <div className="strip-arch rv fl-r" style={{ position: 'relative', width: '100%' }}>
             <div className="arch" style={{ position: 'relative', width: '100%', aspectRatio: '4 / 5', boxShadow: '0 40px 80px rgba(60,40,25,.22)' }}>

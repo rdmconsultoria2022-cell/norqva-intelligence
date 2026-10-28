@@ -424,5 +424,5 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 ## D-0145 — Chefs virtuais da Brigada da Casa (2026-10-27)
 
-- **Decisão (Ricardo, 27/10/2026, Claude Docs "Brigada da Casa — Etapa 1"):** três personagens virtuais fictícios assinam produtos de receita: Rodrigo Saldanha (carnes e técnica), Marina Okabe (confeitaria) e Mestre Tito Albuquerque (cozinha italiana). Mestre Tito é o rosto da Coleção Cozinha Italiana em Casa.
+- **Decisão (Ricardo, 27/10/2026, Claude Docs "Brigada da Casa — Etapa 1"):** três personagens virtuais fictícios assinam produtos de receita: Rodrigo Saldanha (carnes e técnica), Marina Okabe (confeitaria) e Mestre Tito Albuquerque (cozinha italiana). Mestre Tito (na página, só "Mestre Tito") é o anfitrião da Coleção Cozinha Italiana em Casa; os PDFs não citam o personagem, então a página não diz que ele ensina nos livros.
 - **Regras:** nenhum personagem copia ou lembra pessoa real (nada de jurados ou participantes de programas de TV); nenhum título, prêmio, restaurante ou formação inventado; aviso de personagem virtual em páginas, livros e perfis. Imagens geradas na KIE a partir das folhas de referência oficiais (cópias fora do git).

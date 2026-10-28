@@ -5,6 +5,6 @@
 
 ## Escopo
 
-- Seção "Quem ensina" na página do kit (`KitLandingPage.tsx`), entre os selos e as receitas: apresentação do Mestre Tito, frase dele, retrato (`public/images/chefs/tito.jpg`, gerado na KIE a partir da folha oficial) e aviso sempre visível: "Mestre Tito é um personagem virtual criado pela NORQVA. As receitas foram desenvolvidas e revisadas pela nossa equipe."
+- Seção "O anfitrião da coleção" na página do kit (`KitLandingPage.tsx`), entre os selos e as receitas: apresentação do Mestre Tito (sem dizer que ele aparece nos PDFs), aviso logo abaixo do título, frase dele, retrato (`public/images/chefs/tito.jpg`, gerado na KIE a partir da folha oficial) e aviso sempre visível: "Mestre Tito é um personagem virtual criado pela NORQVA. As receitas foram desenvolvidas e revisadas pela nossa equipe."
 - Nenhum título, prêmio ou restaurante atribuído ao personagem.
 - Teste: `norqva_0145_mestre_tito.test.tsx`.
