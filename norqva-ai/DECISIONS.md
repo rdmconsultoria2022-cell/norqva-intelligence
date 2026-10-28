@@ -421,3 +421,8 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **Mandato Trattoria (D-0137):** as campanhas dele seguem só o mandato; a gestão diária só lê e comenta.
 - **Continua com o Ricardo:** ativar oferta ou produto (começa a cobrar e entregar); preço e condições de pagamento; Asaas, Pix e pedidos; entrega ao comprador; dados de clientes; credenciais e configurações do Render, da Meta e do GitHub; aumentar o teto ou o freio; exclusões e qualquer coisa que não possa ser desfeita. Também ficam com ele as ações que o sistema de segurança do Claude bloquear: não contornar e passar o passo exato.
 - **Sempre:** venda só conta se for PAID confirmado pelo Asaas; nada de compra simulada; toda alteração pelas fichas do NORQVA, conferida relendo na Meta, e contada no relatório diário.
+
+## D-0145 — Chefs virtuais da Brigada da Casa (2026-10-27)
+
+- **Decisão (Ricardo, 27/10/2026, Claude Docs "Brigada da Casa — Etapa 1"):** três personagens virtuais fictícios assinam produtos de receita: Rodrigo Saldanha (carnes e técnica), Marina Okabe (confeitaria) e Mestre Tito Albuquerque (cozinha italiana). Mestre Tito é o rosto da Coleção Cozinha Italiana em Casa.
+- **Regras:** nenhum personagem copia ou lembra pessoa real (nada de jurados ou participantes de programas de TV); nenhum título, prêmio, restaurante ou formação inventado; aviso de personagem virtual em páginas, livros e perfis. Imagens geradas na KIE a partir das folhas de referência oficiais (cópias fora do git).
