@@ -13,9 +13,11 @@ No Render o valor está `false` (Ricardo, 29/10 18h27).
 - Webhook da Evolution com `base64: true`: o arquivo do áudio vem na mensagem. Só o áudio é usado, guardado **na memória** por
   até 15 min (`rememberInboundAudio`/`takeInboundAudio` em `voice.ts`, até 3 MB) e só com `WHATSAPP_AUDIO_ENABLED=true`. Nada vai para o banco.
 - `transcribePending` usa primeiro o áudio da memória; a Evolution fica como segunda tentativa.
-- Corpo do webhook do WhatsApp com limite próprio de 25 MB (fotos e vídeos também vêm em base64); o resto da API segue com 1 MB.
-- Número já conectado recebe o webhook novo sozinho, uma vez, sem QR Code (`ensureMediaWebhook`: segredo novo + `setWebhook`;
-  falhou, volta o segredo antigo). Marca `whatsapp_numbers.webhook_media_base64` (migration 089, aditiva). Conectar de novo também marca.
+- Corpo do webhook do WhatsApp até 40 MB (fotos e vídeos também vêm em base64), aceito **só** com número e segredo certos
+  (`webhookSecretMatches`, cache de 1 min); qualquer outro pedido segue no limite de 1 MB. Memória do áudio com teto de ~50 MB.
+- Número já conectado passa a receber o áudio sozinho, uma vez, sem QR Code e sem trocar o endereço (`ensureMediaWebhook`: lê
+  `GET /webhook/find` e grava o mesmo endereço com base64; endereço de outro número não é tocado; falha não muda nada e só tenta de novo
+  em 1 h). Marca `whatsapp_numbers.webhook_media_base64` (migration 089, aditiva). Conectar de novo também marca.
 
 ## Testes
 
@@ -24,7 +26,10 @@ ignora o arquivo; reconfiguração uma vez, com volta do segredo na falha; chave
 
 ## Revisão independente
 
-(preencher)
+Subagente (29/10/2026). Bloqueantes corrigidos: (1) a troca de segredo podia deixar o número mudo (a Evolution não tenta de novo
+depois de 404): agora o endereço não muda; (2) corpo de 25 MB aceito de qualquer um: agora só com o segredo certo. Também: espera
+de 1 h entre tentativas, teto da memória. Observado na Evolution (fora do NORQVA): ela escreve as mensagens recebidas no próprio log
+do Render (texto já era assim; agora também o começo do áudio). Vídeo acima de ~30 MB não passa (a Evolution tenta de novo e desiste).
 
 ## Execução
 
