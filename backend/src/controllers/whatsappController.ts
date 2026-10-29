@@ -25,7 +25,7 @@ import {
 } from '../services/whatsapp/whatsappService';
 import { aiConfigured } from '../services/whatsapp/attendant';
 import { createWhatsAppRef, WhatsAppRefError } from '../services/whatsapp/whatsappRefs';
-import { createOfficialNumber } from '../services/whatsapp/whatsappService';
+import { createOfficialNumber, ensureMediaWebhook } from '../services/whatsapp/whatsappService';
 import {
   listCloudAccounts,
   createCloudAccount,
@@ -206,6 +206,11 @@ export async function postWhatsAppWebhook(req: Request, res: Response) {
   try {
     const r = await handleWebhook(pool, String(req.params.numberId), String(req.params.secret), req.body);
     res.status(200).json({ ok: true });
+    // NORQVA-0152: número antigo passa a receber o áudio junto (uma vez, sem QR Code)
+    if (r.numberId) {
+      const nid = r.numberId;
+      setImmediate(() => { ensureMediaWebhook(pool, getWhatsAppProvider(), nid).catch(() => null); });
+    }
     if (r.inbound.length && inboundHandler && r.numberId) {
       const numberId = r.numberId;
       setImmediate(() => {

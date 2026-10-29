@@ -34,6 +34,8 @@ export interface WhatsAppProvider {
   getMediaBase64?(instanceName: string, messageId: string, remoteJid: string): Promise<{ base64: string; mimetype: string } | null>;
   /** NORQVA-0151: mensagem de voz (base64 de OGG/Opus); opcional. */
   sendAudio?(instanceName: string, to: string, base64Ogg: string): Promise<{ id: string | null }>;
+  /** NORQVA-0152: webhook gravado no servidor do WhatsApp (endereço e se manda mídia em base64). */
+  findWebhook?(instanceName: string): Promise<{ url: string | null; base64: boolean } | null>;
 }
 
 export interface ServerCheck {
@@ -167,7 +169,8 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   private webhookBody(webhookUrl: string) {
-    return { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: WEBHOOK_EVENTS };
+    // NORQVA-0152: base64 = o áudio vem junto (só ele é usado; o resto é descartado sem gravar)
+    return { enabled: true, url: webhookUrl, byEvents: false, base64: true, events: WEBHOOK_EVENTS };
   }
 
   async createInstance(instanceName: string, webhookUrl: string): Promise<ProviderQr> {
@@ -275,6 +278,13 @@ export class EvolutionProvider implements WhatsAppProvider {
     const b64 = typeof data?.base64 === 'string' ? data.base64.replace(/^data:[^;]+;base64,/i, '') : '';
     if (!b64) return null;
     return { base64: b64, mimetype: String(data?.mimetype || 'audio/ogg').split(';')[0] };
+  }
+
+  async findWebhook(instanceName: string): Promise<{ url: string | null; base64: boolean } | null> {
+    const data = await this.call('GET', `/webhook/find/${encodeURIComponent(instanceName)}`);
+    const w = data?.webhook || data;
+    if (!w) return null;
+    return { url: w.url ? String(w.url) : null, base64: w.webhookBase64 === true || w.base64 === true };
   }
 
   async sendAudio(instanceName: string, to: string, base64Ogg: string): Promise<{ id: string | null }> {

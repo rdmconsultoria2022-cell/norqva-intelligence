@@ -180,7 +180,7 @@ import { postKiwifyWebhook, importKiwifySale } from './controllers/kiwifyControl
 
 // NORQVA-0046 etapa 3: atendente automático (fora dos testes; nos testes ele é chamado direto)
 if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundHandler);
-import { purgeOldWhatsAppMessages } from './services/whatsapp/whatsappService';
+import { purgeOldWhatsAppMessages, webhookSecretMatches } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory, getCampaignNightPause, saveCampaignNightPause, listExternalNightPause, addExternalNightPause, updateExternalNightPause, removeExternalNightPause } from './controllers/campaignController';
 import { startNightPauseScheduler } from './services/campaigns/nightPauseService';
 import { requireOperatorToken, getOperatorMandate, getOperatorReport, postOperatorStatus, postOperatorBudget, getMandate, postMandate, putMandateCampaigns, postMandateEnd, postMandateCheck, getMandateActions } from './controllers/operatorController';
@@ -232,6 +232,17 @@ app.use(configureCors());
 app.use(requestIdMiddleware());
 app.use(structuredLogger());
 // NORQVA-0079: o webhook oficial da Meta confere a assinatura sobre o corpo ORIGINAL; guarda só nessa rota
+// NORQVA-0152: o webhook da Evolution traz o arquivo do áudio (e de fotos e vídeos) em base64: limite próprio.
+// O corpo grande só é aceito no endereço do webhook (segredo conferido depois); o resto segue com 1 MB.
+const whatsappWebhookJson = express.json({ limit: '40mb' });
+app.use((req, res, next) => {
+  const m = String(req.originalUrl || req.url || '').match(/^\/api\/whatsapp\/webhook\/([^/?#]+)\/([^/?#]+)/);
+  if (!m) return next();
+  // só quem tem o endereço certo (número + segredo) manda corpo grande; o resto cai no limite de 1 MB
+  webhookSecretMatches(req.app.get('db'), m[1], m[2])
+    .then(ok => (ok ? whatsappWebhookJson(req, res, next) : next()))
+    .catch(() => next());
+});
 app.use(express.json({
   limit: '1mb',
   verify: (req: any, _res, buf) => {
