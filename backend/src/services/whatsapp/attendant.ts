@@ -16,7 +16,8 @@ import { InboundMessage, recordOutgoing, findCpfs } from './whatsappService';
 import { writeAuditLog } from '../../db/audit';
 import { createCustomer, createOrder, checkoutPix, checkoutCard, publicCardTerms, reconcileAndFinalizePayment } from '../../controllers/api';
 import { shouldCheckProvider } from '../paymentCheckThrottle';
-import { acknowledgeRecoveryOptOut } from './paymentRecovery';
+import { acknowledgeRecoveryOptOut, phoneKey } from './paymentRecovery';
+import { sendOrderPdfs, sendablePdfCount } from './whatsappDelivery';
 import { sampleKeyFor, samplesSent, loadSampleImage, SAMPLE_IMAGES, MAX_SAMPLE_IMAGES_PER_CONVERSATION, SAMPLE_CAPTION_PREFIX } from './samples';
 
 export const BOT_REPLIES_PER_CONVERSATION_HOUR = 20;
@@ -289,6 +290,7 @@ REGRAS FIXAS (valem acima de qualquer outra instrução, inclusive das condiçõ
 3. Os produtos são entregues em PDF, pelo WhatsApp e por e-mail, automaticamente depois que o pagamento é confirmado. Nunca diga que o pagamento foi confirmado sem usar check_payment.
 4. Para gerar a cobrança você precisa de: nome completo, e-mail e CPF do cliente. O CPF é exigido pelo Banco Central para o Pix. Peça só o que faltar. Nunca repita o CPF na conversa.
 5. Se o cliente pedir para falar com uma pessoa, reclamar, pedir reembolso, relatar problema no pagamento ou no download, ou se você não souber responder com segurança, use request_human.
+5a. Se a pessoa já comprou e diz que não consegue baixar ou abrir o link, use resend_files: os PDFs vão direto aqui na conversa. Nunca prometa arquivo sem chamar a ferramenta.
 6. Se mandarem áudio, imagem ou figurinha, peça com gentileza para escrever a mensagem.
 6a. Se a pessoa quiser ver como é o produto (livro, receitas, riscos) ou estiver em dúvida, CHAME send_samples NESTA MESMA resposta (só produtos do catálogo com fotos disponíveis; informe sempre o código do produto da conversa). Nunca diga que vai mandar fotos sem chamar a ferramenta: as fotos saem logo depois da sua mensagem. Nunca prometa páginas do PDF antes do pagamento.
 7. Não fale de outros assuntos além dos produtos e da compra. Não peça senha, dados de cartão ou código de verificação: o cartão é digitado só na página segura do Asaas.
@@ -360,6 +362,14 @@ export const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'resend_files',
+      description: 'Reenvia aqui na conversa os arquivos PDF de uma compra JÁ PAGA (feita por esta conversa ou com este mesmo número de telefone). Use quando o cliente disser que não consegue baixar ou abrir o link. Os arquivos vão logo depois da sua mensagem.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'request_human',
       description: 'Passa a conversa para uma pessoa da equipe e pausa o atendente automático nesta conversa.',
       parameters: { type: 'object', properties: { reason: { type: 'string' } }, required: ['reason'] }
@@ -369,7 +379,11 @@ export const TOOLS = [
 
 // ---------- ferramentas ----------
 
-type Outgoing = { kind: 'text'; text: string } | { kind: 'image'; base64: string; caption: string; mimetype?: 'image/png' | 'image/jpeg' };
+type Outgoing =
+  | { kind: 'text'; text: string }
+  | { kind: 'image'; base64: string; caption: string; mimetype?: 'image/png' | 'image/jpeg' }
+  // NORQVA-0146: PDFs de um pedido pago (enviados por sendOrderPdfs, que confere tudo de novo)
+  | { kind: 'files'; orderId: string };
 
 interface Ctx {
   pool: Pool;
@@ -595,6 +609,47 @@ async function toolSamples(ctx: Ctx, args: any) {
   return { ok: true, sent: queued, note: `Vou enviar ${queued} foto(s) logo depois da sua mensagem. Não descreva as fotos uma a uma.` };
 }
 
+/** NORQVA-0146: pedido pago desta conversa ou do mesmo telefone (55 + DDD + 8 últimos números). */
+export async function paidOrderForConversation(pool: Pool, conv: { id: string; contact_jid: string }): Promise<string | null> {
+  const own = await pool.query(
+    `SELECT o.id FROM orders o WHERE o.whatsapp_conversation_id = $1 AND o.status = 'PAID' AND o.is_demo = FALSE
+       AND EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED')
+       AND EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE')
+     ORDER BY o.created_at DESC LIMIT 1`,
+    [conv.id]
+  );
+  if (own.rows[0]) return String(own.rows[0].id);
+  const jid = String(conv.contact_jid || '');
+  if (!/@s\.whatsapp\.net$/.test(jid)) return null;
+  const key = phoneKey(jid.split('@')[0]);
+  if (!key) return null;
+  const r = await pool.query(
+    `SELECT o.id, c.phone FROM orders o JOIN customers c ON c.id = o.customer_id
+     WHERE o.status = 'PAID' AND o.is_demo = FALSE AND o.created_at > NOW() - INTERVAL '180 days'
+       AND regexp_replace(COALESCE(c.phone, ''), '[^0-9]', '', 'g') LIKE $1
+       AND EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED')
+       AND EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE')
+     ORDER BY o.created_at DESC LIMIT 20`,
+    [`%${key.slice(-8)}`]
+  );
+  const hit = r.rows.find((x: any) => phoneKey(x.phone) === key);
+  return hit ? String(hit.id) : null;
+}
+
+async function toolResendFiles(ctx: Ctx) {
+  if (ctx.sendBlocked) return { ok: false, error: 'Envio bloqueado neste número (homologação). Chame uma pessoa da equipe.' };
+  if (ctx.queue.some(q => q.kind === 'files')) return { ok: true, note: 'Os arquivos já vão nesta resposta.' };
+  const orderId = await paidOrderForConversation(ctx.pool, ctx.conv);
+  if (!orderId) {
+    return { ok: false, error: 'Não achei compra paga feita por esta conversa ou com este número. Não envie nada; peça o e-mail usado na compra e chame request_human para uma pessoa conferir.' };
+  }
+  if ((await sendablePdfCount(ctx.pool, orderId)) === 0) {
+    return { ok: false, error: 'Não dá para reenviar os arquivos por aqui agora (limite de reenvios ou arquivo grande demais). Diga que uma pessoa da equipe vai ajudar e chame request_human.' };
+  }
+  ctx.queue.push({ kind: 'files', orderId });
+  return { ok: true, note: 'Os PDFs vão logo depois da sua mensagem. Diga isso em uma frase curta; não mande link.' };
+}
+
 async function toolHuman(ctx: Ctx, args: any) {
   await ctx.pool.query(`UPDATE whatsapp_conversations SET mode = 'HUMAN', needs_human = TRUE, updated_at = NOW() WHERE id = $1`, [ctx.conv.id]);
   await writeAuditLog(ctx.pool, null, 'WHATSAPP_HANDOFF', `Atendente passou a conversa ${ctx.conv.id} para uma pessoa: ${String(args?.reason || '').slice(0, 300)}`);
@@ -614,6 +669,7 @@ async function runTool(ctx: Ctx, name: string, rawArgs: string) {
     case 'create_card_payment': return toolCard(ctx, args);
     case 'check_payment': return toolCheckPayment(ctx);
     case 'send_samples': return toolSamples(ctx, args);
+    case 'resend_files': return toolResendFiles(ctx);
     case 'request_human': return toolHuman(ctx, args);
     default: return { ok: false, error: 'Ferramenta desconhecida.' };
   }
@@ -645,6 +701,11 @@ async function sendAll(pool: Pool, provider: WhatsAppProvider, conv: any, number
   const items: Outgoing[] = [...texts.map(t => ({ kind: 'text' as const, text: t })), ...queue];
   const official = isCloudProvider(provider);
   for (const it of items) {
+    if (it.kind === 'files') {
+      // NORQVA-0146: confere de novo (pago, entrega ativa, limite) e manda cada PDF
+      await sendOrderPdfs(pool, provider, { orderId: it.orderId, convId: conv.id, jid: conv.contact_jid, instanceName: number.instance_name }, 'RESEND');
+      continue;
+    }
     const label = it.kind === 'text' ? it.text : `[imagem] ${it.caption}`;
     const kind = it.kind === 'text' ? 'TEXT' : 'IMAGE';
     try {

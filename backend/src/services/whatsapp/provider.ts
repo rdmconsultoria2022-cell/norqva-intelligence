@@ -28,6 +28,8 @@ export interface WhatsAppProvider {
   sendText(instanceName: string, to: string, text: string, opts?: { delayMs?: number }): Promise<{ id: string | null }>;
   /** NORQVA-0123: `opts.mimetype` (padrão PNG, o QR Code do Pix) para as fotos de amostra em JPEG. */
   sendImage(instanceName: string, to: string, base64Png: string, caption: string, opts?: { mimetype?: 'image/png' | 'image/jpeg' }): Promise<{ id: string | null }>;
+  /** NORQVA-0146: arquivo (PDF) por endereço https temporário; opcional para motores antigos e simulados. */
+  sendDocument?(instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }>;
 }
 
 export interface ServerCheck {
@@ -132,9 +134,9 @@ export class EvolutionProvider implements WhatsAppProvider {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  private async call(method: string, path: string, body?: any): Promise<any> {
+  private async call(method: string, path: string, body?: any, timeoutMs?: number): Promise<any> {
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), this.timeoutMs);
+    const t = setTimeout(() => controller.abort(), timeoutMs || this.timeoutMs);
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
         method,
@@ -245,6 +247,17 @@ export class EvolutionProvider implements WhatsAppProvider {
       media: stripDataUrl(base64Png),
       fileName: jpeg ? 'amostra.jpg' : 'pix.png'
     });
+    return { id: data?.key?.id || null };
+  }
+
+  async sendDocument(instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }> {
+    // a Evolution baixa o PDF e sobe para o WhatsApp antes de responder: arquivo grande leva mais que 15 s
+    const data = await this.call(
+      'POST',
+      `/message/sendMedia/${encodeURIComponent(instanceName)}`,
+      { number: to, mediatype: 'document', mimetype: 'application/pdf', ...(caption ? { caption } : {}), media: url, fileName },
+      90_000
+    );
     return { id: data?.key?.id || null };
   }
 }
