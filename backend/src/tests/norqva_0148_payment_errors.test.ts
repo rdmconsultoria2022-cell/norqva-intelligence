@@ -87,6 +87,10 @@ describe('NORQVA-0148 — chaves da mesma pessoa', () => {
     expect(phoneKey('558499846197')).toBe(phoneKey('84999846197'));
     expect(phoneKey('+55 (31) 98392-6969')).toBe(phoneKey('31983926969'));
     expect(phoneKey('123')).toBeNull();
+    // número inventado (dígito repetido ou sequência) não liga pessoas diferentes
+    expect(phoneKey('11999999999')).toBeNull();
+    expect(phoneKey('31988888888')).toBeNull();
+    expect(phoneKey('11912345678')).toBeNull();
   });
 });
 

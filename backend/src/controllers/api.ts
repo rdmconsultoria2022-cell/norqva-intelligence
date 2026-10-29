@@ -3469,7 +3469,8 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
 
   } catch (err: any) {
     // NORQVA-0038: nunca imprime o corpo da resposta do Asaas (pode conter dados do comprador).
-    console.error('Payment provider integration failed:', err?.statusCode || '', String(err?.message || '').slice(0, 160));
+    // NORQVA-0148: com resposta do Asaas a mensagem traz o corpo (pode repetir o e-mail digitado): loga só o status
+    console.error('Payment provider integration failed:', err?.statusCode || '', err?.responseBody !== undefined ? '[resposta do Asaas omitida]' : String(err?.message || '').slice(0, 160));
 
     if (err.isValidationError) {
       await pool.query("UPDATE payments SET status = 'FAILED', failure_reason = 'CPF_INVALIDO', updated_at = NOW() WHERE id = $1", [paymentId]);
@@ -3486,7 +3487,8 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
     }
 
     // 5xx / Network Timeout / Uncertain State -> REQUIRES_RECONCILIATION
-    await pool.query("UPDATE payments SET status = 'REQUIRES_RECONCILIATION', failure_reason = 'ASAAS_SEM_RESPOSTA', updated_at = NOW() WHERE id = $1", [paymentId]);
+    const noAnswer = Number(err?.statusCode) >= 500 || /timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(String(err?.message || ''));
+    await pool.query("UPDATE payments SET status = 'REQUIRES_RECONCILIATION', failure_reason = $2, updated_at = NOW() WHERE id = $1", [paymentId, noAnswer ? 'ASAAS_SEM_RESPOSTA' : 'ERRO_SEM_STATUS']);
     return res.status(502).json({
       error: method === 'CREDIT_CARD'
         ? 'Não foi possível abrir o pagamento com cartão no momento. Tente novamente em instantes.'
@@ -3612,7 +3614,7 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
       providerPaymentId = recoveredCard.providerPaymentId;
       installmentId = recoveredCard.installmentId;
       await pool.query(
-        'UPDATE payments SET provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3 WHERE id = $4',
+        'UPDATE payments SET provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3, failure_reason = NULL WHERE id = $4',
         [recoveredCard.providerPaymentId, recoveredCard.installmentId, recoveredCard.invoiceUrl, paymentId]
       );
     } else {
@@ -3625,7 +3627,7 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
     if (recovered) {
       providerPaymentId = recovered.providerPaymentId;
       await pool.query(
-        "UPDATE payments SET provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3 WHERE id = $4",
+        "UPDATE payments SET provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, failure_reason = NULL WHERE id = $4",
         [recovered.providerPaymentId, recovered.pixCopyPaste, recovered.expiresAt, paymentId]
       );
     } else {
@@ -5598,7 +5600,7 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     if (orderStats.pending_orders > 0) {
       try {
         const pendingRes = await pool.query(
-          `SELECT o.id, o.created_at, o.customer_id, o.is_demo, c.email, c.phone
+          `SELECT o.id, o.created_at, o.customer_id, o.is_demo, o.data_provenance, o.total_amount, c.email, c.phone
            FROM orders o JOIN customers c ON c.id = o.customer_id
            WHERE ${getCommercialOrderClause('o', isDemo)} AND o.status = 'PENDING'
              AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)

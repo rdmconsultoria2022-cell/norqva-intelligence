@@ -102,7 +102,7 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
       pool,
       r.rows
         .filter(row => row.status === 'PENDING')
-        .map(row => ({ id: row.id, created_at: row.created_at, customer_id: row.customer_id, email: row.customer_email, phone: row.customer_phone, is_demo: !!row.is_demo }))
+        .map(row => ({ id: row.id, created_at: row.created_at, customer_id: row.customer_id, email: row.customer_email, phone: row.customer_phone, is_demo: !!row.is_demo, data_provenance: row.data_provenance, total_amount: row.total_amount }))
     );
   } catch (err: any) {
     console.warn('[Vendas] substituídos não calculados:', String(err?.message || '').slice(0, 120));

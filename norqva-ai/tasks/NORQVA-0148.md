@@ -25,7 +25,8 @@ Contrato no Claude Docs "NORQVA-0148 — Erros no pagamento". **Aprovado pelo Ri
 
 ## Revisão independente
 
-(pendente)
+Subagente (29/10): nada bloqueante. Aplicado: log do erro do Asaas sem o corpo da resposta (podia repetir o e-mail); telefone com dígito repetido ou sequência não liga pessoas; pago só da mesma origem (`data_provenance`) e de valor igual ou maior; `ERRO_SEM_STATUS` quando não é timeout/rede/5xx; motivo limpo também na conciliação; faixa de acentos escrita com `\u`.
+Fica como está: o Financeiro (`pendingOrdersCount`) continua contando todos os aguardando (é número de funil; só Vendas e o Painel descontam os substituídos); e-mails antigos fora da regra nova já eram recusados pelo Asaas.
 
 ## Execução
 
