@@ -236,35 +236,70 @@ export async function updateNumber(pool: Pool, id: string, body: any, userId: st
 async function rotateWebhook(pool: Pool, id: string, baseUrl: string) {
   const secret = crypto.randomBytes(24).toString('hex');
   await pool.query('UPDATE whatsapp_numbers SET webhook_secret_hash = $1, updated_at = NOW() WHERE id = $2', [sha256(secret), id]);
+  secretCache.delete(id);
   return webhookUrl(baseUrl, id, secret);
 }
 
+const mediaWebhookTried = new Map<string, number>();
+const MEDIA_WEBHOOK_RETRY_MS = 60 * 60 * 1000;
+
 /**
- * NORQVA-0152: número da Evolution conectado antes da mudança recebe o webhook novo (com o áudio junto),
- * uma vez só, sem QR Code: segredo novo + endereço novo no servidor do WhatsApp. Falhou: volta o segredo antigo.
+ * NORQVA-0152: número da Evolution conectado antes da mudança passa a receber o áudio junto com a mensagem,
+ * uma vez só, sem QR Code e SEM trocar o endereço: lê o webhook atual no servidor do WhatsApp e grava o mesmo
+ * endereço com base64 ligado. Endereço que não é deste número: não mexe. Falha: nada muda; tenta de novo em 1 h.
  */
-export async function ensureMediaWebhook(pool: Pool, provider: WhatsAppProvider | null, numberId: string, baseUrl: string): Promise<boolean> {
-  if (!provider || !audioEnabled()) return false;
+export async function ensureMediaWebhook(pool: Pool, provider: WhatsAppProvider | null, numberId: string): Promise<boolean> {
+  if (!provider || !audioEnabled() || typeof provider.findWebhook !== 'function') return false;
+  const last = mediaWebhookTried.get(numberId);
+  if (last !== undefined && Date.now() - last < MEDIA_WEBHOOK_RETRY_MS) return false;
   const r = await pool.query(
-    `SELECT id, instance_name, webhook_secret_hash, provider FROM whatsapp_numbers
+    `SELECT id, instance_name, provider FROM whatsapp_numbers
      WHERE id = $1 AND is_deleted = FALSE AND status = 'CONNECTED' AND webhook_media_base64 = FALSE`,
     [numberId]
   );
   const n = r.rows[0];
-  if (!n || n.provider === 'META_CLOUD') return false;
-  // trava contra duas reconfigurações ao mesmo tempo
-  const claim = await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = TRUE WHERE id = $1 AND webhook_media_base64 = FALSE RETURNING id', [n.id]);
-  if (!claim.rows.length) return false;
-  const url = await rotateWebhook(pool, n.id, baseUrl);
+  if (!n || n.provider === 'META_CLOUD') {
+    mediaWebhookTried.set(numberId, Date.now());
+    return false;
+  }
+  mediaWebhookTried.set(numberId, Date.now());
   try {
-    await provider.setWebhook(n.instance_name, url);
-    await writeAuditLog(pool, null, 'WHATSAPP_WEBHOOK_MEDIA_ENABLED', 'Webhook do WhatsApp atualizado para receber o áudio junto com a mensagem (NORQVA-0152).', n.id, null);
+    const wh = await provider.findWebhook(n.instance_name);
+    if (!wh?.url || !String(wh.url).includes(`/api/whatsapp/webhook/${n.id}/`)) {
+      console.warn('[WhatsApp] webhook do áudio: o endereço no servidor do WhatsApp não é deste número; nada mudou.');
+      return false;
+    }
+    if (!wh.base64) await provider.setWebhook(n.instance_name, String(wh.url));
+    await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = TRUE WHERE id = $1', [n.id]);
+    await writeAuditLog(pool, null, 'WHATSAPP_WEBHOOK_MEDIA_ENABLED', 'Webhook do WhatsApp passa a receber o áudio junto com a mensagem (mesmo endereço, NORQVA-0152).', n.id, null);
     return true;
   } catch (err: any) {
-    await pool.query('UPDATE whatsapp_numbers SET webhook_secret_hash = $1, webhook_media_base64 = FALSE WHERE id = $2', [n.webhook_secret_hash, n.id]).catch(() => {});
     console.warn('[WhatsApp] não foi possível atualizar o webhook do áudio:', err?.message || err);
     return false;
   }
+}
+
+const secretCache = new Map<string, { hash: string; at: number }>();
+
+/** NORQVA-0152: confere número + segredo do endereço do webhook (cache de 1 min) antes de aceitar corpo grande. */
+export async function webhookSecretMatches(pool: Pool, numberId: string, secret: string): Promise<boolean> {
+  if (!UUID_RE.test(String(numberId)) || !secret) return false;
+  let c = secretCache.get(numberId);
+  if (!c || Date.now() - c.at > 60_000) {
+    const r = await pool.query('SELECT webhook_secret_hash FROM whatsapp_numbers WHERE id = $1 AND is_deleted = FALSE', [numberId]);
+    if (!r.rows[0]) return false;
+    c = { hash: String(r.rows[0].webhook_secret_hash), at: Date.now() };
+    if (secretCache.size > 500) secretCache.clear();
+    secretCache.set(numberId, c);
+  }
+  const a = Buffer.from(sha256(String(secret)));
+  const b = Buffer.from(c.hash);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+export function resetMediaWebhookMemoryForTests() {
+  mediaWebhookTried.clear();
+  secretCache.clear();
 }
 
 async function applyInfo(pool: Pool, id: string, info: { state: string; phone: string | null; profileName: string | null }) {

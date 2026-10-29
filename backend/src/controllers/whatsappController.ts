@@ -209,7 +209,7 @@ export async function postWhatsAppWebhook(req: Request, res: Response) {
     // NORQVA-0152: número antigo passa a receber o áudio junto (uma vez, sem QR Code)
     if (r.numberId) {
       const nid = r.numberId;
-      setImmediate(() => { ensureMediaWebhook(pool, getWhatsAppProvider(), nid, baseUrl(req)).catch(() => null); });
+      setImmediate(() => { ensureMediaWebhook(pool, getWhatsAppProvider(), nid).catch(() => null); });
     }
     if (r.inbound.length && inboundHandler && r.numberId) {
       const numberId = r.numberId;

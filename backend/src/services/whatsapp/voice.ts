@@ -21,9 +21,16 @@ export function rememberInboundAudio(numberId: string, messageId: string, base64
   const now = Date.now();
   for (const [k, v] of inboundAudio) if (now - v.at > INBOUND_AUDIO_TTL_MS) inboundAudio.delete(k);
   const clean = String(base64 || '').replace(/^data:[^;]+;base64,/i, '');
-  // ~4/3 do tamanho do arquivo: acima do limite nem guarda (vira "áudio longo")
+  // ~4/3 do tamanho do arquivo: acima do limite nem guarda (o servidor também não tem: vira "não transcrito")
   if (!clean || clean.length > Math.ceil(MAX_INBOUND_AUDIO_BYTES * 4 / 3)) return;
-  if (inboundAudio.size >= 200) inboundAudio.delete(inboundAudio.keys().next().value as string);
+  // teto total de ~50 MB na memória: sai o mais antigo
+  let total = 0;
+  for (const v of inboundAudio.values()) total += v.base64.length;
+  while (inboundAudio.size && (inboundAudio.size >= 200 || total + clean.length > 50 * 1024 * 1024)) {
+    const k = inboundAudio.keys().next().value as string;
+    total -= inboundAudio.get(k)!.base64.length;
+    inboundAudio.delete(k);
+  }
   inboundAudio.set(`${numberId}:${messageId}`, { base64: clean, mimetype: String(mimetype || 'audio/ogg').split(';')[0], at: now });
 }
 

@@ -5,7 +5,9 @@ import crypto from 'crypto';
 import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { setWhatsAppProviderForTests, WhatsAppProvider } from '../services/whatsapp/provider';
-import { handleWebhook, ensureMediaWebhook } from '../services/whatsapp/whatsappService';
+import request from 'supertest';
+import app from '../index';
+import { handleWebhook, ensureMediaWebhook, resetMediaWebhookMemoryForTests } from '../services/whatsapp/whatsappService';
 import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests } from '../services/whatsapp/attendant';
 import { setVoiceForTests, clearInboundAudioForTests } from '../services/whatsapp/voice';
 
@@ -17,11 +19,12 @@ describe.sequential('NORQVA-0152 — áudio pelo webhook', () => {
   const secret = crypto.randomBytes(24).toString('hex');
   let numberId = '';
   const setWebhook = vi.fn(async () => {});
+  const findWebhook = vi.fn(async (): Promise<any> => ({ url: '', base64: false }));
   const getMediaBase64 = vi.fn(async () => null);
   const sendText = vi.fn(async () => ({ id: `W-${crypto.randomUUID()}` }));
   const sendAudio = vi.fn(async () => ({ id: `A-${crypto.randomUUID()}` }));
   const provider = {
-    createInstance: vi.fn(), connect: vi.fn(), info: vi.fn(), logout: vi.fn(), deleteInstance: vi.fn(), setWebhook,
+    createInstance: vi.fn(), connect: vi.fn(), info: vi.fn(), logout: vi.fn(), deleteInstance: vi.fn(), setWebhook, findWebhook,
     sendText, sendImage: vi.fn(async () => ({ id: 'I' })), sendAudio, getMediaBase64
   } as unknown as WhatsAppProvider;
   const transcribe = vi.fn(async () => 'quero o kit');
@@ -49,7 +52,8 @@ describe.sequential('NORQVA-0152 — áudio pelo webhook', () => {
     process.env.WHATSAPP_AUDIO_ENABLED = 'true';
     resetAttendantMemoryForTests();
     clearInboundAudioForTests();
-    for (const f of [setWebhook, getMediaBase64, sendText, sendAudio, transcribe]) f.mockClear();
+    resetMediaWebhookMemoryForTests();
+    for (const f of [setWebhook, findWebhook, getMediaBase64, sendText, sendAudio, transcribe]) f.mockClear();
     setWhatsAppProviderForTests(provider);
     setVoiceForTests({ transcribe, speak: async () => Buffer.from('voz') });
     setAttendantAiForTests((async () => ({ content: 'Claro!', tool_calls: [] })) as any);
@@ -90,27 +94,49 @@ describe.sequential('NORQVA-0152 — áudio pelo webhook', () => {
     expect(transcribe).not.toHaveBeenCalled();
   });
 
-  it('número antigo: webhook novo uma vez só (segredo trocado); falha volta o segredo', async () => {
+  it('número antigo: mesmo endereço com base64 ligado, uma vez; endereço de outro número não é tocado', async () => {
     await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = FALSE WHERE id = $1', [numberId]);
-    setWebhook.mockRejectedValueOnce(new Error('fora do ar'));
-    expect(await ensureMediaWebhook(pool, provider, numberId, 'https://api.exemplo.com')).toBe(false);
-    let row = (await pool.query('SELECT webhook_secret_hash, webhook_media_base64 FROM whatsapp_numbers WHERE id = $1', [numberId])).rows[0];
-    expect(row.webhook_secret_hash).toBe(sha(secret));
-    expect(row.webhook_media_base64).toBe(false);
-
-    expect(await ensureMediaWebhook(pool, provider, numberId, 'https://api.exemplo.com')).toBe(true);
-    expect(setWebhook).toHaveBeenLastCalledWith(`t152-${tag}`, expect.stringMatching(new RegExp(`^https://api.exemplo.com/api/whatsapp/webhook/${numberId}/[0-9a-f]+$`)));
-    row = (await pool.query('SELECT webhook_secret_hash, webhook_media_base64 FROM whatsapp_numbers WHERE id = $1', [numberId])).rows[0];
+    const url = `https://api.exemplo.com/api/whatsapp/webhook/${numberId}/${secret}`;
+    findWebhook.mockResolvedValueOnce({ url: 'https://outro.com/api/whatsapp/webhook/x/y', base64: false });
+    expect(await ensureMediaWebhook(pool, provider, numberId)).toBe(false);
+    expect(setWebhook).not.toHaveBeenCalled();
+    // falhou: espera 1 h (memória zerada aqui para simular)
+    resetMediaWebhookMemoryForTests();
+    findWebhook.mockResolvedValueOnce({ url, base64: false });
+    expect(await ensureMediaWebhook(pool, provider, numberId)).toBe(true);
+    expect(setWebhook).toHaveBeenCalledWith(`t152-${tag}`, url);
+    const row = (await pool.query('SELECT webhook_secret_hash, webhook_media_base64 FROM whatsapp_numbers WHERE id = $1', [numberId])).rows[0];
     expect(row.webhook_media_base64).toBe(true);
-    expect(row.webhook_secret_hash).not.toBe(sha(secret));
-    expect(await ensureMediaWebhook(pool, provider, numberId, 'https://api.exemplo.com')).toBe(false);
-    expect(setWebhook).toHaveBeenCalledTimes(2);
+    expect(row.webhook_secret_hash).toBe(sha(secret));
+    resetMediaWebhookMemoryForTests();
+    expect(await ensureMediaWebhook(pool, provider, numberId)).toBe(false);
+    expect(setWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha no servidor: nada muda e não tenta de novo na hora', async () => {
+    await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = FALSE WHERE id = $1', [numberId]);
+    findWebhook.mockRejectedValueOnce(new Error('fora do ar'));
+    expect(await ensureMediaWebhook(pool, provider, numberId)).toBe(false);
+    expect(await ensureMediaWebhook(pool, provider, numberId)).toBe(false);
+    expect(findWebhook).toHaveBeenCalledTimes(1);
+    const row = (await pool.query('SELECT webhook_secret_hash, webhook_media_base64 FROM whatsapp_numbers WHERE id = $1', [numberId])).rows[0];
+    expect(row.webhook_media_base64).toBe(false);
+    expect(row.webhook_secret_hash).toBe(sha(secret));
+  });
+
+  it('corpo grande (mais de 1 MB) só com número e segredo certos', async () => {
+    await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = TRUE WHERE id = $1', [numberId]);
+    const big = { event: 'messages.upsert', data: { key: { id: 'BIG1', remoteJid: '5521999990001@s.whatsapp.net', fromMe: false }, message: { videoMessage: { caption: 'oi' }, base64: 'A'.repeat(2 * 1024 * 1024) } } };
+    const wrong = await request(app).post(`/api/whatsapp/webhook/${numberId}/errado`).send(big);
+    expect(wrong.status).toBe(413);
+    const ok = await request(app).post(`/api/whatsapp/webhook/${numberId}/${secret}`).send(big);
+    expect(ok.status).toBe(200);
   });
 
   it('chave desligada: não mexe no webhook', async () => {
     delete process.env.WHATSAPP_AUDIO_ENABLED;
     await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = FALSE WHERE id = $1', [numberId]);
-    expect(await ensureMediaWebhook(pool, provider, numberId, 'https://api.exemplo.com')).toBe(false);
-    expect(setWebhook).not.toHaveBeenCalled();
+    expect(await ensureMediaWebhook(pool, provider, numberId)).toBe(false);
+    expect(findWebhook).not.toHaveBeenCalled();
   });
 });
