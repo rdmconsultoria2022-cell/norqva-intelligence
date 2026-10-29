@@ -23,6 +23,8 @@ export interface LaunchPlan {
   daily_budget_brl: number;
   max_spend_brl: number;
   last_error?: string | null;
+  /** NORQVA-0150: tudo ATIVO na Meta apesar do erro antigo (o servidor confere) */
+  activation_complete?: boolean;
   spec: {
     campaign: { name: string };
     adsets: LaunchPlanAdSet[];
@@ -39,7 +41,9 @@ export const isPlan = (p: any): p is LaunchPlan =>
   !!p && typeof p.id === 'string' && !!p.spec?.campaign?.name && Array.isArray(p.spec?.adsets) && Array.isArray(p.spec?.ads);
 
 // Aguardando resposta, ou aprovado com ativação incompleta (responder Sim de novo retoma).
-export const needsOperator = (p: LaunchPlan) => p.status === 'AWAITING_OPERATOR' || (p.status === 'APPROVED' && !!p.last_error);
+// NORQVA-0150: se a Meta já mostra campanha, conjuntos e anúncios ativos, o erro é antigo e não há o que retomar.
+export const needsOperator = (p: LaunchPlan) =>
+  p.status === 'AWAITING_OPERATOR' || (p.status === 'APPROVED' && !!p.last_error && !p.activation_complete);
 
 export const LaunchPlansCard: React.FC<{
   apiFetch: (url: string, options?: any, mode?: string, user?: any) => Promise<any>;
