@@ -23,4 +23,4 @@ Subagente (29/10): bloqueante aplicado (a faixa do celular usava a regra antiga 
 
 ## Execução
 
-(pendente)
+PR #199 mesclado em 29/10/2026 (CI verde). Deploy automático no Render e na Vercel.
