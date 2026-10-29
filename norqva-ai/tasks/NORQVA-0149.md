@@ -7,4 +7,6 @@ A Meta precisa baixar o vídeo de um endereço https público. `frontend/public/
 
 ## Execução
 
-(pendente)
+PR #198 mesclado em 29/10/2026 (CI verde; revisão independente sem nada bloqueante). Em 29/10 às ~10h30, pela tarefa agendada e dentro da D-0143 (fora do mandato só esta campanha ativa, R$ 20/dia):
+criativo CR-000015 (claims CLM-3BE90942 e CLM-A4C33642, aprovado), plano `CMP-OFF-000010-TITO01`, campanha "NQ – Kit 5 – Mestre Tito – Teste" (Meta 120250242574070097, conjunto 120250242574760097, anúncio 120250242582720097),
+R$ 20/dia, teto R$ 140, término 05/11/2026, destino /kit/OFF-000010, utm_content=CR-000015, sem preço, texto com aviso de personagem virtual. Vídeo pelo raw do GitHub do commit 62c18b2. A primeira ativação bateu no limite de chamadas da Meta (#613); a segunda concluiu (ACTIVE).
