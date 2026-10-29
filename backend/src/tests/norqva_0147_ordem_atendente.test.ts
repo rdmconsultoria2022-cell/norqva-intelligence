@@ -5,7 +5,8 @@ import { systemPrompt, splitReply, whatsappBold } from '../services/whatsapp/att
 describe('NORQVA-0147: ordem das opções e negrito do WhatsApp', () => {
   it('regra fixa: recomendado sempre primeiro, acima das condições', () => {
     const p = systemPrompt({ brandName: 'Trattoria', catalog: '- Código X', globalConditions: 'ofereça o kit primeiro', numberConditions: '', customerName: null, cpfOnFile: null });
-    expect(p).toMatch(/marcado como recomendado no catálogo vem sempre em primeiro lugar/);
+    // NORQVA-0153: a ordem passou a ser uma oferta de cada vez (1ª opção, 2ª opção, avulsos)
+    expect(p).toMatch(/1º: a oferta marcada como 1ª opção no catálogo/);
     expect(p).toMatch(/se as condições abaixo disserem outra ordem/);
     expect(p.indexOf('6b.')).toBeLessThan(p.indexOf('CONDIÇÕES DE ATENDIMENTO'));
   });
