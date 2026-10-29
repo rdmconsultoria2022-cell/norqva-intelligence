@@ -10,11 +10,12 @@ import { providerForNumber, cloudErrorToWhatsApp, checkCloudNumber, createCloudN
 import { isCloudProvider, SendBlockedError, CloudApiError } from './metaCloudProvider';
 import { isServiceWindowOpen } from './serviceWindow';
 import { isExplicitStop, isRecoveryRefusal, isFirstReplyToRecovery, recoveryForReply, carryRecoveryRef, recordRecoveryOptOut } from './paymentRecovery';
+import { audioBody } from './voice';
 
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const OPT_OUT_RE = /^\s*(parar|pare|sair|stop|cancelar|não quero mais|nao quero mais)\s*[.!]*\s*$/i;
+export const OPT_OUT_RE = /^\s*(parar|pare|sair|stop|cancelar|não quero mais|nao quero mais)\s*[.!]*\s*$/i;
 
 const CPF_CANDIDATE_RE = /(?<!\d)(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2})(?!\d)/g;
 
@@ -375,7 +376,7 @@ function extractText(message: any): { body: string; kind: string } | null {
   if (message.extendedTextMessage?.text) return { body: String(message.extendedTextMessage.text), kind: 'TEXT' };
   if (message.imageMessage) return { body: message.imageMessage.caption ? String(message.imageMessage.caption) : '[imagem]', kind: 'IMAGE' };
   if (message.videoMessage) return { body: message.videoMessage.caption ? String(message.videoMessage.caption) : '[vídeo]', kind: 'VIDEO' };
-  if (message.audioMessage) return { body: '[áudio]', kind: 'AUDIO' };
+  if (message.audioMessage) return { body: audioBody(message.audioMessage.seconds), kind: 'AUDIO' };
   if (message.documentMessage) return { body: `[arquivo] ${message.documentMessage.fileName || ''}`.trim(), kind: 'DOCUMENT' };
   if (message.stickerMessage) return { body: '[figurinha]', kind: 'STICKER' };
   if (message.locationMessage) return { body: '[localização]', kind: 'OTHER' };

@@ -433,3 +433,12 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - **E-mail:** o checkout e o cadastro do comprador recusam e-mail com acento, ç ou espaço, com o motivo exato, antes de ir ao Asaas (o Asaas recusa e o comprador via só "verifique seus dados").
 - **Motivo da recusa:** resposta 4xx do Asaas mostra ao comprador o campo a conferir (e-mail, CPF, telefone ou nome) e grava em `payments.failure_reason` só o código do erro e o campo (ex.: `ASAAS_400:invalid_email:email`), nunca a descrição do Asaas nem dado do comprador. Vendas mostra o motivo no detalhe.
 - **Substituído:** pedido aguardando cuja pessoa (mesmo cadastro, e-mail sem diferença de acento ou maiúscula, ou telefone com DDD + 8 últimos dígitos) pagou outro pedido em até 7 dias depois aparece como "Substituído" em Vendas e sai da contagem "aguardando" de Vendas e do painel. Calculado na hora; nenhum status é gravado ou mudado.
+
+## D-0151 — Atendente do WhatsApp entende e responde áudio (2026-10-29)
+
+- **Aprovado pelo Ricardo em 29/10/2026 às 17h56** (Claude Docs "NORQVA-0151 — Atendente do WhatsApp entende e responde áudio").
+- Cliente manda áudio: o NORQVA baixa da Evolution, transcreve na OpenAI e grava só a transcrição (`[áudio] ...`, CPF mascarado e lembrado só na memória). O áudio não é guardado.
+- Quem mandou áudio recebe a resposta em voz (OpenAI, voz feminina, até ~30 s) e a mesma resposta por escrito; Pix, links e PDFs sempre por escrito. Quem escreve recebe só texto.
+- Limites: áudio de até 2 min (acima, pede resumo); falha na transcrição = pede para escrever; falha na voz = só texto.
+- O áudio em si vai para a OpenAI só para transcrever (inclusive se o cliente falar o CPF); o que volta é mascarado antes de gravar e de ir para a IA do atendente. CPF dito em pedaços ("529 982 247 25") também é achado. Pedido falado para parar tem o mesmo efeito do "parar" escrito.
+- Chave `WHATSAPP_AUDIO_ENABLED=true` (padrão desligada). Só números da Evolution; WhatsApp oficial depois. A Evolution precisa guardar as mensagens (`DATABASE_SAVE_DATA_NEW_MESSAGE=true`) para o áudio poder ser baixado.

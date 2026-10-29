@@ -30,6 +30,10 @@ export interface WhatsAppProvider {
   sendImage(instanceName: string, to: string, base64Png: string, caption: string, opts?: { mimetype?: 'image/png' | 'image/jpeg' }): Promise<{ id: string | null }>;
   /** NORQVA-0146: arquivo (PDF) por endereço https temporário; opcional para motores antigos e simulados. */
   sendDocument?(instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }>;
+  /** NORQVA-0151: baixa o áudio de uma mensagem recebida (base64); opcional (motor oficial ainda não tem). */
+  getMediaBase64?(instanceName: string, messageId: string, remoteJid: string): Promise<{ base64: string; mimetype: string } | null>;
+  /** NORQVA-0151: mensagem de voz (base64 de OGG/Opus); opcional. */
+  sendAudio?(instanceName: string, to: string, base64Ogg: string): Promise<{ id: string | null }>;
 }
 
 export interface ServerCheck {
@@ -258,6 +262,23 @@ export class EvolutionProvider implements WhatsAppProvider {
       { number: to, mediatype: 'document', mimetype: 'application/pdf', ...(caption ? { caption } : {}), media: url, fileName },
       90_000
     );
+    return { id: data?.key?.id || null };
+  }
+
+  async getMediaBase64(instanceName: string, messageId: string, remoteJid: string): Promise<{ base64: string; mimetype: string } | null> {
+    const data = await this.call(
+      'POST',
+      `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+      { message: { key: { id: messageId, remoteJid, fromMe: false } }, convertToMp4: false },
+      30_000
+    );
+    const b64 = typeof data?.base64 === 'string' ? data.base64.replace(/^data:[^;]+;base64,/i, '') : '';
+    if (!b64) return null;
+    return { base64: b64, mimetype: String(data?.mimetype || 'audio/ogg').split(';')[0] };
+  }
+
+  async sendAudio(instanceName: string, to: string, base64Ogg: string): Promise<{ id: string | null }> {
+    const data = await this.call('POST', `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, { number: to, audio: base64Ogg }, 60_000);
     return { id: data?.key?.id || null };
   }
 }
