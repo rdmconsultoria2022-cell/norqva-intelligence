@@ -610,8 +610,47 @@ describe('NORQVA Sprint 2.5 Gate 2.5C - Payment & Pix Integration', () => {
 
     expect(res.status).toBe(400);
 
-    const checkPay = await pool.query('SELECT status FROM payments WHERE order_id = $1', [order.id]);
+    const checkPay = await pool.query('SELECT status, failure_reason FROM payments WHERE order_id = $1', [order.id]);
     expect(checkPay.rows[0].status).toBe('FAILED');
+    expect(checkPay.rows[0].failure_reason).toBe('ASAAS_400:sem_codigo:outro');
+
+    spyCreate.mockRestore();
+  });
+
+  // NORQVA-0148: recusa do Asaas com código do campo -> o comprador vê o campo; o pagamento guarda só o código
+  test('P24b: 4xx do Asaas por e-mail mostra "Confira o e-mail" e guarda o motivo sem dado do comprador', async () => {
+    const orderRes = await request(app)
+      .post('/api/checkout')
+      .set('x-user-role', adminToken)
+      .send({
+        offer_id: demoOffer.id,
+        quantity: 1,
+        customer_id: demoCustomer.id,
+        idempotency_key: crypto.randomUUID()
+      });
+    const order = orderRes.body;
+
+    const spyCreate = vi.spyOn(AsaasPaymentProvider.prototype, 'createPixPayment')
+      .mockImplementation(async () => {
+        const err: any = new Error('Bad Request');
+        err.statusCode = 400;
+        err.responseBody = JSON.stringify({ errors: [{ code: 'invalid_email', description: 'O email lídia@x.com é inválido.' }] });
+        throw err;
+      });
+
+    const res = await request(app)
+      .post(`/api/checkout/orders/${order.id}/pix`)
+      .set('x-checkout-token', order.checkout_token)
+      .send({ idempotency_key: crypto.randomUUID() });
+
+    expect(res.status).toBe(400);
+    expect(res.body.field).toBe('email');
+    expect(res.body.error).toMatch(/^Confira o e-mail/);
+    expect(JSON.stringify(res.body)).not.toContain('lídia');
+
+    const checkPay = await pool.query('SELECT status, failure_reason FROM payments WHERE order_id = $1', [order.id]);
+    expect(checkPay.rows[0].status).toBe('FAILED');
+    expect(checkPay.rows[0].failure_reason).toBe('ASAAS_400:invalid_email:email');
 
     spyCreate.mockRestore();
   });

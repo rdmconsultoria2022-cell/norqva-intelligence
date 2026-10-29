@@ -426,3 +426,10 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 
 - **Decisão (Ricardo, 27/10/2026, Claude Docs "Brigada da Casa — Etapa 1"):** três personagens virtuais fictícios assinam produtos de receita: Rodrigo Saldanha (carnes e técnica), Marina Okabe (confeitaria) e Mestre Tito Albuquerque (cozinha italiana). Mestre Tito (na página, só "Mestre Tito") é o anfitrião da Coleção Cozinha Italiana em Casa; os PDFs não citam o personagem, então a página não diz que ele ensina nos livros.
 - **Regras:** nenhum personagem copia ou lembra pessoa real (nada de jurados ou participantes de programas de TV); nenhum título, prêmio, restaurante ou formação inventado; aviso de personagem virtual em páginas, livros e perfis. Imagens geradas na KIE a partir das folhas de referência oficiais (cópias fora do git).
+
+## D-0148 — Erros no pagamento: e-mail, motivo da recusa e pedido substituído (2026-10-29)
+
+- **Aprovado pelo Ricardo em 29/10/2026 às 09h54** (Claude Docs "NORQVA-0148 — Erros no pagamento").
+- **E-mail:** o checkout e o cadastro do comprador recusam e-mail com acento, ç ou espaço, com o motivo exato, antes de ir ao Asaas (o Asaas recusa e o comprador via só "verifique seus dados").
+- **Motivo da recusa:** resposta 4xx do Asaas mostra ao comprador o campo a conferir (e-mail, CPF, telefone ou nome) e grava em `payments.failure_reason` só o código do erro e o campo (ex.: `ASAAS_400:invalid_email:email`), nunca a descrição do Asaas nem dado do comprador. Vendas mostra o motivo no detalhe.
+- **Substituído:** pedido aguardando cuja pessoa (mesmo cadastro, e-mail sem diferença de acento ou maiúscula, ou telefone com DDD + 8 últimos dígitos) pagou outro pedido em até 7 dias depois aparece como "Substituído" em Vendas e sai da contagem "aguardando" de Vendas e do painel. Calculado na hora; nenhum status é gravado ou mudado.

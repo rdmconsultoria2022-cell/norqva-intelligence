@@ -4,7 +4,7 @@ import { CheckoutViewProps, CheckoutOrderResult } from './checkoutTypes';
 import { apiFetch, API_BASE } from '../../lib/api';
 import { trackInitiateCheckout } from '../../services/metaPixel';
 import { getAttributionContext, sendFunnelEvent } from '../../services/attribution';
-import { validateCpf, maskCpf, validateFullName, validateEmail, maskPhone } from './checkoutValidation';
+import { validateCpf, maskCpf, validateFullName, validateEmail, emailProblem, maskPhone } from './checkoutValidation';
 import { savePurchaseSession } from '../../services/purchaseSession';
 import { installmentOptions, brlCents, rateLabel } from '../../lib/cardInstallments';
 import { SALE_BOOK_INFO, SALE_BOOK_ORDER, FULL_KIT_RECIPES, isFullKit, toSaleBooks } from './collectionChoice';
@@ -150,6 +150,8 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   // Compute field validation errors
   const nameValid = validateFullName(customerName);
   const emailValid = validateEmail(customerEmail);
+  // NORQVA-0148: acento, ç ou espaço têm mensagem própria (o Asaas recusaria a cobrança)
+  const emailIssue = emailProblem(customerEmail);
   const cpfValid = validateCpf(cpfCnpj);
   const phoneClean = customerPhone.replace(/\D/g, '');
   const phoneValid = phoneClean.length === 0 || phoneClean.length === 10 || phoneClean.length === 11;
@@ -209,7 +211,9 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
     );
 
     if (!emailValid) {
-      showError(isBolso ? 'Informe um e-mail válido para receber o acesso.' : 'Informe um e-mail válido para receber o livro digital.');
+      showError(emailIssue && emailIssue.startsWith('Confira')
+        ? emailIssue
+        : isBolso ? 'Informe um e-mail válido para receber o acesso.' : 'Informe um e-mail válido para receber o livro digital.');
       return;
     }
 
@@ -617,7 +621,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
             {touched.email && !emailValid ? (
               <p className="text-[11px] text-red-600 mt-1 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3 inline shrink-0" />
-                Informe um e-mail válido.
+                <span data-testid="email-issue">{emailIssue || 'Informe um e-mail válido.'}</span>
               </p>
             ) : (
               <span className="text-[11px] text-stone-500 mt-1 block">

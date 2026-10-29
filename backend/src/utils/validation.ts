@@ -44,9 +44,30 @@ export function validateFullName(name: string | undefined | null): boolean {
 }
 
 /**
- * Validates email with standard RFC 5322 regex.
+ * NORQVA-0148: motivo de um e-mail que o Asaas recusaria (null = e-mail aceito).
+ * O Asaas não aceita acento, ç nem espaço; o comprador vê o motivo antes de gerar a cobrança.
+ */
+export function emailProblem(email: string | undefined | null): string | null {
+  const value = typeof email === 'string' ? email.trim() : '';
+  if (!value) return 'Informe um e-mail válido.';
+  if (/[^\x00-\x7F]/.test(value)) return 'Confira o e-mail: ele não pode ter acento nem ç.';
+  if (/\s/.test(value)) return 'Confira o e-mail: ele não pode ter espaço.';
+  const at = value.lastIndexOf('@');
+  const local = at > 0 ? value.slice(0, at) : '';
+  if (
+    !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(value) ||
+    value.includes('..') ||
+    local.startsWith('.') ||
+    local.endsWith('.')
+  ) {
+    return 'Informe um e-mail válido.';
+  }
+  return null;
+}
+
+/**
+ * E-mail aceito pelo checkout e pelo Asaas (NORQVA-0148: sem acento, ç ou espaço).
  */
 export function validateEmail(email: string | undefined | null): boolean {
-  if (!email || typeof email !== 'string') return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  return emailProblem(email) === null;
 }
