@@ -27,4 +27,4 @@ Subagente (29/10): nada bloqueante; aplicado `***x***` → `*x*`. Pix e arquivos
 
 ## Execução
 
-(preencher no merge)
+PR #196 mesclado em 29/10/2026 (CI verde). Deploy automático no Render.
