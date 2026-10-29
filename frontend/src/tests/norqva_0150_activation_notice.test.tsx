@@ -1,6 +1,7 @@
 // NORQVA-0150: aviso de ativação incompleta some quando a Meta já mostra tudo ativo.
 import { describe, it, expect } from 'vitest';
 import { needsOperator } from '../features/acquisition/LaunchPlansCard';
+import { shownStatus } from '../features/campaigns/CampaignsView';
 
 const base: any = { id: 'p1', code: 'P1', question_text: 'Ativar?', daily_budget_brl: 20, max_spend_brl: 140, spec: { campaign: { name: 'C' }, adsets: [], ads: [] } };
 
@@ -14,5 +15,10 @@ describe('NORQVA-0150 — needsOperator', () => {
   });
   it('aprovado com erro antigo mas tudo ativo na Meta não aparece', () => {
     expect(needsOperator({ ...base, status: 'APPROVED', last_error: '(#613)', activation_complete: true })).toBe(false);
+  });
+  it('situação mostrada: aprovada e toda ativa vira Ativa', () => {
+    expect(shownStatus({ status: 'APPROVED', activation_complete: true })).toBe('ACTIVE');
+    expect(shownStatus({ status: 'APPROVED' })).toBe('APPROVED');
+    expect(shownStatus({ status: 'DRAFT', activation_complete: true })).toBe('DRAFT');
   });
 });

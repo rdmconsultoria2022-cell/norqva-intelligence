@@ -13,6 +13,7 @@ import { findPriceInFields, priceErrorMessage } from '../creative/priceInCopy';
 import { OFFICIAL_NORQVA_PIXEL_ID, isGeneratedPageUrl } from '../meta/metaMutatingClient';
 import {
   LaunchPlanError,
+  LaunchPlanService,
   ALLOWED_CTA_TYPES,
   VIDEO_URL_PLACEHOLDER,
   normalizeMetaIds,
@@ -212,14 +213,30 @@ export function serializeCampaign(row: any) {
   };
 }
 
+/** NORQVA-0150: plano APROVADO com erro antigo e tudo ATIVO na Meta: a ativação já terminou (só leitura). */
+async function withActivationComplete<T extends Record<string, any>>(pool: Pool, c: T): Promise<T> {
+  if (c && c.status === 'APPROVED' && c.last_error) {
+    let complete = false;
+    try {
+      complete = await new LaunchPlanService().activationComplete(pool, (c as any).meta_ids);
+    } catch {
+      complete = false;
+    }
+    return { ...c, activation_complete: complete };
+  }
+  return c;
+}
+
 export class CampaignEditorService {
   async get(pool: Pool, id: string) {
-    return serializeCampaign(await loadPlanRow(pool, id));
+    return withActivationComplete(pool, serializeCampaign(await loadPlanRow(pool, id)));
   }
 
   async list(pool: Pool) {
     const r = await pool.query('SELECT * FROM launch_plans ORDER BY created_at DESC LIMIT 200');
-    return r.rows.map(serializeCampaign);
+    const out: any[] = [];
+    for (const row of r.rows) out.push(await withActivationComplete(pool, serializeCampaign(row)));
+    return out;
   }
 
   /** Criativos aprovados de vídeo do produto da campanha, com o motivo quando não servem. */

@@ -9,7 +9,9 @@ A tela Campanhas pedia "Sim" de novo para o plano do mandato (`CMP-OFF-000010-26
 ## Correção
 
 - `LaunchPlanService.list`: plano APPROVED com `last_error` ganha `activation_complete` (campanha, conjuntos e anúncios de `meta_ids` todos com status ACTIVE na última sincronização; `activationComplete`).
-- `needsOperator` (cartão e resumo da Visão Executiva): não pede resposta quando `activation_complete`.
+- `CampaignEditorService.get/list` (tela Campanhas) também devolvem `activation_complete`.
+- `needsOperator` (cartão, resumo da Visão Executiva e faixa do celular "aguardando seu Sim"): não pede resposta quando `activation_complete`.
+- Tela Campanhas: plano assim aparece como "Ativa" (`shownStatus`) e sem o quadro "Último erro".
 
 ## Testes
 
@@ -17,7 +19,7 @@ A tela Campanhas pedia "Sim" de novo para o plano do mandato (`CMP-OFF-000010-26
 
 ## Revisão independente
 
-(pendente)
+Subagente (29/10): bloqueante aplicado (a faixa do celular usava a regra antiga e a lista de `/api/campaigns` não trazia `activation_complete`); aplicada também a nota do rótulo "Aprovada (ativando)" e do "Último erro". Fica como está: orçamento não é conferido (no nosso fluxo é aplicado antes de ativar); entre 00h e 06h a pausa noturna deixa a campanha PAUSED e o aviso pode voltar, como já acontecia.
 
 ## Execução
 
