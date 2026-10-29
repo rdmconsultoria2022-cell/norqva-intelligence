@@ -66,7 +66,7 @@ CENAS = [
      "She makes slanted stem stitches along the curved tail, keeping the thread on the same side.", "No rabo eu uso o ponto haste: pontos inclinados, sempre com a linha do mesmo lado."),
     ("15", "maos", "close-up of the hoop, a thinner terracotta thread with two strands, the cat's closed eyes and whiskers being stitched",
      "She stitches the small curved eyes and the short whisker lines with tiny back stitches.", "Nos olhos e nos bigodes eu uso só dois fios e ponto atrás curtinho. Fica delicado."),
-    ("16", "maos", "the hoop turned over: we see the BACK (wrong side) of the fabric, where the cat appears as a mirrored line of slightly messy terracotta stitches with a few loose thread tails; her needle slides under three stitches on this back side, small scissors in her other hand",
+    ("16", "maos", "close-up of her hands holding the wooden hoop tilted up, showing only the plain white BACK of the fabric: no drawing and no outline visible from this side, just a few short terracotta stitches, one small knot and a loose terracotta thread tail; her other hand holds small scissors snipping the thread tail close to the fabric. Absolutely no cat shape, no stripes, no filled areas",
      "On the back of the fabric, she slides the needle under three stitches and snips the thread close.", "Pra arrematar, viro o bastidor, passo a agulha por baixo de três ou quatro pontos e corto rente."),
     ("17", "maos", "the finished embroidered cat on the white fabric (out of the hoop) being dabbed with a damp cloth so the blue pen lines disappear",
      "She dabs the fabric with a damp cloth; the blue lines fade away.", "A caneta sai com um pouquinho de água fria. Eu deixo secar bem."),
