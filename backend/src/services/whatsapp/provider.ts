@@ -28,6 +28,8 @@ export interface WhatsAppProvider {
   sendText(instanceName: string, to: string, text: string, opts?: { delayMs?: number }): Promise<{ id: string | null }>;
   /** NORQVA-0123: `opts.mimetype` (padrão PNG, o QR Code do Pix) para as fotos de amostra em JPEG. */
   sendImage(instanceName: string, to: string, base64Png: string, caption: string, opts?: { mimetype?: 'image/png' | 'image/jpeg' }): Promise<{ id: string | null }>;
+  /** NORQVA-0137: arquivo (PDF) por endereço https temporário; opcional para motores antigos e simulados. */
+  sendDocument?(instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }>;
 }
 
 export interface ServerCheck {
@@ -244,6 +246,18 @@ export class EvolutionProvider implements WhatsAppProvider {
       caption,
       media: stripDataUrl(base64Png),
       fileName: jpeg ? 'amostra.jpg' : 'pix.png'
+    });
+    return { id: data?.key?.id || null };
+  }
+
+  async sendDocument(instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }> {
+    const data = await this.call('POST', `/message/sendMedia/${encodeURIComponent(instanceName)}`, {
+      number: to,
+      mediatype: 'document',
+      mimetype: 'application/pdf',
+      caption,
+      media: url,
+      fileName
     });
     return { id: data?.key?.id || null };
   }

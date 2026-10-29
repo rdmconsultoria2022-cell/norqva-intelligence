@@ -275,6 +275,19 @@ export class MetaCloudProvider implements WhatsAppProvider {
     return { id: data?.messages?.[0]?.id ? String(data.messages[0].id) : null };
   }
 
+  /** NORQVA-0137: PDF por link https temporário (a Meta baixa e entrega como arquivo). */
+  async sendDocument(_instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }> {
+    const digits = this.guard(to);
+    const data = await this.call('POST', `/${encodeURIComponent(this.b.phoneNumberId)}/messages`, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: digits,
+      type: 'document',
+      document: { link: url, filename: String(fileName).slice(0, 240), caption: String(caption || '').slice(0, 1024) }
+    });
+    return { id: data?.messages?.[0]?.id ? String(data.messages[0].id) : null };
+  }
+
   /** Template aprovado na Meta (o único envio permitido com a janela de 24h fechada). */
   async sendTemplate(to: string, name: string, language: string, components: any[] = []): Promise<{ id: string | null }> {
     const digits = this.guard(to);
