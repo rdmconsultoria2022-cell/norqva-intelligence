@@ -17,7 +17,7 @@ import { writeAuditLog } from '../../db/audit';
 import { createCustomer, createOrder, checkoutPix, checkoutCard, publicCardTerms, reconcileAndFinalizePayment } from '../../controllers/api';
 import { shouldCheckProvider } from '../paymentCheckThrottle';
 import { acknowledgeRecoveryOptOut, phoneKey } from './paymentRecovery';
-import { sendOrderPdfs, WHATSAPP_PDF_MAX_SENDS } from './whatsappDelivery';
+import { sendOrderPdfs, sendablePdfCount } from './whatsappDelivery';
 import { sampleKeyFor, samplesSent, loadSampleImage, SAMPLE_IMAGES, MAX_SAMPLE_IMAGES_PER_CONVERSATION, SAMPLE_CAPTION_PREFIX } from './samples';
 
 export const BOT_REPLIES_PER_CONVERSATION_HOUR = 20;
@@ -382,7 +382,7 @@ export const TOOLS = [
 type Outgoing =
   | { kind: 'text'; text: string }
   | { kind: 'image'; base64: string; caption: string; mimetype?: 'image/png' | 'image/jpeg' }
-  // NORQVA-0137: PDFs de um pedido pago (enviados por sendOrderPdfs, que confere tudo de novo)
+  // NORQVA-0146: PDFs de um pedido pago (enviados por sendOrderPdfs, que confere tudo de novo)
   | { kind: 'files'; orderId: string };
 
 interface Ctx {
@@ -609,11 +609,12 @@ async function toolSamples(ctx: Ctx, args: any) {
   return { ok: true, sent: queued, note: `Vou enviar ${queued} foto(s) logo depois da sua mensagem. Não descreva as fotos uma a uma.` };
 }
 
-/** NORQVA-0137: pedido pago desta conversa ou do mesmo telefone (55 + DDD + 8 últimos números). */
+/** NORQVA-0146: pedido pago desta conversa ou do mesmo telefone (55 + DDD + 8 últimos números). */
 export async function paidOrderForConversation(pool: Pool, conv: { id: string; contact_jid: string }): Promise<string | null> {
   const own = await pool.query(
     `SELECT o.id FROM orders o WHERE o.whatsapp_conversation_id = $1 AND o.status = 'PAID' AND o.is_demo = FALSE
        AND EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED')
+       AND EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE')
      ORDER BY o.created_at DESC LIMIT 1`,
     [conv.id]
   );
@@ -627,6 +628,7 @@ export async function paidOrderForConversation(pool: Pool, conv: { id: string; c
      WHERE o.status = 'PAID' AND o.is_demo = FALSE AND o.created_at > NOW() - INTERVAL '180 days'
        AND regexp_replace(COALESCE(c.phone, ''), '[^0-9]', '', 'g') LIKE $1
        AND EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED')
+       AND EXISTS (SELECT 1 FROM order_deliveries d WHERE d.order_id = o.id AND d.status = 'ACTIVE')
      ORDER BY o.created_at DESC LIMIT 20`,
     [`%${key.slice(-8)}`]
   );
@@ -641,9 +643,8 @@ async function toolResendFiles(ctx: Ctx) {
   if (!orderId) {
     return { ok: false, error: 'Não achei compra paga feita por esta conversa ou com este número. Não envie nada; peça o e-mail usado na compra e chame request_human para uma pessoa conferir.' };
   }
-  const used = await ctx.pool.query('SELECT COUNT(*)::int AS n FROM whatsapp_pdf_sends WHERE order_id = $1 AND files_sent > 0', [orderId]);
-  if (Number(used.rows[0]?.n || 0) >= WHATSAPP_PDF_MAX_SENDS) {
-    return { ok: false, error: 'Os arquivos já foram reenviados o máximo de vezes. Diga que uma pessoa da equipe vai ajudar e chame request_human.' };
+  if ((await sendablePdfCount(ctx.pool, orderId)) === 0) {
+    return { ok: false, error: 'Não dá para reenviar os arquivos por aqui agora (limite de reenvios ou arquivo grande demais). Diga que uma pessoa da equipe vai ajudar e chame request_human.' };
   }
   ctx.queue.push({ kind: 'files', orderId });
   return { ok: true, note: 'Os PDFs vão logo depois da sua mensagem. Diga isso em uma frase curta; não mande link.' };
@@ -701,7 +702,7 @@ async function sendAll(pool: Pool, provider: WhatsAppProvider, conv: any, number
   const official = isCloudProvider(provider);
   for (const it of items) {
     if (it.kind === 'files') {
-      // NORQVA-0137: confere de novo (pago, entrega ativa, limite) e manda cada PDF
+      // NORQVA-0146: confere de novo (pago, entrega ativa, limite) e manda cada PDF
       await sendOrderPdfs(pool, provider, { orderId: it.orderId, convId: conv.id, jid: conv.contact_jid, instanceName: number.instance_name }, 'RESEND');
       continue;
     }

@@ -1,4 +1,4 @@
-// NORQVA-0137: PDF enviado direto no WhatsApp (depois do PAID e a pedido, com limite). Asaas, WhatsApp e IA simulados.
+// NORQVA-0146: PDF enviado direto no WhatsApp (depois do PAID e a pedido, com limite). Asaas, WhatsApp e IA simulados.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { Pool } from 'pg';
 import crypto from 'crypto';
@@ -9,7 +9,7 @@ import { reconcileAndFinalizePayment } from '../controllers/api';
 import { clearTestEmails, emailService } from '../services/emailService';
 import { resetProviderCheckThrottle } from '../services/paymentCheckThrottle';
 import { setWhatsAppProviderForTests, WhatsAppProvider } from '../services/whatsapp/provider';
-import { pdfFileName, sendOrderPdfs, WHATSAPP_PDF_MAX_SENDS } from '../services/whatsapp/whatsappDelivery';
+import { pdfFileName, sendOrderPdfs, WHATSAPP_PDF_MAX_SENDS, lastPdfSendForTests } from '../services/whatsapp/whatsappDelivery';
 import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiReply, paidOrderForConversation } from '../services/whatsapp/attendant';
 
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
@@ -19,7 +19,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 
 const AMOUNT = 29.9;
 
-describe('NORQVA-0137 — nome do arquivo', () => {
+describe('NORQVA-0146 — nome do arquivo', () => {
   it('usa o nome do upload e termina em .pdf, sem caracteres proibidos', () => {
     expect(pdfFileName({ file_original_name: 'KIT_DE_BORDADO_NORQVA.pdf' })).toBe('KIT_DE_BORDADO_NORQVA.pdf');
     expect(pdfFileName({ name: 'Trattoria em Casa' })).toBe('Trattoria em Casa.pdf');
@@ -28,7 +28,7 @@ describe('NORQVA-0137 — nome do arquivo', () => {
   });
 });
 
-describe.sequential('NORQVA-0137 — PDF no WhatsApp', () => {
+describe.sequential('NORQVA-0146 — PDF no WhatsApp', () => {
   let pool: Pool;
   const tag = crypto.randomUUID().slice(0, 6);
   const productId = crypto.randomUUID();
@@ -136,6 +136,7 @@ describe.sequential('NORQVA-0137 — PDF no WhatsApp', () => {
   it('depois do PAID: o link e, logo depois, os PDFs (o grande fica só no link)', async () => {
     const { paymentId, orderId, convId, jid } = await order({ inConversation: true });
     await reconcileAndFinalizePayment(paymentId, pool);
+    await lastPdfSendForTests();
     expect(sendText).toHaveBeenCalledTimes(1);
     expect(String((sendText.mock.calls[0] as any)[2])).toContain('arquivo em PDF');
     expect(sendDocument).toHaveBeenCalledTimes(2);
@@ -155,6 +156,7 @@ describe.sequential('NORQVA-0137 — PDF no WhatsApp', () => {
     const a = await order({ inConversation: true });
     expect(await sendOrderPdfs(pool, provider, { orderId: a.orderId, convId: a.convId, jid: a.jid, instanceName: 'x' }, 'RESEND')).toEqual({ ok: false, reason: 'NOT_PAID' });
     await reconcileAndFinalizePayment(a.paymentId, pool);
+    await lastPdfSendForTests();
     sendDocument.mockClear();
     await pool.query(`UPDATE order_deliveries SET status = 'REVOKED' WHERE order_id = $1`, [a.orderId]);
     expect(await sendOrderPdfs(pool, provider, { orderId: a.orderId, convId: a.convId, jid: a.jid, instanceName: 'x' }, 'RESEND')).toEqual({ ok: false, reason: 'NO_ACTIVE_DELIVERY' });
@@ -165,6 +167,7 @@ describe.sequential('NORQVA-0137 — PDF no WhatsApp', () => {
     // comprou pela página com o telefone (31) 9 8888-7777 e escreve depois do mesmo número
     const page = await order({ inConversation: false, phone: '(31) 98888-7777', jidDigits: '5531988887777' });
     await reconcileAndFinalizePayment(page.paymentId, pool);
+    await lastPdfSendForTests();
     expect(await paidOrderForConversation(pool, { id: page.convId, contact_jid: page.jid })).toBe(page.orderId);
     sendDocument.mockClear();
     script = [
@@ -189,10 +192,27 @@ describe.sequential('NORQVA-0137 — PDF no WhatsApp', () => {
   it('outro telefone sem compra: o atendente não manda arquivo nenhum', async () => {
     const other = await order({ inConversation: false, phone: '(31) 97777-1111', jidDigits: '5531966665555' });
     await reconcileAndFinalizePayment(other.paymentId, pool);
+    await lastPdfSendForTests();
     expect(await paidOrderForConversation(pool, { id: other.convId, contact_jid: other.jid })).toBeNull();
     sendDocument.mockClear();
     script = [{ content: null, tool_calls: [{ id: 'z1', name: 'resend_files', arguments: '{}' }] }, { content: 'Me passa o e-mail da compra?', tool_calls: [] }];
     await processConversation(pool, other.convId, ['quero o pdf']);
     expect(sendDocument).not.toHaveBeenCalled();
+  });
+
+  it('pedido pago com entrega revogada: a ferramenta não promete arquivo', async () => {
+    const r = await order({ inConversation: false, phone: '(31) 95555-4444', jidDigits: '5531955554444' });
+    await reconcileAndFinalizePayment(r.paymentId, pool);
+    await lastPdfSendForTests();
+    await pool.query(`UPDATE order_deliveries SET status = 'REVOKED' WHERE order_id = $1`, [r.orderId]);
+    expect(await paidOrderForConversation(pool, { id: r.convId, contact_jid: r.jid })).toBeNull();
+  });
+
+  it('telefone gravado sem o 9 casa com o WhatsApp que tem o 9; @lid sem pedido na conversa não casa', async () => {
+    const r = await order({ inConversation: false, phone: '3188881234', jidDigits: '5531988881234' });
+    await reconcileAndFinalizePayment(r.paymentId, pool);
+    await lastPdfSendForTests();
+    expect(await paidOrderForConversation(pool, { id: r.convId, contact_jid: r.jid })).toBe(r.orderId);
+    expect(await paidOrderForConversation(pool, { id: r.convId, contact_jid: '5531988881234@lid' })).toBeNull();
   });
 });

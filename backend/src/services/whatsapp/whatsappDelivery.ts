@@ -12,7 +12,7 @@ import { recordOutgoing } from './whatsappService';
 import { generateStorageSignedUrl } from '../../controllers/api';
 
 export const WHATSAPP_DELIVERY_MAX_ATTEMPTS = 3;
-/** NORQVA-0137: envios dos arquivos por pedido (o primeiro depois do PAID e os reenvios), arquivo máximo e validade do link. */
+/** NORQVA-0146: envios dos arquivos por pedido (o primeiro depois do PAID e os reenvios), arquivo máximo e validade do link. */
 export const WHATSAPP_PDF_MAX_SENDS = 3;
 export const WHATSAPP_PDF_MAX_BYTES = 60 * 1024 * 1024;
 const PDF_LINK_TTL_SECONDS = 15 * 60;
@@ -26,8 +26,46 @@ export function pdfFileName(a: { file_original_name?: string | null; name?: stri
   return /\.pdf$/i.test(clean) ? clean : `${clean.replace(/\.[a-z0-9]{1,5}$/i, '')}.pdf`;
 }
 
+/** Arquivos das entregas ACTIVE do pedido, sem repetir o mesmo arquivo (ex.: o Dolci no kit e no adicional). */
+export async function activeOrderFiles(pool: Pool, orderId: string): Promise<any[]> {
+  const r = await pool.query(
+    `SELECT DISTINCT ON (a.id) a.id, a.name, a.storage_bucket, a.storage_path, a.file_original_name, a.file_size_bytes, d.created_at AS d_created
+     FROM order_deliveries d JOIN digital_assets a ON a.id = d.asset_id
+     WHERE d.order_id = $1 AND d.status = 'ACTIVE' AND a.storage_bucket IS NOT NULL AND a.storage_path IS NOT NULL
+     ORDER BY a.id, d.created_at ASC`,
+    [orderId]
+  );
+  return r.rows.sort((x: any, y: any) => new Date(x.d_created).getTime() - new Date(y.d_created).getTime());
+}
+
+/** Só PDF e até 60 MB (tamanho desconhecido vai). */
+export function isSendablePdf(a: any): boolean {
+  const pdf = /\.pdf$/i.test(String(a.storage_path || '')) || /\.pdf$/i.test(String(a.file_original_name || ''));
+  const big = a.file_size_bytes !== null && a.file_size_bytes !== undefined && Number(a.file_size_bytes) > WHATSAPP_PDF_MAX_BYTES;
+  return pdf && !big;
+}
+
+/** Quantos PDFs ainda podem ir para o pedido agora (0 quando não pago, sem arquivo elegível ou no limite). */
+export async function sendablePdfCount(pool: Pool, orderId: string): Promise<number> {
+  const paid = await pool.query(
+    `SELECT 1 FROM orders o WHERE o.id = $1 AND o.status = 'PAID'
+       AND EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.status = 'CONFIRMED')`,
+    [orderId]
+  );
+  if (!paid.rows.length) return 0;
+  const used = await pool.query('SELECT COUNT(*)::int AS n FROM whatsapp_pdf_sends WHERE order_id = $1 AND files_sent > 0', [orderId]);
+  if (Number(used.rows[0]?.n || 0) >= WHATSAPP_PDF_MAX_SENDS) return 0;
+  return (await activeOrderFiles(pool, orderId)).filter(isSendablePdf).length;
+}
+
+let lastPdfSend: Promise<unknown> = Promise.resolve();
+/** Só para testes: espera o envio dos PDFs que foi disparado em segundo plano depois do PAID. */
+export function lastPdfSendForTests(): Promise<unknown> {
+  return lastPdfSend;
+}
+
 /**
- * NORQVA-0137: manda os PDFs de um pedido PAGO na conversa, como arquivos do WhatsApp.
+ * NORQVA-0146: manda os PDFs de um pedido PAGO na conversa, como arquivos do WhatsApp.
  * Só entrega ACTIVE (estorno/contestação revogam), no máximo WHATSAPP_PDF_MAX_SENDS por pedido, arquivo até 60 MB
  * (acima disso fica só o link). Os arquivos saem por link assinado de 15 minutos. Nunca lança exceção.
  */
@@ -47,26 +85,13 @@ export async function sendOrderPdfs(
     if (!paid.rows.length) return { ok: false, reason: 'NOT_PAID' };
     const used = await pool.query('SELECT COUNT(*)::int AS n FROM whatsapp_pdf_sends WHERE order_id = $1 AND files_sent > 0', [target.orderId]);
     if (Number(used.rows[0]?.n || 0) >= WHATSAPP_PDF_MAX_SENDS) return { ok: false, reason: 'LIMIT' };
-    const files = await pool.query(
-      `SELECT a.id, a.name, a.storage_bucket, a.storage_path, a.file_original_name, a.file_size_bytes
-       FROM order_deliveries d JOIN digital_assets a ON a.id = d.asset_id
-       WHERE d.order_id = $1 AND d.status = 'ACTIVE' AND a.storage_bucket IS NOT NULL AND a.storage_path IS NOT NULL
-       ORDER BY d.created_at ASC, d.id ASC`,
-      [target.orderId]
-    );
-    if (!files.rows.length) return { ok: false, reason: 'NO_ACTIVE_DELIVERY' };
+    const all = await activeOrderFiles(pool, target.orderId);
+    if (!all.length) return { ok: false, reason: 'NO_ACTIVE_DELIVERY' };
+    const files = all.filter(isSendablePdf);
     let sent = 0;
-    let skipped = 0;
-    for (const a of files.rows) {
+    let skipped = all.length - files.length;
+    for (const a of files) {
       const name = pdfFileName(a);
-      if (!/\.pdf$/i.test(String(a.storage_path)) && !/\.pdf$/i.test(String(a.file_original_name || ''))) {
-        skipped++;
-        continue;
-      }
-      if (a.file_size_bytes !== null && a.file_size_bytes !== undefined && Number(a.file_size_bytes) > WHATSAPP_PDF_MAX_BYTES) {
-        skipped++;
-        continue;
-      }
       try {
         const url = await generateStorageSignedUrl(String(a.storage_bucket), String(a.storage_path), PDF_LINK_TTL_SECONDS);
         const r = await provider.sendDocument(target.instanceName, target.jid, url, name, '');
@@ -181,7 +206,8 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
     const token = await issueAccessToken(pool, orderId, 'WHATSAPP');
     const url = `${base.replace(/\/+$/, '')}/acesso/${token.rawToken}`;
     const firstName = o.customer_name ? String(o.customer_name).trim().split(/\s+/)[0] : null;
-    const text = deliveryMessage(firstName, o.offer_name || 'sua compra', url, Math.max(1, Math.round(token.ttlHours / 24)), typeof provider.sendDocument === 'function');
+    const withFiles = typeof provider.sendDocument === 'function' && (await sendablePdfCount(pool, orderId).catch(() => 0)) > 0;
+    const text = deliveryMessage(firstName, o.offer_name || 'sua compra', url, Math.max(1, Math.round(token.ttlHours / 24)), withFiles);
 
     let sentId: string | null = null;
     try {
@@ -202,8 +228,11 @@ export async function sendPaidOrderWhatsApp(pool: Pool, orderId: string, provide
     await recordOutgoing(pool, o.conv_id, 'SYSTEM', text.replace(token.rawToken, '••••••'), sentId, { deliveryStatus: official ? 'SENT' : null });
     await pool.query(`UPDATE whatsapp_order_deliveries SET status = 'SENT', sent_at = NOW(), error_code = NULL, updated_at = NOW() WHERE order_id = $1`, [orderId]);
     console.log(JSON.stringify({ event: 'WHATSAPP_DELIVERY_SENT', order_id: orderId, timestamp: new Date().toISOString() }));
-    // NORQVA-0137: e os próprios PDFs, para quem tem dificuldade com o link (falha aqui não desfaz a entrega)
-    await sendOrderPdfs(pool, provider, { orderId, convId: o.conv_id, jid: o.contact_jid, instanceName: o.instance_name }, 'PAID');
+    // NORQVA-0146: e os próprios PDFs, para quem tem dificuldade com o link (falha aqui não desfaz a entrega)
+    // em segundo plano: a confirmação do pagamento (webhook do Asaas) não espera os arquivos subirem
+    if (withFiles) {
+      lastPdfSend = sendOrderPdfs(pool, provider, { orderId, convId: o.conv_id, jid: o.contact_jid, instanceName: o.instance_name }, 'PAID').catch(() => null);
+    }
     return { status: 'SENT' };
   } catch (err: any) {
     console.warn('[WhatsAppDelivery] non-fatal error:', err?.message);

@@ -275,7 +275,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
     return { id: data?.messages?.[0]?.id ? String(data.messages[0].id) : null };
   }
 
-  /** NORQVA-0137: PDF por link https temporário (a Meta baixa e entrega como arquivo). */
+  /** NORQVA-0146: PDF por link https temporário (a Meta baixa e entrega como arquivo). */
   async sendDocument(_instanceName: string, to: string, url: string, fileName: string, caption: string): Promise<{ id: string | null }> {
     const digits = this.guard(to);
     const data = await this.call('POST', `/${encodeURIComponent(this.b.phoneNumberId)}/messages`, {
@@ -283,7 +283,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
       recipient_type: 'individual',
       to: digits,
       type: 'document',
-      document: { link: url, filename: String(fileName).slice(0, 240), caption: String(caption || '').slice(0, 1024) }
+      document: { link: url, filename: String(fileName).slice(0, 240), ...(caption ? { caption: String(caption).slice(0, 1024) } : {}) }
     });
     return { id: data?.messages?.[0]?.id ? String(data.messages[0].id) : null };
   }

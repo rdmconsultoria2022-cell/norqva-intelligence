@@ -1,4 +1,4 @@
--- NORQVA-0137 PDF enviado direto no WhatsApp (só aditiva)
+-- NORQVA-0146 PDF enviado direto no WhatsApp (só aditiva)
 -- cada envio dos arquivos de um pedido na conversa (o primeiro depois do PAID e os reenvios a pedido)
 -- serve para o limite de envios por pedido e para o histórico
 
