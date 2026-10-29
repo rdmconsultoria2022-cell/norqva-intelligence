@@ -33,4 +33,4 @@ do Render (texto já era assim; agora também o começo do áudio). Vídeo acima
 
 ## Execução
 
-(preencher no merge)
+PR #201 mesclado em 29/10/2026 (CI verde).
