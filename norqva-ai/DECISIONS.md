@@ -440,4 +440,5 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - Cliente manda áudio: o NORQVA baixa da Evolution, transcreve na OpenAI e grava só a transcrição (`[áudio] ...`, CPF mascarado e lembrado só na memória). O áudio não é guardado.
 - Quem mandou áudio recebe a resposta em voz (OpenAI, voz feminina, até ~30 s) e a mesma resposta por escrito; Pix, links e PDFs sempre por escrito. Quem escreve recebe só texto.
 - Limites: áudio de até 2 min (acima, pede resumo); falha na transcrição = pede para escrever; falha na voz = só texto.
-- Chave `WHATSAPP_AUDIO_ENABLED=true` (padrão desligada). Só números da Evolution; WhatsApp oficial depois.
+- O áudio em si vai para a OpenAI só para transcrever (inclusive se o cliente falar o CPF); o que volta é mascarado antes de gravar e de ir para a IA do atendente. CPF dito em pedaços ("529 982 247 25") também é achado. Pedido falado para parar tem o mesmo efeito do "parar" escrito.
+- Chave `WHATSAPP_AUDIO_ENABLED=true` (padrão desligada). Só números da Evolution; WhatsApp oficial depois. A Evolution precisa guardar as mensagens (`DATABASE_SAVE_DATA_NEW_MESSAGE=true`) para o áudio poder ser baixado.

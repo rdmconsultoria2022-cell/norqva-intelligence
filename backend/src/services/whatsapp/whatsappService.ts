@@ -15,7 +15,7 @@ import { audioBody } from './voice';
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const OPT_OUT_RE = /^\s*(parar|pare|sair|stop|cancelar|não quero mais|nao quero mais)\s*[.!]*\s*$/i;
+export const OPT_OUT_RE = /^\s*(parar|pare|sair|stop|cancelar|não quero mais|nao quero mais)\s*[.!]*\s*$/i;
 
 const CPF_CANDIDATE_RE = /(?<!\d)(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2})(?!\d)/g;
 

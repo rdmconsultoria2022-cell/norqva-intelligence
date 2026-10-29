@@ -43,6 +43,23 @@ export function untranscribedAudio(body: string): { seconds: number | null } | f
   return { seconds: m[1] !== undefined ? Number(m[1]) * 60 + Number(m[2]) : null };
 }
 
+/**
+ * Números ditos em pedaços ("529 982 247 25", "529.982.247 - 25") viram dígitos seguidos quando somam 11,
+ * para a busca de CPF achar e mascarar.
+ */
+export function compactSpokenNumbers(text: string): string {
+  return String(text || '').replace(/\d(?:[\s.,\-–]*\d){10,14}/g, run => {
+    const digits = run.replace(/\D/g, '');
+    return digits.length === 11 ? digits : run;
+  });
+}
+
+/** Pedido falado para parar de receber mensagens. */
+export function isSpokenStop(text: string): boolean {
+  const t = String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return /\b(para|pare|parar) de (me )?(mandar|enviar|chamar)\b|\bnao (quero|quer) (mais )?receber\b|\b(me )?(tira|tire|remove|remova) (da lista|daqui|o meu numero|meu numero)\b/.test(t);
+}
+
 /** Texto da resposta como fala: sem emojis, marcações, links e listas; null quando é longo demais para áudio. */
 export function speechText(text: string): string | null {
   const t = String(text || '')

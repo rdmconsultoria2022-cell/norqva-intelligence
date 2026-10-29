@@ -6,7 +6,7 @@ import { initializeDB } from '../db/db';
 import { runMigrations } from '../db/migrations';
 import { setWhatsAppProviderForTests, WhatsAppProvider } from '../services/whatsapp/provider';
 import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, systemPrompt } from '../services/whatsapp/attendant';
-import { setVoiceForTests, audioBody, untranscribedAudio, speechText, AUDIO_TOO_LONG, AUDIO_FAILED, AUDIO_SENT_LABEL } from '../services/whatsapp/voice';
+import { setVoiceForTests, compactSpokenNumbers, isSpokenStop, audioBody, untranscribedAudio, speechText, AUDIO_TOO_LONG, AUDIO_FAILED, AUDIO_SENT_LABEL } from '../services/whatsapp/voice';
 
 describe('NORQVA-0151 — peças do áudio', () => {
   it('marcador com duração e leitura de volta', () => {
@@ -20,6 +20,13 @@ describe('NORQVA-0151 — peças do áudio', () => {
   it('fala sem emoji, marcação e link; longa demais vira null', () => {
     expect(speechText('Oi, *Ana*! 😊\n\nVeja: https://x.com/a')).toBe('Oi, Ana! Veja:');
     expect(speechText('a'.repeat(601))).toBeNull();
+  });
+  it('CPF falado em pedaços vira dígitos; pedido falado para parar', () => {
+    expect(compactSpokenNumbers('meu cpf é 529 982 247 - 25 tá')).toBe('meu cpf é 52998224725 tá');
+    expect(compactSpokenNumbers('custa 29,90')).toBe('custa 29,90');
+    expect(isSpokenStop('Pode parar de me mandar mensagem')).toBe(true);
+    expect(isSpokenStop('Não quero mais receber isso')).toBe(true);
+    expect(isSpokenStop('Quero o kit')).toBe(false);
   });
   it('regras do prompt só com o áudio ligado', () => {
     const base = { brandName: 'T', catalog: '-', globalConditions: '', numberConditions: '', customerName: null, cpfOnFile: null };
@@ -130,6 +137,24 @@ describe.sequential('NORQVA-0151 — conversa com áudio', () => {
     await processConversation(pool, convId, []);
     expect(sendAudio).not.toHaveBeenCalled();
     expect(sendText).toHaveBeenCalledTimes(1);
+  });
+
+  it('CPF dito com espaços também é mascarado', async () => {
+    transcribe.mockResolvedValueOnce('meu cpf é 529 982 247 25');
+    const { convId, msgId } = await convWith('[áudio 0:05]', 'AUDIO');
+    await processConversation(pool, convId, []);
+    expect(await bodyOf(msgId)).toBe('[áudio] meu cpf é [CPF final 25]');
+    expect(JSON.stringify(lastMessages)).not.toMatch(/529.?982/);
+  });
+
+  it('pediu para parar falando: conversa sai do atendente, sem resposta', async () => {
+    transcribe.mockResolvedValueOnce('Por favor, para de me mandar mensagem');
+    const { convId } = await convWith('[áudio 0:04]', 'AUDIO');
+    const r = await processConversation(pool, convId, []);
+    expect(r).toEqual({ replied: false, reason: 'OPTED_OUT' });
+    expect((await pool.query('SELECT mode FROM whatsapp_conversations WHERE id = $1', [convId])).rows[0].mode).toBe('OPTED_OUT');
+    expect(sendText).not.toHaveBeenCalled();
+    expect(sendAudio).not.toHaveBeenCalled();
   });
 
   it('cliente que escreve recebe só texto', async () => {

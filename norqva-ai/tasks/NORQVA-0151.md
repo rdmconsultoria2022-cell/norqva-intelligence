@@ -20,7 +20,10 @@
 
 ## Revisão independente
 
-(preencher)
+Subagente (29/10/2026): nada bloqueante no código. Aplicado: registro da ida do áudio à OpenAI na D-0151; CPF falado em pedaços
+(`compactSpokenNumbers`); pedido falado para parar (`isSpokenStop`, OPT_OUT_RE, isExplicitStop) põe a conversa em OPTED_OUT sem resposta;
+`[áudio enviado]` fora dos limites por hora; regra 6 explica `[áudio m:ss]` antigo sem texto. Antes de ligar a chave: conferir
+`DATABASE_SAVE_DATA_NEW_MESSAGE=true` no servidor da Evolution.
 
 ## Execução
 

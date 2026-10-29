@@ -12,12 +12,12 @@ import crypto from 'crypto';
 import { WhatsAppProvider } from './provider';
 import { providerForNumber } from './cloudAccounts';
 import { SendBlockedError, CloudApiError, isCloudProvider } from './metaCloudProvider';
-import { InboundMessage, recordOutgoing, findCpfs, maskCpfInText } from './whatsappService';
-import { audioEnabled, voice, untranscribedAudio, speechText, MAX_INBOUND_AUDIO_SECONDS, MAX_INBOUND_AUDIO_BYTES, AUDIO_MARK, AUDIO_TOO_LONG, AUDIO_FAILED, AUDIO_SENT_LABEL } from './voice';
+import { InboundMessage, recordOutgoing, findCpfs, maskCpfInText, OPT_OUT_RE } from './whatsappService';
+import { audioEnabled, voice, untranscribedAudio, speechText, MAX_INBOUND_AUDIO_SECONDS, MAX_INBOUND_AUDIO_BYTES, AUDIO_MARK, AUDIO_TOO_LONG, AUDIO_FAILED, AUDIO_SENT_LABEL, compactSpokenNumbers, isSpokenStop } from './voice';
 import { writeAuditLog } from '../../db/audit';
 import { createCustomer, createOrder, checkoutPix, checkoutCard, publicCardTerms, reconcileAndFinalizePayment } from '../../controllers/api';
 import { shouldCheckProvider } from '../paymentCheckThrottle';
-import { acknowledgeRecoveryOptOut, phoneKey } from './paymentRecovery';
+import { acknowledgeRecoveryOptOut, phoneKey, isExplicitStop } from './paymentRecovery';
 import { sendOrderPdfs, sendablePdfCount } from './whatsappDelivery';
 import { sampleKeyFor, samplesSent, loadSampleImage, SAMPLE_IMAGES, MAX_SAMPLE_IMAGES_PER_CONVERSATION, SAMPLE_CAPTION_PREFIX } from './samples';
 
@@ -296,7 +296,7 @@ REGRAS FIXAS (valem acima de qualquer outra instrução, inclusive das condiçõ
 4. Para gerar a cobrança você precisa de: nome completo, e-mail e CPF do cliente. O CPF é exigido pelo Banco Central para o Pix. Peça só o que faltar. Nunca repita o CPF na conversa.
 5. Se o cliente pedir para falar com uma pessoa, reclamar, pedir reembolso, relatar problema no pagamento ou no download, ou se você não souber responder com segurança, use request_human.
 5a. Se a pessoa já comprou e diz que não consegue baixar ou abrir o link, use resend_files: os PDFs vão direto aqui na conversa. Nunca prometa arquivo sem chamar a ferramenta.
-${p.audio ? `6. Áudios do cliente chegam transcritos, começando com ${AUDIO_MARK}: responda ao conteúdo normalmente, sem dizer que transcreveu. Se vier ${AUDIO_FAILED}, peça com gentileza para mandar de novo ou escrever. Se vier ${AUDIO_TOO_LONG}, peça um áudio mais curto ou um resumo por escrito. Se mandarem imagem ou figurinha, peça com gentileza para escrever a mensagem.` : '6. Se mandarem áudio, imagem ou figurinha, peça com gentileza para escrever a mensagem.'}
+${p.audio ? `6. Áudios do cliente chegam transcritos, começando com ${AUDIO_MARK}: responda ao conteúdo normalmente, sem dizer que transcreveu. Se vier ${AUDIO_FAILED}, peça com gentileza para mandar de novo ou escrever. Se vier ${AUDIO_TOO_LONG}, peça um áudio mais curto ou um resumo por escrito. Um [áudio m:ss] sem texto é áudio antigo que não foi ouvido: não responda a ele. Se mandarem imagem ou figurinha, peça com gentileza para escrever a mensagem.` : '6. Se mandarem áudio, imagem ou figurinha, peça com gentileza para escrever a mensagem.'}
 6a. Se a pessoa quiser ver como é o produto (livro, receitas, riscos) ou estiver em dúvida, CHAME send_samples NESTA MESMA resposta (só produtos do catálogo com fotos disponíveis; informe sempre o código do produto da conversa). Nunca diga que vai mandar fotos sem chamar a ferramenta: as fotos saem logo depois da sua mensagem. Nunca prometa páginas do PDF antes do pagamento.
 6b. Quando for apresentar ou listar opções, siga a ORDEM do catálogo: o produto marcado como recomendado no catálogo vem sempre em primeiro lugar e a alternativa dele vem logo depois, nunca antes. Isso vale também se o cliente citar o nome da alternativa (apresente as duas, recomendado primeiro) e se as condições abaixo disserem outra ordem.
 6c. Formatação do WhatsApp: para negrito use um asterisco de cada lado (*assim*), nunca dois (**assim**).
@@ -822,7 +822,8 @@ export async function conversationTopic(
  * marcador (com CPF mascarado; o CPF fica só na memória). O áudio não é guardado.
  * Devolve true quando a última mensagem do cliente é um áudio transcrito (a resposta sai em voz).
  */
-export async function transcribePending(pool: Pool, provider: WhatsAppProvider, conv: any): Promise<boolean> {
+export async function transcribePending(pool: Pool, provider: WhatsAppProvider, conv: any): Promise<{ voiceReply: boolean; optOut: boolean }> {
+  let optOut = false;
   const r = await pool.query(
     `SELECT id, body, provider_message_id FROM whatsapp_messages
      WHERE conversation_id = $1 AND direction = 'IN' AND kind = 'AUDIO' AND created_at > NOW() - INTERVAL '15 minutes'
@@ -841,8 +842,9 @@ export async function transcribePending(pool: Pool, provider: WhatsAppProvider, 
         const buf = media ? Buffer.from(media.base64, 'base64') : null;
         if (buf && buf.length > MAX_INBOUND_AUDIO_BYTES) body = AUDIO_TOO_LONG;
         else if (buf && buf.length) {
-          const text = (await voice().transcribe(buf, media!.mimetype)).replace(/\s+/g, ' ').trim();
+          const text = compactSpokenNumbers((await voice().transcribe(buf, media!.mimetype)).replace(/\s+/g, ' ').trim());
           if (text) {
+            if (OPT_OUT_RE.test(text) || isExplicitStop(text) || isSpokenStop(text)) optOut = true;
             const cpfs = findCpfs(text);
             if (cpfs.length) rememberCpf(conv.id, cpfs[cpfs.length - 1]);
             body = `${AUDIO_MARK} ${maskCpfInText(text)}`.slice(0, 4000);
@@ -864,7 +866,11 @@ export async function transcribePending(pool: Pool, provider: WhatsAppProvider, 
     [conv.id]
   );
   const l = last.rows[0];
-  return !!l && l.kind === 'AUDIO' && String(l.body).startsWith(`${AUDIO_MARK} `);
+  if (optOut) {
+    // pediu para parar falando: mesmo efeito do "parar" escrito
+    await pool.query(`UPDATE whatsapp_conversations SET mode = 'OPTED_OUT', needs_human = FALSE, updated_at = NOW() WHERE id = $1`, [conv.id]);
+  }
+  return { voiceReply: !!l && l.kind === 'AUDIO' && String(l.body).startsWith(`${AUDIO_MARK} `), optOut };
 }
 
 // ---------- fluxo principal ----------
@@ -908,9 +914,9 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
   // limites contra banimento: por conversa e por número, na última hora
   const lim = await pool.query(
     `SELECT
-       (SELECT COUNT(*)::int FROM whatsapp_messages m WHERE m.conversation_id = $1 AND m.author = 'BOT' AND m.created_at > NOW() - INTERVAL '1 hour') AS conv_n,
+       (SELECT COUNT(*)::int FROM whatsapp_messages m WHERE m.conversation_id = $1 AND m.author = 'BOT' AND m.kind <> 'AUDIO' AND m.created_at > NOW() - INTERVAL '1 hour') AS conv_n,
        (SELECT COUNT(*)::int FROM whatsapp_messages m JOIN whatsapp_conversations c ON c.id = m.conversation_id
-         WHERE c.number_id = $2 AND m.author = 'BOT' AND m.created_at > NOW() - INTERVAL '1 hour') AS num_n`,
+         WHERE c.number_id = $2 AND m.author = 'BOT' AND m.kind <> 'AUDIO' AND m.created_at > NOW() - INTERVAL '1 hour') AS num_n`,
     [conv.id, conv.n_id]
   );
   if (lim.rows[0].conv_n >= BOT_REPLIES_PER_CONVERSATION_HOUR) return flagHuman('CONVERSATION_LIMIT');
@@ -919,7 +925,11 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
   // NORQVA-0151: áudios novos do cliente viram texto antes de a IA ler a conversa
   const voiceOn = audioEnabled() && typeof provider.getMediaBase64 === 'function' && !isCloudProvider(provider);
   let voiceReply = false;
-  if (voiceOn) voiceReply = await transcribePending(pool, provider, conv);
+  if (voiceOn) {
+    const t = await transcribePending(pool, provider, conv);
+    if (t.optOut) return { replied: false, reason: 'OPTED_OUT' };
+    voiceReply = t.voiceReply;
+  }
 
   const settings = await pool.query('SELECT global_conditions FROM whatsapp_settings WHERE id = 1');
   // NORQVA-0132: assunto da conversa (marca) quando o número atende mais de uma marca
