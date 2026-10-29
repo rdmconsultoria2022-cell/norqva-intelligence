@@ -570,7 +570,39 @@ export class LaunchPlanService {
     const res = status
       ? await pool.query('SELECT * FROM launch_plans WHERE status = $1 ORDER BY created_at DESC', [status])
       : await pool.query('SELECT * FROM launch_plans ORDER BY created_at DESC LIMIT 200');
-    return res.rows.map(serializeLaunchPlan);
+    const plans = res.rows.map(serializeLaunchPlan);
+    // NORQVA-0150: plano APROVADO com erro antigo, mas com campanha, conjuntos e anúncios todos ATIVOS na
+    // última leitura da Meta: a ativação já terminou e a tela não pede "Sim" de novo. Só leitura, nada é gravado.
+    for (const p of plans as any[]) {
+      if (p.status === 'APPROVED' && p.last_error) {
+        try {
+          p.activation_complete = await this.activationComplete(pool, p.meta_ids);
+        } catch {
+          p.activation_complete = false;
+        }
+      }
+    }
+    return plans;
+  }
+
+  /** NORQVA-0150: todos os objetos do plano estão ACTIVE na última sincronização da Meta. */
+  async activationComplete(pool: Pool, rawIds: unknown): Promise<boolean> {
+    const ids = normalizeMetaIds(rawIds);
+    const groups: [string, string, string[]][] = [
+      ['meta_campaigns', 'meta_campaign_id', Object.values(ids.campaign)],
+      ['meta_ad_sets', 'meta_adset_id', Object.values(ids.adsets)],
+      ['meta_ads', 'meta_ad_id', Object.values(ids.ads)]
+    ];
+    for (const [table, column, list] of groups) {
+      if (list.length === 0) return false;
+      const r = await pool.query(
+        `SELECT ${column} AS id, status FROM ${table} WHERE ${column}::text = ANY($1::text[]) AND is_demo = FALSE`,
+        [list]
+      );
+      const active = new Set(r.rows.filter((x: any) => String(x.status).toUpperCase() === 'ACTIVE').map((x: any) => String(x.id)));
+      if (!list.every((id) => active.has(String(id)))) return false;
+    }
+    return true;
   }
 
   async get(pool: Pool, id: string) {

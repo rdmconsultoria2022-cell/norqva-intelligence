@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCard, focusOf, type AlertNotification, type CampaignFocus } from '../alerts/AlertCenter';
 import { RefreshCw, Wand2, RotateCcw, Eraser, Rocket, Plus, Save, ChevronLeft } from 'lucide-react';
 import { UserObj } from '../../types';
-import { LaunchPlansCard } from '../acquisition/LaunchPlansCard';
+import { LaunchPlansCard, needsOperator } from '../acquisition/LaunchPlansCard';
 import { ExperimentGuardCard } from '../acquisition/ExperimentGuardCard';
 import { MetaAdsView } from '../acquisition/MetaAdsView';
 import { aggregateMetrics, PerfItem } from '../acquisition/MetaResults';
@@ -51,6 +51,10 @@ export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   REJECTED: 'Recusada',
   FAILED: 'Falhou'
 };
+
+/** NORQVA-0150: aprovada com erro antigo mas tudo ativo na Meta aparece como Ativa */
+export const shownStatus = (c: { status: string; activation_complete?: boolean }) =>
+  c.status === 'APPROVED' && c.activation_complete ? 'ACTIVE' : c.status;
 
 
 type Fields = Record<string, string>;
@@ -472,7 +476,8 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
   const editable = !!campaign?.editable && isAdmin;
   const hasSelection = !!selectedId && (!!selectedMeta || (!!campaign && selectedId === campaign.id));
   // no celular o quadro do Sim fica na lista: no detalhe, um aviso curto leva de volta a ele
-  const awaitingCount = campaigns.filter(c => c.status === 'AWAITING_OPERATOR' || (c.status === 'APPROVED' && !!c.last_error)).length;
+  // NORQVA-0150: mesma regra do cartão do Sim (plano já todo ativo na Meta não pede resposta)
+  const awaitingCount = campaigns.filter(c => needsOperator(c)).length;
   const awaitingNotice = awaitingCount > 0 && isAdmin && (
     <button
       type="button"
@@ -687,7 +692,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                       title: product || name,
                       caption: product ? name : null,
                       metaId: planMetaId(c),
-                      pill: <StatusPill tone={STATUS_TONE[c.status] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[c.status] || c.status}</StatusPill>
+                      pill: <StatusPill tone={STATUS_TONE[shownStatus(c)] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[shownStatus(c)] || c.status}</StatusPill>
                     })}
                   </button>
                 );
@@ -753,7 +758,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 );
               })()}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <StatusPill tone={STATUS_TONE[campaign.status] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[campaign.status] || campaign.status}</StatusPill>
+                <StatusPill tone={STATUS_TONE[shownStatus(campaign)] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[shownStatus(campaign)] || campaign.status}</StatusPill>
                 <span className="text-[13px] text-nq-muted tabular-nums">{brl(campaign.daily_budget_brl)}/dia · teto {brl(campaign.max_spend_brl)}</span>
               </div>
               {/* NORQVA-0096: Pausar sempre à vista (só administrador; mesma confirmação de Resultados) */}
@@ -855,7 +860,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
 
             {tab === 'config' && (
           <section className="space-y-4" data-testid="campaign-detail">
-            {campaign.last_error && <div className="rounded-2xl bg-nq-critical/10 p-4 text-[13px] text-nq-critical-text">Último erro: {campaign.last_error}</div>}
+            {campaign.last_error && !campaign.activation_complete && <div className="rounded-2xl bg-nq-critical/10 p-4 text-[13px] text-nq-critical-text">Último erro: {campaign.last_error}</div>}
             {editable && (
               <div className="flex flex-wrap gap-2">
                 <button onClick={fill} disabled={busy === 'fill'} className={btnGhost}>
