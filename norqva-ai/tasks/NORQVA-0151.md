@@ -27,4 +27,4 @@ Subagente (29/10/2026): nada bloqueante no código. Aplicado: registro da ida do
 
 ## Execução
 
-(preencher no merge)
+PR #200 mesclado em 29/10/2026 (CI verde). Chave WHATSAPP_AUDIO_ENABLED ainda desligada no Render.
