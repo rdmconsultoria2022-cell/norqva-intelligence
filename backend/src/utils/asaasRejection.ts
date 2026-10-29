@@ -29,7 +29,7 @@ function fieldOf(text: string): RejectedField {
   if (/e-?mail/.test(t)) return 'email';
   if (/cpf|cnpj/.test(t)) return 'cpf';
   if (/phone|telefone|celular|mobile/.test(t)) return 'phone';
-  if (/\bname\b|nome/.test(t)) return 'name';
+  if (/(^|[^a-z])name([^a-z]|$)|nome/.test(t)) return 'name';
   return null;
 }
 
