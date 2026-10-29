@@ -13,6 +13,33 @@ export const AUDIO_TOO_LONG = '[áudio longo, com mais de 2 minutos: não transc
 export const AUDIO_FAILED = '[áudio não transcrito]';
 export const AUDIO_SENT_LABEL = '[áudio enviado]';
 
+// NORQVA-0152: áudio que chegou junto com o webhook. Fica só na memória, por 15 min, até ser transcrito.
+const inboundAudio = new Map<string, { base64: string; mimetype: string; at: number }>();
+const INBOUND_AUDIO_TTL_MS = 15 * 60 * 1000;
+
+export function rememberInboundAudio(numberId: string, messageId: string, base64: string, mimetype: string) {
+  const now = Date.now();
+  for (const [k, v] of inboundAudio) if (now - v.at > INBOUND_AUDIO_TTL_MS) inboundAudio.delete(k);
+  const clean = String(base64 || '').replace(/^data:[^;]+;base64,/i, '');
+  // ~4/3 do tamanho do arquivo: acima do limite nem guarda (vira "áudio longo")
+  if (!clean || clean.length > Math.ceil(MAX_INBOUND_AUDIO_BYTES * 4 / 3)) return;
+  if (inboundAudio.size >= 200) inboundAudio.delete(inboundAudio.keys().next().value as string);
+  inboundAudio.set(`${numberId}:${messageId}`, { base64: clean, mimetype: String(mimetype || 'audio/ogg').split(';')[0], at: now });
+}
+
+/** Tira o áudio da memória (uma vez só). */
+export function takeInboundAudio(numberId: string, messageId: string): { base64: string; mimetype: string } | null {
+  const k = `${numberId}:${messageId}`;
+  const v = inboundAudio.get(k);
+  inboundAudio.delete(k);
+  if (!v || Date.now() - v.at > INBOUND_AUDIO_TTL_MS) return null;
+  return { base64: v.base64, mimetype: v.mimetype };
+}
+
+export function clearInboundAudioForTests() {
+  inboundAudio.clear();
+}
+
 export interface VoiceClient {
   transcribe(audio: Buffer, mimetype: string): Promise<string>;
   speak(text: string): Promise<Buffer>;

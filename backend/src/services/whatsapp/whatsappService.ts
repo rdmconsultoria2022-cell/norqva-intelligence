@@ -10,7 +10,7 @@ import { providerForNumber, cloudErrorToWhatsApp, checkCloudNumber, createCloudN
 import { isCloudProvider, SendBlockedError, CloudApiError } from './metaCloudProvider';
 import { isServiceWindowOpen } from './serviceWindow';
 import { isExplicitStop, isRecoveryRefusal, isFirstReplyToRecovery, recoveryForReply, carryRecoveryRef, recordRecoveryOptOut } from './paymentRecovery';
-import { audioBody } from './voice';
+import { audioBody, audioEnabled, rememberInboundAudio } from './voice';
 
 export const MAX_WHATSAPP_NUMBERS = 100;
 export const MESSAGE_RETENTION_DAYS = 180;
@@ -239,6 +239,34 @@ async function rotateWebhook(pool: Pool, id: string, baseUrl: string) {
   return webhookUrl(baseUrl, id, secret);
 }
 
+/**
+ * NORQVA-0152: número da Evolution conectado antes da mudança recebe o webhook novo (com o áudio junto),
+ * uma vez só, sem QR Code: segredo novo + endereço novo no servidor do WhatsApp. Falhou: volta o segredo antigo.
+ */
+export async function ensureMediaWebhook(pool: Pool, provider: WhatsAppProvider | null, numberId: string, baseUrl: string): Promise<boolean> {
+  if (!provider || !audioEnabled()) return false;
+  const r = await pool.query(
+    `SELECT id, instance_name, webhook_secret_hash, provider FROM whatsapp_numbers
+     WHERE id = $1 AND is_deleted = FALSE AND status = 'CONNECTED' AND webhook_media_base64 = FALSE`,
+    [numberId]
+  );
+  const n = r.rows[0];
+  if (!n || n.provider === 'META_CLOUD') return false;
+  // trava contra duas reconfigurações ao mesmo tempo
+  const claim = await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = TRUE WHERE id = $1 AND webhook_media_base64 = FALSE RETURNING id', [n.id]);
+  if (!claim.rows.length) return false;
+  const url = await rotateWebhook(pool, n.id, baseUrl);
+  try {
+    await provider.setWebhook(n.instance_name, url);
+    await writeAuditLog(pool, null, 'WHATSAPP_WEBHOOK_MEDIA_ENABLED', 'Webhook do WhatsApp atualizado para receber o áudio junto com a mensagem (NORQVA-0152).', n.id, null);
+    return true;
+  } catch (err: any) {
+    await pool.query('UPDATE whatsapp_numbers SET webhook_secret_hash = $1, webhook_media_base64 = FALSE WHERE id = $2', [n.webhook_secret_hash, n.id]).catch(() => {});
+    console.warn('[WhatsApp] não foi possível atualizar o webhook do áudio:', err?.message || err);
+    return false;
+  }
+}
+
 async function applyInfo(pool: Pool, id: string, info: { state: string; phone: string | null; profileName: string | null }) {
   if (info.state === 'open') {
     await pool.query(
@@ -296,6 +324,7 @@ export async function connectNumber(pool: Pool, provider: WhatsAppProvider | nul
     await restoreSecret();
     providerFail(err);
   }
+  await pool.query('UPDATE whatsapp_numbers SET webhook_media_base64 = TRUE WHERE id = $1', [id]);
   if (qr.state === 'open') {
     const info = await p.info(n.instance_name).catch(() => ({ state: 'open', phone: null, profileName: null }));
     await applyInfo(pool, id, { ...info, state: 'open' });
@@ -459,6 +488,10 @@ export async function handleWebhook(pool: Pool, numberId: string, secret: string
     const content = extractText(m?.message);
     if (!content) continue;
     const fromMe = m?.key?.fromMe === true;
+    // NORQVA-0152: arquivo do áudio recebido fica só na memória até a transcrição (nunca no banco)
+    if (!fromMe && content.kind === 'AUDIO' && m?.key?.id && typeof m?.message?.base64 === 'string' && audioEnabled()) {
+      rememberInboundAudio(n.id, String(m.key.id).slice(0, 120), m.message.base64, String(m.message.audioMessage?.mimetype || 'audio/ogg'));
+    }
     const ts = Number(m?.messageTimestamp);
     normalized.push({
       jid,

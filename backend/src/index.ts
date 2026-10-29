@@ -232,6 +232,10 @@ app.use(configureCors());
 app.use(requestIdMiddleware());
 app.use(structuredLogger());
 // NORQVA-0079: o webhook oficial da Meta confere a assinatura sobre o corpo ORIGINAL; guarda só nessa rota
+// NORQVA-0152: o webhook da Evolution traz o arquivo do áudio (e de fotos e vídeos) em base64: limite próprio.
+// O corpo grande só é aceito no endereço do webhook (segredo conferido depois); o resto segue com 1 MB.
+const whatsappWebhookJson = express.json({ limit: '25mb' });
+app.use((req, res, next) => (String(req.originalUrl || req.url || '').startsWith('/api/whatsapp/webhook/') ? whatsappWebhookJson(req, res, next) : next()));
 app.use(express.json({
   limit: '1mb',
   verify: (req: any, _res, buf) => {

@@ -13,7 +13,7 @@ import { WhatsAppProvider } from './provider';
 import { providerForNumber } from './cloudAccounts';
 import { SendBlockedError, CloudApiError, isCloudProvider } from './metaCloudProvider';
 import { InboundMessage, recordOutgoing, findCpfs, maskCpfInText, OPT_OUT_RE } from './whatsappService';
-import { audioEnabled, voice, untranscribedAudio, speechText, MAX_INBOUND_AUDIO_SECONDS, MAX_INBOUND_AUDIO_BYTES, AUDIO_MARK, AUDIO_TOO_LONG, AUDIO_FAILED, AUDIO_SENT_LABEL, compactSpokenNumbers, isSpokenStop } from './voice';
+import { audioEnabled, voice, untranscribedAudio, speechText, MAX_INBOUND_AUDIO_SECONDS, MAX_INBOUND_AUDIO_BYTES, AUDIO_MARK, AUDIO_TOO_LONG, AUDIO_FAILED, AUDIO_SENT_LABEL, compactSpokenNumbers, isSpokenStop, takeInboundAudio } from './voice';
 import { writeAuditLog } from '../../db/audit';
 import { createCustomer, createOrder, checkoutPix, checkoutCard, publicCardTerms, reconcileAndFinalizePayment } from '../../controllers/api';
 import { shouldCheckProvider } from '../paymentCheckThrottle';
@@ -838,7 +838,9 @@ export async function transcribePending(pool: Pool, provider: WhatsAppProvider, 
       if (pending.seconds !== null && pending.seconds > MAX_INBOUND_AUDIO_SECONDS) {
         body = AUDIO_TOO_LONG;
       } else if (m.provider_message_id) {
-        const media = await provider.getMediaBase64!(conv.instance_name, String(m.provider_message_id), String(conv.contact_jid));
+        // NORQVA-0152: primeiro o áudio que veio no webhook; senão, pede ao servidor do WhatsApp
+        const media = takeInboundAudio(String(conv.n_id), String(m.provider_message_id))
+          || await provider.getMediaBase64!(conv.instance_name, String(m.provider_message_id), String(conv.contact_jid)).catch(() => null);
         const buf = media ? Buffer.from(media.base64, 'base64') : null;
         if (buf && buf.length > MAX_INBOUND_AUDIO_BYTES) body = AUDIO_TOO_LONG;
         else if (buf && buf.length) {

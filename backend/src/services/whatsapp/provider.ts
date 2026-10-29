@@ -167,7 +167,8 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   private webhookBody(webhookUrl: string) {
-    return { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: WEBHOOK_EVENTS };
+    // NORQVA-0152: base64 = o áudio vem junto (só ele é usado; o resto é descartado sem gravar)
+    return { enabled: true, url: webhookUrl, byEvents: false, base64: true, events: WEBHOOK_EVENTS };
   }
 
   async createInstance(instanceName: string, webhookUrl: string): Promise<ProviderQr> {
