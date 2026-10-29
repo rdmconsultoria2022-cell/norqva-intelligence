@@ -30,4 +30,4 @@ Fica como está: o Financeiro (`pendingOrdersCount`) continua contando todos os 
 
 ## Execução
 
-(pendente)
+PR #197 mesclado em 29/10/2026 (CI verde). Deploy automático no Render; migration 088 roda no início do servidor.
