@@ -37,6 +37,26 @@ const PAYMENT_LABEL: Record<string, { text: string; tone: Tone }> = {
   CREATED: { text: 'Sem Pix', tone: 'neutral' }
 };
 
+// NORQVA-0148: motivo da recusa guardado no pagamento (só o código do erro, sem dado do comprador)
+const FAILURE_FIELD: Record<string, string> = {
+  email: 'e-mail recusado pelo Asaas',
+  cpf: 'CPF recusado pelo Asaas',
+  phone: 'telefone recusado pelo Asaas',
+  name: 'nome recusado pelo Asaas'
+};
+export function failureReasonLabel(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  if (reason === 'CPF_INVALIDO') return 'CPF inválido';
+  if (reason === 'ASAAS_SEM_RESPOSTA') return 'Asaas não respondeu';
+  if (reason === 'NAO_CRIADO_NO_ASAAS') return 'cobrança não criada no Asaas';
+  if (reason === 'VALOR_DIFERENTE_NO_ASAAS') return 'valor diferente no Asaas';
+  if (reason.startsWith('ASAAS_')) {
+    const field = reason.split(':')[2];
+    return FAILURE_FIELD[field] || 'recusado pelo Asaas';
+  }
+  return reason;
+}
+
 const TONE: Record<string, Tone> = { ok: 'positive', info: 'info', warn: 'attention', muted: 'neutral' };
 
 /** "VENCIDA (SEM DOWNLOAD)" → "Vencida (sem download)" */
@@ -225,7 +245,11 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
             </div>
             <div className="rounded-2xl bg-nq-surface overflow-hidden divide-y divide-nq-line/70">
               {g.items.map(o => {
-                const pay = PAYMENT_LABEL[o.payment_status] || { text: o.payment_status ? sentence(String(o.payment_status)) : 'Sem Pix', tone: 'neutral' as Tone };
+                // NORQVA-0148: aguardando substituído por um pedido pago da mesma pessoa
+                const pay = o.superseded && o.status === 'PENDING'
+                  ? { text: 'Substituído', tone: 'neutral' as Tone }
+                  : PAYMENT_LABEL[o.payment_status] || { text: o.payment_status ? sentence(String(o.payment_status)) : 'Sem Pix', tone: 'neutral' as Tone };
+                const failure = o.payment_status === 'FAILED' || o.payment_status === 'REQUIRES_RECONCILIATION' ? failureReasonLabel(o.payment_failure_reason) : null;
                 const dl = deliveryStatusLabel(o);
                 const em = accessEmailLabel(o.access_email_status);
                 const paid = o.status === 'PAID';
@@ -274,6 +298,8 @@ export function SalesView({ currentUser, isDemoView, apiFetch, showError, showSu
                               <div key={idx} className="text-nq-positive-text" data-testid="sale-bump">+ {i.name}</div>
                             ))}
                           </dd>
+                          {o.superseded && o.status === 'PENDING' && (<><dt className="text-nq-muted">Pagamento</dt><dd className="text-nq-text" data-testid="sales-superseded">Substituído: a pessoa pagou outro pedido logo depois.</dd></>)}
+                          {failure && (<><dt className="text-nq-muted">Motivo</dt><dd className="text-nq-text" data-testid="sales-failure">{failure.charAt(0).toUpperCase() + failure.slice(1)}</dd></>)}
                           {kiwify && (<><dt className="text-nq-muted">Origem</dt><dd className="text-nq-text">Kiwify (pagamento e entrega feitos pela Kiwify)</dd></>)}
                           {paid && !kiwify && (<><dt className="text-nq-muted">Entrega</dt><dd><span data-testid="sales-delivery"><StatusPill tone={TONE[dl.tone]}>{sentence(dl.text)}</StatusPill></span></dd></>)}
                           {em && !kiwify && (<><dt className="text-nq-muted">E-mail de acesso</dt><dd><StatusPill tone={TONE[em.tone]}>{sentence(em.text)}</StatusPill></dd></>)}

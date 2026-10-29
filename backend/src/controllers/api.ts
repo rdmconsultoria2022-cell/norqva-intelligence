@@ -23,7 +23,9 @@ import { writeAuditLog } from '../db/audit';
 import { clearDemoData } from '../db/db';
 import { calculateScores } from '../utils/score';
 import { MockAIProvider } from '../utils/ai';
-import { validateCpf, validateFullName, validateEmail } from '../utils/validation';
+import { validateCpf, validateFullName, validateEmail, emailProblem } from '../utils/validation';
+import { describeAsaasRejection } from '../utils/asaasRejection';
+import { findSupersededOrderIds } from '../services/commerce/supersededOrders';
 import {
   getCommercialOrderClause,
   getCommercialPaymentClause,
@@ -2275,8 +2277,10 @@ export async function createCustomer(req: AuthenticatedRequest, res: Response) {
     return res.status(400).json({ error: 'Informe seu nome completo (nome e sobrenome).' });
   }
 
-  if (!validateEmail(email)) {
-    return res.status(400).json({ error: 'Informe um e-mail válido.' });
+  // NORQVA-0148: o motivo exato (acento, ç, espaço), antes de o Asaas recusar a cobrança
+  const emailIssue = emailProblem(email);
+  if (emailIssue) {
+    return res.status(400).json({ error: emailIssue, field: 'email' });
   }
 
   const isDemo = is_demo === true || is_demo === 'true';
@@ -3365,7 +3369,7 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
       const updated = await pool.query(
         `UPDATE payments
          SET status = 'PENDING', provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3,
-             expires_at = $4, updated_at = NOW()
+             expires_at = $4, failure_reason = NULL, updated_at = NOW()
          WHERE id = $5
          RETURNING *`,
         [cardResponse.providerPaymentId, cardResponse.installmentId, cardResponse.invoiceUrl, cardResponse.dueDate || null, paymentId]
@@ -3386,7 +3390,7 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
       // TRANSACTION B (SUCCESS): Update local Payment to PENDING and save codes
       await pool.query(
         `UPDATE payments 
-         SET status = 'PENDING', provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, pix_qr_image = $5, updated_at = NOW()
+         SET status = 'PENDING', provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, pix_qr_image = $5, failure_reason = NULL, updated_at = NOW()
          WHERE id = $4`,
         [paymentResponse.providerPaymentId, paymentResponse.pixCopyPaste, paymentResponse.expiresAt, paymentId, paymentResponse.qrCodeImage || null]
       );
@@ -3465,21 +3469,26 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
 
   } catch (err: any) {
     // NORQVA-0038: nunca imprime o corpo da resposta do Asaas (pode conter dados do comprador).
-    console.error('Payment provider integration failed:', err?.statusCode || '', String(err?.message || '').slice(0, 160));
+    // NORQVA-0148: com resposta do Asaas a mensagem traz o corpo (pode repetir o e-mail digitado): loga só o status
+    console.error('Payment provider integration failed:', err?.statusCode || '', err?.responseBody !== undefined ? '[resposta do Asaas omitida]' : String(err?.message || '').slice(0, 160));
 
     if (err.isValidationError) {
-      await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
-      return res.status(400).json({ error: err.message || 'Informe um CPF válido para continuar.' });
+      await pool.query("UPDATE payments SET status = 'FAILED', failure_reason = 'CPF_INVALIDO', updated_at = NOW() WHERE id = $1", [paymentId]);
+      return res.status(400).json({ error: err.message || 'Informe um CPF válido para continuar.', field: 'cpf' });
     }
 
     // 4xx Definitivo from Asaas
+    // NORQVA-0148: o comprador vê o campo recusado; o pagamento guarda só o código do erro.
     if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
-      await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
-      return res.status(400).json({ error: 'Não foi possível processar o pagamento com os dados fornecidos. Verifique seus dados e tente novamente.' });
+      const rejection = describeAsaasRejection(err);
+      console.error(JSON.stringify({ event: 'ASAAS_CHARGE_REJECTED', payment_id: paymentId, reason: rejection.reason }));
+      await pool.query("UPDATE payments SET status = 'FAILED', failure_reason = $2, updated_at = NOW() WHERE id = $1", [paymentId, rejection.reason]);
+      return res.status(400).json({ error: rejection.message, ...(rejection.field ? { field: rejection.field } : {}) });
     }
 
     // 5xx / Network Timeout / Uncertain State -> REQUIRES_RECONCILIATION
-    await pool.query("UPDATE payments SET status = 'REQUIRES_RECONCILIATION', updated_at = NOW() WHERE id = $1", [paymentId]);
+    const noAnswer = Number(err?.statusCode) >= 500 || /timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(String(err?.message || ''));
+    await pool.query("UPDATE payments SET status = 'REQUIRES_RECONCILIATION', failure_reason = $2, updated_at = NOW() WHERE id = $1", [paymentId, noAnswer ? 'ASAAS_SEM_RESPOSTA' : 'ERRO_SEM_STATUS']);
     return res.status(502).json({
       error: method === 'CREDIT_CARD'
         ? 'Não foi possível abrir o pagamento com cartão no momento. Tente novamente em instantes.'
@@ -3605,11 +3614,11 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
       providerPaymentId = recoveredCard.providerPaymentId;
       installmentId = recoveredCard.installmentId;
       await pool.query(
-        'UPDATE payments SET provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3 WHERE id = $4',
+        'UPDATE payments SET provider_payment_id = $1, provider_installment_id = $2, invoice_url = $3, failure_reason = NULL WHERE id = $4',
         [recoveredCard.providerPaymentId, recoveredCard.installmentId, recoveredCard.invoiceUrl, paymentId]
       );
     } else {
-      await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
+      await pool.query("UPDATE payments SET status = 'FAILED', failure_reason = 'NAO_CRIADO_NO_ASAAS', updated_at = NOW() WHERE id = $1", [paymentId]);
       throw new Error('RECONCILIATION_FAILED: Payment was not initialized at the provider.');
     }
   }
@@ -3618,12 +3627,12 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
     if (recovered) {
       providerPaymentId = recovered.providerPaymentId;
       await pool.query(
-        "UPDATE payments SET provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3 WHERE id = $4",
+        "UPDATE payments SET provider_payment_id = $1, pix_copy_paste = $2, expires_at = $3, failure_reason = NULL WHERE id = $4",
         [recovered.providerPaymentId, recovered.pixCopyPaste, recovered.expiresAt, paymentId]
       );
     } else {
       // If payment cannot be found at Asaas, mark status as FAILED
-      await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
+      await pool.query("UPDATE payments SET status = 'FAILED', failure_reason = 'NAO_CRIADO_NO_ASAAS', updated_at = NOW() WHERE id = $1", [paymentId]);
       throw new Error('RECONCILIATION_FAILED: Payment was not initialized at the provider.');
     }
   }
@@ -3646,7 +3655,7 @@ export async function reconcileAndFinalizePayment(paymentId: string, pool: Pool)
   }
   const expectedValue = parseFloat(payment.amount.toString());
   if (Math.round(providerValue * 100) !== Math.round(expectedValue * 100)) {
-    await pool.query("UPDATE payments SET status = 'FAILED', updated_at = NOW() WHERE id = $1", [paymentId]);
+    await pool.query("UPDATE payments SET status = 'FAILED', failure_reason = 'VALOR_DIFERENTE_NO_ASAAS', updated_at = NOW() WHERE id = $1", [paymentId]);
     throw new Error('RECONCILIATION_FAILED: Amount mismatch.');
   }
 
@@ -5586,7 +5595,24 @@ export async function getExecutiveDashboard(req: AuthenticatedRequest, res: Resp
     );
     const orderStats = ordersRes.rows[0];
     const totalOrders = orderStats.total_orders;
-    const pendingOrders = orderStats.pending_orders;
+    // NORQVA-0148: aguardando substituído por um pedido pago da mesma pessoa não conta como aguardando
+    let supersededPending = 0;
+    if (orderStats.pending_orders > 0) {
+      try {
+        const pendingRes = await pool.query(
+          `SELECT o.id, o.created_at, o.customer_id, o.is_demo, o.data_provenance, o.total_amount, c.email, c.phone
+           FROM orders o JOIN customers c ON c.id = o.customer_id
+           WHERE ${getCommercialOrderClause('o', isDemo)} AND o.status = 'PENDING'
+             AND ($1::timestamptz IS NULL OR o.created_at >= $1::timestamptz)
+             AND ($2::timestamptz IS NULL OR o.created_at <= $2::timestamptz)`,
+          [startIso, endIso]
+        );
+        supersededPending = (await findSupersededOrderIds(pool, pendingRes.rows)).size;
+      } catch (supErr: any) {
+        console.warn('[Painel] substituídos não calculados:', String(supErr?.message || '').slice(0, 120));
+      }
+    }
+    const pendingOrders = Math.max(0, orderStats.pending_orders - supersededPending);
     const paidOrders = orderStats.paid_orders;
     const cancelledOrders = orderStats.cancelled_orders;
     const grossRevenue = parseFloat(orderStats.gross_revenue);

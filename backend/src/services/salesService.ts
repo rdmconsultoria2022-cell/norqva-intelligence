@@ -13,6 +13,7 @@ import { accessUrlBase, issueAccessToken } from './purchaseAccessService';
 import { brandSenderNameForOrder } from './emailSender';
 import { writeAuditLog } from '../db/audit';
 import { getCommercialOrderClause } from '../utils/commercialTruthPolicy';
+import { findSupersededOrderIds } from './commerce/supersededOrders';
 
 export class SalesError extends Error {
   constructor(public status: number, message: string) {
@@ -53,10 +54,10 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
   if (opts.filter === 'PROBLEM') where.push(PROBLEM_CONDITION);
 
   const r = await pool.query(
-    `SELECT o.id, o.status, o.total_amount, o.created_at, o.data_provenance, o.is_demo,
+    `SELECT o.id, o.status, o.total_amount, o.created_at, o.data_provenance, o.is_demo, o.customer_id,
             c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
             item.offer_name, item.offer_human_id, items.list AS items,
-            pay.id AS payment_id, pay.status AS payment_status, pay.human_id AS payment_human_id, pay.confirmed_at,
+            pay.id AS payment_id, pay.status AS payment_status, pay.human_id AS payment_human_id, pay.confirmed_at, pay.failure_reason,
             COALESCE(dl.downloads, 0) AS download_count, dl.delivery_status, COALESCE(dl.expired, 0) AS expired_deliveries,
             oae.status AS access_email_status, oae.sent_at AS access_email_sent_at
      FROM orders o
@@ -72,7 +73,7 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
        FROM order_items oi WHERE oi.order_id = o.id
      ) items ON TRUE
      LEFT JOIN LATERAL (
-       SELECT p.id, p.status, p.human_id, p.confirmed_at FROM payments p
+       SELECT p.id, p.status, p.human_id, p.confirmed_at, p.failure_reason FROM payments p
        WHERE p.order_id = o.id ORDER BY p.created_at DESC LIMIT 1
      ) pay ON TRUE
      LEFT JOIN LATERAL (
@@ -93,6 +94,19 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
      LIMIT 500`,
     [opts.startIso, opts.endIso]
   );
+
+  // NORQVA-0148: aguardando cuja pessoa pagou outro pedido logo depois = substituído (calculado, nada é gravado)
+  let superseded = new Set<string>();
+  try {
+    superseded = await findSupersededOrderIds(
+      pool,
+      r.rows
+        .filter(row => row.status === 'PENDING')
+        .map(row => ({ id: row.id, created_at: row.created_at, customer_id: row.customer_id, email: row.customer_email, phone: row.customer_phone, is_demo: !!row.is_demo, data_provenance: row.data_provenance, total_amount: row.total_amount }))
+    );
+  } catch (err: any) {
+    console.warn('[Vendas] substituídos não calculados:', String(err?.message || '').slice(0, 120));
+  }
 
   const asaasOrders = r.rows.map(row => ({
     id: row.id,
@@ -116,6 +130,8 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
     payment_id: row.payment_id,
     payment_status: row.payment_status,
     payment_human_id: row.payment_human_id,
+    payment_failure_reason: row.failure_reason || null,
+    superseded: superseded.has(row.id),
     paid_at: row.confirmed_at,
     download_count: Number(row.download_count) || 0,
     delivery_status: row.delivery_status,
@@ -137,7 +153,8 @@ export async function listSales(pool: Pool, opts: ListSalesOptions) {
   const summary = {
     total: orders.length,
     paid: orders.filter(o => o.status === 'PAID').length,
-    pending: orders.filter(o => o.status === 'PENDING').length,
+    pending: orders.filter(o => o.status === 'PENDING' && !o.superseded).length,
+    superseded: orders.filter(o => o.superseded).length,
     problem: orders.filter(o => o.problem).length,
     revenue: Math.round(orders.filter(o => o.status === 'PAID').reduce((s, o) => s + (o.total_amount || 0), 0) * 100) / 100
   };
@@ -181,6 +198,8 @@ async function listExternalSales(pool: Pool, opts: ListSalesOptions) {
     payment_id: null,
     payment_status: EXTERNAL_PAYMENT_STATUS[row.status] || row.status,
     payment_human_id: null,
+    payment_failure_reason: null as string | null,
+    superseded: false,
     paid_at: row.approved_at,
     download_count: 0,
     delivery_status: null,

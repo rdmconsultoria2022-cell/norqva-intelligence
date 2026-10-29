@@ -11,6 +11,8 @@ const brl = (v: any) => `R$ ${(Number(v) || 0).toLocaleString('pt-BR', { minimum
 function sanitizeErrorMessage(msg: string, method: 'PIX' | 'CREDIT_CARD' = 'PIX'): string {
   if (!msg) return method === 'CREDIT_CARD' ? 'Não foi possível abrir o pagamento com cartão. Tente novamente em instantes.' : 'Não foi possível gerar a cobrança Pix. Tente novamente em instantes.';
   if (method === 'CREDIT_CARD' && /cart[aã]o/i.test(msg)) return msg;
+  // NORQVA-0148: o servidor já diz qual campo conferir (e-mail, CPF, telefone ou nome)
+  if (/^Confira (o|a) /.test(msg)) return msg;
   const lower = msg.toLowerCase();
   if (lower.includes('cpf') || lower.includes('cnpj')) {
     return 'Informe um CPF válido para continuar.';
