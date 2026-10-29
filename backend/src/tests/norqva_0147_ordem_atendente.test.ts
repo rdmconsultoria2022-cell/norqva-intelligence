@@ -13,6 +13,7 @@ describe('NORQVA-0147: ordem das opções e negrito do WhatsApp', () => {
   it('troca **negrito** por *negrito* e mantém o resto', () => {
     expect(whatsappBold('1. **Coleção Trattoria Completa**: R$ 47,00')).toBe('1. *Coleção Trattoria Completa*: R$ 47,00');
     expect(whatsappBold('já *certo* e 2 * 3')).toBe('já *certo* e 2 * 3');
+    expect(whatsappBold('***x***')).toBe('*x*');
     expect(splitReply('**A**\n\n**B**')).toEqual(['*A*', '*B*']);
   });
 });

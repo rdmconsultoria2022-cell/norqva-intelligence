@@ -695,7 +695,7 @@ export function promisesPhotos(text: string | null | undefined): boolean {
 
 /** NORQVA-0147: o WhatsApp usa *um* asterisco para negrito; "**x**" aparecia com os asteriscos na tela */
 export function whatsappBold(text: string): string {
-  return text.replace(/\*\*([^*\n]+?)\*\*/g, '*$1*');
+  return text.replace(/\*{2,}([^*\n]+?)\*{2,}/g, '*$1*');
 }
 
 export function splitReply(text: string): string[] {

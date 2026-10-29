@@ -21,6 +21,10 @@ que o WhatsApp mostra com os asteriscos.
 `norqva_0147_ordem_atendente.test.ts`: regra presente antes das condições; conversão do negrito; `splitReply` converte.
 Suíte local: mesmas falhas de ambiente de antes da mudança (nenhuma nova).
 
+## Revisão independente
+
+Subagente (29/10): nada bloqueante; aplicado `***x***` → `*x*`. Pix e arquivos saem pela fila, sem passar pela conversão.
+
 ## Execução
 
 (preencher no merge)
