@@ -16,7 +16,7 @@
 
 ## Revisão independente
 
-(pendente)
+Subagente (29/10): nada bloqueante. Aplicado: a pergunta lista só os números das imagens que de fato saíram; o número do livro só aparece no catálogo quando a imagem dele vale; a regra 6b avisa para não perguntar de novo. Registrado: quem já recebeu um avulso pela 0153 (legendas antigas) recebe os 5 numerados de novo.
 
 ## Execução
 
