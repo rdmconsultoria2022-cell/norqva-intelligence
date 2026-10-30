@@ -183,7 +183,7 @@ if (process.env.NODE_ENV !== 'test') setWhatsAppInboundHandler(attendantInboundH
 import { purgeOldWhatsAppMessages, webhookSecretMatches } from './services/whatsapp/whatsappService';
 import { listCampaigns, getCampaign, getCampaignCreativeOptions, getOfferCreativeOptions, fillCampaign, saveCampaignFields, chooseCampaignCreative, resetCampaign, createCampaignFromOffer, replaceCampaignAdOnMeta, getCampaignEconomics, getCampaignHistory, getCampaignNightPause, saveCampaignNightPause, listExternalNightPause, addExternalNightPause, updateExternalNightPause, removeExternalNightPause } from './controllers/campaignController';
 import { startNightPauseScheduler } from './services/campaigns/nightPauseService';
-import { requireOperatorToken, getOperatorMandate, getOperatorReport, postOperatorStatus, postOperatorBudget, getMandate, postMandate, putMandateCampaigns, postMandateEnd, postMandateCheck, getMandateActions } from './controllers/operatorController';
+import { requireOperatorToken, getOperatorMandate, getOperatorReport, postOperatorStatus, postOperatorBudget, getMandate, postMandate, putMandateCampaigns, putMandateLimits, postMandateEnd, postMandateCheck, getMandateActions } from './controllers/operatorController';
 import { startMandateBrakeScheduler } from './services/operator/mandateService';
 import { createRateLimiter } from './middleware/rateLimiter';
 import { getAccountCredit } from './controllers/accountCreditController';
@@ -551,6 +551,7 @@ app.post('/api/operator/:entityType/:id/budget', postOperatorBudget);
 app.get('/api/mandate', requireRole(['ADMIN']), getMandate);
 app.post('/api/mandate', requireRole(['ADMIN']), postMandate);
 app.put('/api/mandate/campaigns', requireRole(['ADMIN']), putMandateCampaigns);
+app.put('/api/mandate/limits', requireRole(['ADMIN']), putMandateLimits);
 app.post('/api/mandate/end', requireRole(['ADMIN']), postMandateEnd);
 app.post('/api/mandate/check', requireRole(['ADMIN']), postMandateCheck);
 app.get('/api/mandate/actions', requireRole(['ADMIN']), getMandateActions);
