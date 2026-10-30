@@ -383,8 +383,9 @@ describe('GATE 16.6E: Demographic Analytics Service & Operational Intelligence',
   it('18. TIME FILTERING: period=today excludes records outside of today', async () => {
     // Today
     await insertDemographicRow({ ad_id: testAdAId, entity_meta_id: 'ad_meta_A', date: todayStr, age_group: '45-54', gender: 'female', spend: 25, impressions: 1000, clicks: 50 });
-    // Past date (e.g. 2026-08-01)
-    await insertDemographicRow({ ad_id: testAdAId, entity_meta_id: 'ad_meta_A', date: '2026-08-01', age_group: '45-54', gender: 'female', spend: 100, impressions: 5000, clicks: 200 });
+    // Data passada dentro dos 90 dias (fixa em 01/08/2026 saiu da janela em 30/10/2026)
+    const pastStr = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+    await insertDemographicRow({ ad_id: testAdAId, entity_meta_id: 'ad_meta_A', date: pastStr, age_group: '45-54', gender: 'female', spend: 100, impressions: 5000, clicks: 200 });
 
     const service = new DemographicAnalyticsService();
     const resultToday = await service.getDemographicAnalytics(pool, { period: 'today' });
