@@ -21,25 +21,32 @@ describe('NORQVA-0153 — regras puras', () => {
   it('as imagens de verdade têm o preço atual das ofertas', () => {
     expect(OFFER_CARDS['OFF-000016'].pix).toBe(47);
     expect(OFFER_CARDS['OFF-000010'].pix).toBe(29.9);
-    expect(cardFor('OFF-000016', 47)).not.toBeNull();
-    expect(cardFor('off-000016', 47)).not.toBeNull();
-    // preço mudou: a imagem não sai (estaria com preço errado)
-    expect(cardFor('OFF-000016', 49.9)).toBeNull();
-    expect(cardFor('OFF-999999', 10)).toBeNull();
+    expect(cardFor('OFF-000016', 47, 94.5, true)).not.toBeNull();
+    expect(cardFor('off-000016', 47, 94.5, true)).not.toBeNull();
+    // preço, preço cheio ou cartão diferentes do que está escrito: a imagem não sai
+    expect(cardFor('OFF-000016', 49.9, 94.5, true)).toBeNull();
+    expect(cardFor('OFF-000016', 47, 99, true)).toBeNull();
+    expect(cardFor('OFF-000016', 47, 94.5, false)).toBeNull();
+    // Dolci não aceita cartão: a imagem diz só "no Pix"
+    expect(cardFor('OFF-000005', 14.9, null, false)).not.toBeNull();
+    expect(cardFor('OFF-999999', 10, null, true)).toBeNull();
   });
 
   it('ordem: recomendada, depois alternativa, avulso só depois das duas ou a pedido', () => {
-    const base = { featured: 'COL', alternative: 'KIT', askedIndividual: false };
-    expect(cardOrderCheck('COL', { ...base, sent: new Set() })).toEqual({ ok: true, step: 'FEATURED' });
-    expect(cardOrderCheck('KIT', { ...base, sent: new Set() }).ok).toBe(false);
-    expect(cardOrderCheck('LIVRO', { ...base, sent: new Set() }).ok).toBe(false);
-    expect(cardOrderCheck('KIT', { ...base, sent: new Set(['COL']) })).toEqual({ ok: true, step: 'ALTERNATIVE' });
-    expect(cardOrderCheck('LIVRO', { ...base, sent: new Set(['COL']) }).ok).toBe(false);
-    expect(cardOrderCheck('LIVRO', { ...base, sent: new Set(['COL', 'KIT']) })).toEqual({ ok: true, step: 'INDIVIDUAL' });
-    expect(cardOrderCheck('LIVRO', { ...base, askedIndividual: true, sent: new Set() })).toEqual({ ok: true, step: 'INDIVIDUAL' });
-    expect(cardOrderCheck('COL', { ...base, sent: new Set(['COL']) }).ok).toBe(false);
+    const base = { featured: 'COL', alternative: 'KIT', askedIndividual: false, queued: new Set<string>() };
+    expect(cardOrderCheck('COL', { ...base, shown: new Set() })).toEqual({ ok: true, step: 'FEATURED' });
+    expect(cardOrderCheck('KIT', { ...base, shown: new Set() }).ok).toBe(false);
+    expect(cardOrderCheck('LIVRO', { ...base, shown: new Set() }).ok).toBe(false);
+    expect(cardOrderCheck('KIT', { ...base, shown: new Set(['COL']) })).toEqual({ ok: true, step: 'ALTERNATIVE' });
+    expect(cardOrderCheck('LIVRO', { ...base, shown: new Set(['COL']) }).ok).toBe(false);
+    expect(cardOrderCheck('LIVRO', { ...base, shown: new Set(['COL', 'KIT']) })).toEqual({ ok: true, step: 'INDIVIDUAL' });
+    expect(cardOrderCheck('LIVRO', { ...base, askedIndividual: true, shown: new Set() })).toEqual({ ok: true, step: 'INDIVIDUAL' });
+    expect(cardOrderCheck('COL', { ...base, shown: new Set(['COL']) }).ok).toBe(false);
+    // na MESMA resposta: a 1ª na fila não libera a 2ª (o cliente precisa responder antes)
+    expect(cardOrderCheck('KIT', { ...base, shown: new Set(), queued: new Set(['COL']) }).ok).toBe(false);
+    expect(cardOrderCheck('COL', { ...base, shown: new Set(), queued: new Set(['COL']) }).ok).toBe(false);
     // sem recomendada: a alternativa e os avulsos não esperam por ela
-    expect(cardOrderCheck('LIVRO', { featured: null, alternative: null, askedIndividual: false, sent: new Set() }).ok).toBe(true);
+    expect(cardOrderCheck('LIVRO', { featured: null, alternative: null, askedIndividual: false, shown: new Set(), queued: new Set() }).ok).toBe(true);
   });
 
   it('o prompt manda uma oferta por vez, pela ferramenta, acima das condições', () => {
@@ -110,21 +117,22 @@ describe.sequential('NORQVA-0153 — atendente envia as imagens na ordem', () =>
       [productId, `PRD-F${tag}`, brandId]
     );
     await pool.query(
-      `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo, data_provenance, created_at)
-       VALUES ($1, $2, 'Trattoria em Casa', $3, 19.90, NULL, 'ATIVA', 'Livro', false, 'COMMERCIAL_PRODUCTION', '2026-09-01T12:00:00Z'),
-              ($4, $5, 'Kit Trattoria Completo — 5 livros', $3, 94.50, 29.90, 'ATIVA', 'Os 5 livros', false, 'COMMERCIAL_PRODUCTION', '2026-10-01T12:00:00Z')`,
+      `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo, data_provenance, created_at,
+                           card_enabled, card_max_installments, card_free_installments, card_interest_monthly)
+       VALUES ($1, $2, 'Trattoria em Casa', $3, 19.90, NULL, 'ATIVA', 'Livro', false, 'COMMERCIAL_PRODUCTION', '2026-09-01T12:00:00Z', TRUE, 10, 1, 2.99),
+              ($4, $5, 'Kit Trattoria Completo — 5 livros', $3, 94.50, 29.90, 'ATIVA', 'Os 5 livros', false, 'COMMERCIAL_PRODUCTION', '2026-10-01T12:00:00Z', TRUE, 10, 1, 2.99)`,
       [bookId, bookCode, productId, kitId, kitCode]
     );
     await pool.query(
       `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo, data_provenance, created_at,
-                           attendant_featured, attendant_alternative_offer_id)
-       VALUES ($1, $2, 'Coleção Trattoria Completa 0153', $3, 94.50, 47.00, 'ATIVA', 'Os 5 livros e o bônus', false, 'COMMERCIAL_PRODUCTION', '2026-10-26T12:00:00Z', TRUE, $4)`,
+                           attendant_featured, attendant_alternative_offer_id, card_enabled, card_max_installments, card_free_installments, card_interest_monthly)
+       VALUES ($1, $2, 'Coleção Trattoria Completa 0153', $3, 94.50, 47.00, 'ATIVA', 'Os 5 livros e o bônus', false, 'COMMERCIAL_PRODUCTION', '2026-10-26T12:00:00Z', TRUE, $4, TRUE, 10, 1, 2.99)`,
       [colId, colCode, productId, kitId]
     );
     setOfferCardsForTests({
-      [colCode]: { path: '/images/whatsapp/off-000016.jpg', pix: 47, caption: 'Coleção 0153' },
-      [kitCode]: { path: '/images/whatsapp/off-000010.jpg', pix: 29.9, caption: 'Kit 0153' },
-      [bookCode]: { path: '/images/whatsapp/off-000001.jpg', pix: 19.9, caption: 'Livro 0153' }
+      [colCode]: { path: '/images/whatsapp/off-000016.jpg', pix: 47, from: 94.5, card: true, caption: 'Coleção 0153' },
+      [kitCode]: { path: '/images/whatsapp/off-000010.jpg', pix: 29.9, from: 94.5, card: true, caption: 'Kit 0153' },
+      [bookCode]: { path: '/images/whatsapp/off-000001.jpg', pix: 19.9, from: null, card: true, caption: 'Livro 0153' }
     });
     setWhatsAppProviderForTests(provider);
     const r = await request(app).post('/api/whatsapp/numbers').set('Authorization', `Bearer ${admin}`).send({ label: 'T0153 Atendimento', brand_id: brandId });
@@ -199,6 +207,29 @@ describe.sequential('NORQVA-0153 — atendente envia as imagens na ordem', () =>
     ];
     await processConversation(pool, conv, []);
     expect(captions()).toEqual(['Livro 0153']);
+  });
+
+  it('na mesma resposta só vai a 1ª opção, mesmo que a IA tente mandar o kit junto', async () => {
+    const conv = await says('5531922220004@s.whatsapp.net', 'Quais opções vocês têm?');
+    script = [
+      { content: null, tool_calls: [card('m1', colCode), card('m2', kitCode)] },
+      { content: 'Olha a nossa opção mais completa 👇', tool_calls: [] }
+    ];
+    await processConversation(pool, conv, []);
+    expect(captions()).toEqual(['Coleção 0153']);
+  });
+
+  it('imagem que falhou no envio não conta como mostrada', async () => {
+    const jid = '5531922220005@s.whatsapp.net';
+    let conv = await says(jid, 'Oi');
+    (provider.sendImage as any).mockImplementationOnce(async () => { throw new Error('falhou'); });
+    script = [{ content: null, tool_calls: [card('f1', colCode)] }, { content: 'Olha 👇', tool_calls: [] }];
+    await processConversation(pool, conv, []);
+    (provider.sendImage as any).mockClear();
+    conv = await says(jid, 'Não chegou a imagem');
+    script = [{ content: null, tool_calls: [card('f2', kitCode), card('f3', colCode)] }, { content: 'Aqui 👇', tool_calls: [] }];
+    await processConversation(pool, conv, []);
+    expect(captions()).toEqual(['Coleção 0153']);
   });
 
   it('cliente pede o preço de um livro avulso logo de cara: sai com customer_asked_individual', async () => {

@@ -184,7 +184,7 @@ export async function loadCatalog(pool: Pool, brands: string | string[] | null) 
       // NORQVA-0123: qual conjunto de fotos de amostra vale para este item (null = sem fotos)
       sample: sampleKeyFor({ name: o.name, product_name: o.product_name, collection_key: o.collection_key }),
       // NORQVA-0153: imagem da oferta com conteúdo e preço (só quando o preço escrito nela é o do catálogo)
-      offerCard: !!cardFor(o.human_id, pix),
+      offerCard: !!cardFor(o.human_id, pix, from, !!card),
       brandId: (o.product_brand_id ? String(o.product_brand_id) : null) as string | null,
       brandName: (o.product_brand_name ? String(o.product_brand_name) : null) as string | null,
       pix,
@@ -240,6 +240,7 @@ export function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, gr
   for (const c of catalog) {
     if (c.featured && c.alternativeCode && catalog.some(x => x.code === c.alternativeCode)) alternativeOf.set(c.alternativeCode, c.code);
   }
+  const hasFeatured = catalog.some(x => x.featured);
   return catalog.map(c => {
     const lines = [
       `- Código ${c.code}: ${c.name}${c.featured ? ' [RECOMENDADO]' : ''}`,
@@ -256,7 +257,6 @@ export function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, gr
     if (c.description) lines.push(`  Sobre: ${c.description}`);
     if (c.bonus) lines.push(`  Bônus: ${c.bonus}`);
     // NORQVA-0138: destaque e alternativa vêm do cadastro da oferta (nada de texto fixo por produto)
-    const hasFeatured = catalog.some(x => x.featured);
     if (c.featured) {
       const alt = c.alternativeCode && catalog.find(x => x.code === c.alternativeCode);
       lines.push(
@@ -649,18 +649,31 @@ async function toolSamples(ctx: Ctx, args: any) {
 async function toolOfferCard(ctx: Ctx, args: any) {
   const offer = findOffer(ctx, args?.offer_code);
   if (!offer) return { ok: false, error: 'Produto não está no catálogo deste número.' };
-  const card = cardFor(offer.code, offer.pix);
+  const cardOf = (o: { code: string; pix: number; from: number | null; card: any }) => cardFor(o.code, o.pix, o.from, !!o.card);
+  const card = cardOf(offer);
   if (!card) return { ok: false, error: 'Não há imagem desta oferta com o preço atual. Apresente só esta oferta em texto, com o preço do catálogo.' };
-  const withCard = (code: string | null | undefined) => {
-    const o = code ? ctx.catalog.find(x => x.code === code) : null;
-    return o && cardFor(o.code, o.pix) ? o.code : null;
-  };
-  const featuredItem = ctx.catalog.find(x => x.featured && (!offer.brandId || x.brandId === offer.brandId));
-  const featured = withCard(featuredItem?.code);
-  const alternative = withCard(featuredItem?.alternativeCode);
-  const sent = await cardsSent(ctx.pool, ctx.conv.id);
-  for (const c of ctx.cardsQueued || []) sent.add(c);
-  const check = cardOrderCheck(offer.code, { featured, alternative, sent, askedIndividual: args?.customer_asked_individual === true });
+  const featuredItem = ctx.catalog.find(x => x.featured && (!offer.brandId || x.brandId === offer.brandId)) || null;
+  const altItem = featuredItem?.alternativeCode ? ctx.catalog.find(x => x.code === featuredItem.alternativeCode) || null : null;
+  // mostrado em resposta anterior: imagem entregue, ou (oferta sem imagem válida) já houve resposta do atendente
+  // depois da qual ela devia ter sido apresentada em texto (1 resposta para a 1ª opção, 2 para a 2ª)
+  const shown = await cardsSent(ctx.pool, ctx.conv.id);
+  const needsText = [featuredItem && !cardOf(featuredItem) ? featuredItem.code : null, altItem && !cardOf(altItem) ? altItem.code : null];
+  if (needsText.some(Boolean)) {
+    const r = await ctx.pool.query(
+      `SELECT COUNT(*)::int AS n FROM whatsapp_messages WHERE conversation_id = $1 AND author = 'BOT' AND kind = 'TEXT' AND send_status = 'OK'`,
+      [ctx.conv.id]
+    );
+    const replies = Number(r.rows[0]?.n || 0);
+    if (needsText[0] && replies >= 1) shown.add(needsText[0]);
+    if (needsText[1] && replies >= 2 && featuredItem && shown.has(featuredItem.code)) shown.add(needsText[1]);
+  }
+  const check = cardOrderCheck(offer.code, {
+    featured: featuredItem?.code || null,
+    alternative: altItem?.code || null,
+    shown,
+    queued: new Set(ctx.cardsQueued || []),
+    askedIndividual: args?.customer_asked_individual === true
+  });
   if (!check.ok) return { ok: false, error: check.error };
   const loaded = await loadSampleImage(card.path).catch(() => null);
   if (!loaded) return { ok: false, error: 'Não consegui carregar a imagem agora. Apresente só esta oferta em texto, com o preço do catálogo.' };

@@ -21,7 +21,11 @@ Na conversa da Alba (29/10 20h30) o atendente listou as 7 ofertas com preço em 
 
 ## Revisão independente
 
-(pendente)
+Subagente (29/10): três bloqueantes aplicados.
+- A ordem valia dentro da mesma resposta (a imagem na fila liberava a próxima): agora a 2ª opção e os avulsos dependem só do que foi mostrado em respostas anteriores (o cliente precisa responder antes); a fila só evita repetir.
+- Envio que falhou contava como mostrado: `cardsSent` só conta `send_status = 'OK'`.
+- 1ª opção sem imagem válida liberava tudo: a ordem usa a 1ª opção do catálogo mesmo sem imagem; sem imagem, ela conta como mostrada depois de uma resposta do atendente (a 2ª, depois de duas).
+Menores aplicados: a imagem só sai se o preço cheio riscado e o "ou no cartão" também baterem (Dolci não aceita cartão: imagem diz só "no Pix"); nota sobre a legenda identificar o envio. Fica registrado: a IA pode adiantar um avulso marcando `customer_asked_individual` (inevitável); as condições de atendimento gravadas em 24/10 ("kit de 5 primeiro") são passadas por cima pela regra fixa 6b.
 
 ## Execução
 

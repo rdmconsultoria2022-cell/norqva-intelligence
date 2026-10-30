@@ -34,7 +34,7 @@ CARDS = {
                        old=None, price="19,90", badge=None),
     "OFF-000005": dict(kicker="Livro avulso", title="Dolci della Nonna", sub="Sobremesas italianas", covers=[DOLCI],
                        bullets=["10 sobremesas italianas", "Foto de cada prato e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
-                       old=None, price="14,90", badge=None),
+                       old=None, price="14,90", badge=None, pix_only=True),
     "OFF-000007": dict(kicker="Livro avulso", title="Pães & Fermentação Natural", sub="Pães italianos em casa", covers=[PAES],
                        bullets=["11 pães italianos e o fermento natural", "Foto de cada receita e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old=None, price="19,90", badge=None),
@@ -101,7 +101,7 @@ li:before{{content:"";position:absolute;left:-44px;top:13px;width:16px;height:16
 </style></head><body><div class="frame"></div>
 <div class="top"><div class="brand">NORQVA</div><div class="kicker">{c['kicker']}</div><h1>{c['title']}</h1><div class="sub">{c['sub']}</div></div>
 {badge}{covers_html(c['covers'])}<ul>{bullets}</ul>
-<div class="price">{old}<div class="now">R$ {c['price']}</div><div class="how">no Pix<br>ou no cartão</div></div>
+<div class="price">{old}<div class="now">R$ {c['price']}</div><div class="how">{'no Pix' if c.get('pix_only') else 'no Pix<br>ou no cartão'}</div></div>
 </body></html>"""
 
 
