@@ -233,9 +233,10 @@ export function ExecutiveOverview({
 
   // NORQVA-0157: projeção de 30 dias pelo ritmo dos últimos 7 dias INTEIROS (ontem e os 6 antes), seja qual for
   // o período escolhido. Mesmo endpoint e mesmas fórmulas do servidor; aqui só a regra de três (÷ 7 × 30).
-  const [last7, setLast7] = useState<any>(null);
+  const [last7, setLast7] = useState<any | null | undefined>(undefined); // undefined = carregando, null = sem dados
   useEffect(() => {
     const c = new AbortController();
+    setLast7(undefined);
     const qs = periodQuery({ period: 'custom', startDate: addDays(today, -7), endDate: addDays(today, -1) } as any);
     apiFetch(`/financial/dashboard?mode=${mode}&${qs}`, { signal: c.signal })
       .then((r: any) => !c.signal.aborted && setLast7(r?.summary || null))
@@ -472,6 +473,8 @@ export function ExecutiveOverview({
               </span>
             </p>
           </>
+        ) : last7 === undefined ? (
+          <div className="mt-2 text-nq-caption text-nq-muted">Carregando…</div>
         ) : (
           <div className="mt-2 text-nq-caption text-nq-muted">Sem dados dos últimos 7 dias para projetar.</div>
         )}

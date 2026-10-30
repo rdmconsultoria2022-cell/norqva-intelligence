@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { DashboardView } from '../features/dashboard/DashboardView';
 import { GlobalPeriodProvider } from '../lib/globalPeriod';
+import { addDays, todayInSaoPaulo } from '../features/dashboard/previousPeriod';
 
 // NORQVA-0157: Visão Geral com Custos abaixo do Investimento, Lucro estimado em destaque e projeção de 30 dias
 // pelo ritmo dos últimos 7 dias inteiros (custom: hoje−7 até ontem), qualquer que seja o período escolhido.
@@ -30,7 +31,7 @@ function renderOverview(apiFetch: any) {
 describe('NORQVA-0157 — lucro, custos e projeção de 30 dias', () => {
   it('mostra Custos, Lucro estimado e a projeção pelos últimos 7 dias inteiros', async () => {
     const apiFetch = vi.fn(async (url: string) => {
-      if (url.includes('/financial/dashboard') && url.includes('period=custom')) return last7;
+      if (url.includes('/financial/dashboard') && url.includes(`endDate=${addDays(todayInSaoPaulo(), -1)}`)) return last7;
       if (url.includes('/financial/dashboard')) return period;
       if (url.includes('/executive/dashboard')) return exec;
       return {};
@@ -46,7 +47,8 @@ describe('NORQVA-0157 — lucro, custos e projeção de 30 dias', () => {
     expect(screen.getByTestId('projection-net')).toHaveTextContent('R$ 1.200,00');
     expect(screen.getByTestId('projection-sales')).toHaveTextContent('90');
 
-    const q = apiFetch.mock.calls.map(c => String(c[0])).find(u => u.includes('period=custom'))!;
+    const yesterday = addDays(todayInSaoPaulo(), -1);
+    const q = apiFetch.mock.calls.map(c => String(c[0])).find(u => u.includes('period=custom') && new URLSearchParams(u.split('?')[1]).get('endDate') === yesterday)!;
     const start = new URLSearchParams(q.split('?')[1]).get('startDate')!;
     const end = new URLSearchParams(q.split('?')[1]).get('endDate')!;
     const days = Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
@@ -55,13 +57,13 @@ describe('NORQVA-0157 — lucro, custos e projeção de 30 dias', () => {
 
   it('sem os dados dos 7 dias, a projeção avisa e a tela segue', async () => {
     const apiFetch = vi.fn(async (url: string) => {
-      if (url.includes('/financial/dashboard') && url.includes('period=custom')) throw new Error('falhou');
+      if (url.includes('/financial/dashboard') && url.includes(`endDate=${addDays(todayInSaoPaulo(), -1)}`)) throw new Error('falhou');
       if (url.includes('/financial/dashboard')) return period;
       if (url.includes('/executive/dashboard')) return exec;
       return {};
     });
     renderOverview(apiFetch);
     await waitFor(() => expect(screen.getByTestId('overview-costs')).toHaveTextContent('R$ 83,69'));
-    expect(screen.getByTestId('overview-projection')).toHaveTextContent('Sem dados dos últimos 7 dias');
+    await waitFor(() => expect(screen.getByTestId('overview-projection')).toHaveTextContent('Sem dados dos últimos 7 dias'));
   });
 });
