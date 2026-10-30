@@ -46,5 +46,7 @@ export const BORDADO_INFO = {
   cover: '/images/bordado/capa.jpg',
   label: 'Kit digital em PDF',
   subtitle: '50 riscos para iniciantes • PDF para imprimir',
-  info: '50 riscos para iniciantes e guia de pontos (PDF)'
+  info: '50 riscos para iniciantes e guia de pontos (PDF)',
+  /** NORQVA-0155: bônus da página de entrega (endereço difícil de adivinhar, sem proteção: o arquivo é público no site) */
+  lesson: { src: '/videos/bordado/aula_gatinho_0e9f11545fcc.mp4', poster: '/videos/bordado/aula_gatinho_0e9f11545fcc.jpg', title: 'Aula em vídeo: o Gatinho do risco ao bastidor', info: '2 min 39 s · do risco impresso ao bordado pronto' }
 };

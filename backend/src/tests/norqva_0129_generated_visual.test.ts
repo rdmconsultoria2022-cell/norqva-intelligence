@@ -141,7 +141,7 @@ describe.sequential('NORQVA-0129 — página pública e prévia com as imagens d
     const before = JSON.stringify((await pool.query('SELECT sections, version, updated_at FROM generated_pages WHERE id = $1', [pageB])).rows[0]);
     const res = await request(app).get(`/api/public/generated-pages/${slugB}`);
     expect(res.status).toBe(200);
-    expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'image_note', 'meta_pixel_id', 'offer', 'sections', 'slug', 'theme', 'title', 'whatsapp']);
+    expect(Object.keys(res.body).sort()).toEqual(['delivery_pdf', 'gallery', 'image_note', 'meta_pixel_id', 'offer', 'preview_video', 'sections', 'slug', 'theme', 'title', 'whatsapp']);
     expect(res.body.gallery).toEqual(BORDADO_IMAGES);
     // NORQVA-0133: ilustração, não foto; linha, tecido e bastidor não acompanham
     expect(res.body.image_note).toMatch(/ilustra[çc][õo]es/);
