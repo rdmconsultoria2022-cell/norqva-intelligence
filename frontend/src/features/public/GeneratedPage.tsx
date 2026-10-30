@@ -68,6 +68,8 @@ export interface PublicGeneratedPage {
   delivery_pdf?: boolean;
   /** NORQVA-0133: aviso junto das imagens (ex.: ilustração do bordado pronto; linha e bastidor não acompanham). */
   image_note?: string | null;
+  /** NORQVA-0155: prévia em vídeo do produto (Kit de Bordado: 30 s da aula) */
+  preview_video?: { src: string; poster: string } | null;
   meta_pixel_id?: string | null;
   /** NORQVA-0132: WhatsApp de atendimento disponível para esta oferta (número conectado e atendente ligado). */
   whatsapp?: { available: boolean } | null;
@@ -580,13 +582,39 @@ export const GeneratedPage: React.FC = () => {
   const firstOfferOrder = page.sections.find(s => s.role === 'OFFER_PRICE')?.order;
 
   // "Veja por dentro": depois da primeira seção de conteúdo/apresentação; sem ela, antes da oferta
-  const galleryAfter = (() => {
-    if (gallery.length < 2) return -1;
+  const contentSlot = () => {
     const i = rest.findIndex(s => s.role === 'CONTENTS' || s.role === 'PRODUCT_REVEAL');
     if (i >= 0) return i;
     const o = rest.findIndex(s => s.role === 'OFFER_PRICE' || s.role === 'CTA');
     return o > 0 ? o - 1 : o === 0 ? -2 : rest.length - 1;
-  })();
+  };
+  const galleryAfter = gallery.length < 2 ? -1 : contentSlot();
+  // NORQVA-0155: a prévia em vídeo vem logo depois da galeria (sem galeria, no mesmo lugar em que ela estaria)
+  const videoAfter = page.preview_video?.src ? contentSlot() : -1;
+  const renderVideo = () =>
+    page.preview_video?.src ? (
+      <section className="sec" aria-labelledby="gp-vid" data-testid="generated-preview-video">
+        <div className="wrap">
+          <div className="text-center flex flex-col items-center rv">
+            <h2 id="gp-vid" className="disp h2">Veja como é fácil</h2>
+            <p className="txt muted mt-3">Um pedacinho da aula: do risco impresso aos primeiros pontos.</p>
+          </div>
+          <div className="mt-8 flex justify-center">
+            <video
+              src={page.preview_video.src}
+              poster={page.preview_video.poster}
+              controls
+              playsInline
+              preload="none"
+              className="w-full max-w-[360px] rounded-2xl shadow-lg bg-black"
+              style={{ aspectRatio: '9 / 16' }}
+              aria-label={`Prévia da aula: ${page.title}`}
+            />
+          </div>
+          <p className="mt-3 text-center text-xs muted">Apresentadora e cenas criadas com IA.</p>
+        </div>
+      </section>
+    ) : null;
 
   const renderGallery = () => (
     <section className="sec" aria-labelledby="gp-gal" data-testid="generated-gallery">
@@ -893,10 +921,12 @@ export const GeneratedPage: React.FC = () => {
           </div>
         </section>
         {galleryAfter === -2 && renderGallery()}
+        {videoAfter === -2 && renderVideo()}
         {rest.map((s, i) => (
           <React.Fragment key={s.order}>
             {renderSection(s)}
             {i === galleryAfter && renderGallery()}
+            {i === videoAfter && renderVideo()}
           </React.Fragment>
         ))}
       </main>

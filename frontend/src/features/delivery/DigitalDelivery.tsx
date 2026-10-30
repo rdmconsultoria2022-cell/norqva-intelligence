@@ -486,6 +486,27 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
               })}
             </div>
 
+            {/* NORQVA-0155: bônus do Kit de Bordado, a aula em vídeo (só com o acesso ao kit ativo) */}
+            {tokens.some(t => (!t.status || t.status === 'ACTIVE') && Boolean(t.rawToken) && (isBordadoName(t.assetTitle) || isBordadoName(orderName))) && (
+              <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-3" data-testid="bordado-lesson">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#B83B1E]">Bônus</div>
+                  <div className="font-semibold text-stone-900">{BORDADO_INFO.lesson.title}</div>
+                  <div className="text-xs text-stone-500">{BORDADO_INFO.lesson.info}</div>
+                </div>
+                <video
+                  src={BORDADO_INFO.lesson.src}
+                  poster={BORDADO_INFO.lesson.poster}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="w-full max-h-[70vh] rounded-lg bg-black object-contain"
+                  aria-label={BORDADO_INFO.lesson.title}
+                />
+                <p className="text-[11px] text-stone-500">Apresentadora e cenas criadas com IA. Assista aqui mesmo, sem baixar nada.</p>
+              </div>
+            )}
+
             {/* NORQVA-0075: oferta depois da compra (o servidor decide se aparece) */}
             {orderData?.post_purchase_offer && (
               <PostPurchaseOffer offer={orderData.post_purchase_offer} isDemo={isDemo} showError={showError} showSuccess={showSuccess} />

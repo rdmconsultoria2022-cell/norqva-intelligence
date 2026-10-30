@@ -261,6 +261,14 @@ export function productImageNote(p: { name?: unknown; collection_key?: unknown }
   return null;
 }
 
+/** NORQVA-0155: prévia em vídeo (30 s da aula) mostrada na página de venda; só o Kit de Bordado tem. */
+export function productPreviewVideo(p: { name?: unknown; collection_key?: unknown }): { src: string; poster: string } | null {
+  if (/bordado/.test(String(p.name || '').toLowerCase())) {
+    return { src: '/videos/bordado/previa_aula.mp4', poster: '/videos/bordado/previa_aula.jpg' };
+  }
+  return null;
+}
+
 /** Capa e fotos que já estão no site para este produto (vazio quando não há). */
 export function productImages(p: { name?: unknown; collection_key?: unknown }): string[] {
   const key = String(p.collection_key || '').trim().toLowerCase();

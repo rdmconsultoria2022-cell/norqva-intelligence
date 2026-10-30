@@ -32,6 +32,7 @@ import {
   bucketMissingMessage,
   productImages,
   productImageNote,
+  productPreviewVideo,
   imageStyle,
   resolveImageUrl,
   KIE_MISSING_MESSAGE,
@@ -1650,6 +1651,7 @@ export class GenerationService {
       sections: await Promise.all(sections.map(async (x, i) => PUBLIC_SECTION(x, await resolveImageUrl(shown[i]), price))),
       gallery,
       ...(imageNote ? { image_note: imageNote } : {}),
+      ...(productPreviewVideo({ name: r.product_name }) ? { preview_video: productPreviewVideo({ name: r.product_name }) } : {}),
       delivery_pdf: await offerDeliversPdf(this.pool, r.offer_id)
     };
   }
