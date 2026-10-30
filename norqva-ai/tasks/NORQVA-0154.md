@@ -20,4 +20,4 @@ Subagente (29/10): nada bloqueante. Aplicado: a pergunta lista só os números d
 
 ## Execução
 
-PR #203 mesclado em 29/10/2026 (CI verde). Deploy automático: imagens na Vercel, atendente no Render. Condições de atendimento: o computador do Ricardo estava fora do ar às 21h40; atualização agendada para nova tentativa.
+PR #203 mesclado em 29/10/2026 (CI verde). Deploy automático: imagens na Vercel, atendente no Render. Condições de atendimento atualizadas em 29/10/2026 às 21h58 (versões novas no histórico): nas gerais e nas do número "Trattoria em Casa" trocadas só as linhas da ordem (Coleção primeiro, Kit se não pedir para pagar, avulsos numerados depois da recusa dos dois ou a pedido); o resto do texto ficou igual.
