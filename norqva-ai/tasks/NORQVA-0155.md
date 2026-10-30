@@ -20,4 +20,4 @@ Subagente (29/10/2026). Bloqueante corrigido: lista de campos da página públic
 
 ## Execução
 
-(preencher no merge)
+PR #204 mesclado em 29/10/2026 (CI verde).
