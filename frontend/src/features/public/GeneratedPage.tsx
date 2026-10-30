@@ -606,8 +606,10 @@ export const GeneratedPage: React.FC = () => {
               controls
               playsInline
               preload="none"
-              className="w-full max-w-[360px] rounded-2xl shadow-lg bg-black"
-              style={{ aspectRatio: '9 / 16' }}
+              width={720}
+              height={1280}
+              className="rounded-2xl shadow-lg bg-black object-contain"
+              style={{ width: 'min(360px, 45vh, 100%)', height: 'auto', aspectRatio: '9 / 16' }}
               aria-label={`Prévia da aula: ${page.title}`}
             />
           </div>

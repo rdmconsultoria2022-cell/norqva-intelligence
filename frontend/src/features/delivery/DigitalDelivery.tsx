@@ -487,7 +487,7 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
             </div>
 
             {/* NORQVA-0155: bônus do Kit de Bordado, a aula em vídeo (só com o acesso ao kit ativo) */}
-            {tokens.some(t => (!t.status || t.status === 'ACTIVE') && Boolean(t.rawToken) && (isBordadoName(t.assetTitle) || isBordadoName(orderName))) && (
+            {tokens.some(t => (!t.status || t.status === 'ACTIVE') && Boolean(t.rawToken) && (isBordadoName(t.assetTitle) || (tokens.length === 1 && isBordadoName(orderName)))) && (
               <div className="rounded-xl border border-stone-200 bg-white p-4 space-y-3" data-testid="bordado-lesson">
                 <div>
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[#B83B1E]">Bônus</div>
@@ -500,7 +500,9 @@ export const DigitalDelivery: React.FC<DigitalDeliveryProps> = ({
                   controls
                   playsInline
                   preload="metadata"
-                  className="w-full max-h-[70vh] rounded-lg bg-black object-contain"
+                  width={720}
+                  height={1280}
+                  className="w-full h-auto aspect-[9/16] max-h-[70vh] rounded-lg bg-black object-contain"
                   aria-label={BORDADO_INFO.lesson.title}
                 />
                 <p className="text-[11px] text-stone-500">Apresentadora e cenas criadas com IA. Assista aqui mesmo, sem baixar nada.</p>

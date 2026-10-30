@@ -1,7 +1,7 @@
 // NORQVA-0155: aula em vídeo do Kit de Bordado (bônus na entrega) e prévia de 30 s na página de venda.
 import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { GeneratedPage } from '../features/public/GeneratedPage';
 import { DigitalDelivery } from '../features/delivery/DigitalDelivery';
@@ -94,7 +94,8 @@ describe('NORQVA-0155 — aula como bônus na entrega', () => {
   it('livros de cozinha: sem a aula', async () => {
     deliveryFetch([{ assetId: 'a1', assetTitle: 'TRATTORIA_EM_CASA', rawToken: 'tok', status: 'ACTIVE' }], 'Trattoria em Casa');
     openDelivery();
-    await screen.findByText('Seu Trattoria em Casa está pronto!');
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/delivery-tokens'), expect.anything()));
+    await screen.findByText('Trattoria em Casa');
     expect(screen.queryByTestId('bordado-lesson')).toBeNull();
   });
 });
