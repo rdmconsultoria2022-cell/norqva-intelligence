@@ -929,32 +929,40 @@ export class MandateService {
   async updateLimits(user: { id?: string | null; name?: string | null }, body: any, now = clock()) {
     const m = await this.current();
     if (!m || m.status !== 'ACTIVE') throw new MandateError(409, 'Só um mandato ATIVO pode ter os números ajustados.');
-    const capital = this.numberIn(body?.capital_brl, num(m.capital_brl), 10, 100000, 'Capital');
-    const dailyCap = this.numberIn(body?.daily_cap_brl, num(m.daily_cap_brl), 5, 10000, 'Teto diário');
-    const brakeSpend = this.numberIn(body?.brake_spend_brl, num(m.brake_spend_brl), 1, capital, 'Gasto do freio');
-    const brakeLoss = this.numberIn(body?.brake_loss_brl, num(m.brake_loss_brl), 1, capital, 'Prejuízo do freio');
+    const capital = r2(this.numberIn(body?.capital_brl, num(m.capital_brl), 10, 100000, 'Capital'));
+    const dailyCap = r2(this.numberIn(body?.daily_cap_brl, num(m.daily_cap_brl), 5, 10000, 'Teto diário'));
+    const brakeSpend = r2(this.numberIn(body?.brake_spend_brl, num(m.brake_spend_brl), 1, 100000, 'Gasto do freio'));
+    const brakeLoss = r2(this.numberIn(body?.brake_loss_brl, num(m.brake_loss_brl), 1, 100000, 'Prejuízo do freio'));
+    if (brakeSpend > capital || brakeLoss > capital) throw new MandateError(400, 'Os limites do freio não podem passar do capital.');
     let endsAt = new Date(m.ends_at);
     if (body?.ends_at !== undefined && body?.ends_at !== null && body?.ends_at !== '') {
-      const d = new Date(String(body.ends_at));
+      const raw = String(body.ends_at).trim();
+      // Data sem hora = fim do dia em Brasília.
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T23:59:00-03:00`) : new Date(raw);
       const maxEnd = new Date(new Date(m.activated_at).getTime() + 90 * 86400000);
       if (Number.isNaN(d.getTime()) || d.getTime() <= now.getTime() || d.getTime() > maxEnd.getTime()) {
         throw new MandateError(400, 'Data de término fora do limite (depois de agora e até 90 dias da ativação).');
       }
       endsAt = d;
     }
+    // Ajuste que já cairia no freio pela última conferência pausaria tudo: recusado.
+    const snap = m.last_snapshot && typeof m.last_snapshot.spent === 'number' ? m.last_snapshot : null;
+    const would = judgeMandate({ capital_brl: capital, brake_spend_brl: brakeSpend, brake_loss_brl: brakeLoss, ends_at: endsAt.toISOString(), min_sales: m.min_sales }, snap, now);
+    if (would.stop) throw new MandateError(409, `Com esses números o freio dispararia e pausaria tudo: ${would.reason}`);
     const userId = user.id && UUID_RE.test(String(user.id)) ? String(user.id) : null;
     const before = `capital ${brl(num(m.capital_brl))}, teto ${brl(num(m.daily_cap_brl))}/dia, freio gasto ${brl(num(m.brake_spend_brl))}, freio prejuízo ${brl(num(m.brake_loss_brl))}, até ${new Date(m.ends_at).toISOString()}`;
     const after = `capital ${brl(capital)}, teto ${brl(dailyCap)}/dia, freio gasto ${brl(brakeSpend)}, freio prejuízo ${brl(brakeLoss)}, até ${endsAt.toISOString()}`;
     await withPlanLock(this.pool, `mandate:${m.id}`, async () => {
       const r = await this.pool.query(
-        `UPDATE operator_mandates SET capital_brl = $2, daily_cap_brl = $3, brake_spend_brl = $4, brake_loss_brl = $5, ends_at = $6, updated_at = NOW()
+        `UPDATE operator_mandates SET capital_brl = $2, daily_cap_brl = $3, brake_spend_brl = $4, brake_loss_brl = $5, ends_at = $6,
+                days = $7, updated_at = NOW()
          WHERE id = $1 AND status = 'ACTIVE' RETURNING id`,
-        [m.id, capital, dailyCap, brakeSpend, brakeLoss, endsAt.toISOString()]
+        [m.id, capital, dailyCap, brakeSpend, brakeLoss, endsAt.toISOString(), Math.max(1, Math.ceil((endsAt.getTime() - new Date(m.activated_at).getTime()) / 86400000))]
       );
       if (!r.rows.length) throw new MandateError(409, 'O mandato mudou de situação; confira e tente de novo.');
     });
     await writeAuditLog(this.pool, userId, 'OPERATOR_MANDATE_LIMITS', `Números do mandato "${m.name}" ajustados por ${user.name || 'administrador'}: de ${before} para ${after}.`);
-    await this.log(m, { actor: 'ADMIN', action: 'LIMITS', outcome: 'DONE', previous_value: `${num(m.capital_brl)}/${num(m.daily_cap_brl)}/dia`, requested_value: `${capital}/${dailyCap}/dia`, message: `Ajustado por ${user.name || 'administrador'}: de ${before} para ${after}.` });
+    await this.log(m, { actor: 'ADMIN', action: 'LIMITS', outcome: 'DONE', previous_value: `${num(m.capital_brl)}/${num(m.daily_cap_brl)}/dia`.slice(0, 40), requested_value: `${capital}/${dailyCap}/dia`.slice(0, 40), message: `Ajustado por ${user.name || 'administrador'}: de ${before} para ${after}.` });
     return this.view();
   }
 

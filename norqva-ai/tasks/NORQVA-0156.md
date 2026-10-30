@@ -14,7 +14,7 @@
 
 ## Revisão independente
 
-(preencher)
+Subagente (30/10/2026): sem bloqueantes. Aplicado: recusa (409) de ajuste que dispararia o freio pela última conferência; freio não pode passar do capital; valores arredondados e histórico limitado a 40 caracteres; data sem hora = 23h59 de Brasília; coluna `days` atualizada; asserções do teste mais firmes e caso BRAKED. Aviso: `META_MAX_DAILY_BUDGET_BRL` (padrão R$ 100) limita cada campanha/conjunto: a escala usa objetos de até R$ 100/dia.
 
 ## Execução
 

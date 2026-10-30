@@ -295,10 +295,16 @@ describe.sequential('NORQVA-0137 — mandato do operador (HTTP)', () => {
     expect((await as(admin).put('/api/mandate/limits?mode=real', { daily_cap_brl: 500 })).status).toBe(400);
     // o token do operador não ajusta
     const byOp = await request(app).put('/api/mandate/limits').set('Authorization', `Bearer ${TOKEN}`).send({ confirm: 'AJUSTAR', daily_cap_brl: 500 });
-    expect(byOp.status).not.toBe(200);
+    expect([401, 403]).toContain(byOp.status);
     // fora do limite: recusado
     expect((await as(admin).put('/api/mandate/limits?mode=real', { confirm: 'AJUSTAR', daily_cap_brl: 20000 })).status).toBe(400);
     expect((await as(admin).put('/api/mandate/limits?mode=real', { confirm: 'AJUSTAR', ends_at: '2000-01-01T00:00:00Z' })).status).toBe(400);
+    // freio acima do capital: recusado
+    expect((await as(admin).put('/api/mandate/limits?mode=real', { confirm: 'AJUSTAR', capital_brl: 500 })).status).toBe(400);
+    // ajuste que cairia no freio pela última conferência: recusado sem pausar
+    await pool.query(`UPDATE operator_mandates SET last_snapshot = $2 WHERE id = $1`, [m.id, JSON.stringify({ spent: 300, result: -100, any_offer_qualifies: true })]);
+    expect((await as(admin).put('/api/mandate/limits?mode=real', { confirm: 'AJUSTAR', capital_brl: 300, brake_spend_brl: 200, brake_loss_brl: 200 })).status).toBe(409);
+    await pool.query(`UPDATE operator_mandates SET last_snapshot = NULL WHERE id = $1`, [m.id]);
     const ends = new Date(noon().getTime() + 14 * 86400000).toISOString();
     const r = await as(admin).put('/api/mandate/limits?mode=real', { confirm: 'AJUSTAR', capital_brl: 5000, daily_cap_brl: 500, brake_loss_brl: 750, ends_at: ends });
     expect(r.status).toBe(200);
@@ -306,11 +312,18 @@ describe.sequential('NORQVA-0137 — mandato do operador (HTTP)', () => {
     expect(new Date(r.body.mandate.ends_at).toISOString()).toBe(ends);
     // nada foi pausado e o mesmo mandato continua
     expect(post).not.toHaveBeenCalled();
-    expect(r.body.mandate.id ?? m.id).toBe(m.id);
+    expect(r.body.mandate.id).toBe(m.id);
     const act = await op().post(`/api/operator/adset/${b.set}/status`, { status: 'ACTIVE' });
     expect(act.status).toBe(200);
     const log = await pool.query(`SELECT 1 FROM operator_mandate_actions WHERE mandate_id = $1 AND action = 'LIMITS' AND outcome = 'DONE'`, [m.id]);
     expect(log.rows.length).toBe(1);
+  });
+
+  it('NORQVA-0156: mandato com freio não é ajustado', async () => {
+    const a = await seed({ adsetBudget: 30 });
+    const m = await createMandate([a.cmp]);
+    await pool.query(`UPDATE operator_mandates SET status = 'BRAKED' WHERE id = $1`, [m.id]);
+    expect((await as(admin).put('/api/mandate/limits?mode=real', { confirm: 'AJUSTAR', daily_cap_brl: 500 })).status).toBe(409);
   });
 
   it('subir orçamento: precisa de vendas com CPA ≤ 80% do máximo, até +20% e 48 h entre subidas', async () => {
