@@ -242,6 +242,54 @@ describe.sequential('NORQVA-0153 — atendente envia as imagens na ordem', () =>
     expect(captions()).toEqual(['Livro 0153']);
   });
 
+  it('NORQVA-0154: livros avulsos vão todos juntos, numerados, com a pergunta pelo número no fim', async () => {
+    const book2Id = crypto.randomUUID();
+    const book2Code = `OFF-M${tag}`;
+    await pool.query(
+      `INSERT INTO offers (id, human_id, name, product_id, price, promotional_price, status, description, is_demo, data_provenance, created_at)
+       VALUES ($1, $2, 'Dolci della Nonna', $3, 14.90, NULL, 'ATIVA', 'Livro', false, 'COMMERCIAL_PRODUCTION', '2026-09-02T12:00:00Z')`,
+      [book2Id, book2Code, productId]
+    );
+    setOfferCardsForTests({
+      [colCode]: { path: '/images/whatsapp/off-000016.jpg', pix: 47, from: 94.5, card: true, caption: 'Coleção 0153' },
+      [kitCode]: { path: '/images/whatsapp/off-000010.jpg', pix: 29.9, from: 94.5, card: true, caption: 'Kit 0153' },
+      [bookCode]: { path: '/images/whatsapp/off-000001.jpg', pix: 19.9, from: null, card: true, number: 1, caption: 'Livro 1 · 0153' },
+      [book2Code]: { path: '/images/whatsapp/off-000005.jpg', pix: 14.9, from: null, card: false, number: 2, caption: 'Livro 2 · 0153' }
+    });
+    try {
+      expect(catalogText(await loadCatalog(pool, brandId))).toContain('Número do livro avulso (na imagem): 2. Se o cliente responder 2, é este livro.');
+      const jid = '5531922220006@s.whatsapp.net';
+      const conv = await says(jid, 'Quanto custa só o livro de sobremesas?');
+      (provider.sendText as any).mockClear();
+      script = [
+        { content: null, tool_calls: [{ id: `n1-${crypto.randomUUID().slice(0, 4)}`, name: 'send_offer_card', arguments: JSON.stringify({ offer_code: book2Code, customer_asked_individual: true }) }] },
+        { content: 'Aqui estão os livros avulsos 👇', tool_calls: [] }
+      ];
+      await processConversation(pool, conv, []);
+      expect(captions()).toEqual(['Livro 1 · 0153', 'Livro 2 · 0153']);
+      const texts = (provider.sendText as any).mock.calls.map((c: any[]) => c[2]);
+      expect(texts[texts.length - 1]).toBe('Qual livro você quer? É só responder com o número (1, 2) 😊');
+
+      // pedir de novo: não reenvia; a IA é avisada para pedir o número
+      (provider.sendImage as any).mockClear();
+      const conv2 = await says(jid, 'Manda de novo os livros');
+      script = [
+        { content: null, tool_calls: [{ id: `n2-${crypto.randomUUID().slice(0, 4)}`, name: 'send_offer_card', arguments: JSON.stringify({ offer_code: bookCode, customer_asked_individual: true }) }] },
+        { content: 'Já te mandei acima, é só responder com o número 😊', tool_calls: [] }
+      ];
+      await processConversation(pool, conv2, []);
+      expect(captions()).toEqual([]);
+      expect(toolResults.some(r => r?.ok === false && /número/.test(String(r.error)))).toBe(true);
+    } finally {
+      setOfferCardsForTests({
+        [colCode]: { path: '/images/whatsapp/off-000016.jpg', pix: 47, from: 94.5, card: true, caption: 'Coleção 0153' },
+        [kitCode]: { path: '/images/whatsapp/off-000010.jpg', pix: 29.9, from: 94.5, card: true, caption: 'Kit 0153' },
+        [bookCode]: { path: '/images/whatsapp/off-000001.jpg', pix: 19.9, from: null, card: true, caption: 'Livro 0153' }
+      });
+      await pool.query('DELETE FROM offers WHERE id = $1', [book2Id]);
+    }
+  });
+
   it('preço da oferta mudou: a imagem não sai e a IA é avisada para apresentar em texto', async () => {
     await pool.query('UPDATE offers SET promotional_price = 49.90 WHERE id = $1', [colId]);
     try {

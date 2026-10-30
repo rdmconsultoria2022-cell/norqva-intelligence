@@ -20,7 +20,7 @@ import { shouldCheckProvider } from '../paymentCheckThrottle';
 import { acknowledgeRecoveryOptOut, phoneKey, isExplicitStop } from './paymentRecovery';
 import { sendOrderPdfs, sendablePdfCount } from './whatsappDelivery';
 import { sampleKeyFor, samplesSent, loadSampleImage, SAMPLE_IMAGES, MAX_SAMPLE_IMAGES_PER_CONVERSATION, SAMPLE_CAPTION_PREFIX } from './samples';
-import { cardFor, cardsSent, cardOrderCheck } from './offerCards';
+import { cardFor, cardsSent, cardOrderCheck, OFFER_CARDS } from './offerCards';
 
 export const BOT_REPLIES_PER_CONVERSATION_HOUR = 20;
 export const BOT_MESSAGES_PER_NUMBER_HOUR = 150;
@@ -269,6 +269,8 @@ export function catalogText(catalog: Awaited<ReturnType<typeof loadCatalog>>, gr
     if (featuredCode) lines.push(`  Como apresentar: 2ª opção: alternativa mais em conta ao código ${featuredCode}: só depois dele, e só se o cliente não pediu para pagar o ${featuredCode}.`);
     if (hasFeatured && !c.featured && !featuredCode) lines.push('  Como apresentar: avulso. Só depois que o cliente recusar a 1ª e a 2ª opção, ou se ele pedir o preço de um livro avulso.');
     lines.push(c.offerCard ? '  Imagem com conteúdo e preço: disponível (send_offer_card).' : '  Imagem com conteúdo e preço: não há (apresente em texto).');
+    // NORQVA-0154: número do livro avulso escrito na imagem (o cliente responde o número)
+    if (OFFER_CARDS[c.code]?.number) lines.push(`  Número do livro avulso (na imagem): ${OFFER_CARDS[c.code].number}. Se o cliente responder ${OFFER_CARDS[c.code].number}, é este livro.`);
     lines.push(c.sample ? '  Fotos de amostra: disponíveis (send_samples).' : '  Fotos de amostra: não há.');
     return lines.join('\n');
   }).join('\n');
@@ -308,7 +310,8 @@ ${p.audio ? `6. Áudios do cliente chegam transcritos, começando com ${AUDIO_MA
    - Nunca liste vários produtos com preço de uma vez. Para mostrar uma oferta, CHAME send_offer_card com o código dela, nesta mesma resposta, e escreva só uma frase curta antes (a imagem já traz o conteúdo e o preço; não repita a lista nem o preço em texto). Termine perguntando se a pessoa quer garantir.
    - 1º: a oferta marcada como 1ª opção no catálogo (a recomendada), mesmo que o cliente peça "o link", "o e-book" ou cite outro kit.
    - 2º: se depois da 1ª o cliente NÃO pedir para pagar (achou caro, ficou em dúvida, disse que não, pediu algo mais barato ou só fez outra pergunta), envie a 2ª opção.
-   - Livros avulsos: só depois que o cliente recusar a 1ª e a 2ª opção, ou se ele pedir o preço de um livro avulso (aí use customer_asked_individual = true e envie só o livro que ele pediu, ou os avulsos se ele quiser ver todos).
+   - Livros avulsos: só depois que o cliente recusar a 1ª e a 2ª opção, ou se ele pedir o preço de um livro avulso (aí use customer_asked_individual = true). Basta chamar send_offer_card com o código de UM livro avulso: vão as imagens de TODOS os livros, numeradas, e a pergunta pedindo o número. Quando o cliente responder um número, é o livro com aquele número no catálogo.
+   - Se ele escolher 2 ou mais livros avulsos, mostre uma vez que a 2ª opção (os 5 livros) sai mais em conta e pergunte se prefere; se mantiver os avulsos, gere uma cobrança por livro, uma de cada vez.
    - Se o cliente pedir para pagar uma oferta já mostrada, gere a cobrança dela; não ofereça mais nada antes.
    - Se a ferramenta disser que não há imagem, apresente só aquela oferta em texto, com o preço do catálogo, na mesma ordem.
 6c. Formatação do WhatsApp: para negrito use um asterisco de cada lado (*assim*), nunca dois (**assim**).
@@ -667,14 +670,46 @@ async function toolOfferCard(ctx: Ctx, args: any) {
     if (needsText[0] && replies >= 1) shown.add(needsText[0]);
     if (needsText[1] && replies >= 2 && featuredItem && shown.has(featuredItem.code)) shown.add(needsText[1]);
   }
-  const check = cardOrderCheck(offer.code, {
+  const queued = new Set(ctx.cardsQueued || []);
+  // NORQVA-0154: livros avulsos numerados vão TODOS juntos, em ordem, para o cliente escolher pelo número
+  const books = ctx.catalog
+    .filter(x => OFFER_CARDS[x.code]?.number && cardOf(x) && x.code !== featuredItem?.code && x.code !== altItem?.code && (!offer.brandId || x.brandId === offer.brandId))
+    .sort((a, b) => (OFFER_CARDS[a.code].number || 0) - (OFFER_CARDS[b.code].number || 0));
+  const isBook = books.some(b => b.code === offer.code);
+  const pending = isBook ? books.filter(b => !shown.has(b.code) && !queued.has(b.code)) : [];
+  const check = cardOrderCheck(isBook && pending.length ? pending[0].code : offer.code, {
     featured: featuredItem?.code || null,
     alternative: altItem?.code || null,
     shown,
-    queued: new Set(ctx.cardsQueued || []),
+    queued,
     askedIndividual: args?.customer_asked_individual === true
   });
-  if (!check.ok) return { ok: false, error: check.error };
+  if (!check.ok) {
+    return isBook && !pending.length
+      ? { ok: false, error: 'As imagens dos livros avulsos já foram enviadas (cada uma com o número). Peça para a pessoa responder com o número do livro que quer.' }
+      : { ok: false, error: check.error };
+  }
+  if (isBook) {
+    let sentNow = 0;
+    const numbers: string[] = [];
+    for (const b of pending) {
+      const c = OFFER_CARDS[b.code];
+      const img = await loadSampleImage(c.path).catch(() => null);
+      if (!img) continue;
+      ctx.queue.push({ kind: 'image', base64: img.base64, caption: c.caption, mimetype: img.mimetype });
+      ctx.cardsQueued = [...(ctx.cardsQueued || []), b.code];
+      numbers.push(`${c.number} = ${b.code} (${b.name})`);
+      sentNow++;
+    }
+    if (!sentNow) return { ok: false, error: 'Não consegui carregar as imagens agora. Apresente os livros avulsos em texto, com o preço do catálogo.' };
+    await lockTopic(ctx, offer);
+    const all = books.map(b => OFFER_CARDS[b.code].number).join(', ');
+    ctx.queue.push({ kind: 'text', text: `Qual livro você quer? É só responder com o número (${all}) 😊` });
+    return {
+      ok: true,
+      note: `Vão ${sentNow} imagens de livros avulsos logo depois da sua mensagem, cada uma com o número, e no fim a pergunta pedindo o número. Escreva só uma frase curta de introdução, sem listar livros, preços ou números. Números: ${numbers.join('; ')}.`
+    };
+  }
   const loaded = await loadSampleImage(card.path).catch(() => null);
   if (!loaded) return { ok: false, error: 'Não consegui carregar a imagem agora. Apresente só esta oferta em texto, com o preço do catálogo.' };
   await lockTopic(ctx, offer);
