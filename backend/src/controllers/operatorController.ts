@@ -109,6 +109,18 @@ export async function putMandateCampaigns(req: AuthenticatedRequest, res: Respon
   }
 }
 
+// NORQVA-0156: ajustar capital, teto, prazo e freio do mandato ativo sem encerrar (confirmação AJUSTAR).
+export async function putMandateLimits(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (String(req.body?.confirm || '').trim().toUpperCase() !== 'AJUSTAR') {
+      return res.status(400).json({ error: 'Para ajustar os números do mandato, confirme digitando AJUSTAR.' });
+    }
+    return res.status(200).json(await svc(req).updateLimits(who(req), req.body));
+  } catch (err) {
+    return fail(res, err, 'Falha ao ajustar os números do mandato.');
+  }
+}
+
 export async function postMandateEnd(req: AuthenticatedRequest, res: Response) {
   try {
     if (String(req.body?.confirm || '').trim().toUpperCase() !== 'ENCERRAR') {

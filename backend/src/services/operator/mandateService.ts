@@ -921,6 +921,43 @@ export class MandateService {
     return this.view();
   }
 
+  /**
+   * NORQVA-0156 (D-0156): ajusta capital, teto diário, prazo e freio do mandato ATIVO sem encerrá-lo (encerrar pausa as
+   * campanhas). Só ADMIN. Campo ausente = mantém. As regras de subida (+20%, 48 h, vendas) não mudam aqui.
+   * Mandato com freio (BRAKED) ou encerrado não é ajustado: aí o caminho é encerrar e criar outro.
+   */
+  async updateLimits(user: { id?: string | null; name?: string | null }, body: any, now = clock()) {
+    const m = await this.current();
+    if (!m || m.status !== 'ACTIVE') throw new MandateError(409, 'Só um mandato ATIVO pode ter os números ajustados.');
+    const capital = this.numberIn(body?.capital_brl, num(m.capital_brl), 10, 100000, 'Capital');
+    const dailyCap = this.numberIn(body?.daily_cap_brl, num(m.daily_cap_brl), 5, 10000, 'Teto diário');
+    const brakeSpend = this.numberIn(body?.brake_spend_brl, num(m.brake_spend_brl), 1, capital, 'Gasto do freio');
+    const brakeLoss = this.numberIn(body?.brake_loss_brl, num(m.brake_loss_brl), 1, capital, 'Prejuízo do freio');
+    let endsAt = new Date(m.ends_at);
+    if (body?.ends_at !== undefined && body?.ends_at !== null && body?.ends_at !== '') {
+      const d = new Date(String(body.ends_at));
+      const maxEnd = new Date(new Date(m.activated_at).getTime() + 90 * 86400000);
+      if (Number.isNaN(d.getTime()) || d.getTime() <= now.getTime() || d.getTime() > maxEnd.getTime()) {
+        throw new MandateError(400, 'Data de término fora do limite (depois de agora e até 90 dias da ativação).');
+      }
+      endsAt = d;
+    }
+    const userId = user.id && UUID_RE.test(String(user.id)) ? String(user.id) : null;
+    const before = `capital ${brl(num(m.capital_brl))}, teto ${brl(num(m.daily_cap_brl))}/dia, freio gasto ${brl(num(m.brake_spend_brl))}, freio prejuízo ${brl(num(m.brake_loss_brl))}, até ${new Date(m.ends_at).toISOString()}`;
+    const after = `capital ${brl(capital)}, teto ${brl(dailyCap)}/dia, freio gasto ${brl(brakeSpend)}, freio prejuízo ${brl(brakeLoss)}, até ${endsAt.toISOString()}`;
+    await withPlanLock(this.pool, `mandate:${m.id}`, async () => {
+      const r = await this.pool.query(
+        `UPDATE operator_mandates SET capital_brl = $2, daily_cap_brl = $3, brake_spend_brl = $4, brake_loss_brl = $5, ends_at = $6, updated_at = NOW()
+         WHERE id = $1 AND status = 'ACTIVE' RETURNING id`,
+        [m.id, capital, dailyCap, brakeSpend, brakeLoss, endsAt.toISOString()]
+      );
+      if (!r.rows.length) throw new MandateError(409, 'O mandato mudou de situação; confira e tente de novo.');
+    });
+    await writeAuditLog(this.pool, userId, 'OPERATOR_MANDATE_LIMITS', `Números do mandato "${m.name}" ajustados por ${user.name || 'administrador'}: de ${before} para ${after}.`);
+    await this.log(m, { actor: 'ADMIN', action: 'LIMITS', outcome: 'DONE', previous_value: `${num(m.capital_brl)}/${num(m.daily_cap_brl)}/dia`, requested_value: `${capital}/${dailyCap}/dia`, message: `Ajustado por ${user.name || 'administrador'}: de ${before} para ${after}.` });
+    return this.view();
+  }
+
   /** "Encerrar mandato": pausa as campanhas do mandato e encerra. */
   async end(user: { id?: string | null; name?: string | null }) {
     const m0 = await this.current();
