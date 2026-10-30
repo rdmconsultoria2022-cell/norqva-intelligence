@@ -20,4 +20,4 @@ Subagente (29/10): nada bloqueante. Aplicado: a pergunta lista só os números d
 
 ## Execução
 
-(pendente)
+PR #203 mesclado em 29/10/2026 (CI verde). Deploy automático: imagens na Vercel, atendente no Render. Condições de atendimento: o computador do Ricardo estava fora do ar às 21h40; atualização agendada para nova tentativa.
