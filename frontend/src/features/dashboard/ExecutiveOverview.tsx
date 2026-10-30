@@ -21,7 +21,7 @@ import {
   pct,
   multiple
 } from '../../components/ui/premium';
-import { previousPeriodOf, changePct, todayInSaoPaulo } from './previousPeriod';
+import { previousPeriodOf, changePct, todayInSaoPaulo, addDays } from './previousPeriod';
 import { DailyChart, DailyPoint } from './DailyChart';
 import { DashboardProps } from './dashboardTypes';
 
@@ -30,6 +30,10 @@ import { DashboardProps } from './dashboardTypes';
 // mesmo período) e /launch-plans (só ADMIN, como os cartões de aprovação e teto). Nenhuma fórmula nova:
 // receita, investimento, ROAS e resultado vêm prontos do resumo financeiro do servidor.
 // As ações protegidas (Sim/Não da campanha, teto) continuam nos componentes originais, sem mudança.
+
+// NORQVA-0157: regra de três da projeção (média diária dos 7 dias × 30)
+const proj30 = (v: any) => ((Number(v) || 0) / 7) * 30;
+const fmtDay = (ymd: string) => ymd.split('-').reverse().slice(0, 2).join('/');
 
 type Props = DashboardProps & { onOpenTab?: (tab: string) => void };
 
@@ -227,6 +231,19 @@ export function ExecutiveOverview({
     setDaily(null);
   }, [mode, periodQs]);
 
+  // NORQVA-0157: projeção de 30 dias pelo ritmo dos últimos 7 dias INTEIROS (ontem e os 6 antes), seja qual for
+  // o período escolhido. Mesmo endpoint e mesmas fórmulas do servidor; aqui só a regra de três (÷ 7 × 30).
+  const [last7, setLast7] = useState<any | null | undefined>(undefined); // undefined = carregando, null = sem dados
+  useEffect(() => {
+    const c = new AbortController();
+    setLast7(undefined);
+    const qs = periodQuery({ period: 'custom', startDate: addDays(today, -7), endDate: addDays(today, -1) } as any);
+    apiFetch(`/financial/dashboard?mode=${mode}&${qs}`, { signal: c.signal })
+      .then((r: any) => !c.signal.aborted && setLast7(r?.summary || null))
+      .catch(() => !c.signal.aborted && setLast7(null));
+    return () => c.abort();
+  }, [mode, today, refreshTrigger, reload, apiFetch]);
+
   // Planos de campanha (aprovação e teto): mesma rota e mesma regra dos cartões originais, só ADMIN.
   useEffect(() => {
     if (!isAdmin) {
@@ -403,28 +420,66 @@ export function ExecutiveOverview({
             hint="receita ÷ anúncios"
             tone={s?.roas !== null && s?.roas !== undefined ? (s.roas >= 1 ? 'positive' : 'critical') : 'neutral'}
           />
-          <Stat
-            testId="overview-net"
-            label="Resultado estimado"
-            value={show(brl(s?.netProfit))}
-            tone={s ? (s.netProfit >= 0 ? 'neutral' : 'critical') : 'neutral'}
-            hint={costHint}
-          />
+          <Stat testId="overview-costs" label="Custos" value={show(brl(s?.totalCosts))} hint="impostos, taxas e custos fixos" />
           <Stat
             testId="overview-sales"
             label="Vendas pagas"
             value={show(int(s?.paidOrdersCount))}
             hint={commerce ? `${int(commerce.pendingOrders)} aguardando` : undefined}
           />
+          <div className="col-span-2 pt-4 border-t border-nq-line/60">
+            <Stat
+              testId="overview-net"
+              label="Lucro estimado"
+              value={show(brl(s?.netProfit))}
+              tone={s ? (s.netProfit >= 0 ? 'positive' : 'critical') : 'neutral'}
+              hint={`receita − investimento − custos · ${costHint}`}
+            />
+          </div>
         </div>
         <p className="mt-4 pt-3 border-t border-nq-line/60 flex gap-2 text-nq-caption text-nq-muted" data-testid="overview-net-note">
           <Info aria-hidden="true" className="h-3.5 w-3.5 mt-px shrink-0" />
           <span>
-            Resultado estimado = receita − anúncios − custos registrados no NORQVA
+            Lucro estimado = receita − anúncios − custos registrados no NORQVA
             {costComplete ? '' : ' (alguns custos ainda não estão cadastrados)'}. Não é lucro contábil.
           </span>
         </p>
       </Surface>
+
+      <div data-testid="overview-projection">
+      <Surface className="p-4">
+        <div className="text-nq-aux text-nq-muted">Projeção para os próximos 30 dias</div>
+        {last7 ? (
+          <>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-5">
+              <Stat testId="projection-revenue" label="Receita" value={brl(proj30(last7.grossRevenue))} />
+              <Stat testId="projection-sales" label="Vendas" value={int(Math.round(proj30(last7.paidOrdersCount)))} />
+              <Stat testId="projection-spend" label="Investimento" value={brl(proj30(last7.totalSpend))} />
+              <Stat testId="projection-costs" label="Custos" value={brl(proj30(last7.totalCosts))} />
+              <div className="col-span-2 pt-4 border-t border-nq-line/60">
+                <Stat
+                  testId="projection-net"
+                  label="Lucro estimado"
+                  value={brl(proj30(last7.netProfit))}
+                  tone={proj30(last7.netProfit) >= 0 ? 'positive' : 'critical'}
+                />
+              </div>
+            </div>
+            <p className="mt-4 pt-3 border-t border-nq-line/60 flex gap-2 text-nq-caption text-nq-muted" data-testid="projection-note">
+              <Info aria-hidden="true" className="h-3.5 w-3.5 mt-px shrink-0" />
+              <span>
+                Se o ritmo de {fmtDay(addDays(today, -7))} a {fmtDay(addDays(today, -1))} (últimos 7 dias inteiros) continuar igual.
+                É uma estimativa: muda com orçamento, criativos e sazonalidade.
+              </span>
+            </p>
+          </>
+        ) : last7 === undefined ? (
+          <div className="mt-2 text-nq-caption text-nq-muted">Carregando…</div>
+        ) : (
+          <div className="mt-2 text-nq-caption text-nq-muted">Sem dados dos últimos 7 dias para projetar.</div>
+        )}
+      </Surface>
+      </div>
     </section>
   );
 
