@@ -442,3 +442,9 @@ Registro de decisões técnicas relevantes. Uma decisão encerrada não é redis
 - Limites: áudio de até 2 min (acima, pede resumo); falha na transcrição = pede para escrever; falha na voz = só texto.
 - O áudio em si vai para a OpenAI só para transcrever (inclusive se o cliente falar o CPF); o que volta é mascarado antes de gravar e de ir para a IA do atendente. CPF dito em pedaços ("529 982 247 25") também é achado. Pedido falado para parar tem o mesmo efeito do "parar" escrito.
 - Chave `WHATSAPP_AUDIO_ENABLED=true` (padrão desligada). Só números da Evolution; WhatsApp oficial depois. Desde a NORQVA-0152 o áudio chega junto com o webhook (base64) e fica só na memória até a transcrição: a Evolution **não** precisa guardar mensagens (`DATABASE_SAVE_DATA_NEW_MESSAGE` fica `false`, assim o servidor do WhatsApp não guarda CPF nem conversa no banco). Atenção: a própria Evolution escreve as mensagens recebidas no log do serviço no Render (já acontecia com o texto); os logs do Render expiram sozinhos.
+
+## D-0153 — Atendente do WhatsApp: ofertas em imagem, uma de cada vez (2026-10-29)
+
+- **Pedido do Ricardo (29/10/2026 20h48):** enviar imagens com conteúdo e preço; primeiro o kit mais caro; se o cliente não pedir o pagamento, o segundo; livros avulsos só depois da negativa dos dois kits ou se o cliente pedir o valor individual.
+- **Regra:** 1ª opção = oferta em destaque (`offers.attendant_featured`), 2ª = a alternativa dela (`attendant_alternative_offer_id`), avulsos depois. A ordem é travada no servidor (`services/whatsapp/offerCards.ts`): a próxima só depois de o cliente responder à anterior; cada imagem uma vez por conversa; envio que falhou não conta.
+- **Preço na imagem:** cada imagem tem preço do Pix, preço cheio e "ou no cartão" gravados em `OFFER_CARDS`; se a oferta mudar, a imagem não sai e o atendente apresenta em texto até a imagem ser refeita (`norqva-ai/produtos/whatsapp_cards/build_cards.py`).

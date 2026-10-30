@@ -29,4 +29,4 @@ Menores aplicados: a imagem só sai se o preço cheio riscado e o "ou no cartão
 
 ## Execução
 
-(pendente)
+PR #202 mesclado em 29/10/2026 (CI verde, testes 0153 rodaram). Deploy automático: imagens na Vercel, atendente no Render.
