@@ -16,16 +16,18 @@ export interface OfferCard {
   /** legenda que o cliente vê embaixo da imagem (também identifica o envio no histórico: mudar a legenda faz as
    *  conversas antigas não reconhecerem mais o envio, e a imagem pode sair de novo) */
   caption: string;
+  /** NORQVA-0154: número do livro avulso (escrito na imagem): o cliente escolhe respondendo o número */
+  number?: number;
 }
 
 const DEFAULT_CARDS: Record<string, OfferCard> = {
   'OFF-000016': { path: '/images/whatsapp/off-000016.jpg', pix: 47, from: 94.5, card: true, caption: 'Coleção Trattoria Completa: 5 livros + bônus' },
   'OFF-000010': { path: '/images/whatsapp/off-000010.jpg', pix: 29.9, from: 94.5, card: true, caption: 'Kit Trattoria Completo: 5 livros' },
-  'OFF-000001': { path: '/images/whatsapp/off-000001.jpg', pix: 19.9, from: null, card: true, caption: 'Trattoria em Casa (livro avulso)' },
-  'OFF-000005': { path: '/images/whatsapp/off-000005.jpg', pix: 14.9, from: null, card: false, caption: 'Dolci della Nonna (livro avulso)' },
-  'OFF-000007': { path: '/images/whatsapp/off-000007.jpg', pix: 19.9, from: null, card: true, caption: 'Pães & Fermentação Natural (livro avulso)' },
-  'OFF-000008': { path: '/images/whatsapp/off-000008.jpg', pix: 19.9, from: null, card: true, caption: 'Antipasti & Aperitivo (livro avulso)' },
-  'OFF-000009': { path: '/images/whatsapp/off-000009.jpg', pix: 19.9, from: null, card: true, caption: 'Risotos & Polentas (livro avulso)' }
+  'OFF-000001': { path: '/images/whatsapp/off-000001.jpg', pix: 19.9, from: null, card: true, number: 1, caption: 'Livro 1 · Trattoria em Casa · R$ 19,90' },
+  'OFF-000005': { path: '/images/whatsapp/off-000005.jpg', pix: 14.9, from: null, card: false, number: 5, caption: 'Livro 5 · Dolci della Nonna · R$ 14,90' },
+  'OFF-000007': { path: '/images/whatsapp/off-000007.jpg', pix: 19.9, from: null, card: true, number: 4, caption: 'Livro 4 · Pães & Fermentação Natural · R$ 19,90' },
+  'OFF-000008': { path: '/images/whatsapp/off-000008.jpg', pix: 19.9, from: null, card: true, number: 3, caption: 'Livro 3 · Antipasti & Aperitivo · R$ 19,90' },
+  'OFF-000009': { path: '/images/whatsapp/off-000009.jpg', pix: 19.9, from: null, card: true, number: 2, caption: 'Livro 2 · Risotos & Polentas · R$ 19,90' }
 };
 
 export let OFFER_CARDS: Record<string, OfferCard> = DEFAULT_CARDS;

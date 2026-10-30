@@ -29,19 +29,19 @@ CARDS = {
                        bullets=["74 receitas italianas com foto e passo a passo", "Massas, risotos, antipasti, pães e sobremesas",
                                 "Medidas em gramas e ml", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old="94,50", price="29,90", badge=None),
-    "OFF-000001": dict(kicker="Livro avulso", title="Trattoria em Casa", sub="Massas e molhos italianos", covers=[TRAT],
+    "OFF-000001": dict(kicker="Livro avulso", number=1, title="Trattoria em Casa", sub="Massas e molhos italianos", covers=[TRAT],
                        bullets=["28 receitas de massas e molhos", "Foto de cada prato e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old=None, price="19,90", badge=None),
-    "OFF-000005": dict(kicker="Livro avulso", title="Dolci della Nonna", sub="Sobremesas italianas", covers=[DOLCI],
+    "OFF-000005": dict(kicker="Livro avulso", number=5, title="Dolci della Nonna", sub="Sobremesas italianas", covers=[DOLCI],
                        bullets=["10 sobremesas italianas", "Foto de cada prato e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old=None, price="14,90", badge=None, pix_only=True),
-    "OFF-000007": dict(kicker="Livro avulso", title="Pães & Fermentação Natural", sub="Pães italianos em casa", covers=[PAES],
+    "OFF-000007": dict(kicker="Livro avulso", number=4, title="Pães & Fermentação Natural", sub="Pães italianos em casa", covers=[PAES],
                        bullets=["11 pães italianos e o fermento natural", "Foto de cada receita e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old=None, price="19,90", badge=None),
-    "OFF-000008": dict(kicker="Livro avulso", title="Antipasti & Aperitivo", sub="Para abrir a mesa italiana", covers=[ANTI],
+    "OFF-000008": dict(kicker="Livro avulso", number=3, title="Antipasti & Aperitivo", sub="Para abrir a mesa italiana", covers=[ANTI],
                        bullets=["12 receitas de entradas e petiscos", "Foto de cada prato e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old=None, price="19,90", badge=None),
-    "OFF-000009": dict(kicker="Livro avulso", title="Risotos & Polentas", sub="O conforto do norte da Itália", covers=[RIS],
+    "OFF-000009": dict(kicker="Livro avulso", number=2, title="Risotos & Polentas", sub="O conforto do norte da Itália", covers=[RIS],
                        bullets=["12 receitas de risotos e polentas", "Foto de cada prato e passo a passo numerado", "PDF no WhatsApp e no e-mail logo após o pagamento"],
                        old=None, price="19,90", badge=None),
 }
@@ -75,6 +75,9 @@ def page(c):
     bullets = "".join(f"<li>{b}</li>" for b in c["bullets"])
     old = f'<div class="old">de R$ {c["old"]}</div>' if c["old"] else ""
     badge = f'<div class="badge">{c["badge"]}</div>' if c["badge"] else ""
+    num = c.get("number")
+    numhtml = (f'<div class="num"><span>LIVRO</span>{num}</div>'
+               f'<div class="pick">Para escolher este, responda <b>{num}</b></div>') if num else ""
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
 @font-face{{font-family:Playfair;src:url({font('playfair-display-latin-400-normal.woff')})}}
 @font-face{{font-family:Playfair;font-style:italic;src:url({font('playfair-display-latin-400-italic.woff')})}}
@@ -97,10 +100,14 @@ li:before{{content:"";position:absolute;left:-44px;top:13px;width:16px;height:16
 .old{{font-size:30px;text-decoration:line-through;opacity:.7}}
 .now{{font-size:78px;font-weight:800;letter-spacing:-1px}}
 .how{{font-size:26px;font-weight:600;line-height:1.2}}
+.num{{position:absolute;top:440px;left:120px;width:170px;height:170px;border-radius:50%;background:#c9a25c;color:#1a1410;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:110px;font-weight:800;line-height:.9;z-index:40;box-shadow:0 10px 30px rgba(0,0,0,.5)}}
+.num span{{font-size:20px;font-weight:700;letter-spacing:3px;margin-bottom:6px}}
+.pick{{position:absolute;bottom:236px;left:0;right:0;text-align:center;font-size:30px;color:#d8c6a5}}
+.pick b{{color:#1a1410;background:#c9a25c;border-radius:10px;padding:2px 16px;margin-left:6px}}
 .badge{{position:absolute;top:300px;right:90px;background:#8f2f22;color:#fbefe0;font-size:22px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:10px 20px;border-radius:999px;z-index:30}}
 </style></head><body><div class="frame"></div>
 <div class="top"><div class="brand">NORQVA</div><div class="kicker">{c['kicker']}</div><h1>{c['title']}</h1><div class="sub">{c['sub']}</div></div>
-{badge}{covers_html(c['covers'])}<ul>{bullets}</ul>
+{badge}{numhtml}{covers_html(c['covers'])}<ul>{bullets}</ul>
 <div class="price">{old}<div class="now">R$ {c['price']}</div><div class="how">{'no Pix' if c.get('pix_only') else 'no Pix<br>ou no cartão'}</div></div>
 </body></html>"""
 
