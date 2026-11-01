@@ -7,6 +7,7 @@ import { GeneratedCampaignPanel } from './GeneratedCampaignPanel';
 import { buildNorqvaCopy, copyText } from './factoryCopy';
 import { ReferenceScoreCard } from './ReferenceScoreCard';
 import { FactoryResults } from './FactoryResults';
+import { VideoPresenterPanel } from './VideoPresenterPanel';
 
 // NORQVA-0118 (contrato "Fábrica de Criativos"): uma aba só, Criativos → Fábrica, que leva da referência à
 // campanha PAUSADA em 6 passos. Junta o que já existia (Referências 0115, Geração 0116, campanha pausada 0117).
@@ -505,6 +506,16 @@ export const FactoryWizard: React.FC<{
             onChanged={d => {
               withFiles(d).then(setPageData);
             }}
+          />
+          <VideoPresenterPanel
+            apiFetch={apiFetch}
+            pageId={run.pageId}
+            productId={pageData?.page?.product_id}
+            offerId={pageData?.page?.offer_id}
+            isAdmin={isAdmin}
+            canEdit={canCreate}
+            showError={showError}
+            showSuccess={showSuccess}
           />
           {nav({ next: { label: 'Continuar para a aprovação', onClick: () => setStep(5) } })}
         </div>
