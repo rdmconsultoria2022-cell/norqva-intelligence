@@ -87,7 +87,10 @@ export async function motorCall(method: 'GET' | 'POST' | 'PUT', path: string, bo
       console.error('[fábrica de vídeo] chave ou configuração:', r.status, detail);
       throw new GenerationError(503, VIDEO_FACTORY_MISSING_MESSAGE);
     }
-    if (r.status >= 400 && r.status < 500) throw new GenerationError(r.status === 404 ? 404 : 409, detail || 'A Fábrica de vídeo recusou o pedido.');
+    if (r.status >= 400 && r.status < 500) {
+      const code = r.status === 404 ? 404 : r.status === 409 ? 409 : 400;
+      throw new GenerationError(code, detail || 'A Fábrica de vídeo recusou o pedido.');
+    }
     console.error('[fábrica de vídeo] erro', r.status, detail);
     throw new GenerationError(502, 'A Fábrica de vídeo teve um erro. Tente de novo em alguns minutos.');
   }
@@ -107,8 +110,13 @@ export function motorProduct(f: ProductFacts) {
     ref_externa: `norqva:offer:${f.offer.human_id}`,
     nome: f.product.name,
     categoria: f.product.category,
-    descricao: [f.product.description, f.deliveryTitles.length ? `O que a pessoa recebe: ${f.deliveryTitles.join('; ')}` : '', 'Entrega digital, acesso por e-mail depois do pagamento.']
-      .filter(Boolean)
+    descricao: [
+      ...String(f.product.description || '').split(/\n+/),
+      f.deliveryTitles.length ? `O que a pessoa recebe: ${f.deliveryTitles.join('; ')}` : '',
+      'Entrega digital, acesso por e-mail depois do pagamento.'
+    ]
+      .map(s => s.trim())
+      .filter(s => s && !findPriceInText(s))
       .join('\n'),
     oferta: offerParts.join('\n'),
     cta: 'Clica no botão aqui embaixo',
@@ -188,7 +196,7 @@ export class VideoFactoryService {
         row.id, status, Number.isFinite(cost) ? cost : row.estimated_cost_usd
       ]);
     }
-    return { ...row, status, motor, price_issues: priceIssues(motor) };
+    return { ...row, status, estimated_cost_usd: Number.isFinite(cost) ? cost : row.estimated_cost_usd, motor, price_issues: priceIssues(motor) };
   }
 
   async get(id: string) {
@@ -228,14 +236,24 @@ export class VideoFactoryService {
     });
     const motorId = Number(motor?.id);
     if (!Number.isInteger(motorId)) throw new GenerationError(502, 'A Fábrica de vídeo não devolveu a produção.');
+    const orphan = async (why: string) => {
+      await writeAuditLog(this.pool, actor, 'VIDEO_PRODUCTION_ORPHANED', `Produção ${motorId} criada na Fábrica mas não ligada no NORQVA (${why}).`);
+      return new GenerationError(409, 'Esta produção da Fábrica já está ligada a outro vídeo. Avise o suporte.');
+    };
     const exists = await this.pool.query('SELECT 1 FROM video_productions WHERE motor_production_id = $1', [motorId]);
-    if (exists.rowCount) throw new GenerationError(409, 'Esta produção já está ligada a outro vídeo.');
-    const ins = await this.pool.query(
+    if (exists.rowCount) throw await orphan('número já em uso');
+    let ins;
+    try {
+      ins = await this.pool.query(
       `INSERT INTO video_productions (product_id, offer_id, generated_page_id, motor_production_id, persona_id, template_id, duration_s, status, estimated_cost_usd, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       [productId, offerId, pageId, motorId, personaId, templateId, duration, String(motor.status || 'roteiro').slice(0, 30),
         Number.isFinite(Number(motor.custo_estimado_usd)) ? Number(motor.custo_estimado_usd) : null, actor]
-    );
+      );
+    } catch (e: any) {
+      if (e?.code === '23505') throw await orphan('número já em uso');
+      throw e;
+    }
     await writeAuditLog(this.pool, actor, 'VIDEO_PRODUCTION_CREATED',
       `Roteiro de vídeo (${duration}s) criado na Fábrica para a oferta ${facts.offer.human_id} (produção ${motorId}).`, null, 'roteiro');
     return this.view(await this.row(ins.rows[0].id), motor);
@@ -263,13 +281,26 @@ export class VideoFactoryService {
   /** Aprova o gasto (gera os clipes). Só ADMIN (rota). Barra falas com preço. */
   async approve(id: string, extra: boolean, actor: string | null) {
     const row = await this.row(id);
+    if (row.approved_at) throw new GenerationError(409, 'O gasto deste vídeo já foi aprovado.');
     const current = await motorCall('GET', `/producoes/${row.motor_production_id}`, undefined, 30000);
+    if (current?.status !== 'roteiro') throw new GenerationError(409, 'O gasto deste vídeo já foi aprovado.');
     const issues = priceIssues(current);
     if (issues.length) {
       throw new GenerationError(400, `Anúncio não fala preço (D-0053). Corrija a cena ${issues[0].order}: "${issues[0].match}".`);
     }
-    const motor = await motorCall('POST', `/producoes/${row.motor_production_id}/aprovar`, { aprovacao_extra: Boolean(extra) }, 30000);
-    await this.pool.query('UPDATE video_productions SET approved_by = $2, approved_at = NOW() WHERE id = $1', [row.id, actor]);
+    // trava contra dois cliques ao mesmo tempo: só quem marcar primeiro chama o motor (o motor também recusa a segunda)
+    const claim = await this.pool.query(
+      'UPDATE video_productions SET approved_by = $2, approved_at = NOW() WHERE id = $1 AND approved_at IS NULL RETURNING id',
+      [row.id, actor]
+    );
+    if (!claim.rowCount) throw new GenerationError(409, 'O gasto deste vídeo já foi aprovado.');
+    let motor;
+    try {
+      motor = await motorCall('POST', `/producoes/${row.motor_production_id}/aprovar`, { aprovacao_extra: Boolean(extra) }, 30000);
+    } catch (e) {
+      await this.pool.query('UPDATE video_productions SET approved_by = NULL, approved_at = NULL WHERE id = $1', [row.id]);
+      throw e;
+    }
     await writeAuditLog(this.pool, actor, 'VIDEO_PRODUCTION_APPROVED',
       `Gasto aprovado na produção ${row.motor_production_id} (estimado US$ ${Number(current?.custo_estimado_usd || 0).toFixed(2)}).`, 'roteiro', String(motor?.status || ''), false, true);
     return this.view(row, motor);
@@ -285,12 +316,13 @@ export class VideoFactoryService {
   /** Gera a cena de novo (gasta). Só ADMIN (rota). */
   async regenerateScene(id: string, sceneId: unknown, newLine: unknown, actor: string | null) {
     const row = await this.row(id);
-    const { sid } = this.sceneOf(await motorCall('GET', `/producoes/${row.motor_production_id}`, undefined, 30000), sceneId);
+    if (!row.approved_at) throw new GenerationError(409, 'Aprove o gasto do vídeo antes de gerar cenas.');
+    const current = await motorCall('GET', `/producoes/${row.motor_production_id}`, undefined, 30000);
+    if (current?.status === 'roteiro') throw new GenerationError(409, 'Aprove o gasto do vídeo antes de gerar cenas.');
+    const { sid, scene } = this.sceneOf(current, sceneId);
     const line = newLine === undefined || newLine === null ? '' : String(newLine).trim().slice(0, 400);
-    if (line) {
-      const p = findPriceInText(line);
-      if (p) throw new GenerationError(400, `Anúncio não fala preço (D-0053): "${p.match}".`);
-    }
+    const p = findPriceInText(line || scene.fala);
+    if (p) throw new GenerationError(400, `Anúncio não fala preço (D-0053): "${p.match}".`);
     const motor = await motorCall('POST', `/cenas/${sid}/regerar`, { nova_fala: line || null }, 30000);
     await writeAuditLog(this.pool, actor, 'VIDEO_SCENE_REGENERATED', `Cena ${sid} da produção ${row.motor_production_id} gerada de novo.`);
     return this.view(row, motor);

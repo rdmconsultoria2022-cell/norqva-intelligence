@@ -15,8 +15,9 @@ type Call = { method: string; url: string; body: any; auth: string };
 /** Motor simulado com uma produção em memória. */
 function fakeMotor(opts: { falaComPreco?: boolean; down?: boolean } = {}) {
   const calls: Call[] = [];
+  const pid = 100000 + Math.floor(Math.random() * 800000);
   const prod: any = {
-    id: 77, titulo: 'x', status: 'roteiro', duracao: 30, custo_estimado_usd: 2.4, alertas: [],
+    id: pid, titulo: 'x', status: 'roteiro', duracao: 30, custo_estimado_usd: 2.4, alertas: [],
     cenas: [
       { id: 501, ordem: 1, fala: 'Olha só o que chegou aqui em casa', acao: 'andando', tentativas: [] },
       { id: 502, ordem: 2, fala: opts.falaComPreco ? 'E custa só R$ 19,90' : 'Tem receita de massa fresca', acao: 'mostra',
@@ -27,31 +28,32 @@ function fakeMotor(opts: { falaComPreco?: boolean; down?: boolean } = {}) {
     const body = init?.body ? JSON.parse(init.body) : undefined;
     calls.push({ method: init?.method || 'GET', url, body, auth: init?.headers?.Authorization || '' });
     if (opts.down) throw new Error('ECONNREFUSED');
-    const path = url.replace('https://motor.test/api/v1', '');
+    const path = url.replace('https://motor.test/api/v1', '').replace(`/producoes/${pid}`, '/producoes/P');
     const ok = (data: any) => ({ ok: true, status: 200, json: async () => data });
     if (path === '/personas') return ok([{ id: 1, nome: 'Dona Lena', voz: 'Alice', aparencia: 'x', imagem: 'https://motor.test/publico/a.jpg' }]);
     if (path === '/templates') return ok([{ id: 'selfie_caminhando', nome: 'Selfie', descricao: 'd', duracoes: [{ segundos: 30, cenas: 5 }] }]);
     if (path === '/status') return ok({ ok: true, orcamento_mensal_usd: 150, gasto_mes_usd: 12.5 });
     if (path === '/producoes' && init?.method === 'POST') return ok(prod);
-    if (path === '/producoes/77' && (init?.method || 'GET') === 'GET') return ok(prod);
-    if (path === '/producoes/77/roteiro') {
+    if (path === '/producoes/P' && (init?.method || 'GET') === 'GET') return ok(prod);
+    if (path === '/producoes/P/roteiro') {
       for (const c of body.cenas) {
         const s = prod.cenas.find((x: any) => x.id === c.id);
         if (c.fala !== undefined) s.fala = c.fala;
       }
       return ok(prod);
     }
-    if (path === '/producoes/77/aprovar') {
+    if (path === '/producoes/P/aprovar') {
+      if (prod.status !== 'roteiro') return { ok: false, status: 409, json: async () => ({ detail: 'O gasto desta produção já foi aprovado.' }) };
       prod.status = 'gerando';
       return ok(prod);
     }
     if (path === '/cenas/502/escolher') return ok(prod);
     if (path === '/cenas/501/regerar') return ok(prod);
-    if (path === '/producoes/77/montar') {
+    if (path === '/producoes/P/montar') {
       prod.status = 'montando';
       return ok(prod);
     }
-    if (path === '/producoes/999') return { ok: false, status: 404, json: async () => ({ detail: 'produção não encontrada' }) };
+    if (path === '/producoes/999999999') return { ok: false, status: 404, json: async () => ({ detail: 'produção não encontrada' }) };
     return { ok: false, status: 500, json: async () => ({}) };
   };
   return { fetch, calls, prod };
@@ -133,7 +135,11 @@ describe('NORQVA-0160 — rotas', () => {
     process.env.VIDEO_FACTORY_ENABLED = 'true';
   });
 
-  afterEach(() => setVideoFactoryForTests(null));
+  afterEach(async () => {
+    setVideoFactoryForTests(null);
+    process.env.VIDEO_FACTORY_ENABLED = 'true';
+    await pool.query('DELETE FROM video_productions WHERE product_id = $1', [productId]);
+  });
 
   afterAll(async () => {
     delete process.env.VIDEO_FACTORY_ENABLED;
@@ -145,7 +151,6 @@ describe('NORQVA-0160 — rotas', () => {
   it('trava desligada: 404', async () => {
     delete process.env.VIDEO_FACTORY_ENABLED;
     expect((await as(admin).get('/api/video-factory/catalog')).status).toBe(404);
-    process.env.VIDEO_FACTORY_ENABLED = 'true';
   });
 
   it('PERFORMANCE não entra', async () => {
@@ -175,7 +180,7 @@ describe('NORQVA-0160 — rotas', () => {
     setVideoFactoryForTests({ fetch: m.fetch });
     const r = await create();
     expect(r.status).toBe(201);
-    expect(r.body.motor_production_id).toBe(77);
+    expect(r.body.motor_production_id).toBe(m.prod.id);
     expect(r.body.status).toBe('roteiro');
     const sent = m.calls.find(c => c.method === 'POST')!.body;
     expect(sent.produto.ref_externa).toBe(`norqva:offer:OFF-T160A${tag}`);
@@ -184,7 +189,6 @@ describe('NORQVA-0160 — rotas', () => {
     expect(list.body.map((v: any) => v.id)).toContain(r.body.id);
     const audit = await pool.query(`SELECT 1 FROM audit_logs WHERE event_type = 'VIDEO_PRODUCTION_CREATED' AND description LIKE $1`, [`%OFF-T160A${tag}%`]);
     expect(audit.rowCount).toBeGreaterThan(0);
-    await pool.query('DELETE FROM video_productions WHERE motor_production_id = 77');
   });
 
   it('valida entrada: oferta de outro produto, duração e apresentadora', async () => {
@@ -206,7 +210,6 @@ describe('NORQVA-0160 — rotas', () => {
     const r2 = await as(creative).put(`/api/video-factory/productions/${id}/script`, { scenes: [{ id: 501, line: 'Olha que lindo' }] });
     expect(r2.status).toBe(200);
     expect(m.prod.cenas[0].fala).toBe('Olha que lindo');
-    await pool.query('DELETE FROM video_productions WHERE motor_production_id = 77');
   });
 
   it('aprovar gasto: só ADMIN; roteiro com preço não é aprovado', async () => {
@@ -214,6 +217,8 @@ describe('NORQVA-0160 — rotas', () => {
     setVideoFactoryForTests({ fetch: m.fetch });
     const id = (await create()).body.id;
     expect((await create()).status).toBe(409); // mesma produção do motor não é ligada duas vezes
+    const orphan = await pool.query(`SELECT 1 FROM audit_logs WHERE event_type = 'VIDEO_PRODUCTION_ORPHANED' AND description LIKE $1`, [`%${m.prod.id}%`]);
+    expect(orphan.rowCount).toBeGreaterThan(0);
     expect((await as(creative).post(`/api/video-factory/productions/${id}/approve`)).status).toBe(403);
     const r = await as(admin).post(`/api/video-factory/productions/${id}/approve`);
     expect(r.status).toBe(400);
@@ -226,7 +231,30 @@ describe('NORQVA-0160 — rotas', () => {
     const row = await pool.query('SELECT status, approved_at FROM video_productions WHERE id = $1', [id]);
     expect(row.rows[0].status).toBe('gerando');
     expect(row.rows[0].approved_at).not.toBeNull();
-    await pool.query('DELETE FROM video_productions WHERE motor_production_id = 77');
+    // segundo clique: recusado sem chamar o motor de novo
+    const before = m.calls.filter(c => c.url.endsWith('/aprovar')).length;
+    expect((await as(admin).post(`/api/video-factory/productions/${id}/approve`, { extra: true })).status).toBe(409);
+    expect(m.calls.filter(c => c.url.endsWith('/aprovar')).length).toBe(before);
+  });
+
+  it('aprovar dois cliques ao mesmo tempo: o motor recebe só um', async () => {
+    const m = fakeMotor();
+    setVideoFactoryForTests({ fetch: m.fetch });
+    const id = (await create()).body.id;
+    const rs = await Promise.all([1, 2].map(() => as(admin).post(`/api/video-factory/productions/${id}/approve`)));
+    expect(rs.map(r => r.status).sort()).toEqual([200, 409]);
+    expect(m.calls.filter(c => c.url.endsWith('/aprovar')).length).toBe(1);
+  });
+
+  it('gerar de novo sem fala nova: fala atual com preço é barrada', async () => {
+    const m = fakeMotor({ falaComPreco: true });
+    setVideoFactoryForTests({ fetch: m.fetch });
+    const id = (await create()).body.id;
+    m.prod.cenas[1].fala = 'Tem receita';
+    expect((await as(admin).post(`/api/video-factory/productions/${id}/approve`)).status).toBe(200);
+    m.prod.cenas[1].fala = 'E custa só R$ 19,90';
+    expect((await as(admin).post(`/api/video-factory/productions/${id}/scenes/502/regenerate`)).status).toBe(400);
+    expect(m.calls.some(c => c.url.endsWith('/regerar'))).toBe(false);
   });
 
   it('cena e tomada têm que ser deste vídeo; gerar de novo só ADMIN', async () => {
@@ -237,10 +265,12 @@ describe('NORQVA-0160 — rotas', () => {
     expect((await as(creative).post(`/api/video-factory/productions/${id}/scenes/502/choose`, { take_id: 9002 })).status).toBe(400);
     expect((await as(creative).post(`/api/video-factory/productions/${id}/scenes/502/choose`, { take_id: 9001 })).status).toBe(200);
     expect((await as(creative).post(`/api/video-factory/productions/${id}/scenes/501/regenerate`)).status).toBe(403);
+    // sem gasto aprovado não gera cena
+    expect((await as(admin).post(`/api/video-factory/productions/${id}/scenes/501/regenerate`, { new_line: 'Fala nova' })).status).toBe(409);
+    expect((await as(admin).post(`/api/video-factory/productions/${id}/approve`)).status).toBe(200);
     expect((await as(admin).post(`/api/video-factory/productions/${id}/scenes/501/regenerate`, { new_line: 'R$ 5,00' })).status).toBe(400);
     expect((await as(admin).post(`/api/video-factory/productions/${id}/scenes/501/regenerate`, { new_line: 'Fala nova' })).status).toBe(200);
     expect(m.calls.find(c => c.url.endsWith('/cenas/501/regerar'))!.body).toEqual({ nova_fala: 'Fala nova' });
-    await pool.query('DELETE FROM video_productions WHERE motor_production_id = 77');
   });
 
   it('montar: formato válido', async () => {
@@ -251,7 +281,6 @@ describe('NORQVA-0160 — rotas', () => {
     const r = await as(creative).post(`/api/video-factory/productions/${id}/assemble`, { format: '4:5' });
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('montando');
-    await pool.query('DELETE FROM video_productions WHERE motor_production_id = 77');
   });
 
   it('id inexistente: 404', async () => {
