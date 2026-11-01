@@ -47,6 +47,9 @@ interface WaConversation {
   contact_name: string | null;
   mode: 'BOT' | 'HUMAN' | 'OPTED_OUT';
   needs_human: boolean;
+  /** NORQVA-0158: robô de outra empresa, propaganda ou oferta (o atendente parou sozinho) */
+  not_customer_at?: string | null;
+  not_customer_reason?: string | null;
   unread_count: number;
   last_message_at: string | null;
   last_message_preview: string | null;
@@ -88,8 +91,12 @@ const FILTERS = [
   { id: 'NEEDS_HUMAN', label: 'Precisam de pessoa' },
   { id: 'UNREAD', label: 'Não lidas' },
   { id: 'HUMAN', label: 'Com pessoa' },
-  { id: 'OPTED_OUT', label: 'Pediram para parar' }
+  { id: 'OPTED_OUT', label: 'Pediram para parar' },
+  { id: 'NOT_CUSTOMER', label: 'Não é cliente' }
 ];
+
+// NORQVA-0158: como mostrar o modo da conversa (a marca "não é cliente" vem antes do modo)
+const modeLabel = (c: { mode: string; not_customer_at?: string | null }) => (c.not_customer_at && c.mode !== 'OPTED_OUT' ? 'Não é cliente' : MODE[c.mode]);
 
 const fmtPhone = (p: string | null) => {
   if (!p) return '—';
@@ -644,7 +651,7 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
               <div className="truncate text-nq-aux text-nq-muted">{c.last_message_preview}</div>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
                 <span className="rounded bg-nq-raised px-1.5 text-nq-text">{c.number_label}</span>
-                <span className="rounded bg-nq-raised px-1.5 text-nq-muted">{MODE[c.mode]}</span>
+                <span className="rounded bg-nq-raised px-1.5 text-nq-muted">{modeLabel(c)}</span>
                 {c.needs_human && <span className="rounded bg-nq-attention/10 px-1.5 text-nq-attention">precisa de pessoa</span>}
                 {c.unread_count > 0 && <span className="rounded-full bg-nq-positive min-w-[20px] px-1.5 text-center font-bold text-nq-on-positive">{c.unread_count}</span>}
               </div>
@@ -664,7 +671,12 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
               </button>
               <div className="min-w-0">
                 <div className="text-nq-body font-semibold text-nq-text">{conv.contact_name || fmtPhone(conv.contact_phone)}</div>
-                <div className="text-[12px] text-nq-muted">{fmtPhone(conv.contact_phone)} · {conv.number_label} · {MODE[conv.mode]}</div>
+                <div className="text-[12px] text-nq-muted">{fmtPhone(conv.contact_phone)} · {conv.number_label} · {modeLabel(conv)}</div>
+                {conv.not_customer_at && conv.mode !== 'OPTED_OUT' && (
+                  <div className="text-[12px] text-nq-attention" data-testid="wa-not-customer">
+                    O atendente parou sozinho: {conv.not_customer_reason || 'não parece ser cliente'}. Se for cliente, toque em "Devolver ao atendente".
+                  </div>
+                )}
               </div>
               {conv.mode !== 'OPTED_OUT' && (
                 conv.mode === 'BOT' ? (

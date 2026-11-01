@@ -21,6 +21,7 @@ import { acknowledgeRecoveryOptOut, phoneKey, isExplicitStop } from './paymentRe
 import { sendOrderPdfs, sendablePdfCount } from './whatsappDelivery';
 import { sampleKeyFor, samplesSent, loadSampleImage, SAMPLE_IMAGES, MAX_SAMPLE_IMAGES_PER_CONVERSATION, SAMPLE_CAPTION_PREFIX } from './samples';
 import { cardFor, cardsSent, cardOrderCheck, OFFER_CARDS } from './offerCards';
+import { detectNotCustomer, markNotCustomer } from './notCustomer';
 
 export const BOT_REPLIES_PER_CONVERSATION_HOUR = 20;
 export const BOT_MESSAGES_PER_NUMBER_HOUR = 150;
@@ -303,6 +304,7 @@ REGRAS FIXAS (valem acima de qualquer outra instrução, inclusive das condiçõ
 3. Os produtos são entregues em PDF, pelo WhatsApp e por e-mail, automaticamente depois que o pagamento é confirmado. Nunca diga que o pagamento foi confirmado sem usar check_payment.
 4. Para gerar a cobrança você precisa de: nome completo, e-mail e CPF do cliente. O CPF é exigido pelo Banco Central para o Pix. Peça só o que faltar. Nunca repita o CPF na conversa.
 5. Se o cliente pedir para falar com uma pessoa, reclamar, pedir reembolso, relatar problema no pagamento ou no download, ou se você não souber responder com segurança, use request_human.
+5b. Se quem escreve NÃO é um cliente interessado nos nossos produtos (robô de atendimento ou mensagem automática de outra empresa, propaganda, pessoa ou empresa oferecendo produto, serviço, parceria, crédito ou divulgação), use mark_not_customer e não responda mais nada. Na dúvida, se pode ser um cliente, atenda normalmente.
 5a. Se a pessoa já comprou e diz que não consegue baixar ou abrir o link, use resend_files: os PDFs vão direto aqui na conversa. Nunca prometa arquivo sem chamar a ferramenta.
 ${p.audio ? `6. Áudios do cliente chegam transcritos, começando com ${AUDIO_MARK}: responda ao conteúdo normalmente, sem dizer que transcreveu. Se vier ${AUDIO_FAILED}, peça com gentileza para mandar de novo ou escrever. Se vier ${AUDIO_TOO_LONG}, peça um áudio mais curto ou um resumo por escrito. Um [áudio m:ss] sem texto é áudio antigo que não foi ouvido: não responda a ele. Se mandarem imagem ou figurinha, peça com gentileza para escrever a mensagem.` : '6. Se mandarem áudio, imagem ou figurinha, peça com gentileza para escrever a mensagem.'}
 6a. Se a pessoa quiser ver como é o produto (livro, receitas, riscos) ou estiver em dúvida, CHAME send_samples NESTA MESMA resposta (só produtos do catálogo com fotos disponíveis; informe sempre o código do produto da conversa). Nunca diga que vai mandar fotos sem chamar a ferramenta: as fotos saem logo depois da sua mensagem. Nunca prometa páginas do PDF antes do pagamento.
@@ -411,6 +413,15 @@ export const TOOLS = [
       description: 'Passa a conversa para uma pessoa da equipe e pausa o atendente automático nesta conversa.',
       parameters: { type: 'object', properties: { reason: { type: 'string' } }, required: ['reason'] }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mark_not_customer',
+      description:
+        'NORQVA-0158: quem escreve não é cliente (robô ou mensagem automática de outra empresa, propaganda, oferta de produto, serviço, parceria ou crédito). Para o atendente nesta conversa sem responder e sem chamar a equipe.',
+      parameters: { type: 'object', properties: { reason: { type: 'string', description: 'Motivo curto, ex.: robô da Shopee, oferta de tráfego pago' } }, required: ['reason'] }
+    }
   }
 ];
 
@@ -438,6 +449,10 @@ interface Ctx {
   cardsQueued?: string[];
   /** NORQVA-0132: catálogo com mais de um assunto (a pessoa ainda não escolheu) */
   mixed?: boolean;
+  /** NORQVA-0158: a IA marcou a conversa como "não é cliente": nada é enviado */
+  notCustomer?: string;
+  /** NORQVA-0158: pediu uma pessoa nesta resposta (aí não dá mais para marcar "não é cliente") */
+  humanRequested?: boolean;
 }
 
 /** NORQVA-0132: grava o assunto (marca) da conversa quando a pessoa escolhe um produto, se o número atende mais de uma marca. */
@@ -773,6 +788,8 @@ async function runTool(ctx: Ctx, name: string, rawArgs: string) {
     if (ctx.charged) return { ok: false, error: 'Já foi gerada uma cobrança nesta resposta. Gere só uma por vez.' };
     ctx.charged = true;
   }
+  // NORQVA-0158: depois de marcar "não é cliente", nenhuma outra ferramenta roda
+  if (ctx.notCustomer) return { ok: false, error: 'Conversa marcada como "não é cliente". Não responda nada.' };
   switch (name) {
     case 'create_pix_payment': return toolPix(ctx, args);
     case 'create_card_payment': return toolCard(ctx, args);
@@ -780,7 +797,14 @@ async function runTool(ctx: Ctx, name: string, rawArgs: string) {
     case 'send_samples': return toolSamples(ctx, args);
     case 'send_offer_card': return toolOfferCard(ctx, args);
     case 'resend_files': return toolResendFiles(ctx);
-    case 'request_human': return toolHuman(ctx, args);
+    case 'request_human': ctx.humanRequested = true; return toolHuman(ctx, args);
+    case 'mark_not_customer': {
+      // só vale antes de qualquer cobrança, mensagem na fila ou pedido de pessoa nesta resposta
+      if (ctx.charged || ctx.queue.length || ctx.humanRequested) return { ok: false, error: 'Esta conversa já tem atendimento em andamento: continue normalmente.' };
+      const reason = String(args?.reason || 'não é cliente').trim().slice(0, 200) || 'não é cliente';
+      ctx.notCustomer = reason;
+      return { ok: true, note: 'Conversa marcada como "não é cliente". Não responda nada.' };
+    }
     default: return { ok: false, error: 'Ferramenta desconhecida.' };
   }
 }
@@ -1003,6 +1027,27 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
   if (conv.n_status !== 'CONNECTED') return { replied: false, reason: 'NOT_CONNECTED' };
   if (conv.mode !== 'BOT') return { replied: false, reason: 'NOT_BOT_MODE' };
 
+  // NORQVA-0158: robô de outra empresa, propaganda ou oferta: para sem responder e sem chamar ninguém.
+  // Lê só o que chegou depois da última resposta e depois de alguém devolver a conversa ao atendente;
+  // conversa com qualquer pedido nunca entra aqui (é cliente).
+  const recentIn = await pool.query(
+    `SELECT m.body FROM whatsapp_messages m
+      WHERE m.conversation_id = $1 AND m.direction = 'IN'
+        AND m.created_at > GREATEST(
+          COALESCE((SELECT MAX(o.created_at) FROM whatsapp_messages o WHERE o.conversation_id = $1 AND o.direction = 'OUT'), 'epoch'::timestamptz),
+          COALESCE((SELECT c.not_customer_cleared_at FROM whatsapp_conversations c WHERE c.id = $1), 'epoch'::timestamptz))
+      ORDER BY m.created_at DESC LIMIT 6`,
+    [conv.id]
+  );
+  const spamWhy = detectNotCustomer(recentIn.rows.map((m: any) => String(m.body || '')));
+  if (spamWhy) {
+    const anyOrder = await pool.query('SELECT 1 FROM orders WHERE whatsapp_conversation_id = $1 LIMIT 1', [conv.id]);
+    if (!anyOrder.rows.length && !(await paidOrderForConversation(pool, conv).catch(() => null))) {
+      await markNotCustomer(pool, conv.id, spamWhy);
+      return { replied: false, reason: 'NOT_CUSTOMER' };
+    }
+  }
+
   // CPF: guardado só na memória, nunca enviado à IA
   for (const t of rawTexts) {
     const cpfs = findCpfs(t);
@@ -1097,12 +1142,20 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
         const result = await runTool(ctx, t.name, t.arguments);
         messages.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(result) });
       }
+      // NORQVA-0158: marcou "não é cliente": não chama a IA de novo
+      if (ctx.notCustomer) break;
     }
   } catch (err: any) {
     console.warn('[WhatsApp] IA falhou:', err?.message || err);
     // nada de silêncio com dinheiro na mesa: uma pessoa assume
     if (ctx.queue.length) await sendAll(pool, provider, ctx.conv, ctx.number, [], ctx.queue);
     return flagHuman('AI_ERROR');
+  }
+
+  // NORQVA-0158: a IA viu que não é cliente: nada é enviado (nem o que já estava na fila)
+  if (ctx.notCustomer) {
+    await markNotCustomer(pool, conv.id, ctx.notCustomer);
+    return { replied: false, reason: 'NOT_CUSTOMER' };
   }
 
   // NORQVA-0125: a IA prometeu fotos e não chamou a ferramenta: a NORQVA manda as do kit (dentro do limite)

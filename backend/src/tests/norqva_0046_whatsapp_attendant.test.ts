@@ -12,6 +12,7 @@ import { resetAllRateLimits } from '../middleware/rateLimiter';
 import { setWhatsAppProviderForTests, WhatsAppProvider, ProviderError } from '../services/whatsapp/provider';
 import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiMessage, AiReply } from '../services/whatsapp/attendant';
 import { maskCpfInText, findCpfs } from '../services/whatsapp/whatsappService';
+import { detectNotCustomer } from '../services/whatsapp/notCustomer';
 
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default_32_byte_key_for_testing_123';
 process.env.ASAAS_API_KEY = process.env.ASAAS_API_KEY || 'MOCK';
@@ -260,5 +261,66 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     expect(row.conversion).toBeGreaterThan(0);
     expect(conv).toBeTruthy();
   });
-});
 
+  // NORQVA-0158: robô de outra empresa, propaganda ou oferta: o atendente para sozinho, sem chamar ninguém
+  it('NORQVA-0158: reconhece robô e propaganda, mas não confunde cliente', () => {
+    expect(detectNotCustomer(['Olá\n\nAgradecemos seu contato!\nEste é o WhatsApp oficial da Shopee. Responda * 1 * saber mais sobre o cupom'])).toBeTruthy();
+    expect(detectNotCustomer(['Bom dia! Gostaria de apresentar nossos serviços de tráfego pago para aumentar suas vendas'])).toBeTruthy();
+    expect(detectNotCustomer(['Mensagem automática: estamos fora do horário de atendimento'])).toBeTruthy();
+    expect(detectNotCustomer(['Oi, quero o kit de livros. Tem cupom de desconto?'])).toBeNull();
+    expect(detectNotCustomer(['Quanto custa? Vi o anúncio no Instagram'])).toBeNull();
+    expect(detectNotCustomer(['Posso pagar no cartão da empresa? Preciso de nota com CNPJ'])).toBeNull();
+    expect(detectNotCustomer(['Tem cupom? Preciso de nota com CNPJ'])).toBeNull();
+    expect(detectNotCustomer(['Vi esse anúncio https://www.instagram.com/p/abc tem cupom?'])).toBeNull();
+    expect(detectNotCustomer(['preciso baixar o aplicativo pra abrir o PDF?'])).toBeNull();
+    expect(detectNotCustomer(['quero oferecer o kit de presente pra minha mãe'])).toBeNull();
+    expect(detectNotCustomer(['dá pra ganhar dinheiro vendendo essas massas?'])).toBeNull();
+    expect(detectNotCustomer(['recebi uma mensagem automática de vocês sobre o Pix'])).toBeNull();
+    expect(detectNotCustomer(['Opção inválida. Digite uma opção do menu'])).toBeTruthy();
+  });
+
+  it('NORQVA-0158: mensagem de robô para o atendente sem responder e sem chamar pessoa; devolver tira a marca', async () => {
+    const conv = await customerSays('Agradecemos seu contato! Este é o WhatsApp oficial da Shopee. Responda *1* para saber mais sobre o cupom', '5521933332222@s.whatsapp.net');
+    script = [{ content: 'Oi! Posso ajudar?', tool_calls: [] }];
+    const r = await processConversation(pool, conv, []);
+    expect(r).toEqual({ replied: false, reason: 'NOT_CUSTOMER' });
+    expect(sent).toHaveLength(0);
+    expect(seen).toHaveLength(0);
+    const c = await pool.query('SELECT mode, needs_human, not_customer_at, not_customer_reason FROM whatsapp_conversations WHERE id = $1', [conv]);
+    expect(c.rows[0].mode).toBe('HUMAN');
+    expect(c.rows[0].needs_human).toBe(false);
+    expect(c.rows[0].not_customer_at).toBeTruthy();
+    expect(c.rows[0].not_customer_reason).toContain('robô');
+
+    const list = await request(app).get('/api/whatsapp/conversations?filter=NOT_CUSTOMER').set('Authorization', `Bearer ${admin}`);
+    expect(list.body.conversations.map((x: any) => x.id)).toContain(conv);
+
+    const back = await request(app).post(`/api/whatsapp/conversations/${conv}/mode`).set('Authorization', `Bearer ${admin}`).send({ mode: 'BOT' });
+    expect(back.status).toBe(200);
+    const c2 = await pool.query('SELECT mode, not_customer_at FROM whatsapp_conversations WHERE id = $1', [conv]);
+    expect(c2.rows[0].mode).toBe('BOT');
+    expect(c2.rows[0].not_customer_at).toBeNull();
+
+    // depois de devolver, a mensagem antiga não marca de novo: a próxima vai para a IA
+    await customerSays('Na verdade quero saber dos livros de receita', '5521933332222@s.whatsapp.net');
+    script = [{ content: 'Claro! Temos 5 livros de receitas italianas.', tool_calls: [] }];
+    const r2 = await processConversation(pool, conv, []);
+    expect(r2.replied).toBe(true);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  it('NORQVA-0158: a IA também pode marcar "não é cliente" e nada é enviado', async () => {
+    const conv = await customerSays('Olá, trabalho com divulgação de perfis e queria conversar com o responsável', '5521922221111@s.whatsapp.net');
+    script = [
+      { content: null, tool_calls: [{ id: 'n1', name: 'mark_not_customer', arguments: JSON.stringify({ reason: 'oferta de divulgação' }) }] },
+      { content: 'Obrigado pelo contato!', tool_calls: [] }
+    ];
+    const r = await processConversation(pool, conv, []);
+    expect(r).toEqual({ replied: false, reason: 'NOT_CUSTOMER' });
+    expect(sent).toHaveLength(0);
+    const c = await pool.query('SELECT mode, not_customer_reason FROM whatsapp_conversations WHERE id = $1', [conv]);
+    expect(c.rows[0].mode).toBe('HUMAN');
+    expect(c.rows[0].not_customer_reason).toBe('oferta de divulgação');
+    expect(seen[0][0].content).toContain('mark_not_customer');
+  });
+});
