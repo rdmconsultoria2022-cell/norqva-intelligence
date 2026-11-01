@@ -49,12 +49,20 @@ export const VideoPresenterPanel: React.FC<{
   const [confirmSpend, setConfirmSpend] = useState(false);
   const [format, setFormat] = useState('9:16');
   const [newLine, setNewLine] = useState<Record<number, string>>({});
+  const [tick, setTick] = useState(0);
   const timer = useRef<any>(null);
+  // o App recria apiFetch/showError a cada render: guardar num ref evita recarregar (e perder falas não salvas)
+  const fetchRef = useRef(apiFetch);
+  fetchRef.current = apiFetch;
+  const currentId = useRef<string | null>(null);
 
   const post = (url: string, body: any = {}) => apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
 
   const show = useCallback((v: any) => {
+    currentId.current = v?.id || null;
     setCurrent(v);
+    setConfirmSpend(false);
+    if (v?.id) setList(prev => (prev.some(p => p.id === v.id) ? prev.map(p => (p.id === v.id ? { ...p, ...v } : p)) : [v, ...prev]));
     const l: Record<number, string> = {};
     for (const c of v?.motor?.cenas || []) l[c.id] = c.fala || '';
     setLines(l);
@@ -62,17 +70,26 @@ export const VideoPresenterPanel: React.FC<{
 
   useEffect(() => {
     let alive = true;
+    setHidden(false);
+    setCatalog(null);
+    setList([]);
+    currentId.current = null;
+    setCurrent(null);
     (async () => {
       try {
+        const api = fetchRef.current;
         const [cat, ls] = await Promise.all([
-          apiFetch('/video-factory/catalog'),
-          apiFetch(`/video-factory/productions?generated_page_id=${encodeURIComponent(pageId)}`)
+          api('/video-factory/catalog'),
+          api(`/video-factory/productions?generated_page_id=${encodeURIComponent(pageId)}`)
         ]);
         if (!alive) return;
         setCatalog(cat);
         setList(Array.isArray(ls) ? ls : []);
         if (cat?.personas?.[0]) setPersonaId(cat.personas[0].id);
-        if (Array.isArray(ls) && ls[0]) show(await apiFetch(`/video-factory/productions/${ls[0].id}`));
+        if (Array.isArray(ls) && ls[0]) {
+          const v = await api(`/video-factory/productions/${ls[0].id}`);
+          if (alive) show(v);
+        }
       } catch (e: any) {
         if (!alive) return;
         // desligado ou motor fora do ar: o painel some sem atrapalhar o resto da Fábrica
@@ -83,22 +100,29 @@ export const VideoPresenterPanel: React.FC<{
     return () => {
       alive = false;
     };
-  }, [apiFetch, pageId, show, showError]);
+  }, [pageId, show]);
 
   // enquanto gera ou monta, atualiza sozinho
   useEffect(() => {
     clearTimeout(timer.current);
+    let alive = true;
     if (current && WORKING.includes(current.status)) {
+      const id = current.id;
       timer.current = setTimeout(async () => {
         try {
-          show(await apiFetch(`/video-factory/productions/${current.id}`));
+          const v = await fetchRef.current(`/video-factory/productions/${id}`);
+          // resposta atrasada de outro vídeo não troca a tela
+          if (alive && currentId.current === id) show(v);
         } catch {
-          /* tenta de novo na próxima volta */
+          if (alive) setTick(t => t + 1); // falhou: tenta de novo na próxima volta
         }
       }, pollMs);
     }
-    return () => clearTimeout(timer.current);
-  }, [current, apiFetch, show, pollMs]);
+    return () => {
+      alive = false;
+      clearTimeout(timer.current);
+    };
+  }, [current, show, pollMs, tick]);
 
   if (hidden || !catalog) return null;
 
@@ -107,7 +131,6 @@ export const VideoPresenterPanel: React.FC<{
     try {
       const v = await fn();
       show(v);
-      setList(prev => (prev.some(p => p.id === v.id) ? prev : [v, ...prev]));
       if (ok) showSuccess(ok);
     } catch (e: any) {
       showError(e?.message || 'Não foi possível concluir.');
@@ -139,6 +162,7 @@ export const VideoPresenterPanel: React.FC<{
             type="button"
             onClick={() => setPersonaId(p.id)}
             data-testid={`video-persona-${p.id}`}
+            aria-pressed={personaId === p.id}
             className={`rounded-lg p-2 text-left border ${personaId === p.id ? 'border-nq-positive' : 'border-nq-line'}`}
           >
             {p.image && <img src={p.image} alt={`Personagem ${p.name}`} className="w-full aspect-[3/4] object-cover rounded" />}
@@ -192,16 +216,23 @@ export const VideoPresenterPanel: React.FC<{
           Orçamento de vídeo do mês: {usd(catalog.budget?.spent_month_usd)} usados de {usd(catalog.budget?.monthly_usd)} (restam {usd(left)}).
         </p>
 
-        {list.length > 1 && (
+        {list.length > 0 && (current === null || list.length > 1) && (
           <div>
             <label className={label} htmlFor="video-pick">Vídeos desta página</label>
             <select
               id="video-pick"
               className={input}
-              value={current?.id || ''}
-              onChange={async e => {
-                if (e.target.value === 'new') return setCurrent(null);
-                run(() => apiFetch(`/video-factory/productions/${e.target.value}`));
+              value={current?.id || 'new'}
+              onChange={e => {
+                if (e.target.value === 'new') {
+                  currentId.current = null;
+                  setCurrent(null);
+                  setConfirmSpend(false);
+                  return;
+                }
+                const id = e.target.value;
+                currentId.current = id;
+                run(() => apiFetch(`/video-factory/productions/${id}`));
               }}
             >
               {list.map(v => (
@@ -217,10 +248,10 @@ export const VideoPresenterPanel: React.FC<{
         {current && m && (
           <div className="space-y-4" data-testid="video-production">
             <div className="flex flex-wrap items-center gap-3">
-              <StatusPill tone={status.tone} testId="video-status">{status.text}</StatusPill>
+              <span aria-live="polite"><StatusPill tone={status.tone} testId="video-status">{status.text}</StatusPill></span>
               <span className="text-nq-aux text-nq-muted">Custo estimado: {usd(current.estimated_cost_usd ?? m.custo_estimado_usd)}</span>
               {WORKING.includes(current.status) && <span className="text-nq-aux text-nq-muted">Atualiza sozinho a cada poucos segundos.</span>}
-              <button type="button" className={quiet} onClick={() => setCurrent(null)} disabled={busy}>
+              <button type="button" className={quiet} onClick={() => { currentId.current = null; setCurrent(null); setConfirmSpend(false); }} disabled={busy}>
                 Novo vídeo
               </button>
             </div>
@@ -266,7 +297,9 @@ export const VideoPresenterPanel: React.FC<{
                           )}
                           {t.status === 'pronta' && (
                             <>
-                              <p className="text-nq-aux text-nq-muted">Fala {Math.round(Number(t.fidelidade_fala || 0) * 100)}% fiel</p>
+                              {t.fidelidade_fala != null && (
+                                <p className="text-nq-aux text-nq-muted">Fala {Math.round(Number(t.fidelidade_fala) * 100)}% fiel</p>
+                              )}
                               {c.tentativa_em_uso === t.id ? (
                                 <span className="inline-flex items-center gap-1 text-nq-aux text-nq-positive-text"><Check className="h-3 w-3" /> Em uso</span>
                               ) : (
@@ -320,7 +353,9 @@ export const VideoPresenterPanel: React.FC<{
                   ) : (
                     <div className="flex flex-wrap gap-2 items-center">
                       <span className="text-nq-aux text-nq-text">
-                        Confirma o gasto de cerca de {usd(current.estimated_cost_usd ?? m.custo_estimado_usd)} na geração dos clipes?
+                        {m.precisa_aprovacao_extra
+                          ? `Este vídeo passa do limite de gasto sem aprovação extra. Confirma mesmo assim o gasto de cerca de ${usd(current.estimated_cost_usd ?? m.custo_estimado_usd)}?`
+                          : `Confirma o gasto de cerca de ${usd(current.estimated_cost_usd ?? m.custo_estimado_usd)} na geração dos clipes?`}
                       </span>
                       <button type="button" className={primary} disabled={busy} data-testid="video-approve-confirm"
                         onClick={async () => {
@@ -339,7 +374,7 @@ export const VideoPresenterPanel: React.FC<{
               )
             )}
 
-            {['revisao', 'pronto'].includes(current.status) && canEdit && (
+            {['revisao', 'pronto', 'erro'].includes(current.status) && canEdit && (
               <div className="flex flex-wrap gap-2 items-end">
                 <div>
                   <label className={label} htmlFor="video-format">Formato</label>

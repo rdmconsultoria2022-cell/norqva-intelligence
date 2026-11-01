@@ -79,4 +79,40 @@ describe('NORQVA-0160 — painel de vídeo com apresentadora', () => {
     expect(screen.queryByTestId('video-approve-btn')).toBeNull();
     expect(screen.getByTestId('video-alerts').textContent).toMatch(/não fala preço/);
   });
+
+  it('render novo do App (funções novas) não recarrega nem apaga fala não salva', async () => {
+    const handler = (url: string) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return prod();
+      throw new Error('inesperado ' + url);
+    };
+    const a1 = vi.fn(async (u: string) => handler(u));
+    const props = { pageId, productId, offerId, isAdmin: true, canEdit: true, pollMs: 10 };
+    const { rerender } = render(<VideoPresenterPanel apiFetch={a1} showError={vi.fn()} showSuccess={vi.fn()} {...props} />);
+    const box = await screen.findByLabelText('Fala da cena 1');
+    fireEvent.change(box, { target: { value: 'Fala editada' } });
+    const a2 = vi.fn(async (u: string) => handler(u));
+    rerender(<VideoPresenterPanel apiFetch={a2} showError={vi.fn()} showSuccess={vi.fn()} {...props} />);
+    await new Promise(r => setTimeout(r, 30));
+    expect(a2).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Fala da cena 1') as HTMLTextAreaElement).value).toBe('Fala editada');
+  });
+
+  it('atualização automática continua depois de uma falha', async () => {
+    let gets = 0;
+    setup((url) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') {
+        gets += 1;
+        if (gets === 1) return prod({ status: 'gerando' }, { status: 'gerando' });
+        if (gets === 2) throw new Error('rede');
+        return prod({ status: 'revisao' }, { status: 'revisao' });
+      }
+      throw new Error('inesperado ' + url);
+    });
+    await waitFor(() => expect(screen.getByTestId('video-status').textContent).toMatch(/revisar/));
+    expect(gets).toBeGreaterThanOrEqual(3);
+  });
 });
