@@ -302,7 +302,7 @@ REGRAS FIXAS (valem acima de qualquer outra instrução, inclusive das condiçõ
 1. Use SOMENTE os produtos, preços e parcelas do CATÁLOGO abaixo. Nunca invente preço, desconto, cupom, prazo, bônus, depoimento, avaliação de cliente ou resultado.
 2. Para cobrar, use apenas as ferramentas create_pix_payment ou create_card_payment. Nunca escreva código Pix, link de pagamento ou dados bancários por conta própria.
 3. Os produtos são entregues em PDF, pelo WhatsApp e por e-mail, automaticamente depois que o pagamento é confirmado. Nunca diga que o pagamento foi confirmado sem usar check_payment.
-4. Para gerar a cobrança você precisa de: nome completo, e-mail e CPF do cliente. O CPF é exigido pelo Banco Central para o Pix. Peça só o que faltar. Nunca repita o CPF na conversa.
+4. Antes de cobrar, o cliente precisa ter dito a forma de pagamento (Pix ou cartão). Se ele não disse, pergunte "Prefere pagar no Pix ou no cartão?" e espere; nunca escolha por ele e nunca gere as duas. Para gerar a cobrança você precisa de: nome completo, e-mail e CPF do cliente. O CPF é exigido pelo Banco Central para o Pix. Peça só o que faltar. Nunca repita o CPF na conversa.
 5. Se o cliente pedir para falar com uma pessoa, reclamar, pedir reembolso, relatar problema no pagamento ou no download, ou se você não souber responder com segurança, use request_human.
 5b. Se quem escreve NÃO é um cliente interessado nos nossos produtos (robô de atendimento ou mensagem automática de outra empresa, propaganda, pessoa ou empresa oferecendo produto, serviço, parceria, crédito ou divulgação), use mark_not_customer e não responda mais nada. Na dúvida, se pode ser um cliente, atenda normalmente.
 5a. Se a pessoa já comprou e diz que não consegue baixar ou abrir o link, use resend_files: os PDFs vão direto aqui na conversa. Nunca prometa arquivo sem chamar a ferramenta.
@@ -559,9 +559,31 @@ function queuePix(ctx: Ctx, offerName: string, amount: number, copyPaste: string
   ctx.queue.push({ kind: 'text', text: copyPaste });
 }
 
+// NORQVA-0159: só cobra na forma de pagamento que o cliente escolheu (nada de gerar cartão sem ele pedir,
+// o que duplica o pedido quando ele queria Pix). Olha as mensagens recentes do cliente.
+const PIX_WORD = /\bpix\b/;
+const CARD_WORD = /\b(cart(ao|oes)|credito|debito|parcela\w*|parcelad\w*|\d{1,2}\s?x|\d{1,2}\s?vezes|visa|master(card)?|elo)\b/;
+export function chosenPaymentMethods(inbound: string[]): { pix: boolean; card: boolean } {
+  const t = inbound.map(x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()).join('\n');
+  // "não tenho cartão" / "sem cartão" não é pedido de cartão
+  const u = t.replace(/\b(nao|sem)\s+(tenho\s+|uso\s+)?(cart(ao|oes)|credito)(\s+de\s+credito)?\b/g, ' ');
+  return { pix: PIX_WORD.test(u), card: CARD_WORD.test(u) };
+}
+async function customerChose(ctx: Ctx): Promise<{ pix: boolean; card: boolean }> {
+  const r = await ctx.pool.query(
+    `SELECT body FROM whatsapp_messages WHERE conversation_id = $1 AND direction = 'IN' ORDER BY created_at DESC LIMIT 12`,
+    [ctx.conv.id]
+  );
+  return chosenPaymentMethods(r.rows.map((m: any) => String(m.body || '')));
+}
+const ASK_METHOD = 'O cliente ainda não escolheu a forma de pagamento. Não gere cobrança: pergunte só "Prefere pagar no Pix ou no cartão?" e espere a resposta.';
+
 async function toolPix(ctx: Ctx, args: any) {
   const offer = findOffer(ctx, args.offer_code);
   if (!offer) return { ok: false, error: 'Produto não está no catálogo deste número.' };
+  const chose = await customerChose(ctx);
+  // Pix é a forma principal: só fica barrado quando o cliente pediu cartão (e não Pix)
+  if (!chose.pix && chose.card) return { ok: false, error: 'O cliente pediu cartão, não Pix. Use create_card_payment ou pergunte se ele prefere Pix.' };
   await lockTopic(ctx, offer);
   const again = await reusablePayment(ctx, offer.id, 'PIX', null);
   if (again?.pix_copy_paste) {
@@ -587,6 +609,8 @@ async function toolCard(ctx: Ctx, args: any) {
   const offer = findOffer(ctx, args.offer_code);
   if (!offer) return { ok: false, error: 'Produto não está no catálogo deste número.' };
   if (!offer.card) return { ok: false, error: 'Este produto não aceita cartão. Ofereça o Pix.' };
+  const chose = await customerChose(ctx);
+  if (!chose.card) return { ok: false, error: chose.pix ? 'O cliente pediu Pix, não cartão. Use create_pix_payment.' : ASK_METHOD };
   await lockTopic(ctx, offer);
   const n = Math.floor(Number(args.installments));
   const opt = offer.card.options.find(o => o.n === n);

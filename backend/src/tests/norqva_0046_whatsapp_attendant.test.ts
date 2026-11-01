@@ -10,7 +10,7 @@ import { signSupabaseToken } from '../utils/token';
 import { AsaasPaymentProvider } from '../utils/payment';
 import { resetAllRateLimits } from '../middleware/rateLimiter';
 import { setWhatsAppProviderForTests, WhatsAppProvider, ProviderError } from '../services/whatsapp/provider';
-import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiMessage, AiReply } from '../services/whatsapp/attendant';
+import { setAttendantAiForTests, processConversation, resetAttendantMemoryForTests, AiMessage, AiReply, chosenPaymentMethods } from '../services/whatsapp/attendant';
 import { maskCpfInText, findCpfs } from '../services/whatsapp/whatsappService';
 import { detectNotCustomer } from '../services/whatsapp/notCustomer';
 
@@ -322,5 +322,32 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     expect(c.rows[0].mode).toBe('HUMAN');
     expect(c.rows[0].not_customer_reason).toBe('oferta de divulgação');
     expect(seen[0][0].content).toContain('mark_not_customer');
+  });
+
+  // NORQVA-0159: cartão só quando o cliente pediu cartão (o atendente gerava link de cartão sem ninguém pedir)
+  it('NORQVA-0159: reconhece a forma de pagamento escolhida', () => {
+    expect(chosenPaymentMethods(['Gostaria de pagar por PIX.'])).toEqual({ pix: true, card: false });
+    expect(chosenPaymentMethods(['pode ser no cartão em 3x'])).toEqual({ pix: false, card: true });
+    expect(chosenPaymentMethods(['Quero o kit', 'meu email é a@b.com'])).toEqual({ pix: false, card: false });
+    expect(chosenPaymentMethods(['vi no masterchef'])).toEqual({ pix: false, card: false });
+    expect(chosenPaymentMethods(['não tenho cartão'])).toEqual({ pix: false, card: false });
+    expect(chosenPaymentMethods(['pode ser 3 vezes'])).toEqual({ pix: false, card: true });
+  });
+
+  it('NORQVA-0159: sem o cliente pedir cartão, não gera link de cartão', async () => {
+    const conv = await customerSays(`Quero o kit. Luiz Prado, luiz.0046.${tag}@example.com, cpf 52998224725`, '5521977776666@s.whatsapp.net');
+    const card = vi.spyOn(AsaasPaymentProvider.prototype, 'createCardPayment');
+    spies.push(card);
+    script = [
+      { content: null, tool_calls: [{ id: 'k1', name: 'create_card_payment', arguments: JSON.stringify({ offer_code: offerCode, full_name: 'Luiz Prado', email: `luiz.0046.${tag}@example.com`, installments: 1 }) }] },
+      { content: 'Prefere pagar no Pix ou no cartão?', tool_calls: [] }
+    ];
+    const r = await processConversation(pool, conv, []);
+    expect(r.replied).toBe(true);
+    expect(card).not.toHaveBeenCalled();
+    const toolMsg = seen[1].find(m => m.role === 'tool');
+    expect(String(toolMsg?.content)).toContain('Prefere pagar no Pix ou no cartão');
+    const orders = await pool.query('SELECT 1 FROM orders WHERE whatsapp_conversation_id = $1', [conv]);
+    expect(orders.rows).toHaveLength(0);
   });
 });
