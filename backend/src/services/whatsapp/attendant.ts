@@ -562,10 +562,12 @@ function queuePix(ctx: Ctx, offerName: string, amount: number, copyPaste: string
 // NORQVA-0159: só cobra na forma de pagamento que o cliente escolheu (nada de gerar cartão sem ele pedir,
 // o que duplica o pedido quando ele queria Pix). Olha as mensagens recentes do cliente.
 const PIX_WORD = /\bpix\b/;
-const CARD_WORD = /\b(cartao|credito|parcela\w*|parcelad\w*|\d{1,2}\s?x|em \d{1,2} vezes|visa|master\w*|elo)\b/;
+const CARD_WORD = /\b(cart(ao|oes)|credito|debito|parcela\w*|parcelad\w*|\d{1,2}\s?x|\d{1,2}\s?vezes|visa|master(card)?|elo)\b/;
 export function chosenPaymentMethods(inbound: string[]): { pix: boolean; card: boolean } {
   const t = inbound.map(x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()).join('\n');
-  return { pix: PIX_WORD.test(t), card: CARD_WORD.test(t) };
+  // "não tenho cartão" / "sem cartão" não é pedido de cartão
+  const u = t.replace(/\b(nao|sem)\s+(tenho\s+|uso\s+)?(cart(ao|oes)|credito)(\s+de\s+credito)?\b/g, ' ');
+  return { pix: PIX_WORD.test(u), card: CARD_WORD.test(u) };
 }
 async function customerChose(ctx: Ctx): Promise<{ pix: boolean; card: boolean }> {
   const r = await ctx.pool.query(

@@ -329,6 +329,9 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     expect(chosenPaymentMethods(['Gostaria de pagar por PIX.'])).toEqual({ pix: true, card: false });
     expect(chosenPaymentMethods(['pode ser no cartão em 3x'])).toEqual({ pix: false, card: true });
     expect(chosenPaymentMethods(['Quero o kit', 'meu email é a@b.com'])).toEqual({ pix: false, card: false });
+    expect(chosenPaymentMethods(['vi no masterchef'])).toEqual({ pix: false, card: false });
+    expect(chosenPaymentMethods(['não tenho cartão'])).toEqual({ pix: false, card: false });
+    expect(chosenPaymentMethods(['pode ser 3 vezes'])).toEqual({ pix: false, card: true });
   });
 
   it('NORQVA-0159: sem o cliente pedir cartão, não gera link de cartão', async () => {
