@@ -649,6 +649,7 @@ export async function listConversations(pool: Pool, q: { number_id?: any; filter
   else if (f === 'HUMAN') where.push(`c.mode = 'HUMAN'`);
   else if (f === 'UNREAD') where.push('c.unread_count > 0');
   else if (f === 'OPTED_OUT') where.push(`c.mode = 'OPTED_OUT'`);
+  else if (f === 'NOT_CUSTOMER') where.push('c.not_customer_at IS NOT NULL');
   const s = String(q.search || '').trim();
   if (s) {
     params.push(`%${s.replace(/[%_\\]/g, m => `\\${m}`)}%`);
@@ -656,7 +657,8 @@ export async function listConversations(pool: Pool, q: { number_id?: any; filter
   }
   const r = await pool.query(
     `SELECT c.id, c.number_id, n.label AS number_label, n.phone AS number_phone, b.name AS brand_name,
-            c.contact_phone, c.contact_name, c.mode, c.needs_human, c.unread_count, c.last_message_at, c.last_message_preview
+            c.contact_phone, c.contact_name, c.mode, c.needs_human, c.unread_count, c.last_message_at, c.last_message_preview,
+            c.not_customer_at, c.not_customer_reason
      FROM whatsapp_conversations c
      JOIN whatsapp_numbers n ON n.id = c.number_id
      LEFT JOIN brands b ON b.id = n.brand_id
@@ -701,6 +703,8 @@ export async function getConversationMessages(pool: Pool, id: string) {
       contact_phone: c.contact_phone,
       contact_name: c.contact_name,
       mode: c.mode,
+      not_customer_at: c.not_customer_at || null,
+      not_customer_reason: c.not_customer_reason || null,
       needs_human: c.needs_human
     },
     messages: r.rows
@@ -783,7 +787,14 @@ export async function setConversationMode(pool: Pool, convId: string, mode: any,
   if (m !== 'BOT' && m !== 'HUMAN') throw new WhatsAppError(400, 'Modo inválido.');
   const c = await loadConversation(pool, convId);
   if (c.mode === 'OPTED_OUT' && m === 'BOT') throw new WhatsAppError(409, 'O cliente pediu para parar. O atendente automático não volta nesta conversa.');
-  await pool.query(`UPDATE whatsapp_conversations SET mode = $1, needs_human = FALSE, updated_at = NOW() WHERE id = $2`, [m, convId]);
+  // NORQVA-0158: devolver ao atendente tira a marca de "não é cliente"
+  await pool.query(
+    `UPDATE whatsapp_conversations SET mode = $1, needs_human = FALSE,
+            not_customer_at = CASE WHEN $3 THEN NULL ELSE not_customer_at END,
+            not_customer_reason = CASE WHEN $3 THEN NULL ELSE not_customer_reason END,
+            updated_at = NOW() WHERE id = $2`,
+    [m, convId, m === 'BOT']
+  );
   await writeAuditLog(pool, userId, 'WHATSAPP_CONVERSATION_MODE', `Conversa ${convId}: ${m === 'BOT' ? 'devolvida ao atendente automático' : 'assumida por uma pessoa'}.`, c.mode, m);
   return { ok: true, mode: m };
 }
