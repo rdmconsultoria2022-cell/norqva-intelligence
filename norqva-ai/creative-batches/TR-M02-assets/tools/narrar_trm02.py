@@ -1,5 +1,5 @@
 import json, os, subprocess, sys, re, unicodedata
-S = "/tmp/claude-0/-home-claude/05e363c9-87f4-5168-bec0-5e0db85d5bb3/scratchpad"
+S = __import__("os").environ.get("TRM02_WORK", ".")  # pasta com openai_key.txt, m02/ (bases) e m02n/ (saída)
 K = open(f"{S}/openai_key.txt").read().strip()
 OUT = f"{S}/m02n"
 INS = ("Fale em português do Brasil, com sotaque brasileiro natural. Narradora calorosa e acolhedora, ritmo de anúncio curto, "
