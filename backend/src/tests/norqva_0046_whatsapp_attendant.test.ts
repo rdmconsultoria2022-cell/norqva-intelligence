@@ -270,6 +270,13 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     expect(detectNotCustomer(['Oi, quero o kit de livros. Tem cupom de desconto?'])).toBeNull();
     expect(detectNotCustomer(['Quanto custa? Vi o anúncio no Instagram'])).toBeNull();
     expect(detectNotCustomer(['Posso pagar no cartão da empresa? Preciso de nota com CNPJ'])).toBeNull();
+    expect(detectNotCustomer(['Tem cupom? Preciso de nota com CNPJ'])).toBeNull();
+    expect(detectNotCustomer(['Vi esse anúncio https://www.instagram.com/p/abc tem cupom?'])).toBeNull();
+    expect(detectNotCustomer(['preciso baixar o aplicativo pra abrir o PDF?'])).toBeNull();
+    expect(detectNotCustomer(['quero oferecer o kit de presente pra minha mãe'])).toBeNull();
+    expect(detectNotCustomer(['dá pra ganhar dinheiro vendendo essas massas?'])).toBeNull();
+    expect(detectNotCustomer(['recebi uma mensagem automática de vocês sobre o Pix'])).toBeNull();
+    expect(detectNotCustomer(['Opção inválida. Digite uma opção do menu'])).toBeTruthy();
   });
 
   it('NORQVA-0158: mensagem de robô para o atendente sem responder e sem chamar pessoa; devolver tira a marca', async () => {
@@ -293,6 +300,13 @@ describe.sequential('NORQVA-0046 — atendente do WhatsApp', () => {
     const c2 = await pool.query('SELECT mode, not_customer_at FROM whatsapp_conversations WHERE id = $1', [conv]);
     expect(c2.rows[0].mode).toBe('BOT');
     expect(c2.rows[0].not_customer_at).toBeNull();
+
+    // depois de devolver, a mensagem antiga não marca de novo: a próxima vai para a IA
+    await customerSays('Na verdade quero saber dos livros de receita', '5521933332222@s.whatsapp.net');
+    script = [{ content: 'Claro! Temos 5 livros de receitas italianas.', tool_calls: [] }];
+    const r2 = await processConversation(pool, conv, []);
+    expect(r2.replied).toBe(true);
+    expect(seen.length).toBeGreaterThan(0);
   });
 
   it('NORQVA-0158: a IA também pode marcar "não é cliente" e nada é enviado', async () => {

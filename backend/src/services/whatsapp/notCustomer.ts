@@ -9,23 +9,24 @@ const fold = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g,
 /** Sinais fortes: um só já basta (frases que um comprador de livro de receitas não escreve). */
 const STRONG: Array<[RegExp, string]> = [
   [/\b(este|esse) e o whatsapp oficial d[aoe]\b/, 'robô de atendimento de outra empresa'],
-  [/\bmensagem automatica\b|\bresposta automatica\b|\bnao responda (a )?esta mensagem\b/, 'mensagem automática de outra empresa'],
+  [/^\s*(esta e uma )?(mensagem|resposta) automatica\b|\bnao responda (a )?esta mensagem\b/, 'mensagem automática de outra empresa'],
   [/\bresponda\s*\*?\s*\d\s*\*?\s*(para|pra)?\s*\w+/, 'menu de robô de outra empresa'],
-  [/\bdigite\s*\*?\s*\d\s*\*?\s*(para|pra)\b/, 'menu de robô de outra empresa'],
-  [/\b(baixe|baixar) (o|nosso) (app|aplicativo)\b/, 'propaganda de outra empresa'],
-  [/\b(gostaria de|quero|venho|vim) (te |lhe )?(apresentar|oferecer) (nossos?|nossas?|meus?|minhas?|um|uma|o|a)\b/, 'oferta de produto ou serviço'],
-  [/\b(trafego pago|gestor de trafego|gestao de trafego|marketing digital|agencia de marketing|aumentar (suas|as) vendas|aumente (suas|as) vendas|mais clientes para (o seu|seu) negocio)\b/, 'oferta de serviço de marketing'],
-  [/\b(proposta comercial|parceria comercial|representante comercial|seja (nosso|nossa) (parceiro|parceira|revendedor|revendedora))\b/, 'proposta comercial'],
-  [/\b(emprestimo|credito consignado|cartao consignado|limpa nome|renegocie (sua|suas) divida)/, 'oferta de crédito'],
-  [/\b(ganhe|ganhar) (dinheiro|renda extra)\b|\brenda extra\b.*\b(whatsapp|link|grupo)\b/, 'propaganda de renda extra']
+  [/\bdigite\s*\*?\s*\d\s*\*?\s*(para|pra)\b|\bopcao invalida\b|\bdigite (uma|a) opcao\b/, 'menu de robô de outra empresa'],
+  [/\bsou (a|o) (sua |seu )?assistente virtual\b|\bseu (numero de )?protocolo (de atendimento )?e\b/, 'robô de atendimento de outra empresa'],
+  [/\bestamos fora do horario de atendimento\b/, 'mensagem automática de outra empresa'],
+  [/\bbaixe (o )?nosso (app|aplicativo)\b/, 'propaganda de outra empresa'],
+  [/\b(gostaria de|quero|venho|vim) (te |lhe )?(apresentar|oferecer) (nossos?|nossas?|meus?|minhas?) (servicos?|produtos?|solucoes|solucao|trabalho|parceria|plataforma|sistema)\b/, 'oferta de produto ou serviço'],
+  [/\b(trafego pago|gestor de trafego|gestao de trafego|agencia de marketing|aumente (as )?suas vendas|aumentar (as )?suas vendas|mais clientes para (o )?seu negocio)\b/, 'oferta de serviço de marketing'],
+  [/\b(proposta comercial|parceria comercial|seja (nosso|nossa) (parceiro|parceira|revendedor|revendedora))\b/, 'proposta comercial'],
+  [/\b(credito consignado|cartao consignado|limpa nome|renegocie (sua|suas) divida)/, 'oferta de crédito']
 ];
 
-/** Sinais fracos: precisam de dois juntos. */
+/** Sinais fracos: precisam de dois juntos (vocabulário que um comprador quase nunca usa). */
 const WEAK: RegExp[] = [
   /\bnossa empresa\b|\bsomos (uma|a) empresa\b/,
-  /\b(cupom|cupons|promocoes|ofertas e descontos)\b/,
-  /https?:\/\/(?!(?:[\w-]+\.)*(?:norqva|trattoria)[\w.-]*)/,
-  /\b(cnpj|orcamento sem compromisso|solicite (um|seu) orcamento)\b/,
+  /\b(promocoes|ofertas e descontos|confira nossas ofertas)\b/,
+  /https?:\/\/(?!(?:[\w-]+\.)*(?:norqva|trattoria|asaas|instagram|facebook|fb|wa|whatsapp)\.)/,
+  /\b(orcamento sem compromisso|solicite (um|seu) orcamento)\b/,
   /\b(servicos?|solucoes) (para|pra) (empresas|o seu negocio|seu negocio)\b/,
   /\bagradecemos (o seu|seu) contato\b/
 ];

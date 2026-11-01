@@ -646,7 +646,7 @@ export async function listConversations(pool: Pool, q: { number_id?: any; filter
   }
   const f = String(q.filter || 'ALL').toUpperCase();
   if (f === 'NEEDS_HUMAN') where.push('c.needs_human = TRUE');
-  else if (f === 'HUMAN') where.push(`c.mode = 'HUMAN'`);
+  else if (f === 'HUMAN') where.push(`c.mode = 'HUMAN' AND c.not_customer_at IS NULL`);
   else if (f === 'UNREAD') where.push('c.unread_count > 0');
   else if (f === 'OPTED_OUT') where.push(`c.mode = 'OPTED_OUT'`);
   else if (f === 'NOT_CUSTOMER') where.push('c.not_customer_at IS NOT NULL');
@@ -792,6 +792,7 @@ export async function setConversationMode(pool: Pool, convId: string, mode: any,
     `UPDATE whatsapp_conversations SET mode = $1, needs_human = FALSE,
             not_customer_at = CASE WHEN $3 THEN NULL ELSE not_customer_at END,
             not_customer_reason = CASE WHEN $3 THEN NULL ELSE not_customer_reason END,
+            not_customer_cleared_at = CASE WHEN $3 AND not_customer_at IS NOT NULL THEN NOW() ELSE not_customer_cleared_at END,
             updated_at = NOW() WHERE id = $2`,
     [m, convId, m === 'BOT']
   );

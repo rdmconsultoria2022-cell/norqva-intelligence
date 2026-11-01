@@ -96,7 +96,7 @@ const FILTERS = [
 ];
 
 // NORQVA-0158: como mostrar o modo da conversa (a marca "não é cliente" vem antes do modo)
-const modeLabel = (c: { mode: string; not_customer_at?: string | null }) => (c.not_customer_at ? 'Não é cliente' : MODE[c.mode]);
+const modeLabel = (c: { mode: string; not_customer_at?: string | null }) => (c.not_customer_at && c.mode !== 'OPTED_OUT' ? 'Não é cliente' : MODE[c.mode]);
 
 const fmtPhone = (p: string | null) => {
   if (!p) return '—';
@@ -672,7 +672,7 @@ function ConversationsPanel({ api, showError }: { api: React.MutableRefObject<Ap
               <div className="min-w-0">
                 <div className="text-nq-body font-semibold text-nq-text">{conv.contact_name || fmtPhone(conv.contact_phone)}</div>
                 <div className="text-[12px] text-nq-muted">{fmtPhone(conv.contact_phone)} · {conv.number_label} · {modeLabel(conv)}</div>
-                {conv.not_customer_at && (
+                {conv.not_customer_at && conv.mode !== 'OPTED_OUT' && (
                   <div className="text-[12px] text-nq-attention" data-testid="wa-not-customer">
                     O atendente parou sozinho: {conv.not_customer_reason || 'não parece ser cliente'}. Se for cliente, toque em "Devolver ao atendente".
                   </div>

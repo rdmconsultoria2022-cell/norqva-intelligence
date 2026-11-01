@@ -451,6 +451,8 @@ interface Ctx {
   mixed?: boolean;
   /** NORQVA-0158: a IA marcou a conversa como "não é cliente": nada é enviado */
   notCustomer?: string;
+  /** NORQVA-0158: pediu uma pessoa nesta resposta (aí não dá mais para marcar "não é cliente") */
+  humanRequested?: boolean;
 }
 
 /** NORQVA-0132: grava o assunto (marca) da conversa quando a pessoa escolhe um produto, se o número atende mais de uma marca. */
@@ -786,6 +788,8 @@ async function runTool(ctx: Ctx, name: string, rawArgs: string) {
     if (ctx.charged) return { ok: false, error: 'Já foi gerada uma cobrança nesta resposta. Gere só uma por vez.' };
     ctx.charged = true;
   }
+  // NORQVA-0158: depois de marcar "não é cliente", nenhuma outra ferramenta roda
+  if (ctx.notCustomer) return { ok: false, error: 'Conversa marcada como "não é cliente". Não responda nada.' };
   switch (name) {
     case 'create_pix_payment': return toolPix(ctx, args);
     case 'create_card_payment': return toolCard(ctx, args);
@@ -793,8 +797,10 @@ async function runTool(ctx: Ctx, name: string, rawArgs: string) {
     case 'send_samples': return toolSamples(ctx, args);
     case 'send_offer_card': return toolOfferCard(ctx, args);
     case 'resend_files': return toolResendFiles(ctx);
-    case 'request_human': return toolHuman(ctx, args);
+    case 'request_human': ctx.humanRequested = true; return toolHuman(ctx, args);
     case 'mark_not_customer': {
+      // só vale antes de qualquer cobrança, mensagem na fila ou pedido de pessoa nesta resposta
+      if (ctx.charged || ctx.queue.length || ctx.humanRequested) return { ok: false, error: 'Esta conversa já tem atendimento em andamento: continue normalmente.' };
       const reason = String(args?.reason || 'não é cliente').trim().slice(0, 200) || 'não é cliente';
       ctx.notCustomer = reason;
       return { ok: true, note: 'Conversa marcada como "não é cliente". Não responda nada.' };
@@ -1021,6 +1027,27 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
   if (conv.n_status !== 'CONNECTED') return { replied: false, reason: 'NOT_CONNECTED' };
   if (conv.mode !== 'BOT') return { replied: false, reason: 'NOT_BOT_MODE' };
 
+  // NORQVA-0158: robô de outra empresa, propaganda ou oferta: para sem responder e sem chamar ninguém.
+  // Lê só o que chegou depois da última resposta e depois de alguém devolver a conversa ao atendente;
+  // conversa com qualquer pedido nunca entra aqui (é cliente).
+  const recentIn = await pool.query(
+    `SELECT m.body FROM whatsapp_messages m
+      WHERE m.conversation_id = $1 AND m.direction = 'IN'
+        AND m.created_at > GREATEST(
+          COALESCE((SELECT MAX(o.created_at) FROM whatsapp_messages o WHERE o.conversation_id = $1 AND o.direction = 'OUT'), 'epoch'::timestamptz),
+          COALESCE((SELECT c.not_customer_cleared_at FROM whatsapp_conversations c WHERE c.id = $1), 'epoch'::timestamptz))
+      ORDER BY m.created_at DESC LIMIT 6`,
+    [conv.id]
+  );
+  const spamWhy = detectNotCustomer(recentIn.rows.map((m: any) => String(m.body || '')));
+  if (spamWhy) {
+    const anyOrder = await pool.query('SELECT 1 FROM orders WHERE whatsapp_conversation_id = $1 LIMIT 1', [conv.id]);
+    if (!anyOrder.rows.length && !(await paidOrderForConversation(pool, conv).catch(() => null))) {
+      await markNotCustomer(pool, conv.id, spamWhy);
+      return { replied: false, reason: 'NOT_CUSTOMER' };
+    }
+  }
+
   // CPF: guardado só na memória, nunca enviado à IA
   for (const t of rawTexts) {
     const cpfs = findCpfs(t);
@@ -1052,20 +1079,6 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
     const t = await transcribePending(pool, provider, conv);
     if (t.optOut) return { replied: false, reason: 'OPTED_OUT' };
     voiceReply = t.voiceReply;
-  }
-
-  // NORQVA-0158: robô de outra empresa, propaganda ou oferta: para sem responder (quem já comprou nunca entra aqui)
-  const recentIn = await pool.query(
-    `SELECT body FROM whatsapp_messages
-      WHERE conversation_id = $1 AND direction = 'IN'
-        AND created_at > COALESCE((SELECT MAX(created_at) FROM whatsapp_messages WHERE conversation_id = $1 AND direction = 'OUT'), 'epoch'::timestamptz)
-      ORDER BY created_at DESC LIMIT 6`,
-    [conv.id]
-  );
-  const spamWhy = detectNotCustomer(recentIn.rows.map((m: any) => String(m.body || '')));
-  if (spamWhy && !(await paidOrderForConversation(pool, conv).catch(() => null))) {
-    await markNotCustomer(pool, conv.id, spamWhy);
-    return { replied: false, reason: 'NOT_CUSTOMER' };
   }
 
   const settings = await pool.query('SELECT global_conditions FROM whatsapp_settings WHERE id = 1');
@@ -1129,6 +1142,8 @@ export async function processConversation(pool: Pool, convId: string, rawTexts: 
         const result = await runTool(ctx, t.name, t.arguments);
         messages.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(result) });
       }
+      // NORQVA-0158: marcou "não é cliente": não chama a IA de novo
+      if (ctx.notCustomer) break;
     }
   } catch (err: any) {
     console.warn('[WhatsApp] IA falhou:', err?.message || err);
