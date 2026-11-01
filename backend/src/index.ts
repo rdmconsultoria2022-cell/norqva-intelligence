@@ -201,6 +201,10 @@ import {
   restoreGeneratedPage, getPublicGeneratedPage
 } from './controllers/generationController';
 import { getGeneratedCampaign, postGeneratedCampaign } from './controllers/generatedCampaignController';
+import {
+  videoFactoryFlag, getVideoFactoryCatalog, listVideoProductions, postVideoProduction, getVideoProduction, putVideoScript,
+  approveVideoProduction, regenerateVideoScene, chooseVideoTake, assembleVideoProduction
+} from './controllers/videoFactoryController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, addOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
 dotenv.config();
@@ -699,6 +703,17 @@ app.post('/api/generated-pages/:id/publish', requireRole(['ADMIN']), referencesF
 app.post('/api/generated-pages/:id/unpublish', requireRole(['ADMIN']), referencesFlag, unpublishGeneratedPage);
 app.delete('/api/generated-pages/:id', requireRole(['ADMIN']), referencesFlag, deleteGeneratedPage);
 app.post('/api/generated-pages/:id/restore', requireRole(['ADMIN']), referencesFlag, restoreGeneratedPage);
+
+// NORQVA-0160: vídeo com apresentadora (Fábrica de Criativos). Gasto (aprovar, gerar cena de novo) só ADMIN.
+app.get('/api/video-factory/catalog', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, getVideoFactoryCatalog);
+app.get('/api/video-factory/productions', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, listVideoProductions);
+app.post('/api/video-factory/productions', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, postVideoProduction);
+app.get('/api/video-factory/productions/:id', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, getVideoProduction);
+app.put('/api/video-factory/productions/:id/script', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, putVideoScript);
+app.post('/api/video-factory/productions/:id/approve', requireRole(['ADMIN']), videoFactoryFlag, approveVideoProduction);
+app.post('/api/video-factory/productions/:id/scenes/:sceneId/regenerate', requireRole(['ADMIN']), videoFactoryFlag, regenerateVideoScene);
+app.post('/api/video-factory/productions/:id/scenes/:sceneId/choose', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, chooseVideoTake);
+app.post('/api/video-factory/productions/:id/assemble', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, assembleVideoProduction);
 // NORQVA-0117 (D-0117): campanha PAUSADA a partir da página gerada (só ADMIN; ativar continua pelo Sim do plano)
 app.get('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, getGeneratedCampaign);
 app.post('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, postGeneratedCampaign);
