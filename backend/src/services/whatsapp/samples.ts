@@ -137,3 +137,56 @@ export async function loadSampleImage(path: string): Promise<{ base64: string; m
   if (isPng && (!ct || ct.includes('png') || ct.includes('octet-stream'))) return { base64: res.bytes.toString('base64'), mimetype: 'image/png' };
   return null;
 }
+
+// ---------- NORQVA-0161: o que vem no kit (capas dos livros) ----------
+// Quando o assunto da conversa é um kit, a NORQVA manda UMA imagem com as capas numeradas dos livros do kit (sem
+// preço), uma vez por conversa, logo depois da resposta. Imagens geradas por
+// norqva-ai/produtos/whatsapp_cards/build_kit_covers.py. Sem preço: não mexe na ordem das ofertas (D-0153).
+
+export const KIT_COVER_PREFIX = 'O que vem no ';
+export type KitCoverKey = 'colecao' | 'kit5' | 'kit4' | 'kit2';
+
+export const KIT_COVER_IMAGES: Record<KitCoverKey, { path: string; caption: string }> = {
+  colecao: { path: '/images/whatsapp/kit-capas-colecao.jpg', caption: `${KIT_COVER_PREFIX}Coleção Trattoria Completa: 5 livros + bônus` },
+  kit5: { path: '/images/whatsapp/kit-capas-kit5.jpg', caption: `${KIT_COVER_PREFIX}Kit Trattoria Completo: 5 livros` },
+  kit4: { path: '/images/whatsapp/kit-capas-kit4.jpg', caption: `${KIT_COVER_PREFIX}kit +4 livros` },
+  kit2: { path: '/images/whatsapp/kit-capas-kit2.jpg', caption: `${KIT_COVER_PREFIX}Kit Cozinha Italiana: 2 livros` }
+};
+
+/** Kits com os mesmos livros (a coleção = o kit de 5 + bônus): mostrou um, não manda o outro. */
+const SAME_BOOKS: Record<KitCoverKey, KitCoverKey[]> = { colecao: ['colecao', 'kit5'], kit5: ['kit5', 'colecao'], kit4: ['kit4'], kit2: ['kit2'] };
+
+/** Qual imagem de capas vale para um kit do catálogo (null = não é kit de livros). */
+export function kitCoverKeyFor(item: { name?: string | null; product_name?: string | null; collection_key?: string | null }): KitCoverKey | null {
+  const key = sampleKeyFor(item);
+  if (key === 'kit5') return /colecao/.test(`${norm(item.name)} ${norm(item.product_name)}`) ? 'colecao' : 'kit5';
+  if (key === 'kit4' || key === 'kit2') return key;
+  return null;
+}
+
+/**
+ * Kit citado pelo CLIENTE (texto livre). "não quero kit" não conta. "coleção" = coleção; "+4"/"4 livros" = kit +4;
+ * "2 livros"/"Trattoria e Dolci" = kit de 2; "kit" sem detalhe = kit de 5. Bordado nunca é kit de livros.
+ */
+export function kitCoverKeyFromText(text: string): KitCoverKey | null {
+  const t = norm(text);
+  if (/bordad/.test(t)) return null;
+  if (!/\bkit\b|\bkits\b|colecao/.test(t)) return null;
+  // negação perto da palavra: "não quero kit", "nao preciso do kit", "sem kit"
+  if (/\b(nao|sem|nem)\b(\s+\S+){0,3}\s+(o\s+|a\s+|do\s+|da\s+)?(kit|kits|colecao)\b/.test(t)) return null;
+  if (/colecao/.test(t)) return 'colecao';
+  if (/\+\s*4|\b4 livros|quatro livros/.test(t)) return 'kit4';
+  if (/\b2 livros|dois livros|trattoria\s*(e|\+)\s*dolci/.test(t)) return 'kit2';
+  return 'kit5';
+}
+
+/** Já foi mandada nesta conversa a imagem deste kit (ou de um kit com os mesmos livros)? Envio que falhou não conta. */
+export async function kitCoversSent(pool: Pool, convId: string, key: KitCoverKey): Promise<boolean> {
+  const bodies = SAME_BOOKS[key].map(k => `[imagem] ${KIT_COVER_IMAGES[k].caption}`);
+  const r = await pool.query(
+    `SELECT 1 FROM whatsapp_messages
+     WHERE conversation_id = $1 AND author = 'BOT' AND kind = 'IMAGE' AND send_status = 'OK' AND body = ANY($2::text[]) LIMIT 1`,
+    [convId, bodies]
+  );
+  return r.rows.length > 0;
+}

@@ -109,7 +109,9 @@ describe.sequential('NORQVA-0151 — conversa com áudio', () => {
     expect(sendAudio).toHaveBeenCalledTimes(1);
     expect(sendText).toHaveBeenCalledTimes(1);
     const out = await pool.query(`SELECT body, kind FROM whatsapp_messages WHERE conversation_id = $1 AND direction = 'OUT' ORDER BY created_at`, [convId]);
-    expect(out.rows.map((x: any) => x.kind)).toEqual(['AUDIO', 'TEXT']);
+    // NORQVA-0161: falou do kit: as capas dos livros (imagens) vêm depois; o áudio vem antes do texto
+    expect(out.rows.map((x: any) => x.kind).filter((k: string) => k !== 'IMAGE')).toEqual(['AUDIO', 'TEXT']);
+    expect(out.rows.findIndex((x: any) => x.kind === 'IMAGE')).not.toBe(0);
     expect(out.rows[0].body).toBe(AUDIO_SENT_LABEL);
   });
 
