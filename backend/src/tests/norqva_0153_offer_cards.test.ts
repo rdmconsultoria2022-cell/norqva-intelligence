@@ -99,7 +99,10 @@ describe.sequential('NORQVA-0153 — atendente envia as imagens na ordem', () =>
     return (await pool.query('SELECT id FROM whatsapp_conversations WHERE number_id = $1 AND contact_jid = $2', [numberId, jid])).rows[0].id as string;
   };
   const card = (id: string, code: string) => ({ id: `c${id}-${crypto.randomUUID().slice(0, 4)}`, name: 'send_offer_card', arguments: JSON.stringify({ offer_code: code }) });
-  const captions = () => (provider.sendImage as any).mock.calls.map((c: any[]) => c[3]);
+  // imagens de oferta (as capas dos livros do kit, NORQVA-0161, ficam de fora; têm teste próprio)
+  const allCaptions = () => (provider.sendImage as any).mock.calls.map((c: any[]) => String(c[3]));
+  const captions = () => allCaptions().filter((c: string) => !c.startsWith('Livro do kit · '));
+  const covers = () => allCaptions().filter((c: string) => c.startsWith('Livro do kit · '));
 
   beforeAll(async () => {
     pool = initializeDB();
@@ -230,6 +233,44 @@ describe.sequential('NORQVA-0153 — atendente envia as imagens na ordem', () =>
     script = [{ content: null, tool_calls: [card('f2', kitCode), card('f3', colCode)] }, { content: 'Aqui 👇', tool_calls: [] }];
     await processConversation(pool, conv, []);
     expect(captions()).toEqual(['Coleção 0153']);
+  });
+
+  it('NORQVA-0161: cliente pede o kit: as capas dos 5 livros vão depois da resposta, uma vez por conversa', async () => {
+    const jid = '5531922220061@s.whatsapp.net';
+    let conv = await says(jid, 'Olá! Quero o KIT TRATTORIA COMPLETO — 5 LIVROS | OFERTA ESPECIAL. (código URS7XT)');
+    script = [{ content: 'Oi! O Kit Trattoria Completo tem 5 livros 😊', tool_calls: [] }];
+    await processConversation(pool, conv, []);
+    expect(covers()).toEqual([
+      'Livro do kit · Trattoria em Casa',
+      'Livro do kit · Risotos & Polentas',
+      'Livro do kit · Antipasti & Aperitivo',
+      'Livro do kit · Pães & Fermentação Natural',
+      'Livro do kit · Dolci della Nonna'
+    ]);
+    // o texto vai antes das capas
+    const order = [...(provider.sendText as any).mock.invocationCallOrder, ...(provider.sendImage as any).mock.invocationCallOrder];
+    expect(Math.min(...(provider.sendText as any).mock.invocationCallOrder.slice(-1))).toBeLessThan(Math.min(...(provider.sendImage as any).mock.invocationCallOrder));
+    expect(order.length).toBeGreaterThan(5);
+    // segunda mensagem sobre o kit: as capas não vão de novo
+    (provider.sendImage as any).mockClear();
+    conv = await says(jid, 'Esse kit vem em PDF?');
+    script = [{ content: 'Sim, os 5 livros em PDF 😊', tool_calls: [] }];
+    await processConversation(pool, conv, []);
+    expect(covers()).toEqual([]);
+  });
+
+  it('NORQVA-0161: imagem da coleção leva as capas dos 5 livros e do cardápio bônus; conversa sem kit não leva capa', async () => {
+    let conv = await says('5531922220062@s.whatsapp.net', 'Quais opções vocês têm?');
+    script = [{ content: null, tool_calls: [card('k1', colCode)] }, { content: 'Olha a nossa opção mais completa 👇', tool_calls: [] }];
+    await processConversation(pool, conv, []);
+    expect(captions()).toEqual(['Coleção 0153']);
+    expect(covers()).toHaveLength(6);
+    expect(covers()[5]).toBe('Livro do kit · Bônus: Cardápio italiano de 4 semanas');
+    (provider.sendImage as any).mockClear();
+    conv = await says('5531922220063@s.whatsapp.net', 'Oi, boa noite');
+    script = [{ content: 'Boa noite! Como posso ajudar?', tool_calls: [] }];
+    await processConversation(pool, conv, []);
+    expect(covers()).toEqual([]);
   });
 
   it('cliente pede o preço de um livro avulso logo de cara: sai com customer_asked_individual', async () => {

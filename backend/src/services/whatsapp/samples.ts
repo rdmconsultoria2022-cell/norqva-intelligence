@@ -137,3 +137,49 @@ export async function loadSampleImage(path: string): Promise<{ base64: string; m
   if (isPng && (!ct || ct.includes('png') || ct.includes('octet-stream'))) return { base64: res.bytes.toString('base64'), mimetype: 'image/png' };
   return null;
 }
+
+// ---------- NORQVA-0161: capas dos livros que compõem o kit ----------
+// Quando o assunto da conversa é um kit, a NORQVA manda (uma vez por conversa e por kit) a capa de cada livro
+// do kit, numerada, logo depois da resposta. Sem preço nas imagens (não mexe na ordem das ofertas da D-0153).
+
+export const KIT_COVER_PREFIX = 'Livro do kit · ';
+export type KitCoverKey = 'colecao' | 'kit5' | 'kit4' | 'kit2';
+
+const COVER = {
+  trattoria: { path: '/images/kit/capa_trat.jpg', title: 'Trattoria em Casa' },
+  risotos: { path: '/images/livros/risotos/capa.jpg', title: 'Risotos & Polentas' },
+  antipasti: { path: '/images/livros/antipasti/capa.jpg', title: 'Antipasti & Aperitivo' },
+  paes: { path: '/images/livros/paes/capa.jpg', title: 'Pães & Fermentação Natural' },
+  dolci: { path: '/images/kit/capa_dolci.jpg', title: 'Dolci della Nonna' },
+  cardapio: { path: '/images/kit/capa_cardapio.jpg', title: 'Bônus: Cardápio italiano de 4 semanas' }
+};
+
+const five = [COVER.trattoria, COVER.risotos, COVER.antipasti, COVER.paes, COVER.dolci];
+
+/** Capas na ordem de envio. A legenda é o nome do livro (identifica o envio no histórico: capa já enviada nesta
+ *  conversa, por qualquer kit, não vai de novo). */
+const cap = (b: { path: string; title: string }) => ({ path: b.path, caption: `${KIT_COVER_PREFIX}${b.title}` });
+export const KIT_BOOK_COVERS: Record<KitCoverKey, { path: string; caption: string }[]> = {
+  colecao: [...five, COVER.cardapio].map(cap),
+  kit5: five.map(cap),
+  kit4: [COVER.risotos, COVER.antipasti, COVER.paes, COVER.dolci].map(cap),
+  kit2: [COVER.trattoria, COVER.dolci].map(cap)
+};
+
+/** Qual conjunto de capas vale para um kit do catálogo (null = não é kit de livros). */
+export function kitCoverKeyFor(item: { name?: string | null; product_name?: string | null; collection_key?: string | null }): KitCoverKey | null {
+  const key = sampleKeyFor(item);
+  if (key === 'kit5') return /colecao/.test(`${norm(item.name)} ${norm(item.product_name)}`) ? 'colecao' : 'kit5';
+  if (key === 'kit4' || key === 'kit2') return key;
+  return null;
+}
+
+/** Legendas das capas de kit já enviadas nesta conversa (envio que falhou não conta). */
+export async function kitCoversSent(pool: Pool, convId: string): Promise<Set<string>> {
+  const r = await pool.query(
+    `SELECT DISTINCT body FROM whatsapp_messages
+     WHERE conversation_id = $1 AND author = 'BOT' AND kind = 'IMAGE' AND send_status = 'OK' AND body LIKE $2`,
+    [convId, `[imagem] ${KIT_COVER_PREFIX}%`]
+  );
+  return new Set(r.rows.map((x: any) => String(x.body).replace(/^\[imagem\] /, '')));
+}
