@@ -13,11 +13,13 @@ import { ProductFacts } from '../services/creative/generationService';
 type Call = { method: string; url: string; body: any; auth: string };
 
 /** Motor simulado com uma produção em memória. */
-function fakeMotor(opts: { falaComPreco?: boolean; down?: boolean } = {}) {
+function fakeMotor(opts: { falaComPreco?: boolean; down?: boolean; pronto?: boolean } = {}) {
   const calls: Call[] = [];
   const pid = 100000 + Math.floor(Math.random() * 800000);
   const prod: any = {
-    id: pid, titulo: 'x', status: 'roteiro', duracao: 30, custo_estimado_usd: 2.4, alertas: [],
+    id: pid, titulo: 'x', status: opts.pronto ? 'pronto' : 'roteiro', duracao: 30, custo_estimado_usd: 2.4, alertas: [],
+    video_final: opts.pronto ? 'https://motor.test/publico/v.mp4?e=1&s=a' : null,
+    video_final_anuncio: opts.pronto ? `https://motor.test/publico/producoes/${pid}/anuncio_v1_9x16.mp4?e=99999999999&s=b` : null,
     cenas: [
       { id: 501, ordem: 1, fala: 'Olha só o que chegou aqui em casa', acao: 'andando', tentativas: [] },
       { id: 502, ordem: 2, fala: opts.falaComPreco ? 'E custa só R$ 19,90' : 'Tem receita de massa fresca', acao: 'mostra',
@@ -281,6 +283,55 @@ describe('NORQVA-0160 — rotas', () => {
     const r = await as(creative).post(`/api/video-factory/productions/${id}/assemble`, { format: '4:5' });
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('montando');
+  });
+
+  it('etapa C: vídeo pronto entra num anúncio da página como versão nova de vídeo (aprovar de novo)', async () => {
+    const pageId = crypto.randomUUID();
+    const otherPage = crypto.randomUUID();
+    for (const [id, n] of [[pageId, 'A'], [otherPage, 'B']]) {
+      await pool.query(
+        `INSERT INTO generated_pages (id, human_id, product_id, offer_id, slug, status, sections) VALUES ($1, $2, $3, $4, $5, 'PUBLISHED', '[]'::jsonb)`,
+        [id, `GEN-T160${n}${tag}`, productId, offerId, `t160-${n.toLowerCase()}-${tag}`]
+      );
+    }
+    const mkAd = async (page: string, key: string, approval: string) => {
+      const r = await pool.query(
+        `INSERT INTO creatives (human_id, product_id, offer_id, hook, concept, copy, primary_text, headline, cta, format, status, is_demo, utm_content_key,
+                                content_hash, approval_status, generation_source, generated_page_id, version, lineage_code)
+         VALUES ($1, $2, $3, 'Gancho', 'c', 'Texto do anúncio', 'Texto do anúncio', 'Título', 'Saiba mais', 'IMAGE', 'IDEIA', FALSE, $1, 'h', $4, 'AI_REFERENCE', $5, 1, $1) RETURNING id`,
+        [key, productId, offerId, approval, page]
+      );
+      return r.rows[0].id as string;
+    };
+    const adId = await mkAd(pageId, `GEN-T160A${tag}-A1`, 'APPROVED');
+    const foreign = await mkAd(otherPage, `GEN-T160B${tag}-A1`, 'APPROVED');
+    try {
+      // ainda no roteiro: não dá
+      let m = fakeMotor();
+      setVideoFactoryForTests({ fetch: m.fetch });
+      const draft = await as(creative).post('/api/video-factory/productions', { product_id: productId, offer_id: offerId, generated_page_id: pageId, persona_id: 1, duration_s: 30 });
+      expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+      expect((await as(creative).post(`/api/video-factory/productions/${draft.body.id}/use-in-ad`, { creative_id: adId })).status).toBe(409);
+      await pool.query('DELETE FROM video_productions WHERE id = $1', [draft.body.id]);
+      // pronto
+      m = fakeMotor({ pronto: true });
+      setVideoFactoryForTests({ fetch: m.fetch });
+      const id = (await as(creative).post('/api/video-factory/productions', { product_id: productId, offer_id: offerId, generated_page_id: pageId, persona_id: 1, duration_s: 30 })).body.id;
+      expect((await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: foreign })).status).toBe(404);
+      const r = await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: adId });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const v2 = (await pool.query('SELECT * FROM creatives WHERE root_creative_id = $1', [adId])).rows[0];
+      expect(v2).toMatchObject({ format: 'VIDEO', approval_status: 'DRAFT', file_url: m.prod.video_final_anuncio, primary_text: 'Texto do anúncio', generated_page_id: pageId });
+      expect((await pool.query('SELECT approval_status FROM creatives WHERE id = $1', [adId])).rows[0].approval_status).toBe('SUPERSEDED');
+      expect((await pool.query('SELECT creative_id FROM video_productions WHERE id = $1', [id])).rows[0].creative_id).toBe(v2.id);
+      // de novo no mesmo anúncio (versão nova já com este vídeo): recusa
+      expect((await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: v2.id })).status).toBe(409);
+    } finally {
+      await pool.query('DELETE FROM video_productions WHERE generated_page_id IN ($1, $2)', [pageId, otherPage]);
+      await pool.query('DELETE FROM creative_claims WHERE creative_id IN (SELECT id FROM creatives WHERE generated_page_id IN ($1, $2))', [pageId, otherPage]);
+      await pool.query('DELETE FROM creatives WHERE generated_page_id IN ($1, $2)', [pageId, otherPage]);
+      await pool.query('DELETE FROM generated_pages WHERE id IN ($1, $2)', [pageId, otherPage]);
+    }
   });
 
   it('id inexistente: 404', async () => {

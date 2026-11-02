@@ -31,10 +31,11 @@ const REBUILDABLE = ['DRAFT', 'FAILED', 'REJECTED'];
 // ---------------------------------------------------------------------------------------------
 
 const STATUS_KEYS = new Set(['status', 'configured_status', 'effective_status']);
-const ALLOWED_POST = /^\/act_\d+\/(campaigns|adsets|ads|adcreatives|adimages)$/;
+// NORQVA-0160: advideos = envio do vídeo da Fábrica (anúncio de vídeo); nada de situação no payload
+const ALLOWED_POST = /^\/act_\d+\/(campaigns|adsets|ads|adcreatives|adimages|advideos)$/;
 
 /**
- * Lança se o POST não for de criação na conta (lista fechada: campanhas, conjuntos, anúncios, peças, imagens),
+ * Lança se o POST não for de criação na conta (lista fechada: campanhas, conjuntos, anúncios, peças, imagens, vídeos),
  * se levar qualquer situação diferente de PAUSED ou se criar campanha/conjunto/anúncio sem PAUSED explícito.
  */
 export function assertOnlyPausedPayload(endpoint: string, payload: Record<string, any>): void {
@@ -197,6 +198,9 @@ export async function adBlockReason(pool: Pool, c: any, opts: { persist?: boolea
 
 const headlineOf = (c: any) => String(c.headline || c.hook || '').trim().slice(0, 255);
 
+/** NORQVA-0160: criativo de vídeo com arquivo https (vídeo da Fábrica de vídeo). */
+export const isVideoAd = (c: any) => String(c?.format || '') === 'VIDEO' && /^https:\/\/[^\s]+$/.test(String(c?.file_url || '').trim());
+
 async function rootLinked(pool: Pool, c: any, pageId: string) {
   if (!c?.root_creative_id) return false;
   const r = (await pool.query('SELECT generated_page_id FROM creatives WHERE id = $1', [c.root_creative_id])).rows[0];
@@ -225,11 +229,16 @@ export async function assertGeneratedPlanReady(pool: Pool, planId: string): Prom
   if (new Set(ads.map(a => String(a.destination_url))).size > 1) throw new LaunchPlanError(409, `Os anúncios levam a destinos diferentes. ${REBUILD_HINT}`);
   for (const ad of ads) {
     const label = `Anúncio ${ad.name}`;
-    if (!ad.image_url) throw new LaunchPlanError(409, `${label}: sem imagem.`);
+    if (!ad.image_url && !ad.video_url) throw new LaunchPlanError(409, `${label}: sem imagem nem vídeo.`);
     if (!okDest(String(ad.destination_url))) throw new LaunchPlanError(409, `${label}: o destino não é a página ${url} nem a da oferta ${offerUrl}.`);
     if (!ad.factory_creative || !UUID_RE.test(String(ad.factory_creative))) throw new LaunchPlanError(409, `${label}: sem o criativo de origem. ${REBUILD_HINT}`);
     const c = (await pool.query('SELECT * FROM creatives WHERE id = $1', [ad.factory_creative])).rows[0];
     if (!c || c.approval_status === 'SUPERSEDED') throw new LaunchPlanError(409, `${label}: o criativo mudou (versão nova). ${REBUILD_HINT}`);
+    // NORQVA-0160: anúncio de vídeo só com o vídeo aprovado no criativo (o mesmo link)
+    if (ad.video_url && (!isVideoAd(c) || String(ad.video_url) !== String(c.file_url).trim())) {
+      throw new LaunchPlanError(409, `${label}: o vídeo do anúncio mudou depois de montar a campanha. ${REBUILD_HINT}`);
+    }
+    if (ad.image_url && isVideoAd(c)) throw new LaunchPlanError(409, `${label}: o anúncio agora é de vídeo. ${REBUILD_HINT}`);
     const why = await adBlockReason(pool, c);
     if (why) throw new LaunchPlanError(409, `${label}: ${why}`);
     if (String(c.generated_page_id || '') !== String(page.id) && !(await rootLinked(pool, c, page.id))) {
@@ -440,9 +449,26 @@ export class GeneratedCampaignService {
     const ads = [];
     for (let i = 0; i < picked.length; i++) {
       const c = (await this.pool.query('SELECT * FROM creatives WHERE id = $1', [picked[i].id])).rows[0];
+      const key = String(c.utm_content_key || c.human_id);
+      // NORQVA-0160: anúncio com o vídeo da Fábrica vai como anúncio de vídeo (a Meta baixa pelo link)
+      if (isVideoAd(c)) {
+        ads.push({
+          name: key,
+          adset_name: adsetName,
+          video_url: String(c.file_url).trim(),
+          factory_creative: c.id,
+          thumbnail_url: null,
+          primary_text: String(c.primary_text || c.copy || '').trim(),
+          headline: headlineOf(c),
+          description: String(c.ad_description || '').trim().slice(0, 255) || undefined,
+          cta: GENERATED_CTA,
+          destination_url: destinationUrl,
+          url_tags: utmTags(code, key)
+        });
+        continue;
+      }
       const image = images.length ? images[i % images.length] : null;
       if (!image) throw new LaunchPlanError(409, `Anúncio ${c.human_id} sem imagem: a página não tem imagem na abertura nem no produto. Use as imagens do produto ou gere imagens novas.`);
-      const key = String(c.utm_content_key || c.human_id);
       ads.push({
         name: key,
         adset_name: adsetName,
@@ -471,7 +497,7 @@ export class GeneratedCampaignService {
       }],
       ads,
       pause_rules: ['Pausar anúncio com 2× o CPA de equilíbrio gasto sem venda.', 'Pausar tudo ao atingir o teto de gasto do plano.'],
-      hypothesis: `Página gerada ${page.human_id} (referência ${n.ref}) com ${ads.length} anúncio(s) de imagem.`
+      hypothesis: `Página gerada ${page.human_id} (referência ${n.ref}) com ${ads.length} anúncio(s) (${ads.filter((a: any) => a.video_url).length} de vídeo).`
     };
     const input = validateLaunchPlanInput(
       {

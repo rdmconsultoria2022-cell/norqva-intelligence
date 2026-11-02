@@ -203,7 +203,7 @@ import {
 import { getGeneratedCampaign, postGeneratedCampaign } from './controllers/generatedCampaignController';
 import {
   videoFactoryFlag, getVideoFactoryCatalog, listVideoProductions, postVideoProduction, getVideoProduction, putVideoScript,
-  approveVideoProduction, regenerateVideoScene, chooseVideoTake, assembleVideoProduction
+  approveVideoProduction, regenerateVideoScene, chooseVideoTake, assembleVideoProduction, useVideoInAd
 } from './controllers/videoFactoryController';
 import { pdfBody, getOfferDeliveryFiles, createOfferDeliveryFile, addOfferDeliveryFile, replaceDeliveryFile, restoreDeliveryFileVersion, getDeliveryFileCheckLink } from './controllers/deliveryFilesController';
 
@@ -714,6 +714,7 @@ app.post('/api/video-factory/productions/:id/approve', requireRole(['ADMIN']), v
 app.post('/api/video-factory/productions/:id/scenes/:sceneId/regenerate', requireRole(['ADMIN']), videoFactoryFlag, regenerateVideoScene);
 app.post('/api/video-factory/productions/:id/scenes/:sceneId/choose', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, chooseVideoTake);
 app.post('/api/video-factory/productions/:id/assemble', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, assembleVideoProduction);
+app.post('/api/video-factory/productions/:id/use-in-ad', requireRole(['ADMIN', 'CREATIVE']), videoFactoryFlag, useVideoInAd);
 // NORQVA-0117 (D-0117): campanha PAUSADA a partir da página gerada (só ADMIN; ativar continua pelo Sim do plano)
 app.get('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, getGeneratedCampaign);
 app.post('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, postGeneratedCampaign);

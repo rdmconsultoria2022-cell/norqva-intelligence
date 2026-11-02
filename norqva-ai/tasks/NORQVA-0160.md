@@ -17,7 +17,8 @@
 ## Etapas seguintes
 
 - B (feita): painel "Vídeo com apresentadora" (`VideoPresenterPanel.tsx`) no passo Geração da Fábrica, abaixo dos anúncios. Escolher personagem (marcada como fictícia), duração e tom; criar roteiro; editar falas; pendências (preço e alertas do motor); "Aprovar gasto e gerar" com confirmação e valor (só ADMIN); tomadas de cada cena com "Usar esta"; "Gerar de novo (gasta)" só ADMIN; montar em 9:16, 4:5 ou 1:1; assistir e baixar. Atualiza sozinho enquanto gera ou monta. Desligado ou motor fora do ar: o painel não aparece. Testes: `frontend/src/tests/norqva_0160_video_presenter.test.tsx`.
-- C: vídeo final vira criativo do NORQVA (armazenamento, aprovação pela fábrica) e campanha gerada aceita anúncio de vídeo, sempre PAUSADA.
+- C, parte 1 (feita, aprovada pelo Ricardo em 01/11/2026 22h19): "Usar este vídeo num anúncio da campanha" no painel. O vídeo pronto entra num anúncio da página como **versão nova** (mesmo texto, formato VIDEO, arquivo = link de 400 dias do motor, `video_final_anuncio`), que precisa ser aprovada de novo (`POST /api/video-factory/productions/:id/use-in-ad`, `reviseCreative` com `format`). A campanha gerada monta esse anúncio como anúncio de **vídeo** (a Meta baixa pelo link; miniatura da própria Meta; descrição junto), sempre PAUSADO: `advideos` entrou na lista fechada da trava "só PAUSED" (sem situação no payload), e a conferência antes de criar exige que o link do plano seja o mesmo do criativo aprovado. Cartão do anúncio mostra o vídeo. Painel: aviso "Vídeo indisponível" com "Tentar de novo" (não some mais) e "Carregando o vídeo…" no lugar do formulário enquanto abre.
+- C, parte 2 (próxima): adicionar anúncio de vídeo PAUSADO numa campanha gerada que já está na Meta (a do Kit de Bordado, CMP-GEN-000001).
 
 ## Configuração no Render (depois do merge)
 

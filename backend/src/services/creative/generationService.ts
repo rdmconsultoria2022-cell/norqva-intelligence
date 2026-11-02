@@ -1285,7 +1285,7 @@ export class GenerationService {
   async ads(pageId: string) {
     const rows = await this.pool.query(
       `SELECT c.id, c.human_id, c.hook, c.primary_text, c.headline, c.ad_description, c.cta, c.script, c.format, c.approval_status,
-              c.version, c.copy_check, c.root_creative_id, c.created_at
+              c.version, c.copy_check, c.root_creative_id, c.created_at, c.file_url
        FROM creatives c
        WHERE c.is_deleted = FALSE AND c.approval_status <> 'SUPERSEDED'
          AND (c.generated_page_id = $1 OR c.root_creative_id IN (SELECT x.id FROM creatives x WHERE x.generated_page_id = $1))

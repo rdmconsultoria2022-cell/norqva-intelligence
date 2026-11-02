@@ -93,3 +93,11 @@ export async function assembleVideoProduction(req: AuthenticatedRequest, res: Re
     return fail(res, e, 'Não foi possível montar o vídeo.');
   }
 }
+
+export async function useVideoInAd(req: AuthenticatedRequest, res: Response) {
+  try {
+    return res.status(200).json(await svc(req).useInAd(String(req.params.id), req.body?.creative_id, actor(req)));
+  } catch (e) {
+    return fail(res, e, 'Não foi possível colocar o vídeo no anúncio.');
+  }
+}

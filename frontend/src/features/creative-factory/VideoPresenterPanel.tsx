@@ -36,7 +36,11 @@ export const VideoPresenterPanel: React.FC<{
   showError: (m: string) => void;
   showSuccess: (m: string) => void;
   pollMs?: number;
-}> = ({ apiFetch, pageId, productId, offerId, isAdmin, canEdit, showError, showSuccess, pollMs = 10000 }) => {
+  /** Anúncios da página (para escolher onde o vídeo entra). */
+  ads?: any[];
+  /** Chamado depois de colocar o vídeo num anúncio (a tela recarrega os anúncios). */
+  onAdChanged?: () => void;
+}> = ({ apiFetch, pageId, productId, offerId, isAdmin, canEdit, showError, showSuccess, pollMs = 10000, ads = [], onAdChanged }) => {
   const [hidden, setHidden] = useState(false);
   const [catalog, setCatalog] = useState<any>(null);
   const [list, setList] = useState<any[]>([]);
@@ -49,6 +53,10 @@ export const VideoPresenterPanel: React.FC<{
   const [confirmSpend, setConfirmSpend] = useState(false);
   const [format, setFormat] = useState('9:16');
   const [newLine, setNewLine] = useState<Record<number, string>>({});
+  const [adPick, setAdPick] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingFirst, setLoadingFirst] = useState(false);
+  const [reload, setReload] = useState(0);
   const [tick, setTick] = useState(0);
   const timer = useRef<any>(null);
   // o App recria apiFetch/showError a cada render: guardar num ref evita recarregar (e perder falas não salvas)
@@ -71,6 +79,7 @@ export const VideoPresenterPanel: React.FC<{
   useEffect(() => {
     let alive = true;
     setHidden(false);
+    setLoadError(null);
     setCatalog(null);
     setList([]);
     currentId.current = null;
@@ -87,20 +96,25 @@ export const VideoPresenterPanel: React.FC<{
         setList(Array.isArray(ls) ? ls : []);
         if (cat?.personas?.[0]) setPersonaId(cat.personas[0].id);
         if (Array.isArray(ls) && ls[0]) {
-          const v = await api(`/video-factory/productions/${ls[0].id}`);
-          if (alive) show(v);
+          setLoadingFirst(true);
+          try {
+            const v = await api(`/video-factory/productions/${ls[0].id}`);
+            if (alive) show(v);
+          } finally {
+            if (alive) setLoadingFirst(false);
+          }
         }
       } catch (e: any) {
         if (!alive) return;
-        // desligado ou motor fora do ar: o painel some sem atrapalhar o resto da Fábrica
-        setHidden(true);
-        if (!disabledMsg(e)) console.warn('[vídeo com apresentadora]', e?.message || e);
+        // desligado: o painel não aparece. Fora do ar: aviso com "Tentar de novo" (nunca some sem explicar)
+        if (disabledMsg(e)) setHidden(true);
+        else setLoadError(String(e?.message || 'A Fábrica de vídeo não respondeu.'));
       }
     })();
     return () => {
       alive = false;
     };
-  }, [pageId, show]);
+  }, [pageId, show, reload]);
 
   // enquanto gera ou monta, atualiza sozinho
   useEffect(() => {
@@ -124,7 +138,26 @@ export const VideoPresenterPanel: React.FC<{
     };
   }, [current, show, pollMs, tick]);
 
-  if (hidden || !catalog) return null;
+  if (hidden) return null;
+  if (loadError) {
+    return (
+      <Section title={<span className="inline-flex items-center gap-2"><Clapperboard className="h-4 w-4" /> Vídeo com apresentadora</span>} testId="video-presenter">
+        <Surface className="space-y-3 p-4" >
+          <p className="text-nq-aux text-nq-text" data-testid="video-unavailable">Vídeo indisponível no momento: {loadError}</p>
+          <button type="button" className={quiet} onClick={() => setReload(n => n + 1)} data-testid="video-retry">
+            <RefreshCw className="h-4 w-4 inline" /> Tentar de novo
+          </button>
+        </Surface>
+      </Section>
+    );
+  }
+  if (!catalog) {
+    return (
+      <Section title={<span className="inline-flex items-center gap-2"><Clapperboard className="h-4 w-4" /> Vídeo com apresentadora</span>} testId="video-presenter">
+        <Surface className="p-4"><p className="text-nq-aux text-nq-muted">Carregando…</p></Surface>
+      </Section>
+    );
+  }
 
   const run = async (fn: () => Promise<any>, ok?: string) => {
     setBusy(true);
@@ -243,7 +276,8 @@ export const VideoPresenterPanel: React.FC<{
           </div>
         )}
 
-        {!current && createForm}
+        {!current && loadingFirst && <p className="text-nq-aux text-nq-muted" data-testid="video-loading">Carregando o vídeo…</p>}
+        {!current && !loadingFirst && createForm}
 
         {current && m && (
           <div className="space-y-4" data-testid="video-production">
@@ -399,6 +433,40 @@ export const VideoPresenterPanel: React.FC<{
                   <Download className="h-4 w-4" /> Baixar vídeo
                 </a>
                 <p className="text-nq-aux text-nq-muted">O link de download vale por 24 horas; abra esta tela de novo para gerar outro.</p>
+              </div>
+            )}
+
+            {current.status === 'pronto' && m.video_final && canEdit && (
+              <div className="space-y-2 rounded border border-nq-line p-3" data-testid="video-use-in-ad">
+                <p className="text-nq-aux font-semibold text-nq-text">Usar este vídeo num anúncio da campanha</p>
+                {current.creative_id && ads.some((a: any) => a.id === current.creative_id) ? (
+                  <p className="text-nq-aux text-nq-positive-text" data-testid="video-in-ad">
+                    Este vídeo está no anúncio {ads.find((a: any) => a.id === current.creative_id)?.human_id}. Aprove-o aqui em cima ou no passo 5; a campanha leva o vídeo como anúncio de vídeo, sempre pausada.
+                  </p>
+                ) : null}
+                {ads.length === 0 ? (
+                  <p className="text-nq-aux text-nq-muted">Esta página ainda não tem anúncios.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className={label} htmlFor="video-ad-pick">Anúncio (o texto continua o mesmo; vira uma versão nova para aprovar)</label>
+                      <select id="video-ad-pick" className={input} value={adPick} onChange={e => setAdPick(e.target.value)}>
+                        <option value="">Escolha o anúncio…</option>
+                        {ads.map((a: any) => (
+                          <option key={a.id} value={a.id}>{`${a.human_id} · ${String(a.headline || a.hook || '').slice(0, 60)}${a.format === 'VIDEO' ? ' (já é vídeo)' : ''}`}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button type="button" className={primary} disabled={busy || !adPick} data-testid="video-use-in-ad-btn"
+                      onClick={async () => {
+                        await run(() => post(`/video-factory/productions/${current.id}/use-in-ad`, { creative_id: adPick }), 'Vídeo colocado no anúncio. Aprove a versão nova para ir à campanha.');
+                        setAdPick('');
+                        onAdChanged?.();
+                      }}>
+                      Colocar no anúncio
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
