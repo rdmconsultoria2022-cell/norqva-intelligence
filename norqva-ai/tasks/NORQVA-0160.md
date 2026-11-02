@@ -16,7 +16,7 @@
 
 ## Etapas seguintes
 
-- B: painel "Vídeo com apresentadora" na etapa Geração da Fábrica (`FactoryWizard.tsx`).
+- B (feita): painel "Vídeo com apresentadora" (`VideoPresenterPanel.tsx`) no passo Geração da Fábrica, abaixo dos anúncios. Escolher personagem (marcada como fictícia), duração e tom; criar roteiro; editar falas; pendências (preço e alertas do motor); "Aprovar gasto e gerar" com confirmação e valor (só ADMIN); tomadas de cada cena com "Usar esta"; "Gerar de novo (gasta)" só ADMIN; montar em 9:16, 4:5 ou 1:1; assistir e baixar. Atualiza sozinho enquanto gera ou monta. Desligado ou motor fora do ar: o painel não aparece. Testes: `frontend/src/tests/norqva_0160_video_presenter.test.tsx`.
 - C: vídeo final vira criativo do NORQVA (armazenamento, aprovação pela fábrica) e campanha gerada aceita anúncio de vídeo, sempre PAUSADA.
 
 ## Configuração no Render (depois do merge)
