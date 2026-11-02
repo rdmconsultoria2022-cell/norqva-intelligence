@@ -19,7 +19,7 @@ function fakeMotor(opts: { falaComPreco?: boolean; down?: boolean; pronto?: bool
   const prod: any = {
     id: pid, titulo: 'x', status: opts.pronto ? 'pronto' : 'roteiro', duracao: 30, custo_estimado_usd: 2.4, alertas: [],
     video_final: opts.pronto ? 'https://motor.test/publico/v.mp4?e=1&s=a' : null,
-    video_final_anuncio: opts.pronto ? `https://motor.test/publico/producoes/${pid}/anuncio_v1_9x16.mp4?e=99999999999&s=b` : null,
+    video_final_anuncio: null as string | null,
     cenas: [
       { id: 501, ordem: 1, fala: 'Olha só o que chegou aqui em casa', acao: 'andando', tentativas: [] },
       { id: 502, ordem: 2, fala: opts.falaComPreco ? 'E custa só R$ 19,90' : 'Tem receita de massa fresca', acao: 'mostra',
@@ -36,6 +36,8 @@ function fakeMotor(opts: { falaComPreco?: boolean; down?: boolean; pronto?: bool
     if (path === '/templates') return ok([{ id: 'selfie_caminhando', nome: 'Selfie', descricao: 'd', duracoes: [{ segundos: 30, cenas: 5 }] }]);
     if (path === '/status') return ok({ ok: true, orcamento_mensal_usd: 150, gasto_mes_usd: 12.5 });
     if (path === '/producoes' && init?.method === 'POST') return ok(prod);
+    // o motor assina um link novo a cada leitura (como o de verdade)
+    if (opts.pronto) prod.video_final_anuncio = `https://motor.test/publico/producoes/${pid}/anuncio_v1_9x16.mp4?e=${Date.now() + calls.length}&s=b${calls.length}`;
     if (path === '/producoes/P' && (init?.method || 'GET') === 'GET') return ok(prod);
     if (path === '/producoes/P/roteiro') {
       for (const c of body.cenas) {
@@ -135,6 +137,7 @@ describe('NORQVA-0160 — rotas', () => {
       );
     }
     process.env.VIDEO_FACTORY_ENABLED = 'true';
+    process.env.FABRICA_VIDEO_URL = 'https://motor.test';
   });
 
   afterEach(async () => {
@@ -321,11 +324,21 @@ describe('NORQVA-0160 — rotas', () => {
       const r = await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: adId });
       expect(r.status, JSON.stringify(r.body)).toBe(200);
       const v2 = (await pool.query('SELECT * FROM creatives WHERE root_creative_id = $1', [adId])).rows[0];
-      expect(v2).toMatchObject({ format: 'VIDEO', approval_status: 'DRAFT', file_url: m.prod.video_final_anuncio, primary_text: 'Texto do anúncio', generated_page_id: pageId });
+      expect(v2).toMatchObject({ format: 'VIDEO', approval_status: 'DRAFT', primary_text: 'Texto do anúncio', generated_page_id: pageId });
+      expect(v2.file_url).toMatch(new RegExp(`^https://motor\\.test/publico/producoes/${m.prod.id}/anuncio_v1_9x16\\.mp4\\?`));
       expect((await pool.query('SELECT approval_status FROM creatives WHERE id = $1', [adId])).rows[0].approval_status).toBe('SUPERSEDED');
       expect((await pool.query('SELECT creative_id FROM video_productions WHERE id = $1', [id])).rows[0].creative_id).toBe(v2.id);
-      // de novo no mesmo anúncio (versão nova já com este vídeo): recusa
+      // de novo no mesmo anúncio (versão nova já com este vídeo): recusa mesmo com link assinado de novo
       expect((await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: v2.id })).status).toBe(409);
+      // fala com preço no roteiro: não entra no anúncio
+      m.prod.cenas[0].fala = 'Só R$ 19,90';
+      const ad3 = await mkAd(pageId, `GEN-T160A${tag}-A3`, 'APPROVED');
+      expect((await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: ad3 })).status).toBe(400);
+      // link de outro site (Fábrica mal configurada): recusa
+      process.env.FABRICA_VIDEO_URL = 'https://outra.test';
+      m.prod.cenas[0].fala = 'Olha só';
+      expect((await as(creative).post(`/api/video-factory/productions/${id}/use-in-ad`, { creative_id: ad3 })).status).toBe(502);
+      process.env.FABRICA_VIDEO_URL = 'https://motor.test';
     } finally {
       await pool.query('DELETE FROM video_productions WHERE generated_page_id IN ($1, $2)', [pageId, otherPage]);
       await pool.query('DELETE FROM creative_claims WHERE creative_id IN (SELECT id FROM creatives WHERE generated_page_id IN ($1, $2))', [pageId, otherPage]);

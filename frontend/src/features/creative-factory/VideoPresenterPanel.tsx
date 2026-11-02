@@ -159,14 +159,16 @@ export const VideoPresenterPanel: React.FC<{
     );
   }
 
-  const run = async (fn: () => Promise<any>, ok?: string) => {
+  const run = async (fn: () => Promise<any>, ok?: string): Promise<boolean> => {
     setBusy(true);
     try {
       const v = await fn();
       show(v);
       if (ok) showSuccess(ok);
+      return true;
     } catch (e: any) {
       showError(e?.message || 'Não foi possível concluir.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -176,6 +178,7 @@ export const VideoPresenterPanel: React.FC<{
   const durations: number[] = (template?.durations || []).map((d: any) => d.seconds);
   const left = Math.max(0, Number(catalog.budget?.monthly_usd || 0) - Number(catalog.budget?.spent_month_usd || 0));
   const m = current?.motor;
+  const attached = current?.creative_id ? ads.find((a: any) => a.id === current.creative_id) : null;
   const status = STATUS_LABEL[current?.status] || { text: current?.status || '', tone: 'neutral' as Tone };
   const editable = canEdit && current?.status === 'roteiro';
   const changed = editable && (m?.cenas || []).some((c: any) => (lines[c.id] ?? '') !== (c.fala || ''));
@@ -439,10 +442,33 @@ export const VideoPresenterPanel: React.FC<{
             {current.status === 'pronto' && m.video_final && canEdit && (
               <div className="space-y-2 rounded border border-nq-line p-3" data-testid="video-use-in-ad">
                 <p className="text-nq-aux font-semibold text-nq-text">Usar este vídeo num anúncio da campanha</p>
-                {current.creative_id && ads.some((a: any) => a.id === current.creative_id) ? (
-                  <p className="text-nq-aux text-nq-positive-text" data-testid="video-in-ad">
-                    Este vídeo está no anúncio {ads.find((a: any) => a.id === current.creative_id)?.human_id}. Aprove-o aqui em cima ou no passo 5; a campanha leva o vídeo como anúncio de vídeo, sempre pausada.
-                  </p>
+                {attached ? (
+                  <div className="space-y-2" data-testid="video-in-ad">
+                    <p className="text-nq-aux text-nq-positive-text">
+                      Este vídeo está no anúncio {attached.human_id}
+                      {attached.approval_status === 'APPROVED' ? ' (aprovado).' : '. Aprove-o aqui em cima (ou no passo 5) para ir à campanha.'}
+                    </p>
+                    {isAdmin && attached.approval_status === 'APPROVED' && (
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <button type="button" className={primary} disabled={busy} data-testid="video-add-to-campaign"
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              const out = await post(`/generated-pages/${pageId}/campaign/video-ads`, { creative_id: attached.id });
+                              showSuccess(`Anúncio ${out?.ad_name || attached.human_id} criado PAUSADO na campanha. Para rodar, ative em Campanhas.`);
+                              onAdChanged?.();
+                            } catch (e: any) {
+                              showError(e?.message || 'Não foi possível adicionar à campanha.');
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}>
+                          Adicionar à campanha na Meta (pausado)
+                        </button>
+                        <span className="text-nq-aux text-nq-muted">Não gasta nada: o anúncio nasce pausado. Campanha ainda não criada? Use a seção Campanha (passo 6).</span>
+                      </div>
+                    )}
+                  </div>
                 ) : null}
                 {ads.length === 0 ? (
                   <p className="text-nq-aux text-nq-muted">Esta página ainda não tem anúncios.</p>
@@ -453,13 +479,14 @@ export const VideoPresenterPanel: React.FC<{
                       <select id="video-ad-pick" className={input} value={adPick} onChange={e => setAdPick(e.target.value)}>
                         <option value="">Escolha o anúncio…</option>
                         {ads.map((a: any) => (
-                          <option key={a.id} value={a.id}>{`${a.human_id} · ${String(a.headline || a.hook || '').slice(0, 60)}${a.format === 'VIDEO' ? ' (já é vídeo)' : ''}`}</option>
+                          <option key={a.id} value={a.id}>{`${a.human_id} · ${String(a.headline || a.hook || '').slice(0, 60)}${a.format === 'VIDEO' && /^https:\/\//.test(String(a.file_url || '')) ? ' (já tem vídeo)' : ''}`}</option>
                         ))}
                       </select>
                     </div>
                     <button type="button" className={primary} disabled={busy || !adPick} data-testid="video-use-in-ad-btn"
                       onClick={async () => {
-                        await run(() => post(`/video-factory/productions/${current.id}/use-in-ad`, { creative_id: adPick }), 'Vídeo colocado no anúncio. Aprove a versão nova para ir à campanha.');
+                        const ok = await run(() => post(`/video-factory/productions/${current.id}/use-in-ad`, { creative_id: adPick }), 'Vídeo colocado no anúncio. Aprove a versão nova para ir à campanha.');
+                        if (!ok) return;
                         setAdPick('');
                         onAdChanged?.();
                       }}>

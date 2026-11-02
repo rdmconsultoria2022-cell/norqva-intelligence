@@ -163,4 +163,33 @@ describe('NORQVA-0160 — painel de vídeo com apresentadora', () => {
     release(prod());
     await screen.findByTestId('video-production');
   });
+
+  it('anúncio com o vídeo aprovado: administrador adiciona à campanha na Meta (pausado)', async () => {
+    const ads = [{ id: 'ad1-v2', human_id: 'GEN-1-A1-V2', headline: 'Título', format: 'VIDEO', approval_status: 'APPROVED' }];
+    const ready = { ...prod({ status: 'pronto', creative_id: 'ad1-v2' }, { status: 'pronto', video_final: 'https://motor.test/v.mp4' }) };
+    const onAdChanged = vi.fn();
+    const { apiFetch, showSuccess } = setup((url, o) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return ready;
+      if (url === `/generated-pages/${pageId}/campaign/video-ads` && o?.method === 'POST') return { ad_id: '123', ad_name: 'GEN-1-A1-V2' };
+      throw new Error('inesperado ' + url);
+    }, { ads, onAdChanged });
+    fireEvent.click(await screen.findByTestId('video-add-to-campaign'));
+    await waitFor(() => expect(showSuccess).toHaveBeenCalledWith(expect.stringMatching(/PAUSADO/)));
+    expect(onAdChanged).toHaveBeenCalled();
+    expect(JSON.parse(String(apiFetch.mock.calls.find(c => String(c[0]).endsWith('/video-ads'))![1]!.body))).toEqual({ creative_id: 'ad1-v2' });
+  });
+
+  it('equipe de criativos não vê o botão de adicionar à campanha', async () => {
+    const ads = [{ id: 'ad1-v2', human_id: 'GEN-1-A1-V2', format: 'VIDEO', approval_status: 'APPROVED' }];
+    setup((url) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return prod({ status: 'pronto', creative_id: 'ad1-v2' }, { status: 'pronto', video_final: 'https://motor.test/v.mp4' });
+      throw new Error('inesperado ' + url);
+    }, { ads, isAdmin: false });
+    await screen.findByTestId('video-in-ad');
+    expect(screen.queryByTestId('video-add-to-campaign')).toBeNull();
+  });
 });

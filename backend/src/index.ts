@@ -141,7 +141,7 @@ import { listAiOpportunities, createAiOpportunity, dispatchAiOpportunity, decide
 import { getMetaControlStatus, getMetaLiveAudit, setMetaEntityStatus, setMetaEntityDailyBudget, setMetaEntityName, setMetaAdSetEndTime } from './controllers/metaControlController';
 import { getDecisionEvents } from './controllers/decisionEventsController';
 import { purgeDecisionEventPii } from './db/decisionEvents';
-import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan } from './controllers/launchPlanController';
+import { listLaunchPlans, getLaunchPlan, createLaunchPlan, createLaunchPlanOnMeta, answerLaunchPlan, addGeneratedVideoAd } from './controllers/launchPlanController';
 import { createOrchestrationSession, getOrchestrationSessionById } from './controllers/orchestrationController';
 import { MetaSchedulerService } from './services/meta/metaSchedulerService';
 
@@ -718,6 +718,8 @@ app.post('/api/video-factory/productions/:id/use-in-ad', requireRole(['ADMIN', '
 // NORQVA-0117 (D-0117): campanha PAUSADA a partir da página gerada (só ADMIN; ativar continua pelo Sim do plano)
 app.get('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, getGeneratedCampaign);
 app.post('/api/generated-pages/:id/campaign', requireRole(['ADMIN']), referencesFlag, postGeneratedCampaign);
+// NORQVA-0160: anúncio de vídeo PAUSADO numa campanha da página que já está na Meta (só ADMIN)
+app.post('/api/generated-pages/:id/campaign/video-ads', requireRole(['ADMIN']), referencesFlag, addGeneratedVideoAd);
 app.get('/api/automation/adjustments/:id', automationGetAdjustment);
 app.post('/api/automation/adjustments/:id/status', automationReportAdjustment);
 app.post('/api/automation/adjustments/:id/version', automationDeliverAdjustment);
