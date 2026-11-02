@@ -455,7 +455,11 @@ export const VideoPresenterPanel: React.FC<{
                             setBusy(true);
                             try {
                               const out = await post(`/generated-pages/${pageId}/campaign/video-ads`, { creative_id: attached.id });
-                              showSuccess(`Anúncio ${out?.ad_name || attached.human_id} criado PAUSADO na campanha. Para rodar, ative em Campanhas.`);
+                              showSuccess(
+                                out?.activates_with_yes
+                                  ? `Anúncio ${out?.ad_name || attached.human_id} criado PAUSADO na campanha. Quando você der o Sim da campanha, ele é ativado junto com os outros.`
+                                  : `Anúncio ${out?.ad_name || attached.human_id} criado PAUSADO na campanha. Para rodar, ative-o em Campanhas.`
+                              );
                               onAdChanged?.();
                             } catch (e: any) {
                               showError(e?.message || 'Não foi possível adicionar à campanha.');
@@ -465,7 +469,9 @@ export const VideoPresenterPanel: React.FC<{
                           }}>
                           Adicionar à campanha na Meta (pausado)
                         </button>
-                        <span className="text-nq-aux text-nq-muted">Não gasta nada: o anúncio nasce pausado. Campanha ainda não criada? Use a seção Campanha (passo 6).</span>
+                        <span className="text-nq-aux text-nq-muted">
+                          O anúncio nasce pausado. Se a campanha ainda espera o seu Sim, o Sim ativa este anúncio junto com os outros. Campanha ainda não criada? Use a seção Campanha (passo 6).
+                        </span>
                       </div>
                     )}
                   </div>

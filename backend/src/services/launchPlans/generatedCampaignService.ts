@@ -8,6 +8,7 @@
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
+import { isDbInMemory } from '../../db/db';
 import { LaunchPlanError, validateLaunchPlanInput, normalizeMetaIds, serializeLaunchPlan, generatedSlugFromUrl, BR_STATES, ADVANTAGE_MAX_AGE_MIN, validateEndDate } from './launchPlanService';
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, META_MIN_DAILY_BUDGET_BRL, getMaxDailyBudgetBRL, getGeneratedPageHosts } from '../meta/metaMutatingClient';
 import { checkGeneratedAd } from '../creative/creativeFactoryService';
@@ -659,21 +660,45 @@ export class GeneratedCampaignService {
     const guarded = pausedOnlyClient(client);
     const actor = user.id && UUID_RE.test(user.id) ? user.id : null;
 
-    // um de cada vez por plano (dois cliques não criam dois anúncios)
-    const lock = await this.pool.connect();
+    // um de cada vez por plano (dois cliques não criam dois anúncios); no pg-mem dos testes não há advisory lock
+    const lock = isDbInMemory() ? null : await this.pool.connect();
     const lockKey = `norqva-add-video-ad:${plan.id}`;
+    let unlockFailed = false;
     try {
-      const got = await lock.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
-      if (!got.rows[0]?.ok) throw new LaunchPlanError(409, 'Já existe um anúncio sendo adicionado a esta campanha. Espere terminar.');
+      if (lock) {
+        const got = await lock.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+        if (!got.rows[0]?.ok) throw new LaunchPlanError(409, 'Já existe um anúncio sendo adicionado a esta campanha. Espere terminar.');
+      }
       try {
-        // relê os IDs (outra execução pode ter avançado)
-        const fresh = (await this.pool.query('SELECT spec, meta_ids FROM launch_plans WHERE id = $1', [plan.id])).rows[0];
+        // relê o plano dentro da trava (outra execução pode ter avançado ou a situação mudado)
+        const fresh = (await this.pool.query('SELECT spec, meta_ids, status FROM launch_plans WHERE id = $1', [plan.id])).rows[0];
+        if (!fresh || ['DRAFT', 'FAILED', 'REJECTED', 'CREATING'].includes(String(fresh.status))) {
+          throw new LaunchPlanError(409, 'A situação da campanha mudou. Recarregue a tela.');
+        }
         const freshSpec = parseJson(fresh.spec, {});
         if ((freshSpec.ads || []).some((a: any) => a.name === key)) throw new LaunchPlanError(409, `O anúncio ${c.human_id} já está nesta campanha.`);
         const cur = normalizeMetaIds(fresh.meta_ids);
-        const save = async () => {
-          await this.pool.query('UPDATE launch_plans SET meta_ids = $2, updated_at = NOW() WHERE id = $1', [plan.id, JSON.stringify(cur)]);
+        // grava só as chaves deste anúncio, relendo o plano na hora (orçamento, troca de peça etc. de outras
+        // telas no meio do processamento do vídeo não são desfeitos)
+        const merge = async (appendAd: boolean) => {
+          const tx = await this.pool.connect();
+          try {
+            await tx.query('BEGIN');
+            const row = (await tx.query('SELECT spec, meta_ids FROM launch_plans WHERE id = $1 FOR UPDATE', [plan.id])).rows[0];
+            const ids2 = normalizeMetaIds(row.meta_ids);
+            for (const kind of ['videos', 'creatives', 'ads'] as const) if (cur[kind][key]) ids2[kind][key] = cur[kind][key];
+            const spec2 = parseJson(row.spec, {});
+            if (appendAd && !(spec2.ads || []).some((a: any) => a.name === key)) spec2.ads = [...(spec2.ads || []), ad];
+            await tx.query('UPDATE launch_plans SET spec = $2, meta_ids = $3, updated_at = NOW() WHERE id = $1', [plan.id, JSON.stringify(spec2), JSON.stringify(ids2)]);
+            await tx.query('COMMIT');
+          } catch (e) {
+            await tx.query('ROLLBACK').catch(() => {});
+            throw e;
+          } finally {
+            tx.release();
+          }
         };
+        const save = () => merge(false);
         await writeAuditLog(this.pool, actor, 'GENERATED_CAMPAIGN_VIDEO_AD_STARTED', `Campanha ${plan.code}: adicionando o anúncio de vídeo ${key} (PAUSADO).`, null, null, false, false);
         if (!cur.videos[key]) {
           const v = await guarded.uploadVideoFromUrl(this.pool, { fileUrl: ad.video_url, name: `${plan.code}_${key}` }, ctx);
@@ -709,8 +734,7 @@ export class GeneratedCampaignService {
           });
         }
         // só agora o anúncio entra no plano (todas as rotinas de pausa/ativação passam a enxergá-lo)
-        const nextSpec = { ...freshSpec, ads: [...(freshSpec.ads || []), ad] };
-        await this.pool.query('UPDATE launch_plans SET spec = $2, meta_ids = $3, updated_at = NOW() WHERE id = $1', [plan.id, JSON.stringify(nextSpec), JSON.stringify(cur)]);
+        await merge(true);
         await this.pool.query(
           `INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method, linked_by) VALUES ($1, $2, 'API_PUBLISH', $3) ON CONFLICT (creative_id, meta_ad_id) DO NOTHING`,
           [c.id, cur.ads[key], actor]
@@ -720,12 +744,20 @@ export class GeneratedCampaignService {
           `Campanha ${plan.code}: anúncio de vídeo ${key} criado PAUSADO na Meta (${cur.ads[key]}). Ativar continua com o dono.`,
           null, JSON.stringify({ plan_id: plan.id, ad: cur.ads[key], video: cur.videos[key] }), false, true
         );
-        return { plan: serializeLaunchPlan((await this.pool.query('SELECT * FROM launch_plans WHERE id = $1', [plan.id])).rows[0]), ad_id: cur.ads[key], ad_name: key };
+        const after = (await this.pool.query('SELECT * FROM launch_plans WHERE id = $1', [plan.id])).rows[0];
+        // NORQVA-0160: o "Sim" do plano ativa todos os anúncios dele, inclusive este (aviso na tela)
+        const awaitingYes = ['CREATED_PAUSED', 'AWAITING_OPERATOR', 'APPROVED'].includes(String(after?.status));
+        return { plan: serializeLaunchPlan(after), ad_id: cur.ads[key], ad_name: key, activates_with_yes: awaitingYes };
       } finally {
-        await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => {});
+        if (lock) {
+          await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => {
+            unlockFailed = true;
+          });
+        }
       }
     } finally {
-      lock.release();
+      // conexão que não soltou a trava não volta para o pool (descartada)
+      lock?.release(unlockFailed ? true : undefined);
     }
   }
 
