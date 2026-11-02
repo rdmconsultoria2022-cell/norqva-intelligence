@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { MetaMutatingClient } from '../services/meta/metaMutatingClient';
 import { LaunchPlanService, LaunchPlanError } from '../services/launchPlans/launchPlanService';
 import { assertAdsReadyForMeta } from '../services/launchPlans/campaignEditorService';
-import { pausedOnlyClient, linkGeneratedPlanAds } from '../services/launchPlans/generatedCampaignService';
+import { pausedOnlyClient, linkGeneratedPlanAds, GeneratedCampaignService } from '../services/launchPlans/generatedCampaignService';
 import { translateMetaControlError } from './metaControlController';
 import { beginDecision, decisionContextFromRequest, DecisionAuditError, DecisionHandle, metaIdsOfPlan } from '../db/decisionEvents';
 
@@ -125,6 +125,36 @@ export async function createPlanOnMetaAudited(req: AuthenticatedRequest, id: str
     const after = await planRef(pool, id);
     await decision.finish(r.status >= 500 ? 'FAILED' : 'REJECTED', { metaIds: after.metaIds, result: { http_status: r.status }, error: (err as any)?.message || r.error });
     return { status: r.status, body: { error: r.error } };
+  }
+}
+
+/**
+ * NORQVA-0160 (etapa C, parte 2): anúncio de vídeo PAUSADO numa campanha de página gerada que já está na Meta.
+ * Só ADMIN. Registro de decisão antes de executar (H1), como na criação do plano.
+ */
+export async function addGeneratedVideoAd(req: AuthenticatedRequest, res: Response) {
+  const pool: Pool = req.app.get('db');
+  const pageId = String(req.params.id);
+  const gsvc = new GeneratedCampaignService(pool);
+  const plan = await gsvc.planForPage(pageId).catch(() => null);
+  let decision: DecisionHandle;
+  try {
+    decision = await beginDecision(pool, decisionContextFromRequest(req), {
+      action: 'GENERATED_CAMPAIGN_ADD_VIDEO_AD', decision: 'CREATE_PAUSED',
+      ...(plan ? await planRef(pool, plan.id) : { planId: null, planCode: null, metaIds: [] })
+    });
+  } catch (err) {
+    if (err instanceof DecisionAuditError) return AUDIT_UNAVAILABLE(res, err);
+    return res.status(500).json({ error: 'Falha ao registrar a decisão. Nada foi executado.' });
+  }
+  try {
+    const out = await gsvc.addVideoAd(pageId, req.body?.creative_id, userOf(req), clientFactory());
+    await decision.finish('EXECUTED', { metaIds: metaIdsOfPlan(out.plan?.meta_ids), result: { ad_id: out.ad_id, ad_name: out.ad_name } });
+    return res.status(200).json(out);
+  } catch (err) {
+    const r = errorResponse(err, 'add video ad');
+    await decision.finish(r.status >= 500 ? 'FAILED' : 'REJECTED', { result: { http_status: r.status }, error: (err as any)?.message || r.error });
+    return res.status(r.status).json({ error: r.error });
   }
 }
 

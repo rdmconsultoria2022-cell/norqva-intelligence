@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
-import { loadFacts, ProductFacts, GenerationError } from './generationService';
+import { loadFacts, ProductFacts, GenerationError, GenerationService } from './generationService';
+import { CreativeFactoryService, CreativeFactoryError } from './creativeFactoryService';
+import { isFactoryVideoUrl } from '../launchPlans/generatedCampaignService';
 import { findPriceInText } from './priceInCopy';
 
 // NORQVA-0160: vídeo com apresentadora fictícia, feito pela Fábrica de Criativos (o "motor", serviço separado no Render).
@@ -98,6 +100,15 @@ export async function motorCall(method: 'GET' | 'POST' | 'PUT', path: string, bo
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const samePath = (a: unknown, b: unknown) => {
+  try {
+    const x = new URL(String(a || '')), y = new URL(String(b || ''));
+    return x.origin === y.origin && x.pathname === y.pathname;
+  } catch {
+    return false;
+  }
+};
 const TEMPLATE_RE = /^[a-z0-9_]{1,60}$/;
 const FORMATS = ['9:16', '4:5', '1:1'];
 
@@ -338,6 +349,47 @@ export class VideoFactoryService {
     const motor = await motorCall('POST', `/cenas/${sid}/escolher`, { tentativa_id: tid }, 30000);
     await writeAuditLog(this.pool, actor, 'VIDEO_TAKE_CHOSEN', `Cena ${sid}: tomada ${tid} escolhida.`);
     return this.view(row, motor);
+  }
+
+  /**
+   * Etapa C: põe o vídeo final num anúncio da página gerada. O anúncio vira uma versão nova (mesmo texto, formato
+   * VIDEO, arquivo = link de longa duração do motor) e precisa ser aprovado de novo antes de ir para a campanha.
+   */
+  async useInAd(id: string, creativeId: unknown, actor: string | null) {
+    const row = await this.row(id);
+    if (!row.generated_page_id) throw new GenerationError(409, 'Este vídeo não está ligado a uma página da Fábrica.');
+    const motor = await motorCall('GET', `/producoes/${row.motor_production_id}`, undefined, 30000);
+    const link = String(motor?.video_final_anuncio || '');
+    if (motor?.status !== 'pronto' || !link) throw new GenerationError(409, 'Monte o vídeo antes de colocá-lo num anúncio.');
+    if (!isFactoryVideoUrl(link)) throw new GenerationError(502, 'O link do vídeo não veio da Fábrica de vídeo configurada.');
+    const issues = priceIssues(motor);
+    if (issues.length) throw new GenerationError(400, `Anúncio não fala preço (D-0053). Corrija a cena ${issues[0].order}.`);
+    const cid = String(creativeId || '');
+    const ads = await new GenerationService(this.pool).ads(String(row.generated_page_id));
+    const ad = ads.find((a: any) => a.id === cid);
+    if (!ad) throw new GenerationError(404, 'Anúncio não encontrado nesta página.');
+    // o motor assina um link novo a cada leitura: compara o arquivo (endereço sem a assinatura)
+    if (samePath(ad.file_url, link)) throw new GenerationError(409, 'Este anúncio já está com este vídeo.');
+    let out: any;
+    try {
+      out = await new CreativeFactoryService().reviseCreative(
+        this.pool,
+        cid,
+        { file_url: link },
+        actor,
+        false,
+        { forceNewVersion: true, format: 'VIDEO', copyCheck: ad.copy_check ?? undefined }
+      );
+    } catch (e: any) {
+      if (e instanceof CreativeFactoryError) throw new GenerationError(e.status, e.message);
+      throw e;
+    }
+    const newId = out?.creative?.id || cid;
+    await this.pool.query('UPDATE video_productions SET creative_id = $2, updated_at = NOW() WHERE id = $1', [row.id, newId]);
+    await writeAuditLog(this.pool, actor, 'VIDEO_USED_IN_AD',
+      `Vídeo da produção ${row.motor_production_id} colocado no anúncio ${ad.human_id} (versão nova ${out?.creative?.human_id || ''}, aprovar de novo).`,
+      ad.human_id, out?.creative?.human_id || null);
+    return { ...(await this.view(await this.row(id), motor)), ad: out?.creative || null };
   }
 
   async assemble(id: string, format: unknown, actor: string | null) {

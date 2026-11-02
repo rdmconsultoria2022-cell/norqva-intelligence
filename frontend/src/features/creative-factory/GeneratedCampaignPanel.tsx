@@ -392,7 +392,7 @@ export function PublishOptions({
           {picked && picked.length === 0 && <p className="text-nq-caption text-nq-critical-text">Escolha pelo menos um anúncio.</p>}
         </fieldset>
       )}
-      <p className="text-nq-caption text-nq-subtle">Pixel oficial e otimização para Compra. Anúncios de imagem com as imagens da página ({data?.images ?? 0}).</p>
+      <p className="text-nq-caption text-nq-subtle">Pixel oficial e otimização para Compra. Anúncios de imagem com as imagens da página ({data?.images ?? 0}); anúncio com o vídeo da apresentadora vai como anúncio de vídeo.</p>
     </div>
   );
 }

@@ -115,4 +115,81 @@ describe('NORQVA-0160 — painel de vídeo com apresentadora', () => {
     await waitFor(() => expect(screen.getByTestId('video-status').textContent).toMatch(/revisar/));
     expect(gets).toBeGreaterThanOrEqual(3);
   });
+
+  it('Fábrica fora do ar: aviso "indisponível" com Tentar de novo (não some)', async () => {
+    let fail = true;
+    setup((url) => {
+      if (fail) throw new Error('A Fábrica de vídeo não respondeu. Tente de novo em alguns minutos.');
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [];
+      throw new Error('inesperado ' + url);
+    });
+    expect((await screen.findByTestId('video-unavailable')).textContent).toMatch(/não respondeu/);
+    fail = false;
+    fireEvent.click(screen.getByTestId('video-retry'));
+    await screen.findByTestId('video-create');
+  });
+
+  it('vídeo pronto: escolher o anúncio e colocar o vídeo nele', async () => {
+    const ads = [{ id: 'ad1', human_id: 'GEN-1-A1', headline: 'Título 1', format: 'IMAGE' }];
+    const onAdChanged = vi.fn();
+    const ready = prod({ status: 'pronto' }, { status: 'pronto', video_final: 'https://motor.test/v.mp4' });
+    const { apiFetch } = setup((url, o) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return ready;
+      if (url.endsWith('/use-in-ad') && o?.method === 'POST') return { ...ready, creative_id: 'ad1-v2' };
+      throw new Error('inesperado ' + url);
+    }, { ads, onAdChanged });
+    await screen.findByTestId('video-use-in-ad');
+    expect((screen.getByTestId('video-use-in-ad-btn') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Anúncio \(o texto continua/), { target: { value: 'ad1' } });
+    fireEvent.click(screen.getByTestId('video-use-in-ad-btn'));
+    await waitFor(() => expect(onAdChanged).toHaveBeenCalled());
+    const call = apiFetch.mock.calls.find(c => String(c[0]).endsWith('/use-in-ad'));
+    expect(JSON.parse(String(call![1]!.body))).toEqual({ creative_id: 'ad1' });
+  });
+
+  it('enquanto carrega o vídeo existente, não mostra o formulário de vídeo novo', async () => {
+    let release: (v: any) => void = () => {};
+    setup((url) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return new Promise(r => { release = r; });
+      throw new Error('inesperado ' + url);
+    });
+    await screen.findByTestId('video-loading');
+    expect(screen.queryByTestId('video-create')).toBeNull();
+    release(prod());
+    await screen.findByTestId('video-production');
+  });
+
+  it('anúncio com o vídeo aprovado: administrador adiciona à campanha na Meta (pausado)', async () => {
+    const ads = [{ id: 'ad1-v2', human_id: 'GEN-1-A1-V2', headline: 'Título', format: 'VIDEO', approval_status: 'APPROVED' }];
+    const ready = { ...prod({ status: 'pronto', creative_id: 'ad1-v2' }, { status: 'pronto', video_final: 'https://motor.test/v.mp4' }) };
+    const onAdChanged = vi.fn();
+    const { apiFetch, showSuccess } = setup((url, o) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return ready;
+      if (url === `/generated-pages/${pageId}/campaign/video-ads` && o?.method === 'POST') return { ad_id: '123', ad_name: 'GEN-1-A1-V2' };
+      throw new Error('inesperado ' + url);
+    }, { ads, onAdChanged });
+    fireEvent.click(await screen.findByTestId('video-add-to-campaign'));
+    await waitFor(() => expect(showSuccess).toHaveBeenCalledWith(expect.stringMatching(/PAUSADO/)));
+    expect(onAdChanged).toHaveBeenCalled();
+    expect(JSON.parse(String(apiFetch.mock.calls.find(c => String(c[0]).endsWith('/video-ads'))![1]!.body))).toEqual({ creative_id: 'ad1-v2' });
+  });
+
+  it('equipe de criativos não vê o botão de adicionar à campanha', async () => {
+    const ads = [{ id: 'ad1-v2', human_id: 'GEN-1-A1-V2', format: 'VIDEO', approval_status: 'APPROVED' }];
+    setup((url) => {
+      if (url === '/video-factory/catalog') return catalog;
+      if (url.startsWith('/video-factory/productions?')) return [{ id: 'v1' }];
+      if (url === '/video-factory/productions/v1') return prod({ status: 'pronto', creative_id: 'ad1-v2' }, { status: 'pronto', video_final: 'https://motor.test/v.mp4' });
+      throw new Error('inesperado ' + url);
+    }, { ads, isAdmin: false });
+    await screen.findByTestId('video-in-ad');
+    expect(screen.queryByTestId('video-add-to-campaign')).toBeNull();
+  });
 });

@@ -8,6 +8,7 @@
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { writeAuditLog } from '../../db/audit';
+import { isDbInMemory } from '../../db/db';
 import { LaunchPlanError, validateLaunchPlanInput, normalizeMetaIds, serializeLaunchPlan, generatedSlugFromUrl, BR_STATES, ADVANTAGE_MAX_AGE_MIN, validateEndDate } from './launchPlanService';
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, META_MIN_DAILY_BUDGET_BRL, getMaxDailyBudgetBRL, getGeneratedPageHosts } from '../meta/metaMutatingClient';
 import { checkGeneratedAd } from '../creative/creativeFactoryService';
@@ -31,10 +32,11 @@ const REBUILDABLE = ['DRAFT', 'FAILED', 'REJECTED'];
 // ---------------------------------------------------------------------------------------------
 
 const STATUS_KEYS = new Set(['status', 'configured_status', 'effective_status']);
-const ALLOWED_POST = /^\/act_\d+\/(campaigns|adsets|ads|adcreatives|adimages)$/;
+// NORQVA-0160: advideos = envio do vídeo da Fábrica (anúncio de vídeo); nada de situação no payload
+const ALLOWED_POST = /^\/act_\d+\/(campaigns|adsets|ads|adcreatives|adimages|advideos)$/;
 
 /**
- * Lança se o POST não for de criação na conta (lista fechada: campanhas, conjuntos, anúncios, peças, imagens),
+ * Lança se o POST não for de criação na conta (lista fechada: campanhas, conjuntos, anúncios, peças, imagens, vídeos),
  * se levar qualquer situação diferente de PAUSED ou se criar campanha/conjunto/anúncio sem PAUSED explícito.
  */
 export function assertOnlyPausedPayload(endpoint: string, payload: Record<string, any>): void {
@@ -132,10 +134,10 @@ const parseJson = (v: any, fb: any) => {
 
 const isMutationEnabled = () => process.env.META_MUTATION_ENABLED === 'true';
 
-/** Algo do plano já existe na Meta? (hash de imagem não conta: é só o arquivo enviado) */
+/** Algo do plano já existe na Meta? (hash de imagem e vídeo enviado não contam: são só arquivos) */
 export function hasMetaObjects(metaIds: unknown): boolean {
   const ids = normalizeMetaIds(metaIds);
-  return [ids.campaign, ids.adsets, ids.ads, ids.creatives, ids.videos].some(m => Object.keys(m).length > 0);
+  return [ids.campaign, ids.adsets, ids.ads, ids.creatives].some(m => Object.keys(m).length > 0);
 }
 
 export const isRebuildable = (plan: any) => !!plan && REBUILDABLE.includes(String(plan.status)) && !hasMetaObjects(plan.meta_ids);
@@ -197,6 +199,26 @@ export async function adBlockReason(pool: Pool, c: any, opts: { persist?: boolea
 
 const headlineOf = (c: any) => String(c.headline || c.hook || '').trim().slice(0, 255);
 
+/**
+ * NORQVA-0160: link de vídeo final da Fábrica de vídeo (mesmo host de FABRICA_VIDEO_URL, caminho assinado
+ * /publico/producoes/...). Só esse vira anúncio de vídeo: o arquivo é versionado e assinado, então o que foi
+ * aprovado é o que a Meta baixa (link de outro site poderia mudar o vídeo depois da aprovação).
+ */
+export function isFactoryVideoUrl(raw: unknown): boolean {
+  const base = String(process.env.FABRICA_VIDEO_URL || '').trim();
+  if (!base) return false;
+  try {
+    const u = new URL(String(raw || '').trim());
+    const b = new URL(base);
+    return u.protocol === 'https:' && u.host === b.host && u.pathname.startsWith('/publico/producoes/') && !u.pathname.includes('..');
+  } catch {
+    return false;
+  }
+}
+
+/** NORQVA-0160: criativo de vídeo com o vídeo da Fábrica de vídeo (os outros continuam como anúncio de imagem). */
+export const isVideoAd = (c: any) => String(c?.format || '') === 'VIDEO' && isFactoryVideoUrl(c?.file_url);
+
 async function rootLinked(pool: Pool, c: any, pageId: string) {
   if (!c?.root_creative_id) return false;
   const r = (await pool.query('SELECT generated_page_id FROM creatives WHERE id = $1', [c.root_creative_id])).rows[0];
@@ -225,11 +247,16 @@ export async function assertGeneratedPlanReady(pool: Pool, planId: string): Prom
   if (new Set(ads.map(a => String(a.destination_url))).size > 1) throw new LaunchPlanError(409, `Os anúncios levam a destinos diferentes. ${REBUILD_HINT}`);
   for (const ad of ads) {
     const label = `Anúncio ${ad.name}`;
-    if (!ad.image_url) throw new LaunchPlanError(409, `${label}: sem imagem.`);
+    if (!ad.image_url && !ad.video_url) throw new LaunchPlanError(409, `${label}: sem imagem nem vídeo.`);
     if (!okDest(String(ad.destination_url))) throw new LaunchPlanError(409, `${label}: o destino não é a página ${url} nem a da oferta ${offerUrl}.`);
     if (!ad.factory_creative || !UUID_RE.test(String(ad.factory_creative))) throw new LaunchPlanError(409, `${label}: sem o criativo de origem. ${REBUILD_HINT}`);
     const c = (await pool.query('SELECT * FROM creatives WHERE id = $1', [ad.factory_creative])).rows[0];
     if (!c || c.approval_status === 'SUPERSEDED') throw new LaunchPlanError(409, `${label}: o criativo mudou (versão nova). ${REBUILD_HINT}`);
+    // NORQVA-0160: anúncio de vídeo só com o vídeo aprovado no criativo (o mesmo link)
+    if (ad.video_url && (!isVideoAd(c) || String(ad.video_url) !== String(c.file_url).trim())) {
+      throw new LaunchPlanError(409, `${label}: o vídeo do anúncio mudou depois de montar a campanha. ${REBUILD_HINT}`);
+    }
+    if (ad.image_url && isVideoAd(c)) throw new LaunchPlanError(409, `${label}: o anúncio agora é de vídeo. ${REBUILD_HINT}`);
     const why = await adBlockReason(pool, c);
     if (why) throw new LaunchPlanError(409, `${label}: ${why}`);
     if (String(c.generated_page_id || '') !== String(page.id) && !(await rootLinked(pool, c, page.id))) {
@@ -440,9 +467,26 @@ export class GeneratedCampaignService {
     const ads = [];
     for (let i = 0; i < picked.length; i++) {
       const c = (await this.pool.query('SELECT * FROM creatives WHERE id = $1', [picked[i].id])).rows[0];
+      const key = String(c.utm_content_key || c.human_id);
+      // NORQVA-0160: anúncio com o vídeo da Fábrica vai como anúncio de vídeo (a Meta baixa pelo link)
+      if (isVideoAd(c)) {
+        ads.push({
+          name: key,
+          adset_name: adsetName,
+          video_url: String(c.file_url).trim(),
+          factory_creative: c.id,
+          thumbnail_url: null,
+          primary_text: String(c.primary_text || c.copy || '').trim(),
+          headline: headlineOf(c),
+          description: String(c.ad_description || '').trim().slice(0, 255) || undefined,
+          cta: GENERATED_CTA,
+          destination_url: destinationUrl,
+          url_tags: utmTags(code, key)
+        });
+        continue;
+      }
       const image = images.length ? images[i % images.length] : null;
       if (!image) throw new LaunchPlanError(409, `Anúncio ${c.human_id} sem imagem: a página não tem imagem na abertura nem no produto. Use as imagens do produto ou gere imagens novas.`);
-      const key = String(c.utm_content_key || c.human_id);
       ads.push({
         name: key,
         adset_name: adsetName,
@@ -471,7 +515,7 @@ export class GeneratedCampaignService {
       }],
       ads,
       pause_rules: ['Pausar anúncio com 2× o CPA de equilíbrio gasto sem venda.', 'Pausar tudo ao atingir o teto de gasto do plano.'],
-      hypothesis: `Página gerada ${page.human_id} (referência ${n.ref}) com ${ads.length} anúncio(s) de imagem.`
+      hypothesis: `Página gerada ${page.human_id} (referência ${n.ref}) com ${ads.length} anúncio(s) (${ads.filter((a: any) => a.video_url).length} de vídeo).`
     };
     const input = validateLaunchPlanInput(
       {
@@ -537,6 +581,183 @@ export class GeneratedCampaignService {
         throw new LaunchPlanError(409, `Já existe um plano com o código ${input.code}.`);
       }
       throw err;
+    }
+  }
+
+  /**
+   * NORQVA-0160 (etapa C, parte 2): anúncio de vídeo (aprovado, da Fábrica de vídeo) num plano desta página que JÁ
+   * está na Meta. Cria vídeo, peça e anúncio PAUSADO no primeiro conjunto do plano, pela mesma trava "só PAUSED".
+   * Não ativa nada: o anúncio fica pausado até alguém ativar (gasto continua com o dono). Retomável: cada ID é
+   * gravado na hora; o anúncio só entra no plano (spec) quando existe na Meta, para não quebrar pausas e ativação.
+   */
+  async addVideoAd(pageId: string, creativeId: unknown, user: { id: string | null; role: string }, client: MetaMutatingClient) {
+    if (user.role !== 'ADMIN') throw new LaunchPlanError(403, 'Somente ADMIN pode adicionar anúncio na Meta.');
+    if (!isMutationEnabled()) throw new LaunchPlanError(409, MUTATION_DISABLED_MESSAGE);
+    const page = await pageRow(this.pool, pageId);
+    const plan = await this.planForPage(page.id);
+    if (!plan) throw new LaunchPlanError(404, 'Esta página ainda não tem campanha.');
+    if (['DRAFT', 'FAILED', 'REJECTED', 'CREATING'].includes(String(plan.status)) || !hasMetaObjects(plan.meta_ids)) {
+      throw new LaunchPlanError(409, 'A campanha ainda não está na Meta: monte de novo com o anúncio de vídeo (seção Campanha).');
+    }
+    const spec = parseJson(plan.spec, {});
+    const ids = normalizeMetaIds(plan.meta_ids);
+    const adset = Array.isArray(spec.adsets) ? spec.adsets[0] : null;
+    const campaignId = ids.campaign[String(spec?.campaign?.name || '')];
+    const adsetId = adset ? ids.adsets[adset.name] : null;
+    if (!campaignId || !adsetId) throw new LaunchPlanError(409, 'A campanha não tem o conjunto criado na Meta.');
+    const cid = String(creativeId || '');
+    if (!UUID_RE.test(cid)) throw new LaunchPlanError(404, 'Anúncio não encontrado.');
+    const c = (await this.pool.query('SELECT * FROM creatives WHERE id = $1', [cid])).rows[0];
+    if (!c || (String(c.generated_page_id || '') !== String(page.id) && !(await rootLinked(this.pool, c, page.id)))) {
+      throw new LaunchPlanError(404, 'Anúncio não encontrado nesta página.');
+    }
+    if (!isVideoAd(c)) throw new LaunchPlanError(409, 'Este anúncio não é de vídeo.');
+    const why = await adBlockReason(this.pool, c, { persist: true });
+    if (why) throw new LaunchPlanError(409, `Anúncio ${c.human_id}: ${why}`);
+    const ads: any[] = Array.isArray(spec.ads) ? spec.ads : [];
+    const key = String(c.utm_content_key || c.human_id);
+    if (ads.some(a => a.name === key || a.factory_creative === c.id)) {
+      throw new LaunchPlanError(409, `O anúncio ${c.human_id} já está nesta campanha.`);
+    }
+    if (ads.length >= 20) throw new LaunchPlanError(409, 'A campanha já tem 20 anúncios.');
+    const destination = String(ads[0]?.destination_url || pageUrl(page.slug));
+    const candidate = {
+      name: key,
+      adset_name: adset.name,
+      video_url: String(c.file_url).trim(),
+      factory_creative: c.id,
+      thumbnail_url: null,
+      primary_text: String(c.primary_text || c.copy || '').trim(),
+      headline: headlineOf(c),
+      description: String(c.ad_description || '').trim().slice(0, 255) || undefined,
+      cta: GENERATED_CTA,
+      destination_url: destination,
+      url_tags: utmTags(String(plan.code), key)
+    };
+    // validação de sempre (destino permitido, UTMs, CTA, textos) com o anúncio novo junto
+    const checked = validateLaunchPlanInput(
+      { code: plan.code, offer_human_id: plan.offer_human_id, max_spend_brl: plan.max_spend_brl, question_text: plan.question_text, spec: { ...spec, ads: [...ads, candidate] } },
+      { forCreation: true, allowGeneratedPage: true }
+    );
+    const ad = checked.spec.ads[checked.spec.ads.length - 1] as any;
+    const hits = findPriceInFields({ primary_text: ad.primary_text, headline: ad.headline, description: ad.description });
+    if (hits.length) throw new LaunchPlanError(409, priceErrorMessage(hits, `Anúncio ${key}`));
+
+    const brandAsset = async (type: 'FACEBOOK_PAGE' | 'INSTAGRAM') => {
+      if (!plan.brand_id) return null;
+      const r = await this.pool.query(
+        `SELECT external_id FROM brand_meta_assets WHERE brand_id = $1 AND asset_type = $2 AND external_id IS NOT NULL AND status IN ('LINKED', 'VERIFIED') LIMIT 1`,
+        [plan.brand_id, type]
+      );
+      return r.rows[0]?.external_id ? String(r.rows[0].external_id) : null;
+    };
+    const fbPage = spec.page_id || (await brandAsset('FACEBOOK_PAGE'));
+    const instagramId = spec.instagram_id || (await brandAsset('INSTAGRAM'));
+    if (!fbPage) throw new LaunchPlanError(400, 'O plano precisa da Página do Facebook.');
+
+    const ctx = { userId: user.id || 'unknown', userRole: user.role, isDemo: false } as any;
+    await client.assertFeatureFlagAndPreflight(ctx);
+    const guarded = pausedOnlyClient(client);
+    const actor = user.id && UUID_RE.test(user.id) ? user.id : null;
+
+    // um de cada vez por plano (dois cliques não criam dois anúncios); no pg-mem dos testes não há advisory lock
+    const lock = isDbInMemory() ? null : await this.pool.connect();
+    const lockKey = `norqva-add-video-ad:${plan.id}`;
+    let unlockFailed = false;
+    try {
+      if (lock) {
+        const got = await lock.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+        if (!got.rows[0]?.ok) throw new LaunchPlanError(409, 'Já existe um anúncio sendo adicionado a esta campanha. Espere terminar.');
+      }
+      try {
+        // relê o plano dentro da trava (outra execução pode ter avançado ou a situação mudado)
+        const fresh = (await this.pool.query('SELECT spec, meta_ids, status FROM launch_plans WHERE id = $1', [plan.id])).rows[0];
+        if (!fresh || ['DRAFT', 'FAILED', 'REJECTED', 'CREATING'].includes(String(fresh.status))) {
+          throw new LaunchPlanError(409, 'A situação da campanha mudou. Recarregue a tela.');
+        }
+        const freshSpec = parseJson(fresh.spec, {});
+        if ((freshSpec.ads || []).some((a: any) => a.name === key)) throw new LaunchPlanError(409, `O anúncio ${c.human_id} já está nesta campanha.`);
+        const cur = normalizeMetaIds(fresh.meta_ids);
+        // grava só as chaves deste anúncio, relendo o plano na hora (orçamento, troca de peça etc. de outras
+        // telas no meio do processamento do vídeo não são desfeitos)
+        const merge = async (appendAd: boolean) => {
+          const tx = await this.pool.connect();
+          try {
+            await tx.query('BEGIN');
+            const row = (await tx.query('SELECT spec, meta_ids FROM launch_plans WHERE id = $1 FOR UPDATE', [plan.id])).rows[0];
+            const ids2 = normalizeMetaIds(row.meta_ids);
+            for (const kind of ['videos', 'creatives', 'ads'] as const) if (cur[kind][key]) ids2[kind][key] = cur[kind][key];
+            const spec2 = parseJson(row.spec, {});
+            if (appendAd && !(spec2.ads || []).some((a: any) => a.name === key)) spec2.ads = [...(spec2.ads || []), ad];
+            await tx.query('UPDATE launch_plans SET spec = $2, meta_ids = $3, updated_at = NOW() WHERE id = $1', [plan.id, JSON.stringify(spec2), JSON.stringify(ids2)]);
+            await tx.query('COMMIT');
+          } catch (e) {
+            await tx.query('ROLLBACK').catch(() => {});
+            throw e;
+          } finally {
+            tx.release();
+          }
+        };
+        const save = () => merge(false);
+        await writeAuditLog(this.pool, actor, 'GENERATED_CAMPAIGN_VIDEO_AD_STARTED', `Campanha ${plan.code}: adicionando o anúncio de vídeo ${key} (PAUSADO).`, null, null, false, false);
+        if (!cur.videos[key]) {
+          const v = await guarded.uploadVideoFromUrl(this.pool, { fileUrl: ad.video_url, name: `${plan.code}_${key}` }, ctx);
+          cur.videos[key] = v.id;
+          await save();
+        }
+        if (!cur.creatives[key]) {
+          const ready = await guarded.waitForVideoReady(cur.videos[key]);
+          const piece = await guarded.createAdCreative(
+            this.pool,
+            {
+              name: `${key}_CREATIVE`,
+              title: ad.headline,
+              body: ad.primary_text,
+              destinationUrl: ad.destination_url,
+              callToAction: ad.cta,
+              videoId: cur.videos[key],
+              thumbnailUrl: ready.picture || undefined,
+              pageId: fbPage,
+              instagramUserId: instagramId || undefined,
+              urlTags: ad.url_tags,
+              description: ad.description || undefined
+            },
+            ctx
+          );
+          cur.creatives[key] = piece.externalId;
+          await save();
+        }
+        if (!cur.ads[key]) {
+          await guarded.createPausedAd(this.pool, { adsetId, creativeId: cur.creatives[key], name: key }, ctx, async (extId: string) => {
+            cur.ads[key] = extId;
+            await save();
+          });
+        }
+        // só agora o anúncio entra no plano (todas as rotinas de pausa/ativação passam a enxergá-lo)
+        await merge(true);
+        await this.pool.query(
+          `INSERT INTO creative_meta_ads (creative_id, meta_ad_id, link_method, linked_by) VALUES ($1, $2, 'API_PUBLISH', $3) ON CONFLICT (creative_id, meta_ad_id) DO NOTHING`,
+          [c.id, cur.ads[key], actor]
+        );
+        await writeAuditLog(
+          this.pool, actor, 'GENERATED_CAMPAIGN_VIDEO_AD_ADDED',
+          `Campanha ${plan.code}: anúncio de vídeo ${key} criado PAUSADO na Meta (${cur.ads[key]}). Ativar continua com o dono.`,
+          null, JSON.stringify({ plan_id: plan.id, ad: cur.ads[key], video: cur.videos[key] }), false, true
+        );
+        const after = (await this.pool.query('SELECT * FROM launch_plans WHERE id = $1', [plan.id])).rows[0];
+        // NORQVA-0160: o "Sim" do plano ativa todos os anúncios dele, inclusive este (aviso na tela)
+        const awaitingYes = ['CREATED_PAUSED', 'AWAITING_OPERATOR', 'APPROVED'].includes(String(after?.status));
+        return { plan: serializeLaunchPlan(after), ad_id: cur.ads[key], ad_name: key, activates_with_yes: awaitingYes };
+      } finally {
+        if (lock) {
+          await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => {
+            unlockFailed = true;
+          });
+        }
+      }
+    } finally {
+      // conexão que não soltou a trava não volta para o pool (descartada)
+      lock?.release(unlockFailed ? true : undefined);
     }
   }
 
