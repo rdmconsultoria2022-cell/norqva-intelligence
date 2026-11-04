@@ -56,6 +56,19 @@ export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
 export const shownStatus = (c: { status: string; activation_complete?: boolean }) =>
   c.status === 'APPROVED' && c.activation_complete ? 'ACTIVE' : c.status;
 
+/**
+ * NORQVA-0162: plano "Ativa" cuja campanha está parada na Meta aparece com a situação da Meta.
+ * Devolve null quando o rótulo do plano vale (outros estados, Meta ativa ou sem leitura da Meta).
+ */
+export const pausedOnMeta = (
+  c: { status: string; activation_complete?: boolean },
+  mc?: { status?: string | null; effective_status?: string | null } | null
+): { effective_status?: string | null; status?: string | null } | null => {
+  if (shownStatus(c) !== 'ACTIVE' || !mc) return null;
+  const configured = String(mc.status || '').toUpperCase();
+  return configured && configured !== 'ACTIVE' ? mc : null;
+};
+
 
 type Fields = Record<string, string>;
 
@@ -681,6 +694,7 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 const product = productOfPlan(c);
                 const name = c.spec?.campaign?.name || c.code;
                 const active = selectedId === c.id;
+                const stopped = pausedOnMeta(c, metaCampaigns.find((m: any) => String(m.meta_campaign_id) === planMetaId(c)));
                 return (
                   <button
                     key={c.id}
@@ -692,7 +706,13 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                       title: product || name,
                       caption: product ? name : null,
                       metaId: planMetaId(c),
-                      pill: <StatusPill tone={STATUS_TONE[shownStatus(c)] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[shownStatus(c)] || c.status}</StatusPill>
+                      pill: stopped ? (
+                        <StatusPill tone={metaTone(String(stopped.effective_status || stopped.status))}>
+                          {sentence(getMetaDeliveryStatus(stopped.effective_status, stopped.status).label)}
+                        </StatusPill>
+                      ) : (
+                        <StatusPill tone={STATUS_TONE[shownStatus(c)] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[shownStatus(c)] || c.status}</StatusPill>
+                      )
                     })}
                   </button>
                 );
@@ -758,7 +778,16 @@ export function CampaignsView({ currentUser, isDemoView, apiFetch, showError, sh
                 );
               })()}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <StatusPill tone={STATUS_TONE[shownStatus(campaign)] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[shownStatus(campaign)] || campaign.status}</StatusPill>
+                {(() => {
+                  const stopped = pausedOnMeta(campaign, metaCampaigns.find((m: any) => String(m.meta_campaign_id) === planMetaId(campaign)));
+                  return stopped ? (
+                    <StatusPill tone={metaTone(String(stopped.effective_status || stopped.status))}>
+                      {sentence(getMetaDeliveryStatus(stopped.effective_status, stopped.status).label)}
+                    </StatusPill>
+                  ) : (
+                    <StatusPill tone={STATUS_TONE[shownStatus(campaign)] || 'neutral'}>{CAMPAIGN_STATUS_LABEL[shownStatus(campaign)] || campaign.status}</StatusPill>
+                  );
+                })()}
                 <span className="text-[13px] text-nq-muted tabular-nums">{brl(campaign.daily_budget_brl)}/dia · teto {brl(campaign.max_spend_brl)}</span>
               </div>
               {/* NORQVA-0096: Pausar sempre à vista (só administrador; mesma confirmação de Resultados) */}
