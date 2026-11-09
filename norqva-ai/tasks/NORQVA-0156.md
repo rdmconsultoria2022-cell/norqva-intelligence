@@ -18,4 +18,4 @@ Subagente (30/10/2026): sem bloqueantes. Aplicado: recusa (409) de ajuste que di
 
 ## Execução
 
-(preencher)
+PR #205 mesclado em 30/10/2026 (CI verde; merge com o "Aprovado" do Ricardo às 14h55). Aplicado às 15h: mandato com capital R$ 5.000, teto R$ 500/dia, término 13/11 23h59; campanhas do mandato: TR-M01 (120250184304950097) e Escala 1 (120250265996360097, pausada, R$ 100/dia). Freio LIVRE. Ativação da Escala 1 agendada para 31/10 9h50.
