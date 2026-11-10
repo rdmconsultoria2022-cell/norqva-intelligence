@@ -840,7 +840,9 @@ export class LaunchPlanService {
               thumbnailUrl: ad.thumbnail_url || ready.picture || undefined,
               pageId,
               instagramUserId: instagramId || undefined,
-              urlTags: ad.url_tags
+              urlTags: ad.url_tags,
+              // NORQVA-0160: anúncio de vídeo da Fábrica leva a descrição como os de imagem
+              description: ad.description || undefined
             },
             ctx
           );

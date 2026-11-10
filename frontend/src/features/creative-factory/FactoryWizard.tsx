@@ -7,6 +7,7 @@ import { GeneratedCampaignPanel } from './GeneratedCampaignPanel';
 import { buildNorqvaCopy, copyText } from './factoryCopy';
 import { ReferenceScoreCard } from './ReferenceScoreCard';
 import { FactoryResults } from './FactoryResults';
+import { VideoPresenterPanel } from './VideoPresenterPanel';
 
 // NORQVA-0118 (contrato "Fábrica de Criativos"): uma aba só, Criativos → Fábrica, que leva da referência à
 // campanha PAUSADA em 6 passos. Junta o que já existia (Referências 0115, Geração 0116, campanha pausada 0117).
@@ -127,6 +128,8 @@ export const FactoryWizard: React.FC<{
   const [refs, setRefs] = useState<any[]>([]);
   const [pages, setPages] = useState<any[]>([]);
   const [pageData, setPageData] = useState<any>(null);
+  // NORQVA-0160: depois de pôr o vídeo num anúncio, a lista de anúncios da geração é recarregada
+  const [genKey, setGenKey] = useState(0);
   const [kie, setKie] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resultsKey, setResultsKey] = useState(0);
@@ -492,6 +495,7 @@ export const FactoryWizard: React.FC<{
             Confira e ajuste a página e os anúncios. Cada campo mostra a checagem (cópia, números, promessas, preço). Aprove os anúncios que vão para a campanha.
           </p>
           <GenerationView
+            key={genKey}
             apiFetch={apiFetch}
             pageId={run.pageId}
             isAdmin={isAdmin}
@@ -504,6 +508,21 @@ export const FactoryWizard: React.FC<{
             hideStatusActions
             onChanged={d => {
               withFiles(d).then(setPageData);
+            }}
+          />
+          <VideoPresenterPanel
+            apiFetch={apiFetch}
+            pageId={run.pageId}
+            productId={pageData?.page?.product_id}
+            offerId={pageData?.page?.offer_id}
+            isAdmin={isAdmin}
+            canEdit={canCreate}
+            showError={showError}
+            showSuccess={showSuccess}
+            ads={pageData?.ads || []}
+            onAdChanged={() => {
+              if (run.pageId) loadPage(run.pageId);
+              setGenKey(k => k + 1);
             }}
           />
           {nav({ next: { label: 'Continuar para a aprovação', onClick: () => setStep(5) } })}

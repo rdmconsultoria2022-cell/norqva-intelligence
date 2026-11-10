@@ -11,10 +11,10 @@ import { signSupabaseToken } from '../utils/token';
 import { MetaMutatingClient, OFFICIAL_NORQVA_PIXEL_ID, resetMetaPreflightCacheForTesting, isGeneratedPageUrl } from '../services/meta/metaMutatingClient';
 import { setLaunchPlanClientFactoryForTesting } from '../controllers/launchPlanController';
 import { validateLaunchPlanInput } from '../services/launchPlans/launchPlanService';
-import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageRefs, adImageRefs } from '../services/launchPlans/generatedCampaignService';
+import { assertOnlyPausedPayload, utmTags, pageUrl, pausedOnlyClient, pageImageRefs, adImageRefs, isFactoryVideoUrl } from '../services/launchPlans/generatedCampaignService';
 import { setImageStorageForTests, resolveImageUrl, freshSignedUrl, BORDADO_IMAGES } from '../services/creative/generatedImages';
 import { metaIdsOfPlan } from '../db/decisionEvents';
-import { computeContentHash } from '../services/creative/creativeFactoryService';
+import { computeContentHash, CreativeFactoryService } from '../services/creative/creativeFactoryService';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 
@@ -29,8 +29,29 @@ describe('NORQVA-0117 — travas e endereços (sem banco)', () => {
     expect(() => assertOnlyPausedPayload('/act_1/ads', { name: 'x', configured_status: 'ACTIVE', status: 'PAUSED' })).toThrow();
     // lista fechada: só criação na conta
     expect(() => assertOnlyPausedPayload('/120000000001', { status: 'PAUSED' })).toThrow(/fora da lista/);
-    expect(() => assertOnlyPausedPayload('/act_1/advideos', { file_url: 'https://x' })).toThrow(/fora da lista/);
+    expect(() => assertOnlyPausedPayload('/act_1/customaudiences', { name: 'x' })).toThrow(/fora da lista/);
+    // NORQVA-0160: envio de vídeo (anúncio de vídeo da Fábrica) é criação, mas nunca com situação diferente de PAUSED
+    expect(() => assertOnlyPausedPayload('/act_1/advideos', { file_url: 'https://x/v.mp4', name: 'v' })).not.toThrow();
+    expect(() => assertOnlyPausedPayload('/act_1/advideos', { file_url: 'https://x/v.mp4', status: 'ACTIVE' })).toThrow(/PAUSADO/);
     expect(() => assertOnlyPausedPayload('/act_1/campaigns/extra', { status: 'PAUSED' })).toThrow(/fora da lista/);
+  });
+
+  it('NORQVA-0160: só o link da Fábrica de vídeo configurada vale como vídeo de anúncio', () => {
+    const prev = process.env.FABRICA_VIDEO_URL;
+    try {
+      delete process.env.FABRICA_VIDEO_URL;
+      expect(isFactoryVideoUrl('https://fabrica.test/publico/producoes/1/a.mp4?e=1&s=a')).toBe(false);
+      process.env.FABRICA_VIDEO_URL = 'https://fabrica.test';
+      expect(isFactoryVideoUrl('https://fabrica.test/publico/producoes/1/a.mp4?e=1&s=a')).toBe(true);
+      expect(isFactoryVideoUrl('http://fabrica.test/publico/producoes/1/a.mp4')).toBe(false);
+      expect(isFactoryVideoUrl('https://outra.test/publico/producoes/1/a.mp4')).toBe(false);
+      expect(isFactoryVideoUrl('https://fabrica.test/publico/personas/a.jpg')).toBe(false);
+      expect(isFactoryVideoUrl('https://fabrica.test.evil.com/publico/producoes/1/a.mp4')).toBe(false);
+      expect(isFactoryVideoUrl('nada')).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.FABRICA_VIDEO_URL;
+      else process.env.FABRICA_VIDEO_URL = prev;
+    }
   });
 
   it('o cliente com a trava não manda nada ACTIVE; o cliente original (ativação pelo Sim) continua sem a trava', async () => {
@@ -203,6 +224,8 @@ function makeGraph(opts: { failOnFirst?: string } = {}) {
       return { data: keys[q] ? [{ key: keys[q], name: q, type: 'region', country_code: 'BR' }, { key: '9', name: `${q} (outro)`, type: 'region', country_code: 'BR' }] : [] };
     }
     if (endpoint === '/me') return { id: 'u1' };
+    // NORQVA-0160: vídeo enviado pela URL fica pronto na hora (com miniatura)
+    if (/^\/117\d+$/.test(endpoint)) return { status: { video_status: 'ready' }, picture: 'https://meta.test/thumb.jpg' };
     if (endpoint === '/me/permissions') return { data: [{ permission: 'ads_management', status: 'granted' }, { permission: 'ads_read', status: 'granted' }] };
     if (endpoint.startsWith('/act_')) return { id: endpoint.slice(1), account_status: 1 };
     if (endpoint === `/${OFFICIAL_NORQVA_PIXEL_ID}`) return { id: OFFICIAL_NORQVA_PIXEL_ID };
@@ -306,6 +329,7 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     process.env.CREATIVE_REFERENCES_ENABLED = 'true';
     process.env.META_MUTATION_ENABLED = 'true';
     process.env.META_AD_ACCOUNT_ID = ACT;
+    process.env.FABRICA_VIDEO_URL = 'https://fabrica.test';
     resetMetaPreflightCacheForTesting();
   });
 
@@ -402,6 +426,137 @@ describe.skipIf(isDbInMemory())('NORQVA-0117 — campanha pausada da página ger
     expect(again.body.existing).toBe(true);
     expect(again.body.plan.id).toBe(plan.id);
     expect(g.calls.length).toBe(before);
+  });
+
+  it('NORQVA-0160: anúncio com o vídeo da Fábrica vai como anúncio de vídeo PAUSADO (vídeo pela URL, miniatura da Meta, descrição)', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    const videoUrl = 'https://fabrica.test/publico/producoes/1/anuncio_v1_9x16.mp4?e=99999999999&s=abc';
+    const out: any = await new CreativeFactoryService().reviseCreative(pool, p.ads[0].id, { file_url: videoUrl }, null, false, { forceNewVersion: true, format: 'VIDEO' });
+    const vid = out.creative.id;
+    // versão nova precisa de aprovação: sem ela, só o outro anúncio vai
+    const ov = await get(`/api/generated-pages/${p.pageId}/campaign`);
+    expect(ov.body.ads.find((a: any) => a.id === vid).ready).toBe(false);
+    expect((await post(`/api/creative-factory/creatives/${vid}/review`, { decision: 'APPROVED' })).status).toBe(200);
+    const r = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30 });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const up = g.calls.filter(c => c.endpoint.endsWith('/advideos'));
+    expect(up).toHaveLength(1);
+    expect(up[0].payload.file_url).toBe(videoUrl);
+    expect(JSON.stringify(up[0].payload)).not.toMatch(/status/i);
+    const pieces = g.calls.filter(c => c.endpoint.endsWith('/adcreatives'));
+    const video = pieces.map(c => c.payload.object_story_spec.video_data).find(Boolean);
+    expect(video).toMatchObject({ image_url: 'https://meta.test/thumb.jpg', link_description: 'Livro digital de receitas' });
+    expect(video.call_to_action.value.link).toBe(`https://acesso.norqva.com.br/v/${p.slug}`);
+    // o outro anúncio continua de imagem
+    expect(pieces.some(c => c.payload.object_story_spec.link_data?.image_hash)).toBe(true);
+    for (const c of g.calls.filter(x => /\/(campaigns|adsets|ads)$/.test(x.endpoint))) expect(c.payload.status).toBe('PAUSED');
+    expect(JSON.stringify(g.calls)).not.toContain('ACTIVE');
+    expect(r.body.plan.spec.ads.find((a: any) => a.factory_creative === vid).video_url).toBe(videoUrl);
+  });
+
+  it('NORQVA-0160: adicionar vídeo — sem campanha na Meta ou com cadastro desligado recusa; falha no meio retoma sem reenviar o vídeo', async () => {
+    let g = makeGraph();
+    const p = await mkPage();
+    const videoUrl = 'https://fabrica.test/publico/producoes/3/anuncio_v1_9x16.mp4?e=99999999999&s=x';
+    const out: any = await new CreativeFactoryService().reviseCreative(pool, p.ads[1].id, { file_url: videoUrl }, null, false, { forceNewVersion: true, format: 'VIDEO' });
+    const vid = out.creative.id;
+    expect((await post(`/api/creative-factory/creatives/${vid}/review`, { decision: 'APPROVED' })).status).toBe(200);
+    // sem campanha ainda
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid })).status).toBe(404);
+    // só rascunho (cadastro desligado): ainda não está na Meta
+    process.env.META_MUTATION_ENABLED = 'false';
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30, creative_ids: [p.ads[0].id] })).status).toBe(200);
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid })).status).toBe(409);
+    process.env.META_MUTATION_ENABLED = 'true';
+    const r = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30, creative_ids: [p.ads[0].id] });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    // falha ao criar o anúncio (vídeo e peça já enviados)
+    g = makeGraph({ failOnFirst: '/ads' });
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid })).status).toBeGreaterThanOrEqual(400);
+    const mid = (await pool.query('SELECT spec, meta_ids FROM launch_plans WHERE generated_page_id = $1', [p.pageId])).rows[0];
+    expect(mid.spec.ads).toHaveLength(1); // ainda fora do plano
+    expect(Object.keys(mid.meta_ids.videos)).toHaveLength(1);
+    const ok = await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(g.calls.filter(c => c.endpoint.endsWith('/advideos'))).toHaveLength(1);
+    expect(g.calls.filter(c => c.endpoint.endsWith('/adcreatives'))).toHaveLength(1);
+    expect(ok.body.plan.spec.ads).toHaveLength(2);
+    // cadastro desligado depois: recusa sem chamar a Meta
+    process.env.META_MUTATION_ENABLED = 'false';
+    const n = g.calls.length;
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid })).status).toBe(409);
+    expect(g.calls.length).toBe(n);
+  });
+
+  it('NORQVA-0160: vídeo de outro site não vira anúncio de vídeo; plano com vídeo diferente do aprovado é barrado', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    // VIDEO com link de outro site: continua anúncio de imagem
+    const other: any = await new CreativeFactoryService().reviseCreative(pool, p.ads[0].id, { file_url: 'https://drive.example.com/v.mp4' }, null, false, { forceNewVersion: true, format: 'VIDEO' });
+    expect((await post(`/api/creative-factory/creatives/${other.creative.id}/review`, { decision: 'APPROVED' })).status).toBe(200);
+    process.env.META_MUTATION_ENABLED = 'false';
+    const d = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30 });
+    expect(d.status, JSON.stringify(d.body)).toBe(200);
+    const ad = d.body.plan.spec.ads.find((a: any) => a.factory_creative === other.creative.id);
+    expect(ad.image_url).toBeTruthy();
+    expect(ad.video_url || '').toBe('');
+    // troca o vídeo do anúncio de vídeo da Fábrica depois de montar: a conferência barra
+    const fab: any = await new CreativeFactoryService().reviseCreative(pool, p.ads[1].id, { file_url: 'https://fabrica.test/publico/producoes/9/anuncio_v1_9x16.mp4?e=1&s=a' }, null, false, { forceNewVersion: true, format: 'VIDEO' });
+    expect((await post(`/api/creative-factory/creatives/${fab.creative.id}/review`, { decision: 'APPROVED' })).status).toBe(200);
+    const d2 = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30 });
+    expect(d2.status, JSON.stringify(d2.body)).toBe(200);
+    const plan = d2.body.plan;
+    const spec = plan.spec;
+    const i = spec.ads.findIndex((a: any) => a.factory_creative === fab.creative.id);
+    expect(spec.ads[i].video_url).toMatch(/^https:\/\/fabrica\.test\//);
+    spec.ads[i].video_url = 'https://fabrica.test/publico/producoes/9/anuncio_v2_9x16.mp4?e=1&s=b';
+    await pool.query('UPDATE launch_plans SET spec = $2 WHERE id = $1', [plan.id, JSON.stringify(spec)]);
+    process.env.META_MUTATION_ENABLED = 'true';
+    const c = await post(`/api/launch-plans/${plan.id}/create`, {});
+    expect(c.status).toBe(409);
+    expect(c.body.error).toMatch(/vídeo do anúncio mudou/);
+    expect(g.calls.length).toBe(0);
+  });
+
+  it('NORQVA-0160: campanha já na Meta ganha anúncio de vídeo PAUSADO no conjunto dela (só ADMIN, aprovado, uma vez)', async () => {
+    const g = makeGraph();
+    const p = await mkPage();
+    const r = await post(`/api/generated-pages/${p.pageId}/campaign`, { daily_budget_brl: 30 });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const adsetId = Object.values(r.body.plan.meta_ids.adsets)[0];
+    const videoUrl = 'https://fabrica.test/publico/producoes/2/anuncio_v1_9x16.mp4?e=99999999999&s=def';
+    const out: any = await new CreativeFactoryService().reviseCreative(pool, p.ads[1].id, { file_url: videoUrl }, null, false, { forceNewVersion: true, format: 'VIDEO' });
+    const vid = out.creative.id;
+    // sem aprovar: recusa sem chamar a Meta
+    const before = g.calls.length;
+    const notYet = await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid });
+    expect(notYet.status).toBe(409);
+    expect(g.calls.length).toBe(before);
+    expect((await post(`/api/creative-factory/creatives/${vid}/review`, { decision: 'APPROVED' })).status).toBe(200);
+    // CREATIVE não pode
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid }, creative)).status).toBe(403);
+    // anúncio de imagem não serve
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: p.ads[0].id })).status).toBe(409);
+    const add = await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid });
+    expect(add.status, JSON.stringify(add.body)).toBe(200);
+    const fresh = g.calls.slice(before);
+    expect(fresh.find(c => c.endpoint.endsWith('/advideos'))!.payload.file_url).toBe(videoUrl);
+    const newAd = fresh.find(c => c.endpoint.endsWith('/ads'))!.payload;
+    expect(newAd).toMatchObject({ status: 'PAUSED', adset_id: adsetId });
+    expect(fresh.some(c => c.endpoint.endsWith('/campaigns') || c.endpoint.endsWith('/adsets'))).toBe(false);
+    expect(JSON.stringify(fresh)).not.toContain('ACTIVE');
+    const v = fresh.find(c => c.endpoint.endsWith('/adcreatives'))!.payload.object_story_spec.video_data;
+    expect(v.call_to_action.value.link).toBe(`https://acesso.norqva.com.br/v/${p.slug}`);
+    expect(add.body.plan.spec.ads).toHaveLength(3);
+    expect(add.body.activates_with_yes).toBe(true); // plano esperando o Sim: o aviso vai para a tela
+    expect(add.body.plan.meta_ids.ads[add.body.ad_name]).toBe(add.body.ad_id);
+    const link = await pool.query('SELECT 1 FROM creative_meta_ads WHERE creative_id = $1 AND meta_ad_id = $2', [vid, add.body.ad_id]);
+    expect(link.rows.length).toBe(1);
+    // segundo clique: já está na campanha
+    const n = g.calls.length;
+    expect((await post(`/api/generated-pages/${p.pageId}/campaign/video-ads`, { creative_id: vid })).status).toBe(409);
+    expect(g.calls.length).toBe(n);
   });
 
   it('bloqueia: página fora do ar, página sem imagem, anúncio mudou depois de montar, preço no texto', async () => {

@@ -676,7 +676,7 @@ export class CreativeFactoryService {
     userId: string | null,
     isDemo: boolean,
     // NORQVA-0116: anúncio gerado grava a checagem e a descrição na MESMA operação da edição
-    options: { forceNewVersion?: boolean; copyCheck?: any; adDescription?: string | null } = {}
+    options: { forceNewVersion?: boolean; copyCheck?: any; adDescription?: string | null; format?: 'VIDEO' | 'IMAGE' | 'CAROUSEL' } = {}
   ) {
     const cRes = await pool.query(
       'SELECT * FROM creatives WHERE id = $1 AND is_demo = $2 AND is_deleted = FALSE',
@@ -708,7 +708,9 @@ export class CreativeFactoryService {
       mechanism: changes.mechanism !== undefined ? (String(changes.mechanism ?? '').trim() || null) : cur.mechanism
     };
     if (next.mechanism && String(next.mechanism).length > 500) throw new CreativeFactoryError(400, 'O mecanismo pode ter no máximo 500 caracteres.');
-    const hash = computeContentHash({ ...next, format: cur.format });
+    // NORQVA-0160: vídeo da Fábrica num anúncio de imagem muda o formato junto (vira versão nova)
+    const nextFormat = options.format || cur.format;
+    const hash = computeContentHash({ ...next, format: nextFormat });
     // NORQVA-0025: criativos antigos podem não ter hash salvo; calcula o atual para comparar
     const curHash =
       cur.content_hash ||
@@ -727,7 +729,7 @@ export class CreativeFactoryService {
       next.cta === cur.cta &&
       (next.script || '') === (cur.script || '') &&
       (next.mechanism || '') === (cur.mechanism || '');
-    if (!options.forceNewVersion && copyUnchanged && next.file_url && next.file_url !== cur.file_url) {
+    if (!options.forceNewVersion && !options.format && copyUnchanged && next.file_url && next.file_url !== cur.file_url) {
       const attached = await this.attachFile(pool, creativeId, next.file_url, userId, isDemo);
       return { mode: 'FILE_ATTACHED', creative: attached };
     }
@@ -741,9 +743,9 @@ export class CreativeFactoryService {
       // Never reviewed: edit in place (no review is bound to the old content)
       const upd = await pool.query(
         `UPDATE creatives SET hook = $1, primary_text = $2, copy = $2, headline = $3, cta = $4, script = $5,
-                file_url = $6, content_hash = $7, mechanism = $9, copy_check = $10::jsonb, ad_description = $11, updated_at = NOW()
+                file_url = $6, content_hash = $7, mechanism = $9, copy_check = $10::jsonb, ad_description = $11, format = $12, updated_at = NOW()
          WHERE id = $8 RETURNING id, human_id, version, approval_status`,
-        [next.hook, next.primary_text, next.headline, next.cta, next.script, next.file_url, hash, creativeId, next.mechanism, nextCheck, nextDescription]
+        [next.hook, next.primary_text, next.headline, next.cta, next.script, next.file_url, hash, creativeId, next.mechanism, nextCheck, nextDescription, nextFormat]
       );
       // NORQVA-0053: promessa de preço não vale para anúncio; a edição já a desliga do criativo
       await pool.query(
@@ -781,7 +783,7 @@ export class CreativeFactoryService {
            $29, $30, $31, $32::jsonb
          ) RETURNING id, human_id, version, approval_status`,
         [
-          newKey, cur.product_id, cur.offer_id, next.hook, cur.concept, next.primary_text, next.cta, cur.format, next.file_url, userId, isDemo,
+          newKey, cur.product_id, cur.offer_id, next.hook, cur.concept, next.primary_text, next.cta, nextFormat, next.file_url, userId, isDemo,
           cur.batch_code, cur.hook_family, cur.angle, cur.pain, cur.desire, next.mechanism, cur.proof_type, cur.audience, cur.duration_seconds,
           next.headline, next.script, 'HUMAN', cur.id, rootId, version,
           `${cur.lineage_code || rootKey}>V${version}`, hash,

@@ -835,6 +835,8 @@ export class NightPauseService {
     const decisions = await pool.query(
       `SELECT action FROM decision_events
        WHERE created_at > ${SINCE} AND is_demo = FALSE AND action NOT LIKE 'NIGHT_PAUSE%'
+         -- NORQVA-0160: adicionar anúncio de vídeo PAUSADO não muda situação nem orçamento da campanha
+         AND action <> 'GENERATED_CAMPAIGN_ADD_VIDEO_AD'
          AND (plan_id = $2 OR meta_ids ?| $3::text[])
        ORDER BY created_at LIMIT 1`,
       [run.id, owner.planId, idList]

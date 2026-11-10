@@ -507,6 +507,13 @@ export const GenerationView: React.FC<{
                       O texto mudou fora desta tela: a checagem roda de novo na hora de aprovar.
                     </p>
                   )}
+                  {/* NORQVA-0160: anúncio com o vídeo da apresentadora vai para a campanha como anúncio de vídeo */}
+                  {a.format === 'VIDEO' && /^https:\/\//.test(String(a.file_url || '')) && (
+                    <div className="space-y-1" data-testid={`ad-video-${a.human_id}`}>
+                      <p className="text-nq-aux text-nq-muted">Anúncio de vídeo (apresentadora)</p>
+                      <video src={a.file_url} controls playsInline preload="metadata" className="w-full max-w-[220px] aspect-[9/16] bg-black rounded" />
+                    </div>
+                  )}
                   {field('hook', 'Gancho')}
                   {field('primary_text', 'Texto principal', true)}
                   {field('headline', 'Título')}
