@@ -64,3 +64,24 @@ export function describeAsaasRejection(err: { statusCode?: number; responseBody?
   const reason = `ASAAS_${status || 'ERRO'}:${codes.join(',') || 'sem_codigo'}:${field || 'outro'}`.slice(0, 120);
   return { field, message: field ? MESSAGES[field] : GENERIC, reason };
 }
+
+/**
+ * NORQVA-0163: a recusa é por causa do cliente do Asaas (apagado, inativo ou inválido)?
+ * Nesse caso dá para refazer o cliente e tentar a cobrança de novo, uma vez.
+ */
+export function isAsaasCustomerRejection(err: { statusCode?: number; responseBody?: unknown } | null | undefined): boolean {
+  const status = Number(err?.statusCode) || 0;
+  if (status < 400 || status >= 500) return false;
+  let errors: { code?: unknown; description?: unknown }[] = [];
+  try {
+    const body = typeof err?.responseBody === 'string' ? JSON.parse(err.responseBody) : err?.responseBody;
+    if (body && Array.isArray((body as any).errors)) errors = (body as any).errors;
+  } catch {
+    errors = [];
+  }
+  return errors.some(e => {
+    const code = String(e?.code ?? '').toLowerCase();
+    const desc = String(e?.description ?? '').toLowerCase();
+    return code.includes('customer') || /\b(customer|cliente)\b.*\b(inv[aá]lid|remov|exclu|inativ|desativ|n[aã]o encontrad|inexistente|deleted|not found)|\b(invalid|removed|deleted)\s+customer\b/.test(desc);
+  });
+}

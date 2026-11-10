@@ -24,7 +24,7 @@ import { clearDemoData } from '../db/db';
 import { calculateScores } from '../utils/score';
 import { MockAIProvider } from '../utils/ai';
 import { validateCpf, validateFullName, validateEmail, emailProblem } from '../utils/validation';
-import { describeAsaasRejection } from '../utils/asaasRejection';
+import { describeAsaasRejection, isAsaasCustomerRejection } from '../utils/asaasRejection';
 import { findSupersededOrderIds } from '../services/commerce/supersededOrders';
 import {
   getCommercialOrderClause,
@@ -3352,6 +3352,9 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
       }
     }
 
+    // NORQVA-0163: cliente do Asaas apagado ou inválido (ex.: removido no painel) recusa a cobrança com 4xx.
+    // Quem já tinha comprado não conseguia mais pagar. Aqui: refaz o cliente no Asaas uma vez e tenta de novo.
+    const chargeOnce = async (): Promise<any> => {
     // 3. Search payment on Asaas by externalReference to check if it was already created (Timeout Recovery)
     let responseBody: any;
     if (method === 'CREDIT_CARD') {
@@ -3403,6 +3406,43 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
         pix_qr_image: paymentResponse.qrCodeImage || null,
         expires_at: paymentResponse.expiresAt
       };
+    }
+
+      return responseBody;
+    };
+    let responseBody: any;
+    try {
+      responseBody = await chargeOnce();
+    } catch (chargeErr: any) {
+      if (!isAsaasCustomerRejection(chargeErr) || !decryptedCpf || !validateCpf(decryptedCpf)) throw chargeErr;
+      console.warn(JSON.stringify({ event: 'ASAAS_CUSTOMER_REJECTED_RETRY', payment_id: paymentId }));
+      const oldProviderCustomerId = providerCustomerId;
+      providerCustomerId = await provider.createCustomer({
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone || undefined,
+        cpfCnpj: decryptedCpf,
+        externalReference: customer.id
+      });
+      // o vínculo passa a apontar para o cliente novo (nada é apagado)
+      const upd = await pool.query(
+        `UPDATE payment_provider_customers SET provider_customer_id = $3, updated_at = NOW()
+          WHERE customer_id = $1 AND provider = 'ASAAS' AND provider_environment = $2`,
+        [customer.id, providerEnv, providerCustomerId]
+      );
+      if (!upd.rowCount) {
+        try {
+          await pool.query(
+            `INSERT INTO payment_provider_customers (customer_id, provider, provider_customer_id, provider_environment, is_demo)
+             VALUES ($1, 'ASAAS', $2, $3, $4)`,
+            [customer.id, providerCustomerId, providerEnv, customer.is_demo]
+          );
+        } catch (mapErr: any) {
+          if (mapErr.code !== '23505') throw mapErr;
+        }
+      }
+      await writeAuditLog(pool, null, 'ASAAS_CUSTOMER_RECREATED', `Cliente do Asaas refeito para o pedido ${payment.human_id} (o anterior foi recusado).`, oldProviderCustomerId || null, providerCustomerId, !!customer.is_demo);
+      responseBody = await chargeOnce();
     }
 
     // Minimização PII: Clear local CPF/CNPJ if we successfully created the mapping
