@@ -3415,7 +3415,7 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
       responseBody = await chargeOnce();
     } catch (chargeErr: any) {
       if (!isAsaasCustomerRejection(chargeErr) || !decryptedCpf || !validateCpf(decryptedCpf)) throw chargeErr;
-      console.warn(JSON.stringify({ event: 'ASAAS_CUSTOMER_RECREATED', payment_id: paymentId }));
+      console.warn(JSON.stringify({ event: 'ASAAS_CUSTOMER_REJECTED_RETRY', payment_id: paymentId }));
       const oldProviderCustomerId = providerCustomerId;
       providerCustomerId = await provider.createCustomer({
         name: customer.name,
@@ -3426,7 +3426,7 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
       });
       // o vínculo passa a apontar para o cliente novo (nada é apagado)
       const upd = await pool.query(
-        `UPDATE payment_provider_customers SET provider_customer_id = $3
+        `UPDATE payment_provider_customers SET provider_customer_id = $3, updated_at = NOW()
           WHERE customer_id = $1 AND provider = 'ASAAS' AND provider_environment = $2`,
         [customer.id, providerEnv, providerCustomerId]
       );
@@ -3441,7 +3441,7 @@ async function runCheckoutCharge(req: any, res: Response, method: 'PIX' | 'CREDI
           if (mapErr.code !== '23505') throw mapErr;
         }
       }
-      await writeAuditLog(pool, null, 'ASAAS_CUSTOMER_RECREATED', `Cliente do Asaas refeito para o pedido ${payment.human_id} (o anterior foi recusado).`, oldProviderCustomerId || null, providerCustomerId);
+      await writeAuditLog(pool, null, 'ASAAS_CUSTOMER_RECREATED', `Cliente do Asaas refeito para o pedido ${payment.human_id} (o anterior foi recusado).`, oldProviderCustomerId || null, providerCustomerId, !!customer.is_demo);
       responseBody = await chargeOnce();
     }
 

@@ -82,6 +82,6 @@ export function isAsaasCustomerRejection(err: { statusCode?: number; responseBod
   return errors.some(e => {
     const code = String(e?.code ?? '').toLowerCase();
     const desc = String(e?.description ?? '').toLowerCase();
-    return code.includes('customer') || /\b(customer|cliente)\b.*\b(inv[aá]lid|remov|exclu|n[aã]o encontrad|inexistente|deleted|not found)/.test(desc);
+    return code.includes('customer') || /\b(customer|cliente)\b.*\b(inv[aá]lid|remov|exclu|inativ|desativ|n[aã]o encontrad|inexistente|deleted|not found)|\b(invalid|removed|deleted)\s+customer\b/.test(desc);
   });
 }
