@@ -112,6 +112,7 @@ Precisa de Python com Playwright + Chromium e Pillow. Fotos novas: o Ricardo ger
 - NORQVA-0148 (D-0148): checkout recusa e-mail com acento, ç ou espaço antes do Asaas (`emailProblem`); recusa 4xx do Asaas mostra o campo e grava só o código em `payments.failure_reason` (`utils/asaasRejection.ts`, migration 088); pedido aguardando cuja pessoa pagou outro em até 7 dias = "Substituído" em Vendas e fora do "aguardando" do Painel (`services/commerce/supersededOrders.ts`, calculado, nada gravado). O Financeiro ainda conta todos os aguardando.
 - NORQVA-0153 (D-0153): atendente mostra as ofertas em imagem (conteúdo e preço), uma de cada vez: Coleção (1ª), Kit de 5 (2ª, se não pediu para pagar), avulsos depois da recusa dos dois ou a pedido. Ferramenta `send_offer_card`, imagens em `frontend/public/images/whatsapp/`, lista e preços em `services/whatsapp/offerCards.ts`; mudou preço = refazer as imagens com `norqva-ai/produtos/whatsapp_cards/build_cards.py`.
 - NORQVA-0154: livros avulsos no WhatsApp vão todos juntos, numerados (1 Trattoria, 2 Risotos, 3 Antipasti, 4 Pães, 5 Dolci), com a pergunta "responda com o número" no fim; `OfferCard.number`.
+- NORQVA-0163: cliente do Asaas recusado (apagado/inválido) em quem já comprou é refeito uma vez com o CPF e a cobrança (Pix ou cartão) é tentada de novo (`isAsaasCustomerRejection` em `utils/asaasRejection.ts`, auditoria `ASAAS_CUSTOMER_RECREATED`).
 
 ## Pendências (tratar quando o Ricardo trouxer o assunto)
 
